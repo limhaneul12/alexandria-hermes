@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Skill {
+  id             Int            @id @default(autoincrement())
+  title          String
+  slug           String         @unique
+  description    String
+  content        String
+  type           String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  lastAccessedAt DateTime?
+  version        String
+  author         String
+  categoryId     Int
+  category       Category       @relation(fields: [categoryId], references: [id])
+  tags           Tag[]          @relation("SkillTags")
+  usageHistory   UsageHistory[]
+
+  @@index([categoryId])
+  @@index([type])
+  @@index([updatedAt])
+}
+
+model Workflow {
+  id          Int      @id @default(autoincrement())
+  title       String
+  slug        String   @unique
+  description String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  author      String
+}
+
+model KnowledgeDocument {
+  id          Int      @id @default(autoincrement())
+  title       String
+  slug        String   @unique
+  description String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  categoryId  Int?
+  category    Category? @relation(fields: [categoryId], references: [id])
+}
+
+model Category {
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  slug               String              @unique
+  parentId           Int?
+  parent             Category?           @relation("CategoryTree", fields: [parentId], references: [id])
+  children           Category[]          @relation("CategoryTree")
+  skills             Skill[]
+  knowledgeDocuments KnowledgeDocument[]
+
+  @@index([parentId])
+}
+
+model Tag {
+  id     Int     @id @default(autoincrement())
+  name   String  @unique
+  skills Skill[] @relation("SkillTags")
+}
+
+model UsageHistory {
+  id           Int      @id @default(autoincrement())
+  skillId      Int
+  skill        Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  accessedAt   DateTime @default(now())
+  agentName    String
+  accessMethod String
+
+  @@index([skillId])
+  @@index([accessedAt])
+}
+
+model Recommendation {
+  id          Int    @id @default(autoincrement())
+  title       String
+  description String
+  type        String
+  usageCount  Int
+}

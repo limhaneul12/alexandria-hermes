@@ -1,0 +1,7 @@
+.python-version
+.venv
+.ruff_cache
+.pytest_cache
+.github
+.git
+__pycache__
