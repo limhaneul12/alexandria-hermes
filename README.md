@@ -2,18 +2,9 @@
 
 > AI Agent Capability Library & Operational Knowledge Archive
 
-<!--
-Hero artwork target:
-Save the attached monochrome grand-library image as:
-
-  docs/assets/alexandria-hermes-library.png
-
-Then uncomment the block below for the public README hero.
-
 <p align="center">
   <img src="./docs/assets/alexandria-hermes-library.png" alt="ALEXANDRIA-HERMES grand archive concept art" width="100%" />
 </p>
--->
 
 ALEXANDRIA-HERMES is a digital archive system being built for the AI Agent era.
 
