@@ -24,7 +24,8 @@ uv run pytest -q          # run backend tests
 ### Frontend (TypeScript)
 ```bash
 cd frontend
-npm install
+# SECURITY HOLD: do not run npm install, npm uninstall, npx, or other package-manager install/remove commands unless the npm supply-chain incident hold is explicitly lifted.
+npm run security:npm-supply-chain  # offline lockfile/payload guard
 npm run dev      # start Next.js dev server on :3000
 npm run build    # production build
 npm run lint     # eslint
@@ -60,6 +61,7 @@ Starts both backend (`:8000`) and frontend (`:3000`).
   - risk/rollback notes when touching lifecycle, config, or logging behavior
 
 ## Security & Configuration Tips
+- NPM supply-chain incident hold: until explicitly lifted, do not run `npm install`, `npm uninstall`, `npx`, or package-manager install/remove commands. Prefer offline lockfile/payload checks such as `npm run security:npm-supply-chain`, and rotate credentials if a compromised package was installed.
 - Runtime config is environment-based (`.env`, `SERVICE_` prefix for app config, `STREAM_` for stream config).
 - Avoid committing secrets; keep local credentials in local env files only.
 - For local health checks, keep backend exposed only as needed and verify startup endpoints via:
