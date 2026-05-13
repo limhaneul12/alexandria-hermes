@@ -65,7 +65,7 @@ class SqlAlchemyUsageRepository(UsageRepository):
 
     async def popular(
         self, *, limit: int = 10, success_only: bool = True
-    ) -> list[tuple[int, int]]:
+    ) -> list[tuple[str, int]]:
         """Return most-used item IDs and counts."""
         query = (
             select(
@@ -80,11 +80,11 @@ class SqlAlchemyUsageRepository(UsageRepository):
             query = query.where(UsageHistoryORM.success.is_(True))
 
         result = await self._session.execute(query)
-        return [(int(row.item_id), int(row.usage_count)) for row in result.all()]
+        return [(str(row.item_id), int(row.usage_count)) for row in result.all()]
 
     async def popular_by_category(
         self, *, limit: int = 10
-    ) -> list[tuple[int, str, int]]:
+    ) -> list[tuple[str, str, int]]:
         """Return category-level popularity."""
         query = (
             select(
@@ -104,14 +104,14 @@ class SqlAlchemyUsageRepository(UsageRepository):
         rows = await self._session.execute(query)
         return [
             (
-                int(category_id) if category_id is not None else 0,
+                str(category_id),
                 item_type,
                 int(count),
             )
             for category_id, item_type, count in rows.all()
         ]
 
-    async def list_by_item(self, item_id: int) -> list[UsageHistory]:
+    async def list_by_item(self, item_id: str) -> list[UsageHistory]:
         """Return usage events for one item."""
         rows = await self._session.execute(
             select(UsageHistoryORM)
@@ -123,7 +123,7 @@ class SqlAlchemyUsageRepository(UsageRepository):
     async def record_event(
         self,
         *,
-        item_id: int,
+        item_id: str,
         item_type: str,
         agent_name: str,
         query: str | None,

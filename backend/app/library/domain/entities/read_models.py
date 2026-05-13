@@ -12,12 +12,12 @@ from app.shared.types.extra_types import JSONValue
 class AgentProfile:
     """Read model for an agent profile."""
 
-    id: int
+    id: str
     name: str
     provider: str
     description: str | None
     capabilities: list[str]
-    preferred_librarian_provider: int | None
+    preferred_librarian_provider: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -26,9 +26,9 @@ class AgentProfile:
 class Category:
     """Read model for a library category."""
 
-    id: int
+    id: str
     name: str
-    parent_id: int | None
+    parent_id: str | None
     position: int
     created_at: datetime
     updated_at: datetime
@@ -38,12 +38,12 @@ class Category:
 class LibraryItem:
     """Read model for a unified library item."""
 
-    id: int
+    id: str
     item_type: str
     title: str
     summary: str | None
     content: str
-    category_id: int | None
+    category_id: str | None
     tags: list[str]
     status: str
     source_type: str
@@ -59,7 +59,7 @@ class LibraryItem:
 class LibrarianProvider:
     """Read model for librarian provider configuration."""
 
-    id: int
+    id: str
     name: str
     provider_type: str
     auth_type: str
@@ -73,8 +73,8 @@ class LibrarianProvider:
 class UsageHistory:
     """Read model for a usage history event."""
 
-    id: int
-    item_id: int
+    id: str
+    item_id: str
     item_type: str
     agent_name: str
     librarian_provider: str | None

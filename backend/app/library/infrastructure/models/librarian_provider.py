@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from app.shared.types.extra_types import JSONValue
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -15,7 +16,7 @@ class LibrarianProviderORM(Base):
 
     __tablename__ = "librarian_providers"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     provider_type: Mapped[str] = mapped_column(String(20), nullable=False)
     auth_type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -45,8 +46,9 @@ class ProviderSecretORM(Base):
 
     __tablename__ = "librarian_provider_secrets"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    provider_id: Mapped[int] = mapped_column(
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_uuid)
+    provider_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
         ForeignKey("librarian_providers.id", ondelete="CASCADE"),
         index=True,
     )

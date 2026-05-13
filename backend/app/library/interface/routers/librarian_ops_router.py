@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.library.application.common import now_utc
 from app.library.application.item_service import ItemService
 from app.library.application.librarian_service import LibrarianService
 from app.library.domain.entities.enums import ItemType
@@ -15,7 +16,7 @@ from app.library.interface.schemas.item_schema import (
     ItemResponse,
 )
 from fastapi import APIRouter, Depends
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 
 
 class RecommendRequest(StrictSchema):
@@ -30,6 +31,16 @@ class RecommendRequest(StrictSchema):
     query: str = Field(min_length=1)
     item_type: ItemType = Field(default=ItemType.SKILL)
     limit: int = Field(default=5, ge=1, le=20)
+
+    @field_validator("item_type", mode="before")
+    @classmethod
+    def parse_item_type(cls, value: object) -> ItemType:
+        """Accept public JSON item type values at the request boundary."""
+        if isinstance(value, ItemType):
+            return value
+        if isinstance(value, str):
+            return ItemType(value)
+        raise ValueError("item_type must be a valid item type")
 
 
 class ClassifyRequest(StrictSchema):
@@ -51,17 +62,17 @@ class CreateCandidateRequest(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "provider_id": 1,
+                    "provider_id": "00000000-0000-4000-8000-000000000456",
                     "prompt": "Create a skill for FastAPI dependency overrides.",
-                    "category_id": 2,
+                    "category_id": "00000000-0000-4000-8000-000000000002",
                 }
             ]
         }
     )
 
-    provider_id: int
+    provider_id: str
     prompt: str = Field(min_length=1)
-    category_id: int | None = None
+    category_id: str | None = None
 
 
 router = APIRouter(prefix="/librarian", tags=["librarian"])
@@ -99,8 +110,9 @@ async def create_skill_candidate(
         prompt=request.prompt,
     )
     # Keep API shape as draft skill candidate without persistence.
+    now = now_utc()
     result = {
-        "id": 0,
+        "id": "draft-skill-candidate",
         "item_type": "SKILL",
         "title": candidate["title"],
         "summary": candidate["summary"],
@@ -119,5 +131,7 @@ async def create_skill_candidate(
         "source_type": "LIBRARIAN_CREATED",
         "created_by_type": "LIBRARIAN",
         "created_by_name": "librarian",
+        "created_at": now,
+        "updated_at": now,
     }
     return ItemResponse.model_validate(result)

@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from app.shared.types.extra_types import JSONValue
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -15,9 +16,9 @@ class UsageHistoryORM(Base):
 
     __tablename__ = "usage_histories"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    item_id: Mapped[int] = mapped_column(
-        ForeignKey("library_items.id", ondelete="CASCADE"), index=True
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_uuid)
+    item_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH), ForeignKey("library_items.id", ondelete="CASCADE"), index=True
     )
     item_type: Mapped[str] = mapped_column(String(20), nullable=False)
     agent_name: Mapped[str] = mapped_column(String(255), nullable=False)

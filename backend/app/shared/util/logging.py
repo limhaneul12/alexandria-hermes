@@ -1,8 +1,43 @@
-"""Helpers for parsing logging record extra fields."""
+"""Helpers for parsing and sanitizing logging record fields."""
 
 from __future__ import annotations
 
 import logging
+import re
+
+_SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"(?P<prefix>[\"']?"
+    r"(?:api[_-]?key|oauth[_-]?access[_-]?token|access[_-]?token|"
+    r"refresh[_-]?token|password|secret)"
+    r"[\"']?\s*[:=]\s*[\"']?)"
+    r"(?P<value>[^\"'\s,;}&]+)",
+    re.IGNORECASE,
+)
+_BEARER_TOKEN_RE = re.compile(
+    r"(?P<prefix>\bBearer\s+)[A-Za-z0-9._~+/-]+=*",
+    re.IGNORECASE,
+)
+
+
+def redact_sensitive_text(value: str | None) -> str | None:
+    """Redact likely credential values from log-safe text.
+
+    Args:
+        value: Text that may contain key-value formatted credentials.
+
+    Return:
+        Text with credential values replaced by ``<redacted>``.
+    """
+    if value is None:
+        return None
+    redacted = _SENSITIVE_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group('prefix')}<redacted>",
+        value,
+    )
+    return _BEARER_TOKEN_RE.sub(
+        lambda match: f"{match.group('prefix')}<redacted>",
+        redacted,
+    )
 
 
 def log_record_extra_str(

@@ -59,7 +59,7 @@ def _item_payload(
 
 @asynccontextmanager
 async def _temporary_database(path: Path) -> AsyncIterator[Database]:
-    database = Database(database_url=f"sqlite+aiosqlite:///{path}")
+    database = Database(database_url=f"sqlite+aiosqlite:///{path}", create_schema=True)
     await database.initialize()
     try:
         yield database
@@ -67,7 +67,7 @@ async def _temporary_database(path: Path) -> AsyncIterator[Database]:
         await database.shutdown()
 
 
-async def _seed_item(database: Database, **overrides: Any) -> int:
+async def _seed_item(database: Database, **overrides: Any) -> str:
     async with database.session() as session:
         repository = SqlAlchemyItemRepository(session=session)
         item = await repository.create(payload=_item_payload(**overrides))
@@ -167,11 +167,13 @@ def test_item_repository_raises_not_found_when_mutating_missing_item(
             async with database.session() as session:
                 repository = SqlAlchemyItemRepository(session=session)
 
-                with pytest.raises(NotFoundError, match="Item not found: 404"):
-                    await repository.update(404, payload={"title": "Missing"})
+                missing_id = "00000000-0000-4000-8000-000000000000"
 
-                with pytest.raises(NotFoundError, match="Item not found: 404"):
-                    await repository.delete(404)
+                with pytest.raises(NotFoundError, match=f"Item not found: {missing_id}"):
+                    await repository.update(missing_id, payload={"title": "Missing"})
+
+                with pytest.raises(NotFoundError, match=f"Item not found: {missing_id}"):
+                    await repository.delete(missing_id)
 
     anyio.run(scenario)
 
@@ -182,7 +184,7 @@ def test_search_endpoint_returns_success_when_query_contains_fts_special_charact
     """Search endpoint should not expose server errors for FTS-special user input."""
 
     async def seed_database() -> Database:
-        database = Database(database_url=f"sqlite+aiosqlite:///{tmp_path / 'api.db'}")
+        database = Database(database_url=f"sqlite+aiosqlite:///{tmp_path / 'api.db'}", create_schema=True)
         await database.initialize()
         await _seed_item(database)
         return database

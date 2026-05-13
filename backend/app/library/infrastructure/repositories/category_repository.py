@@ -53,7 +53,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         )
         return [_to_read_model(row) for row in rows.scalars().all()]
 
-    async def create(self, *, name: str, parent_id: int | None = None) -> Category:
+    async def create(self, *, name: str, parent_id: str | None = None) -> Category:
         """Create category node with next sibling position.
 
         Args:
@@ -83,7 +83,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         await self._session.flush()
         return _to_read_model(model)
 
-    async def get(self, category_id: int) -> Category | None:
+    async def get(self, category_id: str) -> Category | None:
         """Get one category by primary key.
 
         Args:
@@ -95,7 +95,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         model = await self._session.get(CategoryORM, category_id)
         return None if model is None else _to_read_model(model)
 
-    async def update_name(self, category_id: int, *, name: str) -> Category:
+    async def update_name(self, category_id: str, *, name: str) -> Category:
         """Rename category by primary key.
 
         Args:
@@ -116,9 +116,9 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
 
     async def move(
         self,
-        category_id: int,
+        category_id: str,
         *,
-        parent_id: int | None,
+        parent_id: str | None,
         position: int,
     ) -> Category:
         """Move category and set position.
@@ -141,7 +141,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         await self._session.flush()
         return _to_read_model(model)
 
-    async def reorder(self, *, category_id: int, position: int) -> Category:
+    async def reorder(self, *, category_id: str, position: int) -> Category:
         """Reorder one node in sibling list.
 
         Args:
@@ -160,7 +160,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         await self._session.flush()
         return _to_read_model(model)
 
-    async def delete(self, category_id: int) -> None:
+    async def delete(self, category_id: str) -> None:
         """Delete one category and all descendants through DB cascade.
 
         Args:
@@ -189,7 +189,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         """
         return await self.list_all()
 
-    async def descendants_of(self, category_id: int) -> list[Category]:
+    async def descendants_of(self, category_id: str) -> list[Category]:
         """Traverse descendants by iterative parent-id walk.
 
         Args:
@@ -199,7 +199,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             Descendant rows in nearest order.
         """
         all_nodes = await self.list_all()
-        children_map: dict[int | None, list[Category]] = {}
+        children_map: dict[str | None, list[Category]] = {}
         for node in all_nodes:
             children_map.setdefault(node.parent_id, []).append(node)
 
@@ -212,7 +212,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             queue.extend(node.id for node in direct)
         return descendants
 
-    async def max_depth(self, category_id: int) -> int:
+    async def max_depth(self, category_id: str) -> int:
         """Compute depth from the root node.
 
         Args:
@@ -228,7 +228,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             node = await self.get(node.parent_id)
         return depth
 
-    async def count_items(self, category_id: int) -> int:
+    async def count_items(self, category_id: str) -> int:
         """Count directly attached items in category.
 
         Args:
@@ -246,7 +246,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             or 0
         )
 
-    async def has_descendant(self, ancestor_id: int, node_id: int) -> bool:
+    async def has_descendant(self, ancestor_id: str, node_id: str) -> bool:
         """Return true when ``node_id`` is in ``ancestor_id`` subtree.
 
         Args:

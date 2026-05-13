@@ -77,7 +77,7 @@ async def popular_by_category(
 
 @router.get("/items/{item_id}", response_model=list[UsageRecordResponse])
 async def item_usage(
-    item_id: int,
+    item_id: str,
     usage_service: UsageService = Depends(get_usage_service),
 ) -> list[UsageRecordResponse]:
     """Get all usage rows for one item."""

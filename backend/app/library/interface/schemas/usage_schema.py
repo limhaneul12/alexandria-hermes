@@ -6,7 +6,7 @@ from datetime import datetime
 
 from app.library.domain.entities.enums import SelectionSource
 from app.library.interface.schemas._types import StrictSchema
-from pydantic import ConfigDict
+from pydantic import ConfigDict, field_validator
 
 
 class UsageRecordRequest(StrictSchema):
@@ -16,7 +16,7 @@ class UsageRecordRequest(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "item_id": 10,
+                    "item_id": "00000000-0000-4000-8000-000000000010",
                     "item_type": "SKILL",
                     "agent_name": "research-agent",
                     "librarian_provider": "default-openai",
@@ -29,7 +29,7 @@ class UsageRecordRequest(StrictSchema):
         }
     )
 
-    item_id: int
+    item_id: str
     item_type: str
     agent_name: str
     librarian_provider: str | None = None
@@ -37,6 +37,16 @@ class UsageRecordRequest(StrictSchema):
     selection_source: SelectionSource
     success: bool
     feedback: str | None = None
+
+    @field_validator("selection_source", mode="before")
+    @classmethod
+    def parse_selection_source(cls, value: object) -> SelectionSource:
+        """Accept JSON enum values while preserving strict internal typing."""
+        if isinstance(value, SelectionSource):
+            return value
+        if isinstance(value, str):
+            return SelectionSource(value)
+        raise ValueError("selection_source must be a valid selection source")
 
 
 class UsageRecordResponse(StrictSchema):
@@ -46,8 +56,8 @@ class UsageRecordResponse(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "id": 99,
-                    "item_id": 10,
+                    "id": "00000000-0000-4000-8000-000000000099",
+                    "item_id": "00000000-0000-4000-8000-000000000010",
                     "item_type": "SKILL",
                     "agent_name": "research-agent",
                     "librarian_provider": "default-openai",
@@ -59,8 +69,8 @@ class UsageRecordResponse(StrictSchema):
         }
     )
 
-    id: int
-    item_id: int
+    id: str
+    item_id: str
     item_type: str
     agent_name: str
     librarian_provider: str | None
@@ -73,10 +83,10 @@ class PopularItemResponse(StrictSchema):
     """Usage aggregate response."""
 
     model_config = ConfigDict(
-        json_schema_extra={"examples": [{"item_id": 10, "count": 42}]}
+        json_schema_extra={"examples": [{"item_id": "00000000-0000-4000-8000-000000000010", "count": 42}]}
     )
 
-    item_id: int
+    item_id: str
     count: int
 
 
@@ -85,10 +95,10 @@ class PopularByCategoryResponse(StrictSchema):
 
     model_config = ConfigDict(
         json_schema_extra={
-            "examples": [{"category_id": 2, "item_type": "SKILL", "count": 12}]
+            "examples": [{"category_id": "00000000-0000-4000-8000-000000000002", "item_type": "SKILL", "count": 12}]
         }
     )
 
-    category_id: int
+    category_id: str
     item_type: str
     count: int

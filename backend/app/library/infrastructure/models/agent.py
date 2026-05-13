@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.shared.infrastructure.database import Base
-from sqlalchemy import JSON, DateTime, Integer, String
+from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
+from sqlalchemy import JSON, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -14,13 +15,13 @@ class AgentProfileORM(Base):
 
     __tablename__ = "agent_profiles"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_uuid)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     provider: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     capabilities: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
-    preferred_librarian_provider: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
+    preferred_librarian_provider: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

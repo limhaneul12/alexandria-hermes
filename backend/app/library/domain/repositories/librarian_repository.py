@@ -16,7 +16,7 @@ class LibrarianProviderRepository(ABC):
         """Create a provider entry."""
 
     @abstractmethod
-    async def get(self, provider_id: int) -> LibrarianProvider | None:
+    async def get(self, provider_id: str) -> LibrarianProvider | None:
         """Get one provider."""
 
     @abstractmethod
@@ -25,12 +25,12 @@ class LibrarianProviderRepository(ABC):
 
     @abstractmethod
     async def update(
-        self, provider_id: int, payload: dict[str, JSONValue]
+        self, provider_id: str, payload: dict[str, JSONValue]
     ) -> LibrarianProvider:
         """Patch provider settings."""
 
     @abstractmethod
-    async def delete(self, provider_id: int) -> None:
+    async def delete(self, provider_id: str) -> None:
         """Delete one provider."""
 
 
@@ -38,13 +38,13 @@ class ProviderSecretRepository(ABC):
     """Persistence contract for librarian provider secrets."""
 
     @abstractmethod
-    async def resolve(self, provider_id: int, key_name: str) -> str | None:
+    async def resolve(self, provider_id: str, key_name: str) -> str | None:
         """Return secret value by key name."""
 
     @abstractmethod
-    async def set_secret(self, *, provider_id: int, key_name: str, value: str) -> None:
+    async def set_secret(self, *, provider_id: str, key_name: str, value: str) -> None:
         """Persist or update one provider secret."""
 
     @abstractmethod
-    async def delete_for_provider(self, provider_id: int, key_name: str) -> None:
+    async def delete_for_provider(self, provider_id: str, key_name: str) -> None:
         """Delete one provider secret key."""
