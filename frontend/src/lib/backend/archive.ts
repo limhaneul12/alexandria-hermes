@@ -1,6 +1,8 @@
 import { BackendRequestError, backendFetch } from "@/lib/backend/client";
 import { isItemType } from "@/types/library";
 import type {
+  CategoryCreateDTO,
+  CategoryDTO,
   CategoryNode,
   CreatedByType,
   DashboardDTO,
@@ -9,6 +11,8 @@ import type {
   LibraryDTO,
   SelectionSource,
   SkillCardDTO,
+  SkillCreateDTO,
+  SkillCreateResultDTO,
   SkillDetailDTO,
   SourceType,
 } from "@/types/library";
@@ -123,6 +127,58 @@ function toSkillCard(
     lastAccessedAt: recentUsage.get(item.id) ?? null,
     usageCount: usageCounts.get(item.id) ?? 0,
   };
+}
+
+function toCategoryDTO(category: BackendCategory & { created_at?: string; updated_at?: string }): CategoryDTO {
+  return {
+    id: category.id,
+    name: category.name,
+    parentId: category.parent_id,
+    position: category.position,
+    createdAt: category.created_at ?? "",
+    updatedAt: category.updated_at ?? "",
+  };
+}
+
+export async function createCategoryInBackend(payload: CategoryCreateDTO): Promise<CategoryDTO> {
+  const category = await backendFetch<BackendCategory & { created_at: string; updated_at: string }>(
+    "/categories",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: payload.name, parent_id: payload.parentId }),
+    },
+  );
+  return toCategoryDTO(category);
+}
+
+export async function createSkillInBackend(payload: SkillCreateDTO): Promise<SkillCreateResultDTO> {
+  const item = await backendFetch<BackendItem>("/skills", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: payload.title,
+      summary: payload.summary,
+      content: payload.content,
+      category_id: payload.categoryId,
+      tags: payload.tags,
+      purpose: payload.purpose,
+      input_schema: {},
+      output_schema: {},
+      usage_example: payload.usageExample,
+      required_tools: payload.requiredTools,
+      risk_level: payload.riskLevel,
+      version: payload.version,
+      created_by_name: payload.createdByName,
+      status: payload.status,
+    }),
+  });
+  return toSkillCard(
+    item,
+    new Map<string, BackendCategory>(),
+    new Map<string, number>(),
+    new Map<string, string>(),
+  );
 }
 
 function extractCodeExamples(content: string) {

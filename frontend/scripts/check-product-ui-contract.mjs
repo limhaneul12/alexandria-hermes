@@ -31,7 +31,7 @@ const detail = readFileSync(join(root, "components/skill/skill-detail-client.tsx
 
 const requiredPageCopy = [
   ["dashboard", dashboard, ["Grand Archive", "최근에 가져간 스킬", "추천 아카이브"]],
-  ["library", library, ["서재", "아이템 검색", "신뢰 높은순"]],
+  ["library", library, ["서재", "아이템 검색", "신뢰 높은순", "새 폴더", "스킬 등록"]],
   ["detail", detail, ["스킬 상세 열람", "사용 가이드 열기", "목차"]],
 ];
 

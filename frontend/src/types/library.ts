@@ -78,6 +78,37 @@ export type LibraryDTO = {
   total: number;
 };
 
+export type CategoryCreateDTO = {
+  name: string;
+  parentId: string | null;
+};
+
+export type CategoryDTO = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SkillCreateDTO = {
+  title: string;
+  summary: string | null;
+  content: string;
+  categoryId: string | null;
+  tags: string[];
+  purpose: string;
+  usageExample: string | null;
+  requiredTools: string[];
+  riskLevel: RiskLevel;
+  version: string;
+  createdByName: string;
+  status: Extract<ItemStatus, "DRAFT" | "ACTIVE">;
+};
+
+export type SkillCreateResultDTO = SkillCardDTO;
+
 export type LibrarianProviderDTO = {
   id: string;
   name: string;
