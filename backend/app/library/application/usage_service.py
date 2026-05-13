@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.library.domain.entities.enums import SelectionSource
 from app.library.domain.repositories.usage_repository import UsageRepository
 from app.shared.types.extra_types import JSONValue
+
+
+def _selection_source(value: str | SelectionSource) -> SelectionSource:
+    """Return a typed selection source enum for response schemas."""
+    if isinstance(value, SelectionSource):
+        return value
+    return SelectionSource(value)
 
 
 @dataclass(frozen=True)
@@ -23,7 +31,7 @@ class UsageService:
             "item_type": model.item_type,
             "agent_name": model.agent_name,
             "librarian_provider": model.librarian_provider,
-            "selection_source": model.selection_source,
+            "selection_source": _selection_source(model.selection_source),
             "used_at": model.used_at,
             "success": model.success,
         }
@@ -40,7 +48,7 @@ class UsageService:
                 "librarian_provider": row.librarian_provider,
                 "used_at": row.used_at,
                 "success": row.success,
-                "selection_source": row.selection_source,
+                "selection_source": _selection_source(row.selection_source),
             }
             for row in rows
         ]
@@ -64,15 +72,17 @@ class UsageService:
             for category_id, item_type, count in data
         ]
 
-    async def by_item(self, item_id: int) -> list[dict[str, JSONValue]]:
+    async def by_item(self, item_id: str) -> list[dict[str, JSONValue]]:
         """Usage history for one item."""
         rows = await self.usage_repo.list_by_item(item_id)
         return [
             {
                 "id": row.id,
+                "item_id": row.item_id,
+                "item_type": row.item_type,
                 "agent_name": row.agent_name,
-                "query": row.query,
-                "selection_source": row.selection_source,
+                "librarian_provider": row.librarian_provider,
+                "selection_source": _selection_source(row.selection_source),
                 "used_at": row.used_at,
                 "success": row.success,
             }

@@ -5,7 +5,25 @@ from __future__ import annotations
 from app.library.domain.entities.enums import ItemStatus, RiskLevel
 from app.library.interface.schemas._types import StrictSchema
 from app.shared.types.extra_types import JSONValue
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
+
+
+def _item_status(value: object) -> ItemStatus:
+    """Accept public JSON item status values at API boundaries."""
+    if isinstance(value, ItemStatus):
+        return value
+    if isinstance(value, str):
+        return ItemStatus(value)
+    raise ValueError("status must be a valid item status")
+
+
+def _risk_level(value: object) -> RiskLevel:
+    """Accept public JSON risk level values at API boundaries."""
+    if isinstance(value, RiskLevel):
+        return value
+    if isinstance(value, str):
+        return RiskLevel(value)
+    raise ValueError("risk_level must be a valid risk level")
 
 
 class SkillCreateRequest(StrictSchema):
@@ -18,7 +36,7 @@ class SkillCreateRequest(StrictSchema):
                     "title": "FastAPI dependency override",
                     "summary": "Override narrow route dependencies in tests.",
                     "content": "Use app.dependency_overrides with a fake service.",
-                    "category_id": 2,
+                    "category_id": "00000000-0000-4000-8000-000000000002",
                     "tags": ["fastapi", "testing"],
                     "purpose": "Test API routes without broad container coupling.",
                     "input_schema": {
@@ -43,7 +61,7 @@ class SkillCreateRequest(StrictSchema):
     title: str = Field(min_length=1)
     summary: str | None = None
     content: str = Field(min_length=1)
-    category_id: int | None = None
+    category_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     purpose: str = Field(min_length=1)
     input_schema: dict[str, JSONValue] = Field(default_factory=dict)
@@ -54,6 +72,18 @@ class SkillCreateRequest(StrictSchema):
     version: str = "1.0.0"
     created_by_name: str
     status: ItemStatus = ItemStatus.DRAFT
+
+    @field_validator("risk_level", mode="before")
+    @classmethod
+    def parse_risk_level(cls, value: object) -> RiskLevel:
+        """Parse JSON risk level values."""
+        return _risk_level(value)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def parse_status(cls, value: object) -> ItemStatus:
+        """Parse JSON status values."""
+        return _item_status(value)
 
 
 class AgentSubmitSkillRequest(StrictSchema):
@@ -67,7 +97,7 @@ class AgentSubmitSkillRequest(StrictSchema):
                     "purpose": "Capture route testing guidance.",
                     "summary": "Generated candidate from an agent.",
                     "content": "Use narrow dependency overrides.",
-                    "category_id": 2,
+                    "category_id": "00000000-0000-4000-8000-000000000002",
                     "tags": ["agent", "fastapi"],
                     "input_schema": {},
                     "output_schema": {},
@@ -87,7 +117,7 @@ class AgentSubmitSkillRequest(StrictSchema):
     purpose: str = Field(min_length=1)
     summary: str | None = None
     content: str = Field(min_length=1)
-    category_id: int | None = None
+    category_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     input_schema: dict[str, JSONValue] = Field(default_factory=dict)
     output_schema: dict[str, JSONValue] = Field(default_factory=dict)
@@ -98,6 +128,18 @@ class AgentSubmitSkillRequest(StrictSchema):
     created_by_name: str
     activate: bool = False
     status: ItemStatus = ItemStatus.DRAFT
+
+    @field_validator("risk_level", mode="before")
+    @classmethod
+    def parse_risk_level(cls, value: object) -> RiskLevel:
+        """Parse JSON risk level values."""
+        return _risk_level(value)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def parse_status(cls, value: object) -> ItemStatus:
+        """Parse JSON status values."""
+        return _item_status(value)
 
 
 class SkillPatchRequest(StrictSchema):
@@ -119,7 +161,7 @@ class SkillPatchRequest(StrictSchema):
     title: str | None = None
     summary: str | None = None
     content: str | None = None
-    category_id: int | None = None
+    category_id: str | None = None
     tags: list[str] | None = None
     status: ItemStatus | None = None
     purpose: str | None = None
@@ -130,6 +172,22 @@ class SkillPatchRequest(StrictSchema):
     risk_level: RiskLevel | None = None
     version: str | None = None
 
+    @field_validator("risk_level", mode="before")
+    @classmethod
+    def parse_risk_level(cls, value: object) -> RiskLevel | None:
+        """Parse JSON risk level values when provided."""
+        if value is None:
+            return None
+        return _risk_level(value)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def parse_status(cls, value: object) -> ItemStatus | None:
+        """Parse JSON status values when provided."""
+        if value is None:
+            return None
+        return _item_status(value)
+
 
 class LibrarianSkillRequest(StrictSchema):
     """Payload to generate candidate through librarian provider."""
@@ -138,9 +196,9 @@ class LibrarianSkillRequest(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "provider_id": 1,
+                    "provider_id": "00000000-0000-4000-8000-000000000456",
                     "prompt": "Create a skill for FastAPI dependency overrides.",
-                    "category_id": 2,
+                    "category_id": "00000000-0000-4000-8000-000000000002",
                     "tags": ["fastapi"],
                     "created_by_name": "alex",
                 }
@@ -148,9 +206,9 @@ class LibrarianSkillRequest(StrictSchema):
         }
     )
 
-    provider_id: int
+    provider_id: str
     prompt: str = Field(min_length=1)
-    category_id: int | None = None
+    category_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     created_by_name: str
 
@@ -162,7 +220,7 @@ class SkillResponse(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "id": 10,
+                    "id": "00000000-0000-4000-8000-000000000010",
                     "item_type": "SKILL",
                     "title": "FastAPI dependency override",
                     "summary": "Override narrow route dependencies in tests.",
@@ -171,7 +229,7 @@ class SkillResponse(StrictSchema):
                         "purpose": "Test API routes without broad container coupling.",
                         "risk_level": "LOW",
                     },
-                    "category_id": 2,
+                    "category_id": "00000000-0000-4000-8000-000000000002",
                     "status": "ACTIVE",
                     "source_type": "USER_CREATED",
                     "created_by_type": "USER",
@@ -181,13 +239,13 @@ class SkillResponse(StrictSchema):
         }
     )
 
-    id: int
+    id: str
     item_type: str
     title: str
     summary: str | None
     content: str
     details: dict[str, JSONValue]
-    category_id: int | None
+    category_id: str | None
     status: str
     source_type: str
     created_by_type: str

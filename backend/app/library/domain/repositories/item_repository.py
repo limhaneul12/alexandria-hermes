@@ -26,7 +26,7 @@ class ItemRepository(ABC):
     @abstractmethod
     async def update(
         self,
-        item_id: int,
+        item_id: str,
         *,
         payload: dict[str, JSONValue],
     ) -> LibraryItem:
@@ -41,7 +41,7 @@ class ItemRepository(ABC):
         """
 
     @abstractmethod
-    async def get(self, item_id: int) -> LibraryItem | None:
+    async def get(self, item_id: str) -> LibraryItem | None:
         """Get one item by identifier.
 
         Args:
@@ -52,7 +52,7 @@ class ItemRepository(ABC):
         """
 
     @abstractmethod
-    async def delete(self, item_id: int) -> None:
+    async def delete(self, item_id: str) -> None:
         """Delete item row and related references.
 
         Args:
@@ -87,7 +87,7 @@ class ItemRepository(ABC):
         *,
         limit: int | None = None,
         offset: int = 0,
-        category_id: int | None = None,
+        category_id: str | None = None,
         search_query: str | None = None,
     ) -> tuple[list[LibraryItem], int]:
         """List and count all items.

@@ -27,7 +27,7 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 
 
 def _to_tree_node(
-    row_map: dict[int | None, list[Category]],
+    row_map: dict[str | None, list[Category]],
 ) -> list[CategoryTreeNode]:
     """Build nested tree nodes from flattened rows.
 
@@ -87,7 +87,7 @@ async def get_category_tree(
 ) -> list[CategoryTreeNode]:
     """Return hierarchy as nested JSON."""
     categories = await service.tree()
-    grouped: dict[int | None, list[Category]] = defaultdict(list)
+    grouped: dict[str | None, list[Category]] = defaultdict(list)
     for row in categories:
         grouped[row.parent_id].append(row)
     for rows in grouped.values():
@@ -97,7 +97,7 @@ async def get_category_tree(
 
 @router.get("/{category_id}", response_model=CategoryResponse)
 async def get_category(
-    category_id: int,
+    category_id: str,
     service: CategoryService = Depends(get_category_service),
 ) -> CategoryResponse:
     """Get one category by id."""
@@ -112,7 +112,7 @@ async def get_category(
 
 @router.patch("/{category_id}", response_model=CategoryResponse)
 async def update_category(
-    category_id: int,
+    category_id: str,
     request: CategoryUpdateRequest,
     service: CategoryService = Depends(get_category_service),
 ) -> CategoryResponse:
@@ -129,7 +129,7 @@ async def update_category(
 
 @router.patch("/{category_id}/move", response_model=CategoryResponse)
 async def move_category(
-    category_id: int,
+    category_id: str,
     request: CategoryMoveRequest,
     service: CategoryService = Depends(get_category_service),
 ) -> CategoryResponse:
@@ -160,7 +160,7 @@ async def move_category(
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(
-    category_id: int,
+    category_id: str,
     service: CategoryService = Depends(get_category_service),
 ) -> None:
     """Delete category and descendants."""

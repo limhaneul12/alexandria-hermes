@@ -38,11 +38,11 @@ export function TopHeader() {
             <Input
               value={localQuery}
               onChange={(event) => setLocalQuery(event.target.value)}
-              placeholder="Search capabilities, workflows, knowledge..."
+              placeholder="아이템 검색..."
               className="pl-9"
             />
           </div>
-          <Button variant="secondary" size="icon" aria-label="Open filters">
+          <Button variant="secondary" size="icon" aria-label="필터 열기">
             <SlidersHorizontal className="h-4 w-4" />
           </Button>
         </div>

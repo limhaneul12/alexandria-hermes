@@ -32,10 +32,10 @@ class WorkflowService:
         title: str,
         summary: str | None,
         content: str,
-        category_id: int | None,
+        category_id: str | None,
         tags: list[str],
         steps: list[str],
-        related_skill_ids: list[int],
+        related_skill_ids: list[str],
         expected_result: str | None,
         use_case: str | None,
         created_by_name: str,
@@ -109,7 +109,7 @@ class WorkflowService:
     async def patch_workflow(
         self,
         *,
-        item_id: int,
+        item_id: str,
         payload: Mapping[str, JSONValue],
     ) -> dict[str, JSONValue]:
         """Patch one workflow entry.

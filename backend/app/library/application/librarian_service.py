@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.library.application.common import now_utc
 from app.library.domain.entities.enums import AuthType, ProviderType
@@ -12,8 +12,51 @@ from app.library.domain.repositories.librarian_repository import (
     LibrarianProviderRepository,
     ProviderSecretRepository,
 )
+from app.library.infrastructure.librarians.clients import (
+    LibrarianClientFactory,
+    LibrarianProviderClientFactory,
+)
 from app.shared.exceptions import NotFoundError, UnsupportedProviderError
 from app.shared.types.extra_types import JSONValue
+
+CONFIG_CREDENTIAL_KEYS = frozenset(
+    {
+        "api_key",
+        "oauth_access_token",
+        "access_token",
+        "refresh_token",
+        "token",
+        "secret",
+        "password",
+    }
+)
+
+
+def _normalized_config_key(key: str) -> str:
+    """Normalize config keys before credential-name comparison."""
+    return key.strip().lower().replace("-", "_")
+
+
+def _config_contains_credential_key(value: JSONValue) -> bool:
+    """Return whether a config structure contains known credential fields."""
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if _normalized_config_key(key) in CONFIG_CREDENTIAL_KEYS:
+                return True
+            if _config_contains_credential_key(nested):
+                return True
+        return False
+    if isinstance(value, list):
+        return any(_config_contains_credential_key(item) for item in value)
+    return False
+
+
+def _ensure_config_has_no_credentials(config: dict[str, JSONValue]) -> None:
+    """Reject credentials embedded in provider config payloads."""
+    if _config_contains_credential_key(config):
+        raise UnsupportedProviderError(
+            "Provider config must not include credential fields"
+        )
 
 
 @dataclass(frozen=True)
@@ -22,6 +65,9 @@ class LibrarianService:
 
     provider_repo: LibrarianProviderRepository
     secret_repo: ProviderSecretRepository
+    client_factory: LibrarianProviderClientFactory = field(
+        default_factory=LibrarianClientFactory
+    )
 
     async def create_provider(
         self,
@@ -48,6 +94,8 @@ class LibrarianService:
         Return:
             Provider payload map.
         """
+        _ensure_config_has_no_credentials(config)
+
         if auth_type is AuthType.API_KEY and not api_key:
             raise UnsupportedProviderError("API_KEY auth requires api_key")
         if auth_type is AuthType.OAUTH and not oauth_access_token:
@@ -93,7 +141,7 @@ class LibrarianService:
         providers = await self.provider_repo.list_all()
         return [self._model_to_payload(row) for row in providers]
 
-    async def get_provider(self, provider_id: int) -> dict[str, JSONValue]:
+    async def get_provider(self, provider_id: str) -> dict[str, JSONValue]:
         """Load one provider.
 
         Args:
@@ -109,7 +157,7 @@ class LibrarianService:
 
     async def update_provider(
         self,
-        provider_id: int,
+        provider_id: str,
         *,
         payload: dict[str, JSONValue],
     ) -> dict[str, JSONValue]:
@@ -126,11 +174,28 @@ class LibrarianService:
         if row is None:
             raise NotFoundError(f"Provider not found: {provider_id}")
 
+        config = payload.get("config")
+        if isinstance(config, dict):
+            _ensure_config_has_no_credentials(config)
+
         api_key = payload.pop("api_key", None)
         oauth_access_token = payload.pop("oauth_access_token", None)
         auth_type = payload.get("auth_type", row.auth_type)
         if not isinstance(auth_type, str):
             auth_type = str(auth_type)
+
+        if auth_type == AuthType.API_KEY.value and not isinstance(api_key, str):
+            existing_api_key = await self.secret_repo.resolve(provider_id, "api_key")
+            if not existing_api_key:
+                raise UnsupportedProviderError("API_KEY auth requires api_key")
+        if auth_type == AuthType.OAUTH.value and not isinstance(
+            oauth_access_token, str
+        ):
+            existing_oauth_token = await self.secret_repo.resolve(
+                provider_id, "oauth_access_token"
+            )
+            if not existing_oauth_token:
+                raise UnsupportedProviderError("OAUTH auth requires oauth_access_token")
 
         updated = await self.provider_repo.update(
             provider_id,
@@ -152,7 +217,7 @@ class LibrarianService:
 
         return self._model_to_payload(updated)
 
-    async def delete_provider(self, provider_id: int) -> None:
+    async def delete_provider(self, provider_id: str) -> None:
         """Delete provider and all secrets.
 
         Args:
@@ -168,7 +233,7 @@ class LibrarianService:
 
     async def test_provider(
         self,
-        provider_id: int,
+        provider_id: str,
         test_query: str,
     ) -> dict[str, JSONValue]:
         """Verify provider registration and required credential path.
@@ -183,43 +248,17 @@ class LibrarianService:
         model = await self.provider_repo.get(provider_id)
         if model is None:
             raise NotFoundError(f"Provider not found: {provider_id}")
-        if not model.enabled:
-            return {
-                "provider_id": provider_id,
-                "ok": False,
-                "message": "provider disabled",
-            }
-
-        if model.auth_type == AuthType.API_KEY.value:
-            api_key = await self.secret_repo.resolve(provider_id, "api_key")
-            if not api_key:
-                return {
-                    "provider_id": provider_id,
-                    "ok": False,
-                    "message": "api_key missing",
-                }
-
-        if model.auth_type == AuthType.OAUTH.value:
-            oauth_token = await self.secret_repo.resolve(
-                provider_id, "oauth_access_token"
-            )
-            if not oauth_token:
-                return {
-                    "provider_id": provider_id,
-                    "ok": False,
-                    "message": "oauth_access_token missing",
-                }
-
-        return {
-            "provider_id": provider_id,
-            "ok": True,
-            "message": f"provider test accepted query '{test_query}'",
-        }
+        result = await self.client_factory.test_connection(
+            provider=model,
+            secret_resolver=self.secret_repo,
+            test_query=test_query,
+        )
+        return result.as_public_dict()
 
     def generate_candidate_stub(
         self,
         *,
-        provider_id: int,
+        provider_id: str,
         prompt: str,
         seed: int | None = None,
     ) -> dict[str, JSONValue]:

@@ -59,7 +59,7 @@ async def list_librarian_providers(
 
 @router.get("/{provider_id}", response_model=LibrarianProviderResponse)
 async def get_librarian_provider(
-    provider_id: int,
+    provider_id: str,
     service: LibrarianService = Depends(get_librarian_service),
 ) -> LibrarianProviderResponse:
     """Read one provider by id."""
@@ -75,7 +75,7 @@ async def get_librarian_provider(
 
 @router.patch("/{provider_id}", response_model=LibrarianProviderResponse)
 async def patch_librarian_provider(
-    provider_id: int,
+    provider_id: str,
     request: LibrarianProviderPatchRequest,
     service: LibrarianService = Depends(get_librarian_service),
 ) -> LibrarianProviderResponse:
@@ -106,7 +106,7 @@ async def patch_librarian_provider(
 
 @router.delete("/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_librarian_provider(
-    provider_id: int,
+    provider_id: str,
     service: LibrarianService = Depends(get_librarian_service),
 ) -> None:
     """Delete provider and associated secrets."""
@@ -121,13 +121,19 @@ async def delete_librarian_provider(
 
 @router.post("/{provider_id}/test", response_model=LibrarianProviderTestResponse)
 async def test_librarian_provider(
-    provider_id: int,
+    provider_id: str,
     request: LibrarianProviderTestRequest,
     service: LibrarianService = Depends(get_librarian_service),
 ) -> LibrarianProviderTestResponse:
     """Run quick provider validation."""
-    result = await service.test_provider(
-        provider_id,
-        test_query=request.test_query,
-    )
+    try:
+        result = await service.test_provider(
+            provider_id,
+            test_query=request.test_query,
+        )
+    except LibraryResourceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Provider not found",
+        ) from exc
     return LibrarianProviderTestResponse.model_validate(result)

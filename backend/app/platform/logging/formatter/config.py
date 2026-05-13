@@ -23,6 +23,7 @@ from app.shared.util.logging import (
     log_record_extra_int,
     log_record_extra_str,
     log_record_extra_str_or_default,
+    redact_sensitive_text,
 )
 
 
@@ -58,7 +59,9 @@ def _format_stack(
     """
     if not include_stack:
         return ""
-    return "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    return redact_sensitive_text(
+        "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    ) or ""
 
 
 def _error_payload(
@@ -80,7 +83,9 @@ def _error_payload(
 
     exc_type, exc_value, exc_tb = record.exc_info
     exc_type_name: str | None = None if exc_type is None else exc_type.__name__
-    exc_message: str | None = None if exc_value is None else str(exc_value)
+    exc_message: str | None = None
+    if exc_value is not None:
+        exc_message = redact_sensitive_text(str(exc_value))
 
     return JsonLogError(
         type=exc_type_name,
@@ -157,7 +162,7 @@ def _log_payload(
         level=record.levelname,
         logger=record.name,
         event=event_name,
-        msg=record.getMessage(),
+        msg=redact_sensitive_text(record.getMessage()) or "",
         func=log_record_extra_str(record=record, key="func", default=record.funcName),
         duration_ms=log_record_extra_float(record=record, key="duration_ms"),
         service=service_context,

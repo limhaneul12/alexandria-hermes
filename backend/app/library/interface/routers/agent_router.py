@@ -11,6 +11,7 @@ from app.library.interface.schemas.agent_schema import (
     AgentPatchRequest,
     AgentResponse,
 )
+from app.shared.exceptions import LibraryResourceNotFoundError, LibraryValidationError
 from fastapi import APIRouter, Depends, HTTPException, status
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -30,7 +31,18 @@ async def create_agent(
     now = now_utc()
     payload = request.model_dump()
     payload.update({"created_at": now, "updated_at": now})
-    model = await service.create_agent(payload)
+    try:
+        model = await service.create_agent(payload)
+    except LibraryResourceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except LibraryValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     return _to_response(model)
 
 
@@ -45,7 +57,7 @@ async def list_agents(
 
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(
-    agent_id: int,
+    agent_id: str,
     service: AgentService = Depends(get_agent_service),
 ) -> AgentResponse:
     """Get one profile."""
@@ -59,20 +71,31 @@ async def get_agent(
 
 @router.patch("/{agent_id}", response_model=AgentResponse)
 async def patch_agent(
-    agent_id: int,
+    agent_id: str,
     request: AgentPatchRequest,
     service: AgentService = Depends(get_agent_service),
 ) -> AgentResponse:
     """Patch one profile."""
-    payload = request.model_dump(exclude_none=True)
+    payload = request.model_dump(exclude_unset=True)
     payload["updated_at"] = now_utc()
-    model = await service.update_agent(agent_id, payload)
+    try:
+        model = await service.update_agent(agent_id, payload)
+    except LibraryResourceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except LibraryValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     return _to_response(model)
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(
-    agent_id: int,
+    agent_id: str,
     service: AgentService = Depends(get_agent_service),
 ) -> None:
     """Delete one profile."""

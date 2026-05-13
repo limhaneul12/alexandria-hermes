@@ -63,7 +63,7 @@ async def list_workflows(
 
 @router.get("/{item_id}", response_model=ItemResponse)
 async def get_workflow(
-    item_id: int,
+    item_id: str,
     item_service: ItemService = Depends(get_item_service),
 ) -> ItemResponse:
     """Get one workflow."""
@@ -84,7 +84,7 @@ async def get_workflow(
 
 @router.patch("/{item_id}", response_model=ItemResponse)
 async def patch_workflow(
-    item_id: int,
+    item_id: str,
     request: WorkflowPatchRequest,
     workflow_service: WorkflowService = Depends(get_workflow_service),
 ) -> ItemResponse:
@@ -111,7 +111,7 @@ async def patch_workflow(
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workflow(
-    item_id: int,
+    item_id: str,
     workflow_service: WorkflowService = Depends(get_workflow_service),
 ) -> None:
     """Delete one workflow."""

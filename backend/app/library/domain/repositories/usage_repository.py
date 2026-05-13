@@ -23,7 +23,7 @@ class UsageRepository(ABC):
     @abstractmethod
     async def popular(
         self, *, limit: int = 10, success_only: bool = True
-    ) -> list[tuple[int, int]]:
+    ) -> list[tuple[str, int]]:
         """Return top item IDs and count."""
 
     @abstractmethod
@@ -31,18 +31,18 @@ class UsageRepository(ABC):
         self,
         *,
         limit: int = 10,
-    ) -> list[tuple[int, str, int]]:
+    ) -> list[tuple[str, str, int]]:
         """Return category popularity using library item join."""
 
     @abstractmethod
-    async def list_by_item(self, item_id: int) -> list[UsageHistory]:
+    async def list_by_item(self, item_id: str) -> list[UsageHistory]:
         """Return logs for one item."""
 
     @abstractmethod
     async def record_event(
         self,
         *,
-        item_id: int,
+        item_id: str,
         item_type: str,
         agent_name: str,
         query: str | None,
