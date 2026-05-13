@@ -41,7 +41,7 @@ async def create_item(
 
 @router.get("/{item_id}", response_model=ItemResponse)
 async def get_item(
-    item_id: int,
+    item_id: str,
     service: ItemService = Depends(get_item_service),
 ) -> ItemResponse:
     """Get one generic item."""
@@ -57,7 +57,7 @@ async def get_item(
 
 @router.patch("/{item_id}", response_model=ItemResponse)
 async def patch_item(
-    item_id: int,
+    item_id: str,
     request: ItemUpdateRequest,
     service: ItemService = Depends(get_item_service),
 ) -> ItemResponse:
@@ -77,7 +77,7 @@ async def patch_item(
 @router.get("", response_model=list[ItemResponse])
 async def list_items(
     item_type: ItemType | None = Query(default=None),
-    category_id: int | None = Query(default=None),
+    category_id: str | None = Query(default=None),
     q: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
@@ -96,7 +96,7 @@ async def list_items(
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_item(
-    item_id: int,
+    item_id: str,
     service: ItemService = Depends(get_item_service),
 ) -> None:
     """Delete item."""

@@ -45,7 +45,7 @@ class SqlAlchemyAgentRepository(AgentRepository):
         await self._session.flush()
         return _to_read_model(model)
 
-    async def get(self, agent_id: int) -> AgentProfile | None:
+    async def get(self, agent_id: str) -> AgentProfile | None:
         """Get one profile by PK."""
         model = await self._session.get(AgentProfileORM, agent_id)
         return None if model is None else _to_read_model(model)
@@ -56,7 +56,7 @@ class SqlAlchemyAgentRepository(AgentRepository):
         return [_to_read_model(row) for row in rows.scalars().all()]
 
     async def update(
-        self, agent_id: int, payload: dict[str, JSONValue]
+        self, agent_id: str, payload: dict[str, JSONValue]
     ) -> AgentProfile:
         """Patch profile fields."""
         model = await self._session.get(AgentProfileORM, agent_id)
@@ -69,7 +69,7 @@ class SqlAlchemyAgentRepository(AgentRepository):
         await self._session.flush()
         return _to_read_model(model)
 
-    async def delete(self, agent_id: int) -> None:
+    async def delete(self, agent_id: str) -> None:
         """Delete one agent profile."""
         model = await self._session.get(AgentProfileORM, agent_id)
         if model is None:

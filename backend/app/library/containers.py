@@ -57,7 +57,11 @@ class LibraryContainer(containers.DeclarativeContainer):
         KnowledgeService,
         item_service=item_service,
     )
-    agent_service = providers.Factory(AgentService, repository=agent_repo)
+    agent_service = providers.Factory(
+        AgentService,
+        repository=agent_repo,
+        librarian_provider_repo=librarian_provider_repo,
+    )
     librarian_service = providers.Factory(
         LibrarianService,
         provider_repo=librarian_provider_repo,

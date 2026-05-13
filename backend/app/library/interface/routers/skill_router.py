@@ -123,7 +123,7 @@ async def list_skills(
 
 @router.get("/{item_id}", response_model=ItemResponse)
 async def get_skill(
-    item_id: int,
+    item_id: str,
     item_service: ItemService = Depends(get_item_service),
 ) -> ItemResponse:
     """Get one skill."""
@@ -145,7 +145,7 @@ async def get_skill(
 
 @router.patch("/{item_id}", response_model=ItemResponse)
 async def patch_skill(
-    item_id: int,
+    item_id: str,
     request: SkillPatchRequest,
     skill_service: SkillService = Depends(get_skill_service),
 ) -> ItemResponse:
@@ -172,7 +172,7 @@ async def patch_skill(
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_skill(
-    item_id: int,
+    item_id: str,
     skill_service: SkillService = Depends(get_skill_service),
 ) -> None:
     """Delete one skill item."""

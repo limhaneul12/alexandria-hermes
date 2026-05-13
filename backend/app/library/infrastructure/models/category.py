@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,10 +15,15 @@ class CategoryORM(Base):
 
     __tablename__ = "categories"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[str] = mapped_column(
+        String(ID_LENGTH), primary_key=True, index=True, default=new_uuid
+    )
     name: Mapped[str] = mapped_column(String(length=255), nullable=False)
-    parent_id: Mapped[int | None] = mapped_column(
-        ForeignKey("categories.id", ondelete="CASCADE"), index=True, nullable=True
+    parent_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

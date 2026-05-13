@@ -9,7 +9,6 @@ from pathlib import Path
 
 import anyio
 import pytest
-
 from app.library.domain.entities.enums import (
     AuthType,
     CreatedByType,
@@ -19,6 +18,7 @@ from app.library.domain.entities.enums import (
     SelectionSource,
     SourceType,
 )
+from app.library.infrastructure.models.librarian_provider import ProviderSecretORM
 from app.library.infrastructure.repositories.agent_repository import (
     SqlAlchemyAgentRepository,
 )
@@ -38,11 +38,12 @@ from app.library.infrastructure.repositories.usage_repository import (
 from app.shared.exceptions import NotFoundError
 from app.shared.infrastructure.database import Database
 from app.shared.types.extra_types import JSONValue
+from sqlalchemy import select
 
 
 @asynccontextmanager
 async def _temporary_database(path: Path) -> AsyncIterator[Database]:
-    database = Database(database_url=f"sqlite+aiosqlite:///{path}")
+    database = Database(database_url=f"sqlite+aiosqlite:///{path}", create_schema=True)
     await database.initialize()
     try:
         yield database
@@ -132,8 +133,10 @@ def test_category_repository_orders_hierarchy_and_reports_missing_mutations(
                 assert await repository.max_depth(child.id) == 1
                 assert await repository.has_descendant(root.id, child.id) is True
 
-                with pytest.raises(NotFoundError, match="Category not found: 404"):
-                    await repository.update_name(404, name="Missing")
+                missing_id = "00000000-0000-4000-8000-000000000404"
+
+                with pytest.raises(NotFoundError, match=f"Category not found: {missing_id}"):
+                    await repository.update_name(missing_id, name="Missing")
 
     anyio.run(scenario)
 
@@ -163,8 +166,10 @@ def test_agent_repository_persists_updates_and_reports_missing_deletes(
                 await repository.delete(created.id)
                 assert await repository.get(created.id) is None
 
-                with pytest.raises(NotFoundError, match="Agent not found: 404"):
-                    await repository.delete(404)
+                missing_id = "00000000-0000-4000-8000-000000000404"
+
+                with pytest.raises(NotFoundError, match=f"Agent not found: {missing_id}"):
+                    await repository.delete(missing_id)
 
     anyio.run(scenario)
 
@@ -261,7 +266,16 @@ def test_librarian_provider_repository_replaces_and_resolves_secrets(
                 )
                 secret_repository = ProviderSecretRepository(session=session)
                 provider = await provider_repository.create(_provider_payload())
+                raw_created_secret = await session.scalar(
+                    select(ProviderSecretORM.value).where(
+                        ProviderSecretORM.provider_id == provider.id,
+                        ProviderSecretORM.key_name == "api_key",
+                    )
+                )
 
+                assert raw_created_secret is not None
+                assert raw_created_secret.startswith("enc:v1:")
+                assert "first-secret" not in raw_created_secret
                 assert (
                     await secret_repository.resolve(provider.id, "api_key")
                     == "first-secret"
@@ -279,13 +293,24 @@ def test_librarian_provider_repository_replaces_and_resolves_secrets(
                 await secret_repository.delete_for_provider(provider.id, "tenant")
 
                 assert updated.enabled is False
+                raw_updated_secret = await session.scalar(
+                    select(ProviderSecretORM.value).where(
+                        ProviderSecretORM.provider_id == provider.id,
+                        ProviderSecretORM.key_name == "api_key",
+                    )
+                )
+                assert raw_updated_secret is not None
+                assert raw_updated_secret.startswith("enc:v1:")
+                assert "second-secret" not in raw_updated_secret
                 assert (
                     await secret_repository.resolve(provider.id, "api_key")
                     == "second-secret"
                 )
                 assert await secret_repository.resolve(provider.id, "tenant") is None
 
-                with pytest.raises(NotFoundError, match="Provider not found: 404"):
-                    await provider_repository.update(404, {"enabled": True})
+                missing_id = "00000000-0000-4000-8000-000000000404"
+
+                with pytest.raises(NotFoundError, match=f"Provider not found: {missing_id}"):
+                    await provider_repository.update(missing_id, {"enabled": True})
 
     anyio.run(scenario)

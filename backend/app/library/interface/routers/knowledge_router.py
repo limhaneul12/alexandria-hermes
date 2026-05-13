@@ -62,7 +62,7 @@ async def list_knowledge(
 
 @router.get("/{item_id}", response_model=ItemResponse)
 async def get_knowledge(
-    item_id: int,
+    item_id: str,
     item_service: ItemService = Depends(get_item_service),
 ) -> ItemResponse:
     """Get one knowledge entry."""
@@ -83,7 +83,7 @@ async def get_knowledge(
 
 @router.patch("/{item_id}", response_model=ItemResponse)
 async def patch_knowledge(
-    item_id: int,
+    item_id: str,
     request: KnowledgePatchRequest,
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
 ) -> ItemResponse:
@@ -110,7 +110,7 @@ async def patch_knowledge(
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_knowledge(
-    item_id: int,
+    item_id: str,
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
 ) -> None:
     """Delete one knowledge item."""

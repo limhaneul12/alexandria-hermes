@@ -20,7 +20,7 @@ class AgentCreateRequest(StrictSchema):
                     "provider": "OPENAI",
                     "description": "Finds reusable backend implementation guidance.",
                     "capabilities": ["search", "summarize"],
-                    "preferred_librarian_provider": 1,
+                    "preferred_librarian_provider": "00000000-0000-4000-8000-000000000456",
                 }
             ]
         },
@@ -30,7 +30,7 @@ class AgentCreateRequest(StrictSchema):
     provider: str
     description: str | None = None
     capabilities: list[str]
-    preferred_librarian_provider: int | None = None
+    preferred_librarian_provider: str | None = None
 
 
 class AgentPatchRequest(StrictSchema):
@@ -42,7 +42,7 @@ class AgentPatchRequest(StrictSchema):
                 {
                     "description": "Focuses on FastAPI library guidance.",
                     "capabilities": ["search", "recommend"],
-                    "preferred_librarian_provider": 2,
+                    "preferred_librarian_provider": "00000000-0000-4000-8000-000000000457",
                 }
             ]
         }
@@ -50,22 +50,23 @@ class AgentPatchRequest(StrictSchema):
 
     description: str | None = None
     capabilities: list[str] | None = None
-    preferred_librarian_provider: int | None = None
+    preferred_librarian_provider: str | None = None
 
 
 class AgentResponse(StrictSchema):
     """Agent profile response model."""
 
     model_config = ConfigDict(
+        from_attributes=True,
         json_schema_extra={
             "examples": [
                 {
-                    "id": 1,
+                    "id": "00000000-0000-4000-8000-000000000201",
                     "name": "research-agent",
                     "provider": "OPENAI",
                     "description": "Finds reusable backend implementation guidance.",
                     "capabilities": ["search", "summarize"],
-                    "preferred_librarian_provider": 1,
+                    "preferred_librarian_provider": "00000000-0000-4000-8000-000000000456",
                     "created_at": "2026-05-12T10:00:00Z",
                     "updated_at": "2026-05-12T10:05:00Z",
                 }
@@ -73,11 +74,11 @@ class AgentResponse(StrictSchema):
         }
     )
 
-    id: int
+    id: str
     name: str
     provider: str
     description: str | None
     capabilities: list[str]
-    preferred_librarian_provider: int | None
+    preferred_librarian_provider: str | None
     created_at: datetime
     updated_at: datetime

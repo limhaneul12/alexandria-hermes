@@ -25,21 +25,21 @@ class SearchResponseItem(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "id": 10,
+                    "id": "00000000-0000-4000-8000-000000000010",
                     "item_type": "SKILL",
                     "title": "FastAPI dependency override",
                     "summary": "Override narrow route dependencies in tests.",
-                    "category_id": 2,
+                    "category_id": "00000000-0000-4000-8000-000000000002",
                 }
             ]
         }
     )
 
-    id: int
+    id: str
     item_type: ItemType
     title: str
     summary: str | None
-    category_id: int | None
+    category_id: str | None
 
 
 class SearchResponse(StrictSchema):
@@ -54,11 +54,11 @@ class SearchResponse(StrictSchema):
                     "count": 1,
                     "items": [
                         {
-                            "id": 10,
+                            "id": "00000000-0000-4000-8000-000000000010",
                             "item_type": "SKILL",
                             "title": "FastAPI dependency override",
                             "summary": "Override narrow route dependencies in tests.",
-                            "category_id": 2,
+                            "category_id": "00000000-0000-4000-8000-000000000002",
                         }
                     ],
                 }

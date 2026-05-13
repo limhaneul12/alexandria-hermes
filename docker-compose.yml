@@ -4,7 +4,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     command: >
-      uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      sh -c "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
       interval: 10s
@@ -18,7 +18,9 @@ services:
     volumes:
       - ./backend/pyproject.toml:/app/pyproject.toml:ro
       - ./backend/uv.lock:/app/uv.lock:ro
+      - ./backend/alembic.ini:/app/alembic.ini:ro
       - ./backend/app:/app/app:ro
+      - ./backend/migrations:/app/migrations:ro
       - ./backend/tests:/app/tests:ro
       - ./backend/data:/app/data
     restart: unless-stopped

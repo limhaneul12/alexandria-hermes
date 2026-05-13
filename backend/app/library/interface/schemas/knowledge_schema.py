@@ -5,7 +5,16 @@ from __future__ import annotations
 from app.library.domain.entities.enums import ItemStatus
 from app.library.interface.schemas._types import StrictSchema
 from app.shared.types.extra_types import JSONValue
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
+
+
+def _item_status(value: object) -> ItemStatus:
+    """Accept public JSON item status values at API boundaries."""
+    if isinstance(value, ItemStatus):
+        return value
+    if isinstance(value, str):
+        return ItemStatus(value)
+    raise ValueError("status must be a valid item status")
 
 
 class KnowledgeCreateRequest(StrictSchema):
@@ -18,13 +27,13 @@ class KnowledgeCreateRequest(StrictSchema):
                     "title": "Repository pattern notes",
                     "summary": "When to split repository ports.",
                     "content": "Routers should depend on narrow ports.",
-                    "category_id": 2,
+                    "category_id": "00000000-0000-4000-8000-000000000002",
                     "tags": ["architecture"],
                     "body": "Use separate read and command ports when concerns diverge.",
                     "references": [
                         "backend/.agents/fastapi-dev-rule/07-di-and-wiring-rule.md"
                     ],
-                    "related_items": [10],
+                    "related_items": ["00000000-0000-4000-8000-000000000010"],
                     "created_by_name": "alex",
                     "status": "DRAFT",
                 }
@@ -35,13 +44,19 @@ class KnowledgeCreateRequest(StrictSchema):
     title: str = Field(min_length=1)
     summary: str | None = None
     content: str = Field(min_length=1)
-    category_id: int | None = None
+    category_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     body: str = Field(min_length=1)
     references: list[str] = Field(default_factory=list)
-    related_items: list[int] = Field(default_factory=list)
+    related_items: list[str] = Field(default_factory=list)
     created_by_name: str
     status: ItemStatus = ItemStatus.DRAFT
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def parse_status(cls, value: object) -> ItemStatus:
+        """Parse JSON status values."""
+        return _item_status(value)
 
 
 class KnowledgePatchRequest(StrictSchema):
@@ -53,7 +68,10 @@ class KnowledgePatchRequest(StrictSchema):
                 {
                     "summary": "Updated repository guidance.",
                     "tags": ["architecture", "repositories"],
-                    "related_items": [10, 12],
+                    "related_items": [
+                        "00000000-0000-4000-8000-000000000010",
+                        "00000000-0000-4000-8000-000000000012",
+                    ],
                 }
             ]
         }
@@ -62,12 +80,20 @@ class KnowledgePatchRequest(StrictSchema):
     title: str | None = None
     summary: str | None = None
     content: str | None = None
-    category_id: int | None = None
+    category_id: str | None = None
     tags: list[str] | None = None
     status: ItemStatus | None = None
     body: str | None = None
     references: list[str] | None = None
-    related_items: list[int] | None = None
+    related_items: list[str] | None = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def parse_status(cls, value: object) -> ItemStatus | None:
+        """Parse JSON status values when provided."""
+        if value is None:
+            return None
+        return _item_status(value)
 
 
 class KnowledgeResponse(StrictSchema):
@@ -77,12 +103,12 @@ class KnowledgeResponse(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "id": 11,
+                    "id": "00000000-0000-4000-8000-000000000011",
                     "item_type": "KNOWLEDGE",
                     "title": "Repository pattern notes",
                     "summary": "When to split repository ports.",
                     "content": "Routers should depend on narrow ports.",
-                    "category_id": 2,
+                    "category_id": "00000000-0000-4000-8000-000000000002",
                     "tags": ["architecture"],
                     "details": {
                         "body": "Use separate read and command ports when concerns "
@@ -90,7 +116,7 @@ class KnowledgeResponse(StrictSchema):
                         "references": [
                             "backend/.agents/fastapi-dev-rule/07-di-and-wiring-rule.md"
                         ],
-                        "related_items": [10],
+                        "related_items": ["00000000-0000-4000-8000-000000000010"],
                     },
                     "status": "ACTIVE",
                     "source_type": "USER_CREATED",
@@ -101,12 +127,12 @@ class KnowledgeResponse(StrictSchema):
         }
     )
 
-    id: int
+    id: str
     item_type: str
     title: str
     summary: str | None
     content: str
-    category_id: int | None
+    category_id: str | None
     tags: list[str]
     details: dict[str, JSONValue]
     status: str

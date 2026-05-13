@@ -51,15 +51,19 @@ class Database:
         *,
         database_url: str,
         fts_config: SearchFTSConfig = SearchFTSConfig(),
+        create_schema: bool = False,
     ) -> None:
         """Create database coordinator.
 
         Args:
             database_url: Async SQLAlchemy URL.
             fts_config: Configuration for the search virtual table.
+            create_schema: Create ORM tables and FTS objects directly. This is
+                intended for isolated tests; runtime schema is owned by Alembic.
         """
         self._database_url = database_url
         self._fts = fts_config
+        self._create_schema = create_schema
         self.engine: AsyncEngine = create_async_engine(
             database_url,
             echo=False,
@@ -72,12 +76,21 @@ class Database:
         )
 
     async def initialize(self) -> None:
-        """Initialize schema and bootstraps auxiliary objects."""
+        """Initialize the database connection lifecycle.
+
+        Runtime schema creation is intentionally not performed here. Alembic
+        owns application schema migrations; direct metadata creation is only
+        available through the explicit test-only opt-in.
+        """
         database_path = self._extract_sqlite_path()
         if database_path is not None:
             Path(database_path).parent.mkdir(parents=True, exist_ok=True)
 
         async with self.engine.begin() as connection:
+            if not self._create_schema:
+                await connection.execute(text("SELECT 1"))
+                return
+
             await connection.run_sync(Base.metadata.create_all)
             await connection.execute(text(self._fts.schema_sql))
 

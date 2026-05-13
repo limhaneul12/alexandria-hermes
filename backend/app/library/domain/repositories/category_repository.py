@@ -15,33 +15,33 @@ class CategoryRepository(ABC):
         """Return all categories ordered by display position."""
 
     @abstractmethod
-    async def create(self, *, name: str, parent_id: int | None = None) -> Category:
+    async def create(self, *, name: str, parent_id: str | None = None) -> Category:
         """Create a new category node."""
 
     @abstractmethod
-    async def get(self, category_id: int) -> Category | None:
+    async def get(self, category_id: str) -> Category | None:
         """Return one category if exists."""
 
     @abstractmethod
-    async def update_name(self, category_id: int, *, name: str) -> Category:
+    async def update_name(self, category_id: str, *, name: str) -> Category:
         """Update a category name."""
 
     @abstractmethod
     async def move(
         self,
-        category_id: int,
+        category_id: str,
         *,
-        parent_id: int | None,
+        parent_id: str | None,
         position: int,
     ) -> Category:
         """Move a category to another parent and position."""
 
     @abstractmethod
-    async def reorder(self, *, category_id: int, position: int) -> Category:
+    async def reorder(self, *, category_id: str, position: int) -> Category:
         """Update sibling position only."""
 
     @abstractmethod
-    async def delete(self, category_id: int) -> None:
+    async def delete(self, category_id: str) -> None:
         """Delete category and children cascade behavior."""
 
     @abstractmethod
@@ -49,17 +49,17 @@ class CategoryRepository(ABC):
         """Return a deterministic tree-ordered traversal from roots."""
 
     @abstractmethod
-    async def descendants_of(self, category_id: int) -> list[Category]:
+    async def descendants_of(self, category_id: str) -> list[Category]:
         """Return recursive descendants as raw list."""
 
     @abstractmethod
-    async def max_depth(self, category_id: int) -> int:
+    async def max_depth(self, category_id: str) -> int:
         """Return depth of a category from root (root = 0)."""
 
     @abstractmethod
-    async def count_items(self, category_id: int) -> int:
+    async def count_items(self, category_id: str) -> int:
         """Return number of direct items in category."""
 
     @abstractmethod
-    async def has_descendant(self, ancestor_id: int, node_id: int) -> bool:
+    async def has_descendant(self, ancestor_id: str, node_id: str) -> bool:
         """Check whether ``node_id`` is in ``ancestor_id`` subtree."""

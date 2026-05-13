@@ -86,7 +86,7 @@ class SkillService:
         title: str,
         summary: str | None,
         content: str,
-        category_id: int | None,
+        category_id: str | None,
         tags: list[str],
         purpose: str,
         input_schema: dict[str, JSONValue],
@@ -156,7 +156,7 @@ class SkillService:
         title: str,
         content: str,
         summary: str | None,
-        category_id: int | None,
+        category_id: str | None,
         tags: list[str],
         purpose: str,
         input_schema: dict[str, JSONValue],
@@ -219,7 +219,7 @@ class SkillService:
         self,
         *,
         generated: dict[str, JSONValue],
-        category_id: int | None,
+        category_id: str | None,
         tags: list[str],
         created_by_name: str,
     ) -> dict[str, JSONValue]:
@@ -282,7 +282,7 @@ class SkillService:
     async def patch_skill(
         self,
         *,
-        item_id: int,
+        item_id: str,
         payload: Mapping[str, JSONValue],
     ) -> dict[str, JSONValue]:
         """Patch one skill item.

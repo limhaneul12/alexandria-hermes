@@ -16,7 +16,7 @@ class AgentRepository(ABC):
         """Create an agent profile."""
 
     @abstractmethod
-    async def get(self, agent_id: int) -> AgentProfile | None:
+    async def get(self, agent_id: str) -> AgentProfile | None:
         """Get one agent profile."""
 
     @abstractmethod
@@ -25,10 +25,10 @@ class AgentRepository(ABC):
 
     @abstractmethod
     async def update(
-        self, agent_id: int, payload: dict[str, JSONValue]
+        self, agent_id: str, payload: dict[str, JSONValue]
     ) -> AgentProfile:
         """Patch profile data."""
 
     @abstractmethod
-    async def delete(self, agent_id: int) -> None:
+    async def delete(self, agent_id: str) -> None:
         """Delete one profile."""

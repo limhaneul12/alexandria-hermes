@@ -70,6 +70,18 @@ Keep MVP lightweight.
 
 ---
 
+## Public API Serialization Contract
+
+OpenAPI examples and JSON payloads must use the public API contract:
+
+- Public identifiers are UUID-like strings, not integers.
+  - Applies to `id`, `category_id`, `parent_id`, `item_id`, `provider_id`,
+    `preferred_librarian_provider`, and related item/skill id arrays.
+- Enum fields are serialized as strings, for example `SKILL`, `DRAFT`,
+  `ACTIVE`, `SEARCH`, `OPENAI`, and `API_KEY`.
+
+---
+
 ## Core Domain Entities
 
 ### 1. Category
