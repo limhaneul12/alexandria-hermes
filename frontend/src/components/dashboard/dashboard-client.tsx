@@ -1,125 +1,161 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Archive, BookOpen, Sparkles } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Archive, BookOpen, LibraryBig, ScrollText, Sparkles } from "lucide-react";
+import Link from "next/link";
 
-import { fetchDashboard } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SkillCard } from "@/components/library/skill-card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchDashboard } from "@/lib/api";
+
+function EmptyPanel({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-stone-400">
+      <p className="font-serif text-xl text-gold-100">{title}</p>
+      <p className="mt-2 leading-6">{description}</p>
+    </div>
+  );
+}
 
 export function DashboardClient() {
-  const { data, isLoading } = useQuery({ queryKey: ["dashboard"], queryFn: fetchDashboard });
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: fetchDashboard,
+  });
 
-  if (isLoading || !data) {
-    return <div className="rounded-2xl border border-white/10 p-10 text-stone-400">Opening the archive...</div>;
+  if (isLoading) {
+    return <div className="rounded-2xl border border-white/10 p-10 text-stone-400">대시보드를 여는 중입니다...</div>;
+  }
+
+  if (isError || !data) {
+    return <div className="rounded-2xl border border-white/10 p-10 text-stone-400">아카이브 상태를 불러오지 못했습니다.</div>;
   }
 
   return (
-    <div className="space-y-8">
-      <section className="overflow-hidden rounded-3xl border border-gold-300/20 bg-[radial-gradient(circle_at_20%_20%,rgba(214,173,69,0.20),transparent_30%),linear-gradient(135deg,rgba(30,26,18,0.95),rgba(10,10,10,0.98))] p-8 shadow-gold">
-        <div className="max-w-4xl space-y-4">
-          <p className="text-xs uppercase tracking-[0.34em] text-gold-300">Grand Archive</p>
-          <h2 className="font-serif text-5xl leading-none text-gold-50 md:text-7xl">AI capability memory, curated for agents.</h2>
-          <p className="max-w-2xl text-base leading-7 text-stone-300">
-            A luxurious operating library for reusable skills, workflows, and engineering knowledge. Built for agent teams that need recall, governance, and repeatable execution.
-          </p>
+    <div className="space-y-6">
+      <section className="overflow-hidden rounded-3xl border border-gold-300/20 bg-[radial-gradient(circle_at_20%_10%,rgba(214,173,69,0.16),transparent_30%),linear-gradient(135deg,rgba(29,24,16,0.96),rgba(8,8,8,0.98))] shadow-gold">
+        <div className="grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
+          <div className="p-7 md:p-9">
+            <p className="text-xs uppercase tracking-[0.34em] text-gold-300">Grand Archive</p>
+            <h2 className="mt-5 font-serif text-4xl leading-tight text-gold-50 md:text-5xl">AI 에이전트를 위한 기술 지식 아카이브</h2>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-stone-300">
+              분류, 탐색, 기록, 추천을 중심으로 필요한 스킬과 지식 문서를 빠르게 다시 꺼내 쓰는 디지털 도서관입니다.
+            </p>
+          </div>
+          <div className="min-h-52 border-t border-white/10 bg-[radial-gradient(circle_at_30%_20%,rgba(214,173,69,0.22),transparent_26%),linear-gradient(135deg,rgba(214,173,69,0.08),transparent)] lg:border-l lg:border-t-0" />
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {data.stats.map((stat, index) => (
-          <motion.div key={stat.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}>
-            <Card className="p-5">
-              <p className="text-sm text-stone-500">{stat.label}</p>
-              <p className="mt-3 font-serif text-4xl text-gold-100">{stat.value}</p>
-              <p className="mt-2 text-xs text-stone-500">{stat.hint}</p>
-            </Card>
-          </motion.div>
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {data.stats.map((stat) => (
+          <Card key={stat.label} className="p-5">
+            <div className="flex items-start gap-3">
+              <Archive className="mt-1 h-5 w-5 text-gold-300" />
+              <div>
+                <p className="text-xs text-stone-500">{stat.label}</p>
+                <p className="mt-2 font-serif text-3xl text-gold-100">{stat.value.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-stone-500">{stat.hint}</p>
+              </div>
+            </div>
+          </Card>
         ))}
       </section>
 
-      <section id="recent" className="space-y-4">
-        <div className="flex items-center gap-2">
-          <BookOpen className="h-5 w-5 text-gold-300" />
-          <h3 className="font-serif text-3xl text-parchment">Recently Used Skills</h3>
-        </div>
-        <div className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-5">
-          {data.recentlyUsed.map((skill) => (
-            <SkillCard key={skill.id} skill={skill} />
-          ))}
-        </div>
-      </section>
-
-      <section id="recommended" className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5" /> Recommended Archives</CardTitle>
+      <section className="grid gap-5 xl:grid-cols-2">
+        <Card id="recent">
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" /> 최근에 가져간 스킬
+            </CardTitle>
+            <Link href="/library" className="text-sm text-gold-100 hover:text-gold-200">전체 보기</Link>
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
-            {data.recommendations.map((item) => (
-              <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-serif text-lg text-gold-100">{item.title}</p>
-                  <span className="rounded-full bg-gold-300/10 px-2 py-1 text-xs text-gold-100">{item.type}</span>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-stone-400">{item.description}</p>
-                <p className="mt-3 text-xs text-stone-500">{item.usageCount} archive citations</p>
+          <CardContent>
+            {data.recentlyUsed.length === 0 ? (
+              <EmptyPanel title="아직 가져간 스킬이 없습니다" description="서재에 실제 항목이 들어오면 최근에 열람한 스킬이 여기에 표시됩니다." />
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {data.recentlyUsed.slice(0, 4).map((skill) => (
+                  <SkillCard key={skill.id} skill={skill} view="list" />
+                ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
 
-        <div id="usage" className="grid gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Category Activity</CardTitle>
-            </CardHeader>
-            <CardContent className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.categoryActivity}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="name" stroke="#8f8a7c" fontSize={11} />
-                  <YAxis stroke="#8f8a7c" fontSize={11} />
-                  <Tooltip contentStyle={{ background: "#111", border: "1px solid rgba(214,173,69,.25)", color: "#d8c59a" }} />
-                  <Bar dataKey="value" fill="#d6ad45" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>7-Day Usage Trend</CardTitle>
-            </CardHeader>
-            <CardContent className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data.usageTrend}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="day" stroke="#8f8a7c" fontSize={11} />
-                  <YAxis stroke="#8f8a7c" fontSize={11} />
-                  <Tooltip contentStyle={{ background: "#111", border: "1px solid rgba(214,173,69,.25)", color: "#d8c59a" }} />
-                  <Line type="monotone" dataKey="usage" stroke="#d6ad45" strokeWidth={3} dot={{ fill: "#d6ad45" }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
+        <Card id="recommended">
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" /> 추천 아카이브
+            </CardTitle>
+            <Link href="/library" className="text-sm text-gold-100 hover:text-gold-200">전체 보기</Link>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.recommendations.length === 0 ? (
+              <EmptyPanel title="추천할 기록이 없습니다" description="사용 기록과 카테고리 신호가 쌓이면 추천 항목을 보여줍니다." />
+            ) : (
+              data.recommendations.slice(0, 4).map((item) => (
+                <div key={item.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-serif text-lg text-gold-100">{item.title}</p>
+                    <span className="rounded-full bg-gold-300/10 px-2 py-1 text-[11px] text-gold-100">{item.type}</span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-stone-400">{item.description}</p>
+                  <p className="mt-3 text-xs text-stone-500">{item.usageCount.toLocaleString()}회 사용</p>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
       </section>
 
-      <div className="flex items-center gap-2 text-sm text-stone-500">
-        <Archive className="h-4 w-4" /> Steam Library for AI capabilities · Notion-style operational knowledge · Internal AI platform memory.
-      </div>
+      <section id="usage" className="grid gap-5 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <LibraryBig className="h-5 w-5" /> 카테고리 활동
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.categoryActivity.length === 0 ? (
+              <EmptyPanel title="카테고리 활동 없음" description="카테고리별 항목과 사용 기록이 생기면 활동량을 보여줍니다." />
+            ) : (
+              data.categoryActivity.map((category) => (
+                <div key={category.name} className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-parchment">{category.name}</span>
+                    <span className="text-stone-400">{category.value.toLocaleString()}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/10">
+                    <div className="h-2 rounded-full bg-gold-300" style={{ width: `${Math.min(100, category.value)}%` }} />
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ScrollText className="h-5 w-5" /> 최근 7일 사용 추이
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.usageTrend.length === 0 ? (
+              <EmptyPanel title="사용 추이 없음" description="아카이브를 사용하기 시작하면 날짜별 사용 흐름이 표시됩니다." />
+            ) : (
+              <div className="flex h-56 items-end gap-3 border-b border-white/10 px-2 pb-2">
+                {data.usageTrend.map((point) => (
+                  <div key={point.day} className="flex flex-1 flex-col items-center gap-2">
+                    <div className="w-full rounded-t bg-gold-300/70" style={{ height: `${Math.max(8, Math.min(100, point.usage))}%` }} />
+                    <span className="text-[10px] text-stone-500">{point.day}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }
