@@ -3,26 +3,28 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import type { ItemType } from "@/types/library";
+
 type ViewMode = "grid" | "list";
 type ThemeMode = "dark" | "ember";
 
 type LibraryState = {
   sidebarCollapsed: boolean;
-  selectedSkillId: number | null;
+  selectedSkillId: string | null;
   searchQuery: string;
   categorySlug: string | null;
   tag: string | null;
-  type: string | null;
+  type: ItemType | null;
   sort: "recent" | "popular" | "title";
   viewMode: ViewMode;
   theme: ThemeMode;
   recentSearches: string[];
   setSidebarCollapsed: (value: boolean) => void;
-  setSelectedSkillId: (id: number | null) => void;
+  setSelectedSkillId: (id: string | null) => void;
   setSearchQuery: (query: string) => void;
   setCategorySlug: (slug: string | null) => void;
   setTag: (tag: string | null) => void;
-  setType: (type: string | null) => void;
+  setType: (type: ItemType | null) => void;
   setSort: (sort: LibraryState["sort"]) => void;
   setViewMode: (mode: ViewMode) => void;
   setTheme: (theme: ThemeMode) => void;
@@ -39,7 +41,7 @@ export const useLibraryStore = create<LibraryState>()(
       categorySlug: null,
       tag: null,
       type: null,
-      sort: "recent",
+      sort: "popular",
       viewMode: "grid",
       theme: "dark",
       recentSearches: [],
@@ -64,7 +66,7 @@ export const useLibraryStore = create<LibraryState>()(
           };
         }),
       clearFilters: () =>
-        set({ searchQuery: "", categorySlug: null, tag: null, type: null, sort: "recent" }),
+        set({ searchQuery: "", categorySlug: null, tag: null, type: null, sort: "popular" }),
     }),
     { name: "alexandria-hermes-library" },
   ),
