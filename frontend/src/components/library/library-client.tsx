@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Grid2X2, List, Search, X } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, FolderPlus, Grid2X2, List, Plus, Search, X } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { CategoryTree } from "@/components/library/category-tree";
@@ -10,9 +10,28 @@ import { SkillCard } from "@/components/library/skill-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { fetchLibrary } from "@/lib/api";
+import { createCategory, createSkill, fetchLibrary } from "@/lib/api";
 import { useLibraryStore } from "@/store/library-store";
-import { isItemType } from "@/types/library";
+import { isItemType, type CategoryNode } from "@/types/library";
+
+type CategoryOption = {
+  id: string;
+  label: string;
+};
+
+function flattenCategoryOptions(categories: CategoryNode[], depth = 0): CategoryOption[] {
+  return categories.flatMap((category) => [
+    { id: category.id, label: `${"　".repeat(depth)}${category.name}` },
+    ...flattenCategoryOptions(category.children, depth + 1),
+  ]);
+}
+
+function commaList(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 export function LibraryClient({ initialCategory }: { initialCategory?: string }) {
   const {
@@ -30,7 +49,20 @@ export function LibraryClient({ initialCategory }: { initialCategory?: string })
     setViewMode,
     clearFilters,
   } = useLibraryStore();
+  const queryClient = useQueryClient();
   const [draftQuery, setDraftQuery] = useState(searchQuery);
+  const [showFolderForm, setShowFolderForm] = useState(false);
+  const [showSkillForm, setShowSkillForm] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [folderParentId, setFolderParentId] = useState("");
+  const [skillTitle, setSkillTitle] = useState("");
+  const [skillSummary, setSkillSummary] = useState("");
+  const [skillContent, setSkillContent] = useState("");
+  const [skillPurpose, setSkillPurpose] = useState("");
+  const [skillCategoryId, setSkillCategoryId] = useState("");
+  const [skillTags, setSkillTags] = useState("");
+  const [skillActivate, setSkillActivate] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setCategorySlug(initialCategory ?? null);
@@ -61,12 +93,110 @@ export function LibraryClient({ initialCategory }: { initialCategory?: string })
     queryKey: ["library", params.toString()],
     queryFn: () => fetchLibrary(params),
   });
+  const categoryOptions = useMemo(
+    () => flattenCategoryOptions(data?.categories ?? []),
+    [data?.categories],
+  );
+
+  const folderMutation = useMutation({
+    mutationFn: createCategory,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["library"] });
+      setFolderName("");
+      setFolderParentId("");
+      setShowFolderForm(false);
+      setNotice("새 폴더가 생성됐습니다.");
+    },
+    onError: () => setNotice("폴더를 만들지 못했습니다."),
+  });
+
+  const skillMutation = useMutation({
+    mutationFn: createSkill,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["library"] });
+      setSkillTitle("");
+      setSkillSummary("");
+      setSkillContent("");
+      setSkillPurpose("");
+      setSkillCategoryId("");
+      setSkillTags("");
+      setSkillActivate(false);
+      setShowSkillForm(false);
+      setNotice("스킬이 등록됐습니다.");
+    },
+    onError: () => setNotice("스킬을 등록하지 못했습니다."),
+  });
+
+  function handleCreateFolder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setNotice(null);
+    folderMutation.mutate({ name: folderName.trim(), parentId: folderParentId || null });
+  }
+
+  function handleCreateSkill(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setNotice(null);
+    skillMutation.mutate({
+      title: skillTitle.trim(),
+      summary: skillSummary.trim() || null,
+      content: skillContent.trim(),
+      categoryId: skillCategoryId || null,
+      tags: commaList(skillTags),
+      purpose: skillPurpose.trim(),
+      usageExample: null,
+      requiredTools: [],
+      riskLevel: "LOW",
+      version: "1.0.0",
+      createdByName: "library-user",
+      status: skillActivate ? "ACTIVE" : "DRAFT",
+    });
+  }
 
   return (
     <div className="grid gap-6 xl:grid-cols-[250px_minmax(0,1fr)]">
       <aside className="space-y-4">
         <Card className="sticky top-24 p-4">
-          <p className="mb-4 font-serif text-2xl text-gold-100">서재</p>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <p className="font-serif text-2xl text-gold-100">서재</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowFolderForm((current) => !current)}
+              type="button"
+            >
+              <FolderPlus className="h-3.5 w-3.5" /> 새 폴더
+            </Button>
+          </div>
+          {showFolderForm && (
+            <form onSubmit={handleCreateFolder} className="mb-4 space-y-2 rounded-xl border border-white/10 bg-black/20 p-3">
+              <label className="block text-xs text-stone-400">
+                폴더 이름
+                <Input
+                  value={folderName}
+                  onChange={(event) => setFolderName(event.target.value)}
+                  placeholder="예: Backend"
+                  required
+                  className="mt-1"
+                />
+              </label>
+              <label className="block text-xs text-stone-400">
+                상위 폴더
+                <select
+                  value={folderParentId}
+                  onChange={(event) => setFolderParentId(event.target.value)}
+                  className="archive-select mt-1"
+                >
+                  <option value="">최상위</option>
+                  {categoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>{category.label}</option>
+                  ))}
+                </select>
+              </label>
+              <Button type="submit" size="sm" disabled={folderMutation.isPending || !folderName.trim()}>
+                폴더 생성
+              </Button>
+            </form>
+          )}
           {data ? (
             <CategoryTree categories={data.categories} activeSlug={categorySlug} />
           ) : (
@@ -83,8 +213,70 @@ export function LibraryClient({ initialCategory }: { initialCategory?: string })
               <h2 className="font-serif text-4xl text-gold-50">{categorySlug ?? "전체 서재"}</h2>
               <p className="mt-2 text-sm text-stone-400">필요한 스킬, 워크플로우, 지식 문서를 카드로 탐색합니다.</p>
             </div>
-            <p className="text-sm text-stone-500">총 {data?.total ?? 0}개의 아이템</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm text-stone-500">총 {data?.total ?? 0}개의 아이템</p>
+              <Button type="button" onClick={() => setShowSkillForm((current) => !current)}>
+                <Plus className="h-4 w-4" /> 스킬 등록
+              </Button>
+            </div>
           </div>
+
+          {notice && <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-stone-300">{notice}</div>}
+
+          {showSkillForm && (
+            <form onSubmit={handleCreateSkill} className="mb-5 grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-4 lg:grid-cols-2">
+              <label className="block text-xs text-stone-400">
+                스킬 제목
+                <Input value={skillTitle} onChange={(event) => setSkillTitle(event.target.value)} required className="mt-1" />
+              </label>
+              <label className="block text-xs text-stone-400">
+                배치할 폴더
+                <select value={skillCategoryId} onChange={(event) => setSkillCategoryId(event.target.value)} className="archive-select mt-1">
+                  <option value="">미분류</option>
+                  {categoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>{category.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs text-stone-400 lg:col-span-2">
+                요약
+                <Input value={skillSummary} onChange={(event) => setSkillSummary(event.target.value)} className="mt-1" />
+              </label>
+              <label className="block text-xs text-stone-400 lg:col-span-2">
+                목적
+                <Input value={skillPurpose} onChange={(event) => setSkillPurpose(event.target.value)} required className="mt-1" />
+              </label>
+              <label className="block text-xs text-stone-400 lg:col-span-2">
+                본문
+                <textarea
+                  value={skillContent}
+                  onChange={(event) => setSkillContent(event.target.value)}
+                  required
+                  rows={5}
+                  className="mt-1 w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-parchment outline-none focus:border-gold-300/60"
+                />
+              </label>
+              <label className="block text-xs text-stone-400">
+                태그
+                <Input value={skillTags} onChange={(event) => setSkillTags(event.target.value)} placeholder="fastapi, testing" className="mt-1" />
+              </label>
+              <label className="flex items-center gap-2 self-end text-xs text-stone-400">
+                <input type="checkbox" checked={skillActivate} onChange={(event) => setSkillActivate(event.target.checked)} />
+                바로 활성화
+              </label>
+              <div className="flex gap-2 lg:col-span-2">
+                <Button
+                  type="submit"
+                  disabled={skillMutation.isPending || !skillTitle.trim() || !skillContent.trim() || !skillPurpose.trim()}
+                >
+                  스킬 저장
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setShowSkillForm(false)}>
+                  닫기
+                </Button>
+              </div>
+            </form>
+          )}
 
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_150px_150px_150px_auto]">
             <label className="relative block">

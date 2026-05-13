@@ -1,11 +1,15 @@
 import type {
   AgentDTO,
+  CategoryCreateDTO,
+  CategoryDTO,
   DashboardDTO,
   LibrarianProviderCreateDTO,
   LibrarianProviderDTO,
   LibrarianProviderTestDTO,
   LibrarianProviderUpdateDTO,
   LibraryDTO,
+  SkillCreateDTO,
+  SkillCreateResultDTO,
   SkillDetailDTO,
 } from "@/types/library";
 
@@ -34,6 +38,14 @@ export function fetchLibrary(params: URLSearchParams) {
 
 export function fetchSkillDetail(skillId: string) {
   return fetchJson<SkillDetailDTO>(`/api/skills/${encodeURIComponent(skillId)}`);
+}
+
+export function createCategory(payload: CategoryCreateDTO) {
+  return fetchJson<CategoryDTO>("/api/categories", jsonInit("POST", payload));
+}
+
+export function createSkill(payload: SkillCreateDTO) {
+  return fetchJson<SkillCreateResultDTO>("/api/skills", jsonInit("POST", payload));
 }
 
 export function fetchLibrarianProviders() {
