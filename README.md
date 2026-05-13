@@ -67,7 +67,7 @@ The goal is to evolve from a visual MVP into a practical operating layer for AI 
 - Recommendation System
 - Agent-aware Search
 - Split-view Skill Detail UI
-- SQLite + Prisma-powered local archive
+- FastAPI-managed SQLite archive with Alembic migrations
 - Reusable capability cards inspired by premium digital libraries
 
 ---
@@ -129,7 +129,6 @@ Frontend:
 ```bash
 cd frontend
 npm install
-npx prisma migrate dev
 npm run dev
 ```
 
@@ -138,6 +137,7 @@ Backend:
 ```bash
 cd backend
 uv sync
+uv run alembic upgrade head
 uv run pytest -q
 ```
 
