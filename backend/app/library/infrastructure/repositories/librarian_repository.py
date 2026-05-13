@@ -14,6 +14,7 @@ from app.library.infrastructure.models.librarian_provider import (
     ProviderSecretORM,
 )
 from app.shared.exceptions import NotFoundError
+from app.shared.security.secret_cipher import SecretCipher
 from app.shared.types.extra_types import JSONValue
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,13 +37,15 @@ def _to_read_model(row: LibrarianProviderORM) -> LibrarianProvider:
 class SqlAlchemyLibrarianProviderRepository(LibrarianProviderRepository):
     """Persistence for librarian provider configuration."""
 
-    def __init__(self, *, session: AsyncSession) -> None:
+    def __init__(self, *, session: AsyncSession, secret_cipher: SecretCipher | None = None) -> None:
         """Initialize repository.
 
         Args:
             session: Active async session.
+            secret_cipher: Cipher for encrypting optional secret payloads.
         """
         self._session = session
+        self._secret_cipher = SecretCipher.from_app_config() if secret_cipher is None else secret_cipher
 
     async def create(self, payload: dict[str, JSONValue]) -> LibrarianProvider:
         """Create provider and optional secret records."""
@@ -56,13 +59,13 @@ class SqlAlchemyLibrarianProviderRepository(LibrarianProviderRepository):
                     ProviderSecretORM(
                         provider_id=model.id,
                         key_name=key,
-                        value=str(value),
+                        value=self._secret_cipher.encrypt(str(value)),
                     )
                 )
         await self._session.flush()
         return _to_read_model(model)
 
-    async def get(self, provider_id: int) -> LibrarianProvider | None:
+    async def get(self, provider_id: str) -> LibrarianProvider | None:
         """Get one provider by id."""
         model = await self._session.get(LibrarianProviderORM, provider_id)
         return None if model is None else _to_read_model(model)
@@ -74,7 +77,7 @@ class SqlAlchemyLibrarianProviderRepository(LibrarianProviderRepository):
 
     async def update(
         self,
-        provider_id: int,
+        provider_id: str,
         payload: dict[str, JSONValue],
     ) -> LibrarianProvider:
         """Patch provider fields and secret values."""
@@ -98,14 +101,14 @@ class SqlAlchemyLibrarianProviderRepository(LibrarianProviderRepository):
                     ProviderSecretORM(
                         provider_id=provider_id,
                         key_name=key,
-                        value=str(value),
+                        value=self._secret_cipher.encrypt(str(value)),
                     )
                 )
 
         await self._session.flush()
         return _to_read_model(model)
 
-    async def delete(self, provider_id: int) -> None:
+    async def delete(self, provider_id: str) -> None:
         """Delete provider and dependent secrets."""
         model = await self._session.get(LibrarianProviderORM, provider_id)
         if model is None:
@@ -120,24 +123,26 @@ class SqlAlchemyLibrarianProviderRepository(LibrarianProviderRepository):
 class ProviderSecretRepository(ProviderSecretRepositoryPort):
     """Separate access to secret records for test and redaction safety."""
 
-    def __init__(self, *, session: AsyncSession) -> None:
+    def __init__(self, *, session: AsyncSession, secret_cipher: SecretCipher | None = None) -> None:
         """Initialize secret repository.
 
         Args:
             session: Active async session.
+            secret_cipher: Cipher used to decrypt/encrypt values.
         """
         self._session = session
+        self._secret_cipher = SecretCipher.from_app_config() if secret_cipher is None else secret_cipher
 
-    async def resolve(self, provider_id: int, key_name: str) -> str | None:
+    async def resolve(self, provider_id: str, key_name: str) -> str | None:
         """Return secret value by key name."""
         query = select(ProviderSecretORM.value).where(
             ProviderSecretORM.provider_id == provider_id,
             ProviderSecretORM.key_name == key_name,
         )
         value = await self._session.scalar(query)
-        return value
+        return None if value is None else self._secret_cipher.decrypt(value)
 
-    async def set_secret(self, *, provider_id: int, key_name: str, value: str) -> None:
+    async def set_secret(self, *, provider_id: str, key_name: str, value: str) -> None:
         """Upsert one provider secret by key."""
         existing = await self._session.scalar(
             select(ProviderSecretORM).where(
@@ -146,18 +151,18 @@ class ProviderSecretRepository(ProviderSecretRepositoryPort):
             )
         )
         if isinstance(existing, ProviderSecretORM):
-            existing.value = value
+            existing.value = self._secret_cipher.encrypt(value)
         else:
             self._session.add(
                 ProviderSecretORM(
                     provider_id=provider_id,
                     key_name=key_name,
-                    value=value,
+                    value=self._secret_cipher.encrypt(value),
                 )
             )
         await self._session.flush()
 
-    async def delete_for_provider(self, provider_id: int, key_name: str) -> None:
+    async def delete_for_provider(self, provider_id: str, key_name: str) -> None:
         """Delete one secret key from a provider."""
         await self._session.execute(
             delete(ProviderSecretORM).where(

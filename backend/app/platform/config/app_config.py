@@ -31,3 +31,5 @@ class AppConfig(BaseSettings):
     app_version: str = Field(default="0.1.0")
     # Python logging level name.
     app_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    # 32-byte URL-safe base64 key or passphrase used to encrypt provider secrets at rest.
+    secret_encryption_key: str | None = Field(default=None)

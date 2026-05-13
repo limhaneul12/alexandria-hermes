@@ -24,7 +24,7 @@ class ItemService:
         title: str,
         summary: str | None,
         content: str,
-        category_id: int | None,
+        category_id: str | None,
         tags: list[str],
         status: ItemStatus,
         source_type: SourceType,
@@ -73,7 +73,7 @@ class ItemService:
 
     async def update_item(
         self,
-        item_id: int,
+        item_id: str,
         payload: dict[str, JSONValue],
     ) -> dict[str, JSONValue]:
         """Patch item fields.
@@ -91,7 +91,7 @@ class ItemService:
         updated = await self.item_repo.update(item_id, payload=payload)
         return item_to_dict(updated)
 
-    async def get_item(self, item_id: int) -> dict[str, JSONValue]:
+    async def get_item(self, item_id: str) -> dict[str, JSONValue]:
         """Read one item by id.
 
         Args:
@@ -105,7 +105,7 @@ class ItemService:
             raise NotFoundError(f"Item not found: {item_id}")
         return item_to_dict(model)
 
-    async def delete_item(self, item_id: int) -> None:
+    async def delete_item(self, item_id: str) -> None:
         """Delete one item.
 
         Args:
@@ -125,7 +125,7 @@ class ItemService:
         item_type: ItemType | None = None,
         limit: int = 100,
         offset: int = 0,
-        category_id: int | None = None,
+        category_id: str | None = None,
         search_query: str | None = None,
     ) -> tuple[list[dict[str, JSONValue]], int]:
         """List all items with optional filters.

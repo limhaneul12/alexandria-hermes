@@ -78,7 +78,7 @@ class SqlAlchemyItemRepository(ItemRepository):
 
     async def update(
         self,
-        item_id: int,
+        item_id: str,
         *,
         payload: dict[str, JSONValue],
     ) -> LibraryItem:
@@ -102,7 +102,7 @@ class SqlAlchemyItemRepository(ItemRepository):
         await self.upsert_fts(model)
         return _to_read_model(model)
 
-    async def get(self, item_id: int) -> LibraryItem | None:
+    async def get(self, item_id: str) -> LibraryItem | None:
         """Get one item by primary key.
 
         Args:
@@ -114,7 +114,7 @@ class SqlAlchemyItemRepository(ItemRepository):
         model = await self._session.get(LibraryItemORM, item_id)
         return None if model is None else _to_read_model(model)
 
-    async def delete(self, item_id: int) -> None:
+    async def delete(self, item_id: str) -> None:
         """Delete one item and remove FTS rows.
 
         Args:
@@ -163,7 +163,7 @@ class SqlAlchemyItemRepository(ItemRepository):
         *,
         limit: int | None = None,
         offset: int = 0,
-        category_id: int | None = None,
+        category_id: str | None = None,
         search_query: str | None = None,
     ) -> tuple[list[LibraryItem], int]:
         """List all items with optional filters.
@@ -232,14 +232,13 @@ class SqlAlchemyItemRepository(ItemRepository):
         )
 
         await self._session.execute(
-            text("DELETE FROM item_search_fts WHERE rowid = :row_id"),
-            {"row_id": item.id},
+            text("DELETE FROM item_search_fts WHERE item_id = :item_id"),
+            {"item_id": item.id},
         )
         await self._session.execute(
             text(
                 """
                 INSERT INTO item_search_fts(
-                    rowid,
                     item_id,
                     item_type,
                     title,
@@ -248,11 +247,10 @@ class SqlAlchemyItemRepository(ItemRepository):
                     tags,
                     details
                 )
-                VALUES (:row_id, :item_id, :item_type, :title, :summary, :content, :tags, :details)
+                VALUES (:item_id, :item_type, :title, :summary, :content, :tags, :details)
                 """
             ),
             {
-                "row_id": item.id,
                 "item_id": item.id,
                 "item_type": item.item_type,
                 "title": item.title,
@@ -263,7 +261,7 @@ class SqlAlchemyItemRepository(ItemRepository):
             },
         )
 
-    async def remove_fts(self, item_id: int) -> None:
+    async def remove_fts(self, item_id: str) -> None:
         """Remove stale search index rows.
 
         Args:
@@ -273,8 +271,8 @@ class SqlAlchemyItemRepository(ItemRepository):
             None.
         """
         await self._session.execute(
-            text("DELETE FROM item_search_fts WHERE rowid = :row_id"),
-            {"row_id": item_id},
+            text("DELETE FROM item_search_fts WHERE item_id = :item_id"),
+            {"item_id": item_id},
         )
 
     async def search(
@@ -294,7 +292,7 @@ class SqlAlchemyItemRepository(ItemRepository):
             return []
         normalized = " ".join(f"{token}*" for token in tokens)
         fts_query = (
-            "SELECT rowid FROM item_search_fts WHERE item_search_fts MATCH :query"
+            "SELECT item_id FROM item_search_fts WHERE item_search_fts MATCH :query"
         )
         if item_type is not None:
             fts_query += " AND item_type = :item_type"

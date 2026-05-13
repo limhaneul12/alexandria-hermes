@@ -253,18 +253,26 @@ def get_knowledge_service(
 def get_agent_service(
     request: Request,
     repository: AgentRepository = Depends(get_agent_repository),
+    librarian_provider_repository: LibrarianProviderRepository = Depends(
+        get_librarian_repository
+    ),
 ) -> AgentService:
     """Build request-scoped agent service.
 
     Args:
         request: Incoming HTTP request.
         repository: Agent repository from dependency chain.
+        librarian_provider_repository: Librarian provider repository from dependency
+            chain.
 
     Return:
         Agent service instance.
     """
     container = _container_from_request(request=request)
-    return container.library().agent_service(repository=repository)
+    return container.library().agent_service(
+        repository=repository,
+        librarian_provider_repo=librarian_provider_repository,
+    )
 
 
 def get_librarian_service(

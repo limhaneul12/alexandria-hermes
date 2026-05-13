@@ -11,6 +11,7 @@ from app.library.domain.entities.enums import (
     SourceType,
 )
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from app.shared.types.extra_types import JSONValue
 from sqlalchemy import (
     JSON,
@@ -18,7 +19,6 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
-    Integer,
     String,
     Text,
 )
@@ -30,13 +30,16 @@ class LibraryItemORM(Base):
 
     __tablename__ = "library_items"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[str] = mapped_column(String(ID_LENGTH), primary_key=True, default=new_uuid)
     item_type: Mapped[str] = mapped_column(String(20), nullable=False)
     title: Mapped[str] = mapped_column(String(length=255), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    category_id: Mapped[int] = mapped_column(
-        ForeignKey("categories.id", ondelete="SET NULL"), index=True, nullable=True
+    category_id: Mapped[str | None] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
     )
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     status: Mapped[str] = mapped_column(String(20), nullable=False)

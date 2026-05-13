@@ -24,7 +24,7 @@ class CategoryService:
         self,
         *,
         name: str,
-        parent_id: int | None = None,
+        parent_id: str | None = None,
     ) -> Category:
         """Create a category and validate parent exists.
 
@@ -50,7 +50,7 @@ class CategoryService:
         """
         return await self.category_repo.list_all()
 
-    async def get_category(self, category_id: int) -> Category | None:
+    async def get_category(self, category_id: str) -> Category | None:
         """Read one category by id.
 
         Args:
@@ -61,7 +61,7 @@ class CategoryService:
         """
         return await self.category_repo.get(category_id)
 
-    async def update_category(self, category_id: int, *, name: str) -> Category:
+    async def update_category(self, category_id: str, *, name: str) -> Category:
         """Rename one category.
 
         Args:
@@ -76,9 +76,9 @@ class CategoryService:
 
     async def move_category(
         self,
-        category_id: int,
+        category_id: str,
         *,
-        parent_id: int | None,
+        parent_id: str | None,
         position: int,
     ) -> Category:
         """Move category and guard against hierarchy loops.
@@ -117,7 +117,7 @@ class CategoryService:
             position=position,
         )
 
-    async def reorder_category(self, category_id: int, *, position: int) -> Category:
+    async def reorder_category(self, category_id: str, *, position: int) -> Category:
         """Re-order category among siblings.
 
         Args:
@@ -131,7 +131,7 @@ class CategoryService:
             category_id=category_id, position=position
         )
 
-    async def delete_category(self, category_id: int) -> None:
+    async def delete_category(self, category_id: str) -> None:
         """Delete a category and dependent subtree.
 
         Args:
@@ -158,8 +158,8 @@ class CategoryService:
     async def _max_depth_after_move(
         self,
         *,
-        category_id: int,
-        parent_id: int | None,
+        category_id: str,
+        parent_id: str | None,
     ) -> int:
         """Estimate max depth after move operation.
 
@@ -177,7 +177,7 @@ class CategoryService:
         children_depth = await self._subtree_depth(category_id)
         return parent_depth + 1 + children_depth
 
-    async def _subtree_depth(self, root_id: int) -> int:
+    async def _subtree_depth(self, root_id: str) -> int:
         """Compute subtree depth of one category.
 
         Args:

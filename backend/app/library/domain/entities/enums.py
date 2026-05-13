@@ -52,6 +52,7 @@ class ProviderType(StrEnum):
     """Librarian provider implementation type."""
 
     OPENAI = "OPENAI"
+    OPENROUTER = "OPENROUTER"
     ANTHROPIC = "ANTHROPIC"
     HERMES = "HERMES"
     LOCAL = "LOCAL"

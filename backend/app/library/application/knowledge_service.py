@@ -32,11 +32,11 @@ class KnowledgeService:
         title: str,
         summary: str | None,
         content: str,
-        category_id: int | None,
+        category_id: str | None,
         tags: list[str],
         body: str,
         references: list[str],
-        related_items: list[int],
+        related_items: list[str],
         created_by_name: str,
         activate: bool = True,
         status: ItemStatus | None = None,
@@ -106,7 +106,7 @@ class KnowledgeService:
     async def patch_knowledge(
         self,
         *,
-        item_id: int,
+        item_id: str,
         payload: Mapping[str, JSONValue],
     ) -> dict[str, JSONValue]:
         """Patch one knowledge entry.

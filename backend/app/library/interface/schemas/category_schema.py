@@ -17,7 +17,7 @@ class CategoryCreateRequest(StrictSchema):
     )
 
     name: str = Field(min_length=1)
-    parent_id: int | None = None
+    parent_id: str | None = None
 
 
 class CategoryUpdateRequest(StrictSchema):
@@ -32,10 +32,17 @@ class CategoryMoveRequest(StrictSchema):
     """Payload for move and reorder operations."""
 
     model_config = ConfigDict(
-        json_schema_extra={"examples": [{"parent_id": 1, "position": 0}]}
+        json_schema_extra={
+            "examples": [
+                {
+                    "parent_id": "00000000-0000-4000-8000-000000000001",
+                    "position": 0,
+                }
+            ]
+        }
     )
 
-    parent_id: int | None
+    parent_id: str | None
     position: int = Field(ge=0)
 
 
@@ -47,9 +54,9 @@ class CategoryResponse(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "id": 2,
+                    "id": "00000000-0000-4000-8000-000000000002",
                     "name": "FastAPI",
-                    "parent_id": 1,
+                    "parent_id": "00000000-0000-4000-8000-000000000001",
                     "position": 0,
                     "created_at": "2026-05-12T10:00:00Z",
                     "updated_at": "2026-05-12T10:05:00Z",
@@ -58,9 +65,9 @@ class CategoryResponse(StrictSchema):
         },
     )
 
-    id: int
+    id: str
     name: str
-    parent_id: int | None
+    parent_id: str | None
     position: int
     created_at: datetime
     updated_at: datetime
@@ -73,15 +80,15 @@ class CategoryTreeNode(StrictSchema):
         json_schema_extra={
             "examples": [
                 {
-                    "id": 1,
+                    "id": "00000000-0000-4000-8000-000000000001",
                     "name": "Backend",
                     "parent_id": None,
                     "position": 0,
                     "children": [
                         {
-                            "id": 2,
+                            "id": "00000000-0000-4000-8000-000000000002",
                             "name": "FastAPI",
-                            "parent_id": 1,
+                            "parent_id": "00000000-0000-4000-8000-000000000001",
                             "position": 0,
                             "children": [],
                         }
@@ -91,9 +98,9 @@ class CategoryTreeNode(StrictSchema):
         }
     )
 
-    id: int
+    id: str
     name: str
-    parent_id: int | None
+    parent_id: str | None
     position: int
     children: list[CategoryTreeNode]
 
