@@ -1,10 +1,10 @@
 """SQLAlchemy ORM models for Alexandria-Hermes library domain."""
 
-from .agent import AgentProfileORM
-from .category import CategoryORM
-from .item import LibraryItemORM
-from .librarian_provider import LibrarianProviderORM, ProviderSecretORM
-from .usage import UsageHistoryORM
+from .agent_models import AgentProfileORM
+from .category_models import CategoryORM
+from .item_models import LibraryItemORM
+from .librarian_provider_models import LibrarianProviderORM, ProviderSecretORM
+from .usage_models import UsageHistoryORM
 
 __all__ = [
     "AgentProfileORM",

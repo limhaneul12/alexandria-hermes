@@ -28,7 +28,7 @@ class BroadTypeVisitor(ast.NodeVisitor):
             path: See function signature.
             lines: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._path = path
@@ -41,7 +41,7 @@ class BroadTypeVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         if node is None:
@@ -73,7 +73,7 @@ class BroadTypeVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._check_type_node(node.annotation)
@@ -85,7 +85,7 @@ class BroadTypeVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._check_type_node(node.annotation)
@@ -97,7 +97,7 @@ class BroadTypeVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._check_type_node(node.returns)
@@ -109,7 +109,7 @@ class BroadTypeVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._check_type_node(node.returns)
@@ -121,7 +121,7 @@ class BroadTypeVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._check_type_node(node.value)
@@ -133,7 +133,7 @@ class BroadTypeVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         if isinstance(node.func, ast.Name) and node.func.id == "cast" and node.args:
@@ -149,7 +149,7 @@ def collect_failures(backend_root: Path | None = None) -> list[str]:
     Args:
         backend_root: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     failures: list[str] = []
@@ -169,7 +169,7 @@ def ensure_clean(backend_root: Path | None = None) -> None:
     Args:
         backend_root: See function signature.
 
-    Return:
+    Returns:
         None.
     """
     failures = collect_failures(backend_root)
@@ -189,7 +189,7 @@ def main() -> int:
     Args:
         None.
 
-    Return:
+    Returns:
         Return value.
     """
     failures = collect_failures()

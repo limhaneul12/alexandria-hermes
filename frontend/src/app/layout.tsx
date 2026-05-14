@@ -8,7 +8,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ALEXANDRIA-HERMES · AI Agent Capability Library",
   description:
-    "A luxury dark AI capability registry, digital library, workflow archive, and developer knowledge system.",
+    "A luxury dark AI agent skill and prompt library.",
 };
 
 export const viewport: Viewport = {

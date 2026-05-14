@@ -6,34 +6,38 @@ from datetime import UTC, datetime
 
 import pytest
 from app.library.application.librarian_service import LibrarianService
+from app.library.domain.contracts.librarian_provider_contracts import (
+    LibrarianProviderCreate,
+    LibrarianProviderUpdate,
+)
 from app.library.domain.entities.read_models import LibrarianProvider
 from app.library.domain.repositories.librarian_repository import (
-    LibrarianProviderRepository,
-    ProviderSecretRepository,
+    ILibrarianProviderRepository,
+    IProviderSecretRepository,
 )
 from app.library.infrastructure.librarians.clients import LibrarianClientFactory
-from app.library.interface.routers.dependencies import get_librarian_service
+from tests.library.interface.provider_overrides import override_library_provider
 from app.main import app
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
 
 
-class FakeLibrarianProviderRepository(LibrarianProviderRepository):
+class FakeLibrarianProviderRepository(ILibrarianProviderRepository):
     """In-memory provider repository for router contract tests."""
 
     def __init__(self) -> None:
         """Initialize empty provider storage."""
         self.created: LibrarianProvider | None = None
 
-    async def create(self, payload: dict[str, JSONValue]) -> LibrarianProvider:
+    async def create(self, payload: LibrarianProviderCreate) -> LibrarianProvider:
         """Create a provider entry."""
         provider = LibrarianProvider(
             id="00000000-0000-4000-8000-000000000501",
-            name=str(payload["name"]),
-            provider_type=str(payload["provider_type"]),
-            auth_type=str(payload["auth_type"]),
-            enabled=bool(payload["enabled"]),
-            config=payload["config"] if isinstance(payload["config"], dict) else {},
+            name=payload.name,
+            provider_type=payload.provider_type.value,
+            auth_type=payload.auth_type.value,
+            enabled=payload.enabled,
+            config=payload.config,
             created_at=datetime(2026, 5, 12, 10, 0, tzinfo=UTC),
             updated_at=datetime(2026, 5, 12, 10, 0, tzinfo=UTC),
         )
@@ -51,21 +55,21 @@ class FakeLibrarianProviderRepository(LibrarianProviderRepository):
         return [] if self.created is None else [self.created]
 
     async def update(
-        self, provider_id: str, payload: dict[str, JSONValue]
+        self, provider_id: str, payload: LibrarianProviderUpdate
     ) -> LibrarianProvider:
         """Patch provider settings."""
         if self.created is None or self.created.id != provider_id:
             raise ValueError(f"Provider not found: {provider_id}")
+        values = payload.to_record()
         current = self.created
+        config_value = values.get("config")
         provider = LibrarianProvider(
             id=current.id,
-            name=str(payload.get("name", current.name)),
-            provider_type=str(payload.get("provider_type", current.provider_type)),
-            auth_type=str(payload.get("auth_type", current.auth_type)),
-            enabled=bool(payload.get("enabled", current.enabled)),
-            config=payload["config"]
-            if isinstance(payload.get("config"), dict)
-            else current.config,
+            name=str(values.get("name", current.name)),
+            provider_type=str(values.get("provider_type", current.provider_type)),
+            auth_type=str(values.get("auth_type", current.auth_type)),
+            enabled=bool(values.get("enabled", current.enabled)),
+            config=config_value if isinstance(config_value, dict) else current.config,
             created_at=current.created_at,
             updated_at=datetime(2026, 5, 12, 10, 5, tzinfo=UTC),
         )
@@ -76,7 +80,7 @@ class FakeLibrarianProviderRepository(LibrarianProviderRepository):
         """Delete one provider."""
 
 
-class FakeProviderSecretRepository(ProviderSecretRepository):
+class FakeProviderSecretRepository(IProviderSecretRepository):
     """In-memory provider secret repository for router contract tests."""
 
     def __init__(self) -> None:
@@ -118,12 +122,9 @@ def _post_create_provider(
     def override_librarian_service() -> LibrarianService:
         return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
 
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post("/settings/librarians", json=payload)
-    finally:
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     return response.status_code, response.json()
 
@@ -139,8 +140,7 @@ def test_create_librarian_provider_accepts_json_enum_values_and_redacts_secret()
     def override_librarian_service() -> LibrarianService:
         return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
 
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app) as client:
             response = client.post(
                 "/settings/librarians",
@@ -153,8 +153,6 @@ def test_create_librarian_provider_accepts_json_enum_values_and_redacts_secret()
                     "api_key": "secret-key",
                 },
             )
-    finally:
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     assert response.status_code == 201
     assert response.json() == {
@@ -224,8 +222,7 @@ def test_patch_librarian_provider_rejects_oauth_switch_without_token() -> None:
     def override_librarian_service() -> LibrarianService:
         return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
 
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             created = client.post(
                 "/settings/librarians",
@@ -235,8 +232,6 @@ def test_patch_librarian_provider_rejects_oauth_switch_without_token() -> None:
                 f"/settings/librarians/{created.json()['id']}",
                 json={"auth_type": "OAUTH"},
             )
-    finally:
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     assert response.status_code == 400
     assert response.json() == {"detail": "OAUTH auth requires oauth_access_token"}
@@ -250,8 +245,7 @@ def test_patch_librarian_provider_stores_oauth_token_without_exposing_secret() -
     def override_librarian_service() -> LibrarianService:
         return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
 
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             created = client.post(
                 "/settings/librarians",
@@ -265,8 +259,6 @@ def test_patch_librarian_provider_stores_oauth_token_without_exposing_secret() -
                     "oauth_access_token": "dummy-oauth-token",
                 },
             )
-    finally:
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     assert response.status_code == 200
     body = response.json()
@@ -282,7 +274,9 @@ def test_patch_librarian_provider_stores_oauth_token_without_exposing_secret() -
     }
     assert "oauth_access_token" not in body
     assert "api_key" not in body
-    assert secret_repo.secrets[(provider_id, "oauth_access_token")] == "dummy-oauth-token"
+    assert (
+        secret_repo.secrets[(provider_id, "oauth_access_token")] == "dummy-oauth-token"
+    )
 
 
 def test_create_librarian_provider_rejects_credentials_in_config_without_leak() -> None:
@@ -308,8 +302,7 @@ def test_patch_librarian_provider_rejects_credentials_in_config_without_leak() -
     def override_librarian_service() -> LibrarianService:
         return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
 
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             created = client.post(
                 "/settings/librarians",
@@ -319,8 +312,6 @@ def test_patch_librarian_provider_rejects_credentials_in_config_without_leak() -
                 f"/settings/librarians/{created.json()['id']}",
                 json={"config": {"password": "do-not-echo-patch-secret"}},
             )
-    finally:
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     assert response.status_code == 400
     assert response.json() == {
@@ -337,8 +328,7 @@ def test_test_librarian_provider_reports_disabled_before_secret_checks() -> None
     def override_librarian_service() -> LibrarianService:
         return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
 
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             created = client.post(
                 "/settings/librarians",
@@ -349,8 +339,6 @@ def test_test_librarian_provider_reports_disabled_before_secret_checks() -> None
                 f"/settings/librarians/{provider_id}/test",
                 json={"test_query": "ping"},
             )
-    finally:
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     assert response.status_code == 200
     assert response.json() == {
@@ -364,17 +352,15 @@ def test_test_librarian_provider_does_not_echo_sensitive_test_query() -> None:
     """POST /settings/librarians/{id}/test should not echo caller query text."""
     provider_repo = FakeLibrarianProviderRepository()
     secret_repo = FakeProviderSecretRepository()
-    client_factory = LibrarianClientFactory(openai_constructor=lambda **kwargs: object())
 
     def override_librarian_service() -> LibrarianService:
         return LibrarianService(
             provider_repo=provider_repo,
             secret_repo=secret_repo,
-            client_factory=client_factory,
+            client_factory=LibrarianClientFactory(),
         )
 
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             created = client.post(
                 "/settings/librarians",
@@ -385,8 +371,6 @@ def test_test_librarian_provider_does_not_echo_sensitive_test_query() -> None:
                 f"/settings/librarians/{provider_id}/test",
                 json={"test_query": "api_key=do-not-echo-query-secret"},
             )
-    finally:
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     assert response.status_code == 200
     body = response.json()
@@ -406,15 +390,12 @@ def test_test_librarian_provider_returns_not_found_without_internal_detail() -> 
     def override_librarian_service() -> LibrarianService:
         return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
 
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
                 "/settings/librarians/missing-provider/test",
                 json={"test_query": "api_key=do-not-echo-missing-secret"},
             )
-    finally:
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Provider not found"}

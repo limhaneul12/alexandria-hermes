@@ -2,159 +2,43 @@
 
 from __future__ import annotations
 
-import importlib
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, cast, runtime_checkable
 
-from app.library.domain.entities.enums import AuthType, ProviderType
 from app.library.domain.entities.read_models import LibrarianProvider
+from app.library.domain.event_enum.provider_enums import AuthType, ProviderType
+from app.library.infrastructure.librarians.contracts import (
+    ApiKeyCredential,
+    LibrarianProviderClientFactory,
+    ProviderClientTestResult,
+    SecretResolver,
+)
+from app.library.infrastructure.librarians.minio_validation import test_minio_provider
+from app.library.infrastructure.librarians.openai_adapter import (
+    OpenAIClientBuilder,
+    OpenAIStyleSDKAdapter,
+    build_openai_client,
+    build_openai_client_config,
+)
+from app.library.infrastructure.librarians.provider_types import (
+    SUPPORTED_SDK_PROVIDER_TYPES,
+    parse_auth_type,
+    parse_provider_type,
+)
 from app.shared.exceptions import UnsupportedProviderError
-from app.shared.types.extra_types import JSONValue
-
-SDKClientConstructor = Callable[..., object]
-
-
-@runtime_checkable
-class SecretResolver(Protocol):
-    """Protocol for resolving provider secrets without exposing secret values."""
-
-    async def resolve(self, provider_id: str, key_name: str) -> str | None:
-        """Resolve one provider secret value by key name."""
-
-
-@runtime_checkable
-class LibrarianProviderClientFactory(Protocol):
-    """Protocol for deterministic librarian provider connection testing."""
-
-    async def test_connection(
-        self,
-        *,
-        provider: LibrarianProvider,
-        secret_resolver: SecretResolver,
-        test_query: str,
-    ) -> ProviderClientTestResult:
-        """Test one provider connection without exposing credentials."""
-
-
-@dataclass(frozen=True, slots=True, repr=False)
-class ApiKeyCredential:
-    """Redacted API-key credential wrapper.
-
-    Args:
-        value: Raw API key value. The value is intentionally excluded from repr/str.
-    """
-
-    value: str
-
-    def __repr__(self) -> str:
-        """Return a redacted representation."""
-        return "ApiKeyCredential(value=***redacted***)"
-
-    __str__ = __repr__
+from app.shared.types.extra_types import JSONObject
 
 
 @dataclass(frozen=True, slots=True)
-class ProviderClientTestResult:
-    """Public provider test result that never carries credential material."""
-
-    provider_id: str
-    ok: bool
-    message: str
-
-    def as_public_dict(self) -> dict[str, JSONValue]:
-        """Return the API-safe response dictionary.
-
-        Args:
-            None.
-
-        Return:
-            Public test result payload without credentials.
-        """
-        return {
-            "provider_id": self.provider_id,
-            "ok": self.ok,
-            "message": self.message,
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class OpenAIStyleSDKAdapter:
-    """Adapter for SDKs that expose an OpenAI-compatible constructor."""
-
-    client: object
-    provider_type: ProviderType
-    dry_run: bool = True
-
-    async def test_connection(self, test_query: str) -> ProviderClientTestResult:
-        """Perform a deterministic default connection test.
-
-        Args:
-            test_query: Query text submitted by callers. Default dry-run mode does
-                not send it to external services.
-
-        Return:
-            Provider test result.
-        """
-        _ = test_query
-        if self.dry_run:
-            return ProviderClientTestResult(
-                provider_id="",
-                ok=True,
-                message=f"{self.provider_type.value} SDK client dry-run accepted query",
-            )
-        return ProviderClientTestResult(
-            provider_id="",
-            ok=False,
-            message="live SDK connection tests are not enabled",
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class AnthropicStyleSDKAdapter:
-    """Adapter for SDKs that expose an Anthropic-compatible constructor."""
-
-    client: object
-    provider_type: ProviderType
-    dry_run: bool = True
-
-    async def test_connection(self, test_query: str) -> ProviderClientTestResult:
-        """Perform a deterministic default connection test.
-
-        Args:
-            test_query: Query text submitted by callers. Default dry-run mode does
-                not send it to external services.
-
-        Return:
-            Provider test result.
-        """
-        _ = test_query
-        if self.dry_run:
-            return ProviderClientTestResult(
-                provider_id="",
-                ok=True,
-                message=f"{self.provider_type.value} SDK client dry-run accepted query",
-            )
-        return ProviderClientTestResult(
-            provider_id="",
-            ok=False,
-            message="live SDK connection tests are not enabled",
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class LibrarianClientFactory:
+class LibrarianClientFactory(LibrarianProviderClientFactory):
     """Factory for API-key SDK-backed librarian provider adapters.
 
     Args:
-        openai_constructor: Optional injected OpenAI-compatible SDK constructor.
-        anthropic_constructor: Optional injected Anthropic-compatible SDK constructor.
+        openai_client_builder: Optional injected OpenAI SDK constructor.
         dry_run: When true, adapters instantiate SDK clients but do not perform
             network requests. This keeps default tests deterministic.
     """
 
-    openai_constructor: SDKClientConstructor | None = None
-    anthropic_constructor: SDKClientConstructor | None = None
+    openai_client_builder: OpenAIClientBuilder = build_openai_client
     dry_run: bool = True
 
     async def test_connection(
@@ -171,19 +55,20 @@ class LibrarianClientFactory:
             secret_resolver: Secret resolver boundary for API keys.
             test_query: Caller-provided test query.
 
-        Return:
+        Returns:
             Public test result without credential material.
         """
         if not provider.enabled:
-            return ProviderClientTestResult(
+            result = ProviderClientTestResult(
                 provider_id=provider.id,
                 ok=False,
                 message="provider disabled",
             )
+            return result
 
-        auth_type = _parse_auth_type(provider.auth_type)
+        auth_type = parse_auth_type(provider.auth_type)
         if auth_type is not AuthType.API_KEY:
-            return ProviderClientTestResult(
+            result = ProviderClientTestResult(
                 provider_id=provider.id,
                 ok=False,
                 message=(
@@ -191,14 +76,11 @@ class LibrarianClientFactory:
                     "API-key SDK clients"
                 ),
             )
+            return result
 
-        provider_type = _parse_provider_type(provider.provider_type)
-        if provider_type not in {
-            ProviderType.OPENAI,
-            ProviderType.OPENROUTER,
-            ProviderType.ANTHROPIC,
-        }:
-            return ProviderClientTestResult(
+        provider_type = parse_provider_type(provider.provider_type)
+        if provider_type is None or provider_type not in SUPPORTED_SDK_PROVIDER_TYPES:
+            result = ProviderClientTestResult(
                 provider_id=provider.id,
                 ok=False,
                 message=(
@@ -206,112 +88,72 @@ class LibrarianClientFactory:
                     "librarian SDK clients"
                 ),
             )
+            return result
 
         api_key = await secret_resolver.resolve(provider.id, "api_key")
         if not api_key:
-            return ProviderClientTestResult(
+            result = ProviderClientTestResult(
                 provider_id=provider.id,
                 ok=False,
                 message="api_key missing",
             )
+            return result
+        if provider_type is ProviderType.MINIO:
+            result = test_minio_provider(provider=provider, api_key=api_key)
+            return result
 
         credential = ApiKeyCredential(api_key)
         try:
             adapter = self._build_adapter(provider_type, provider.config, credential)
         except UnsupportedProviderError as exc:
-            return ProviderClientTestResult(
+            result = ProviderClientTestResult(
                 provider_id=provider.id,
                 ok=False,
                 message=str(exc),
             )
-        result = await adapter.test_connection(test_query)
-        return ProviderClientTestResult(
+            return result
+        adapter_result = await adapter.test_connection(test_query)
+        result = ProviderClientTestResult(
             provider_id=provider.id,
-            ok=result.ok,
-            message=result.message,
+            ok=adapter_result.ok,
+            message=adapter_result.message,
         )
+        return result
 
     def _build_adapter(
         self,
         provider_type: ProviderType,
-        config: dict[str, JSONValue],
+        config: JSONObject,
         credential: ApiKeyCredential,
-    ) -> OpenAIStyleSDKAdapter | AnthropicStyleSDKAdapter:
-        """Build an SDK adapter for the provider type."""
-        if provider_type in {ProviderType.OPENAI, ProviderType.OPENROUTER}:
-            constructor = self.openai_constructor or _load_openai_constructor()
-            kwargs = _openai_style_kwargs(provider_type, config, credential)
-            return OpenAIStyleSDKAdapter(
-                client=constructor(**kwargs),
-                provider_type=provider_type,
-                dry_run=self.dry_run,
+    ) -> OpenAIStyleSDKAdapter:
+        """Build an SDK adapter for an OpenAI provider type.
+
+        Args:
+            provider_type: Supported OpenAI provider type.
+            config: Provider configuration payload.
+            credential: Redacted API-key credential.
+
+        Returns:
+            OpenAIStyleSDKAdapter: OpenAI SDK adapter.
+        """
+        if provider_type is not ProviderType.OPENAI:
+            raise UnsupportedProviderError(
+                f"provider type {provider_type.value} is unsupported for librarian SDK clients"
             )
-        constructor = self.anthropic_constructor or _load_anthropic_constructor()
-        return AnthropicStyleSDKAdapter(
-            client=constructor(api_key=credential.value),
+        client_config = build_openai_client_config(provider_type, config, credential)
+        adapter = OpenAIStyleSDKAdapter(
+            client=self.openai_client_builder(client_config),
             provider_type=provider_type,
             dry_run=self.dry_run,
         )
+        return adapter
 
 
-def _parse_provider_type(value: str) -> ProviderType:
-    """Parse provider type with a clear unsupported fallback."""
-    try:
-        return ProviderType(value)
-    except ValueError:
-        return ProviderType.CUSTOM
-
-
-def _parse_auth_type(value: str) -> AuthType:
-    """Parse auth type with a clear unsupported fallback."""
-    try:
-        return AuthType(value)
-    except ValueError:
-        return AuthType.NONE
-
-
-def _openai_style_kwargs(
-    provider_type: ProviderType,
-    config: dict[str, JSONValue],
-    credential: ApiKeyCredential,
-) -> dict[str, object]:
-    """Build constructor kwargs for OpenAI-compatible SDK clients."""
-    kwargs: dict[str, object] = {"api_key": credential.value}
-    base_url = config.get("base_url")
-    if provider_type is ProviderType.OPENROUTER and base_url is None:
-        base_url = "https://openrouter.ai/api/v1"
-    if isinstance(base_url, str) and base_url:
-        kwargs["base_url"] = base_url
-    return kwargs
-
-
-def _load_openai_constructor() -> SDKClientConstructor:
-    """Load the official OpenAI SDK constructor lazily."""
-    try:
-        module = importlib.import_module("openai")
-    except ImportError as exc:
-        raise UnsupportedProviderError(
-            "OPENAI/OPENROUTER providers require the openai SDK package"
-        ) from exc
-    constructor = module.__dict__.get("OpenAI")
-    if not callable(constructor):
-        raise UnsupportedProviderError(
-            "OPENAI/OPENROUTER providers require the openai.OpenAI SDK client"
-        )
-    return cast(SDKClientConstructor, constructor)
-
-
-def _load_anthropic_constructor() -> SDKClientConstructor:
-    """Load the official Anthropic SDK constructor lazily."""
-    try:
-        module = importlib.import_module("anthropic")
-    except ImportError as exc:
-        raise UnsupportedProviderError(
-            "ANTHROPIC providers require the anthropic SDK package"
-        ) from exc
-    constructor = module.__dict__.get("Anthropic")
-    if not callable(constructor):
-        raise UnsupportedProviderError(
-            "ANTHROPIC providers require the anthropic.Anthropic SDK client"
-        )
-    return cast(SDKClientConstructor, constructor)
+__all__ = [
+    "ApiKeyCredential",
+    "LibrarianClientFactory",
+    "LibrarianProviderClientFactory",
+    "OpenAIStyleSDKAdapter",
+    "ProviderClientTestResult",
+    "SecretResolver",
+]

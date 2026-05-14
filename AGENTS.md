@@ -3,6 +3,7 @@
 ## Project Structure & Module Organization
 This repo is a two-service starter:
 - `backend/` Python FastAPI service
+  - `backend/AGENTS.md` and `backend/.agents/rule/**` are mandatory backend development rules. Read them before modifying backend code.
   - `backend/app/` application code (entrypoint: `backend/app/main.py`)
   - `backend/app/platform/` platform logic (routing, middleware, lifecycle, config, logging)
   - `backend/app/shared/` reusable helpers and guardrails
@@ -13,6 +14,7 @@ This repo is a two-service starter:
 
 ## Build, Test, and Development Commands
 ### Backend (Python)
+Before backend code changes, read `backend/AGENTS.md` and the referenced `backend/.agents/rule/**` documents first.
 ```bash
 cd backend
 uv sync

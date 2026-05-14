@@ -13,12 +13,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function safeConfig(value: unknown): Record<string, unknown> {
+function safeConfig(value: unknown, providerType: ProviderType): Record<string, unknown> {
   if (!isRecord(value)) return {};
   const config: Record<string, unknown> = {};
-  if (typeof value.model === "string" && value.model.trim()) config.model = value.model.trim();
-  if (typeof value.base_url === "string" && value.base_url.trim()) {
-    config.base_url = value.base_url.trim();
+  if (providerType === "MINIO") {
+    if (typeof value.endpoint === "string" && value.endpoint.trim()) {
+      config.endpoint = value.endpoint.trim();
+    }
+    if (typeof value.bucket === "string" && value.bucket.trim()) {
+      config.bucket = value.bucket.trim();
+    }
+    if (typeof value.prefix === "string") config.prefix = value.prefix.trim();
+    if (typeof value.region === "string" && value.region.trim()) {
+      config.region = value.region.trim();
+    }
+    if (typeof value.use_ssl === "boolean") config.use_ssl = value.use_ssl;
+  } else {
+    if (typeof value.model === "string" && value.model.trim()) config.model = value.model.trim();
+    if (typeof value.base_url === "string" && value.base_url.trim()) {
+      config.base_url = value.base_url.trim();
+    }
   }
   return config;
 }
@@ -48,7 +62,14 @@ export async function PATCH(
     if (isProviderType(body.providerType)) payload.providerType = body.providerType;
     if (isCredentialMode(body.authType)) payload.authType = body.authType;
     if (typeof body.enabled === "boolean") payload.enabled = body.enabled;
-    if ("config" in body) payload.config = safeConfig(body.config);
+    if ("config" in body) {
+      const configProviderType = isProviderType(body.providerType)
+        ? body.providerType
+        : isRecord(body.config) && ("endpoint" in body.config || "bucket" in body.config)
+          ? "MINIO"
+          : "OPENAI";
+      payload.config = safeConfig(body.config, configProviderType);
+    }
     if (typeof body.credential === "string" && body.credential.trim()) {
       payload.credential = body.credential.trim();
     }

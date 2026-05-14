@@ -7,15 +7,21 @@ from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 from typing import cast
 
+from fastapi import FastAPI
+
 from app.container import ApplicationContainer
 from app.library.interface.routers.agent_router import router as agent_router
 from app.library.interface.routers.category_router import router as category_router
 from app.library.interface.routers.item_router import router as item_router
 from app.library.interface.routers.knowledge_router import router as knowledge_router
-from app.library.interface.routers.librarian_ops_router import (
+from app.library.interface.routers.librarian.librarian_ops_router import (
     router as librarian_ops_router,
 )
-from app.library.interface.routers.librarian_router import router as librarian_router
+from app.library.interface.routers.librarian.librarian_router import (
+    router as librarian_router,
+)
+from app.library.interface.routers.minio_archive_router import router as minio_router
+from app.library.interface.routers.prompt_router import router as prompt_router
 from app.library.interface.routers.search_router import router as search_router
 from app.library.interface.routers.skill_router import router as skill_router
 from app.library.interface.routers.usage_router import router as usage_router
@@ -24,9 +30,9 @@ from app.platform.config.app_config import AppConfig
 from app.platform.health_router import install_health_routes
 from app.platform.lifecycle.state import LifecycleState
 from app.platform.logging.formatter.config import configure_logging
+from app.platform.middleware.database_session import install_database_session_middleware
 from app.platform.middleware.request_logging import install_request_logging_middleware
 from app.shared.infrastructure.database import Database
-from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +43,7 @@ def _docs_urls(app_env: str) -> tuple[str | None, str | None, str | None]:
     Args:
         app_env: Current app environment.
 
-    Return:
+    Returns:
         Tuple for docs URL, redoc URL, and OpenAPI URL.
     """
     if app_env == "local":
@@ -51,19 +57,19 @@ def create_app(app_config: AppConfig) -> FastAPI:
     Args:
         app_config: Application configuration values.
 
-    Return:
+    Returns:
         Configured FastAPI app.
     """
     lifecycle = LifecycleState()
     container = ApplicationContainer()
 
     async def refresh_dependency_health() -> None:
-        """Refresh database health status before serving readiness requests.
+        """Refresh dependency health before serving readiness requests.
 
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         database = await cast(Awaitable[Database], container.database())
@@ -71,6 +77,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
             lifecycle.mark_database_healthy()
         else:
             lifecycle.mark_database_unavailable()
+        lifecycle.mark_minio_disabled()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -79,7 +86,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
         Args:
             _app: Active FastAPI app instance.
 
-        Return:
+        Returns:
             Async lifecycle context.
         """
         configure_logging()
@@ -90,6 +97,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
             lifecycle.mark_database_healthy()
         else:
             lifecycle.mark_database_unavailable()
+        lifecycle.mark_minio_disabled()
         lifecycle.mark_running()
         try:
             yield
@@ -110,13 +118,23 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.state.lifecycle = lifecycle
     app.state.container = container
 
+    async def resolve_database() -> Database:
+        """Resolve the lifecycle-owned database resource for request middleware.
+
+        Returns:
+            Active application database resource.
+        """
+        database = await cast(Awaitable[Database], container.database())
+        return database
+
     container.wire(
         packages=[
             "app.library.interface.routers",
-            "app.library.interface.routers.dependencies",
-        ],
+            "app.library.interface.routers.librarian",
+        ]
     )
 
+    install_database_session_middleware(app, resolve_database=resolve_database)
     install_request_logging_middleware(app, logger=logger)
     install_health_routes(
         app,
@@ -127,6 +145,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(category_router)
     app.include_router(item_router)
     app.include_router(skill_router)
+    app.include_router(prompt_router)
     app.include_router(workflow_router)
     app.include_router(knowledge_router)
     app.include_router(search_router)
@@ -134,6 +153,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(agent_router)
     app.include_router(librarian_router)
     app.include_router(librarian_ops_router)
+    app.include_router(minio_router)
 
     @app.get("/")
     def root() -> dict[str, str]:
@@ -142,7 +162,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
         Args:
             None.
 
-        Return:
+        Returns:
             Service metadata object.
         """
         return {

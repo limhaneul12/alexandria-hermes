@@ -13,9 +13,25 @@ dependencies = [
     "greenlet",
     "alembic>=1.18.4",
     "openai>=2.36.0",
-    "anthropic>=0.101.0",
     "cryptography>=48.0.0",
+    "minio>=7.2.20",
 ]
+
+[project.scripts]
+alexandria-hermes = "app.cli:main"
+alex-hermes = "app.cli:main"
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+namespaces = true
+
+[tool.uv]
+package = true
 
 [dependency-groups]
 dev = [

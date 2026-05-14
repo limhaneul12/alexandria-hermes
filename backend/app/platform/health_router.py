@@ -11,7 +11,8 @@ from app.platform.schemas.health_schema import (
     ready_payload_from_snapshot,
 )
 from app.shared.serialization.model_codec import dumps_model
-from app.shared.util.http import json_response, status_code_from_snapshot
+from app.shared.util.http_helpers.readiness import status_code_from_snapshot
+from app.shared.util.http_helpers.response_headers import json_response
 from fastapi import FastAPI, status
 from fastapi.responses import Response
 
@@ -31,7 +32,7 @@ def install_health_routes(
         lifecycle: Process-local lifecycle state.
         refresh_dependency_health: Optional callback to refresh dependency status before ready/heartbeat.
 
-    Return:
+    Returns:
         None.
     """
 
@@ -42,7 +43,7 @@ def install_health_routes(
         Args:
             None.
 
-        Return:
+        Returns:
             Return value.
         """
         payload = LiveHealthPayload(status="ok")
@@ -58,7 +59,7 @@ def install_health_routes(
         Args:
             None.
 
-        Return:
+        Returns:
             Return value.
         """
         if refresh_dependency_health is not None:
@@ -77,7 +78,7 @@ def install_health_routes(
         Args:
             None.
 
-        Return:
+        Returns:
             Return value.
         """
         if refresh_dependency_health is not None:

@@ -2,84 +2,93 @@
 
 from __future__ import annotations
 
-import hashlib
-from dataclasses import dataclass, field
-
-from app.library.application.common import now_utc
-from app.library.domain.entities.enums import AuthType, ProviderType
-from app.library.domain.entities.read_models import LibrarianProvider
+from app.library.application.librarians.candidate_generator import build_candidate_stub
+from app.library.application.librarians.credential_policy import (
+    ensure_create_credentials_are_present,
+    ensure_provider_config_has_no_credentials,
+)
+from app.library.application.librarians.provider_payload_mapper import (
+    build_provider_payload,
+)
+from app.library.domain.contracts.librarian_candidate_contracts import (
+    CreateSkillCandidateResult,
+)
+from app.library.domain.contracts.librarian_provider_contracts import (
+    LibrarianProviderCreate,
+    LibrarianProviderUpdate,
+)
+from app.library.domain.event_enum.provider_enums import AuthType, ProviderType
 from app.library.domain.repositories.librarian_repository import (
-    LibrarianProviderRepository,
-    ProviderSecretRepository,
+    ILibrarianProviderRepository,
+    IProviderSecretRepository,
+)
+from app.library.domain.types.librarian_provider_payload_types import (
+    LibrarianProviderPatchPayload,
+    LibrarianProviderPayload,
+    LibrarianProviderPayloadList,
+    LibrarianProviderTestPayload,
+    LibrarianProviderUpdateValues,
 )
 from app.library.infrastructure.librarians.clients import (
     LibrarianClientFactory,
     LibrarianProviderClientFactory,
 )
 from app.shared.exceptions import NotFoundError, UnsupportedProviderError
-from app.shared.types.extra_types import JSONValue
-
-CONFIG_CREDENTIAL_KEYS = frozenset(
-    {
-        "api_key",
-        "oauth_access_token",
-        "access_token",
-        "refresh_token",
-        "token",
-        "secret",
-        "password",
-    }
-)
+from app.shared.types.extra_types import JSONObject
+from app.shared.types.types_convert_utils import now_utc
 
 
-def _normalized_config_key(key: str) -> str:
-    """Normalize config keys before credential-name comparison."""
-    return key.strip().lower().replace("-", "_")
+def _provider_update_values(
+    payload: LibrarianProviderPatchPayload,
+) -> LibrarianProviderUpdateValues:
+    """Build provider patch values without secret fields.
+
+    Args:
+        payload: Service-layer patch payload.
+
+    Returns:
+        LibrarianProviderUpdateValues: Provider fields safe for repository update.
+    """
+    values: LibrarianProviderUpdateValues = {}
+    if "name" in payload:
+        values["name"] = payload["name"]
+    if "provider_type" in payload:
+        values["provider_type"] = payload["provider_type"]
+    if "auth_type" in payload:
+        values["auth_type"] = payload["auth_type"]
+    if "enabled" in payload:
+        values["enabled"] = payload["enabled"]
+    if "config" in payload:
+        values["config"] = payload["config"]
+    return values
 
 
-def _config_contains_credential_key(value: JSONValue) -> bool:
-    """Return whether a config structure contains known credential fields."""
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            if _normalized_config_key(key) in CONFIG_CREDENTIAL_KEYS:
-                return True
-            if _config_contains_credential_key(nested):
-                return True
-        return False
-    if isinstance(value, list):
-        return any(_config_contains_credential_key(item) for item in value)
-    return False
-
-
-def _ensure_config_has_no_credentials(config: dict[str, JSONValue]) -> None:
-    """Reject credentials embedded in provider config payloads."""
-    if _config_contains_credential_key(config):
-        raise UnsupportedProviderError(
-            "Provider config must not include credential fields"
-        )
-
-
-@dataclass(frozen=True)
 class LibrarianService:
     """Service to orchestrate librarian provider settings and usage."""
 
-    provider_repo: LibrarianProviderRepository
-    secret_repo: ProviderSecretRepository
-    client_factory: LibrarianProviderClientFactory = field(
-        default_factory=LibrarianClientFactory
-    )
+    def __init__(
+        self,
+        provider_repo: ILibrarianProviderRepository,
+        secret_repo: IProviderSecretRepository,
+        client_factory: LibrarianProviderClientFactory | None = None,
+    ) -> None:
+        """Initialize librarian service dependencies."""
+        self.provider_repo = provider_repo
+        self.secret_repo = secret_repo
+        self.client_factory = (
+            LibrarianClientFactory() if client_factory is None else client_factory
+        )
 
     async def create_provider(
         self,
-        *,
         name: str,
         provider_type: ProviderType,
         auth_type: AuthType,
         enabled: bool,
-        config: dict[str, JSONValue],
+        config: JSONObject,
         api_key: str | None,
         oauth_access_token: str | None,
-    ) -> dict[str, JSONValue]:
+    ) -> LibrarianProviderPayload:
         """Create provider and store secrets by provider/auth type.
 
         Args:
@@ -91,27 +100,27 @@ class LibrarianService:
             api_key: Optional API key.
             oauth_access_token: Optional OAuth token.
 
-        Return:
+        Returns:
             Provider payload map.
         """
-        _ensure_config_has_no_credentials(config)
-
-        if auth_type is AuthType.API_KEY and not api_key:
-            raise UnsupportedProviderError("API_KEY auth requires api_key")
-        if auth_type is AuthType.OAUTH and not oauth_access_token:
-            raise UnsupportedProviderError("OAUTH auth requires oauth_access_token")
+        ensure_provider_config_has_no_credentials(config)
+        ensure_create_credentials_are_present(
+            auth_type=auth_type,
+            api_key=api_key,
+            oauth_access_token=oauth_access_token,
+        )
 
         now = now_utc()
         model = await self.provider_repo.create(
-            payload={
-                "name": name,
-                "provider_type": provider_type.value,
-                "auth_type": auth_type.value,
-                "enabled": enabled,
-                "config": config,
-                "created_at": now,
-                "updated_at": now,
-            },
+            payload=LibrarianProviderCreate(
+                name=name,
+                provider_type=provider_type,
+                auth_type=auth_type,
+                enabled=enabled,
+                config=config,
+                created_at=now,
+                updated_at=now,
+            ),
         )
 
         if auth_type is AuthType.API_KEY and api_key:
@@ -127,70 +136,66 @@ class LibrarianService:
                 value=oauth_access_token,
             )
 
-        return self._model_to_payload(model)
+        return build_provider_payload(model)
 
-    async def list_providers(self) -> list[dict[str, JSONValue]]:
+    async def list_providers(self) -> LibrarianProviderPayloadList:
         """List all providers for response payloads.
 
         Args:
             None.
 
-        Return:
-            List of provider payload dictionaries.
+        Returns:
+            LibrarianProviderPayloadList: Provider payloads without secrets.
         """
         providers = await self.provider_repo.list_all()
-        return [self._model_to_payload(row) for row in providers]
+        return [build_provider_payload(row) for row in providers]
 
-    async def get_provider(self, provider_id: str) -> dict[str, JSONValue]:
+    async def get_provider(self, provider_id: str) -> LibrarianProviderPayload:
         """Load one provider.
 
         Args:
             provider_id: Provider id.
 
-        Return:
+        Returns:
             Provider payload dictionary.
         """
         row = await self.provider_repo.get(provider_id)
         if row is None:
             raise NotFoundError(f"Provider not found: {provider_id}")
-        return self._model_to_payload(row)
+        return build_provider_payload(row)
 
     async def update_provider(
         self,
         provider_id: str,
-        *,
-        payload: dict[str, JSONValue],
-    ) -> dict[str, JSONValue]:
+        payload: LibrarianProviderPatchPayload,
+    ) -> LibrarianProviderPayload:
         """Patch provider configuration and optional credentials.
 
         Args:
             provider_id: Provider id.
             payload: Updatable payload with optional secret fields.
 
-        Return:
-            Updated provider payload.
+        Returns:
+            LibrarianProviderPayload: Updated provider payload without secrets.
         """
         row = await self.provider_repo.get(provider_id)
         if row is None:
             raise NotFoundError(f"Provider not found: {provider_id}")
 
-        config = payload.get("config")
-        if isinstance(config, dict):
-            _ensure_config_has_no_credentials(config)
+        if "config" in payload:
+            ensure_provider_config_has_no_credentials(payload["config"])
 
-        api_key = payload.pop("api_key", None)
-        oauth_access_token = payload.pop("oauth_access_token", None)
-        auth_type = payload.get("auth_type", row.auth_type)
-        if not isinstance(auth_type, str):
-            auth_type = str(auth_type)
+        api_key = payload.get("api_key")
+        oauth_access_token = payload.get("oauth_access_token")
+        auth_type = (
+            payload["auth_type"] if "auth_type" in payload else AuthType(row.auth_type)
+        )
 
-        if auth_type == AuthType.API_KEY.value and not isinstance(api_key, str):
+        if auth_type is AuthType.API_KEY and api_key is None:
             existing_api_key = await self.secret_repo.resolve(provider_id, "api_key")
             if not existing_api_key:
                 raise UnsupportedProviderError("API_KEY auth requires api_key")
-        if auth_type == AuthType.OAUTH.value and not isinstance(
-            oauth_access_token, str
-        ):
+        if auth_type is AuthType.OAUTH and oauth_access_token is None:
             existing_oauth_token = await self.secret_repo.resolve(
                 provider_id, "oauth_access_token"
             )
@@ -199,23 +204,23 @@ class LibrarianService:
 
         updated = await self.provider_repo.update(
             provider_id,
-            payload={key: value for key, value in payload.items() if value is not None},
+            payload=LibrarianProviderUpdate(values=_provider_update_values(payload)),
         )
 
-        if auth_type == AuthType.API_KEY.value and isinstance(api_key, str):
+        if auth_type is AuthType.API_KEY and api_key is not None:
             await self.secret_repo.set_secret(
                 provider_id=provider_id,
                 key_name="api_key",
                 value=api_key,
             )
-        if auth_type == AuthType.OAUTH.value and isinstance(oauth_access_token, str):
+        if auth_type is AuthType.OAUTH and oauth_access_token is not None:
             await self.secret_repo.set_secret(
                 provider_id=provider_id,
                 key_name="oauth_access_token",
                 value=oauth_access_token,
             )
 
-        return self._model_to_payload(updated)
+        return build_provider_payload(updated)
 
     async def delete_provider(self, provider_id: str) -> None:
         """Delete provider and all secrets.
@@ -223,7 +228,7 @@ class LibrarianService:
         Args:
             provider_id: Provider id.
 
-        Return:
+        Returns:
             None.
         """
         row = await self.provider_repo.get(provider_id)
@@ -235,14 +240,14 @@ class LibrarianService:
         self,
         provider_id: str,
         test_query: str,
-    ) -> dict[str, JSONValue]:
+    ) -> LibrarianProviderTestPayload:
         """Verify provider registration and required credential path.
 
         Args:
             provider_id: Provider id.
             test_query: Text submitted for a dry run.
 
-        Return:
+        Returns:
             Test result map.
         """
         model = await self.provider_repo.get(provider_id)
@@ -257,11 +262,10 @@ class LibrarianService:
 
     def generate_candidate_stub(
         self,
-        *,
         provider_id: str,
         prompt: str,
         seed: int | None = None,
-    ) -> dict[str, JSONValue]:
+    ) -> CreateSkillCandidateResult:
         """Generate deterministic candidate payload for prompt.
 
         Args:
@@ -269,61 +273,12 @@ class LibrarianService:
             prompt: Natural-language request.
             seed: Optional deterministic seed.
 
-        Return:
-            Candidate dictionary.
+        Returns:
+        Typed candidate result.
         """
-        normalized = prompt.strip().replace("\n", " ")
-        seed_text = "" if seed is None else str(seed)
-        digest = hashlib.sha256(
-            f"{provider_id}:{normalized}:{seed_text}".encode()
-        ).hexdigest()[:8]
-        title_prefix = normalized[:60] if normalized else "Generated skill"
-        title = f"{title_prefix} [{digest}]"
-        return {
-            "title": title,
-            "summary": f"Auto-generated skill candidate ({digest})",
-            "content": f"Generated skill from librarian {provider_id}: {normalized}",
-            "purpose": normalized,
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "request": {
-                        "type": "string",
-                    },
-                },
-            },
-            "output_schema": {
-                "type": "object",
-                "properties": {
-                    "result": {
-                        "type": "string",
-                    },
-                },
-            },
-            "required_tools": ["planner"],
-            "risk_level": "LOW",
-            "version": "1.0.0",
-            "prompt": normalized,
-            "provider_id": provider_id,
-        }
-
-    @staticmethod
-    def _model_to_payload(model: LibrarianProvider) -> dict[str, JSONValue]:
-        """Map provider ORM row into public payload.
-
-        Args:
-            model: Provider ORM-like object.
-
-        Return:
-            API payload dictionary.
-        """
-        return {
-            "id": model.id,
-            "name": model.name,
-            "provider_type": model.provider_type,
-            "auth_type": model.auth_type,
-            "enabled": model.enabled,
-            "config": model.config,
-            "created_at": model.created_at,
-            "updated_at": model.updated_at,
-        }
+        candidate_result = build_candidate_stub(
+            provider_id=provider_id,
+            prompt=prompt,
+            seed=seed,
+        )
+        return candidate_result

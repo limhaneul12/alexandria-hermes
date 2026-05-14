@@ -3,21 +3,27 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 
-from app.library.domain.entities.enums import SelectionSource
+from app.library.domain.contracts.usage_contracts import UsageCreate
 from app.library.domain.entities.read_models import UsageHistory
-from app.library.domain.repositories.usage_repository import UsageRepository
-from app.library.infrastructure.models.item import LibraryItemORM
-from app.library.infrastructure.models.usage import UsageHistoryORM
-from app.shared.types.extra_types import JSONValue
+from app.library.domain.event_enum.usage_enums import SelectionSource
+from app.library.domain.repositories.usage_repository import IUsageRepository
+from app.library.domain.types.usage_payload_types import (
+    PopularByCategoryRows,
+    PopularItemRows,
+    UsageFeedbackPayload,
+)
+from app.library.infrastructure.models.item_models import LibraryItemORM
+from app.library.infrastructure.models.usage_models import UsageHistoryORM
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-def _feedback_from(row: UsageHistoryORM) -> dict[str, JSONValue] | None:
+def _feedback_from(row: UsageHistoryORM) -> UsageFeedbackPayload | None:
     """Return typed feedback payload from an ORM row."""
     feedback = row.feedback
-    return feedback if isinstance(feedback, dict) else None
+    return cast(UsageFeedbackPayload, feedback) if isinstance(feedback, dict) else None
 
 
 def _to_read_model(row: UsageHistoryORM) -> UsageHistory:
@@ -36,7 +42,7 @@ def _to_read_model(row: UsageHistoryORM) -> UsageHistory:
     )
 
 
-class SqlAlchemyUsageRepository(UsageRepository):
+class SqlAlchemyUsageRepository(IUsageRepository):
     """Persist and query usage history with aggregates."""
 
     def __init__(self, *, session: AsyncSession) -> None:
@@ -47,15 +53,29 @@ class SqlAlchemyUsageRepository(UsageRepository):
         """
         self._session = session
 
-    async def create(self, payload: dict[str, JSONValue]) -> UsageHistory:
-        """Persist usage payload."""
-        model = UsageHistoryORM(**payload)
+    async def create(self, payload: UsageCreate) -> UsageHistory:
+        """Persist usage payload.
+
+        Args:
+            payload [UsageCreate]: Value supplied to create.
+
+        Returns:
+            UsageHistory: Value produced by create.
+        """
+        model = UsageHistoryORM(**payload.to_record())
         self._session.add(model)
         await self._session.flush()
         return _to_read_model(model)
 
     async def recent(self, *, limit: int = 20) -> list[UsageHistory]:
-        """Return latest usage rows."""
+        """Return latest usage rows.
+
+        Args:
+            limit [int]: Value supplied to recent.
+
+        Returns:
+            list[UsageHistory]: Value produced by recent.
+        """
         rows = await self._session.execute(
             select(UsageHistoryORM)
             .order_by(UsageHistoryORM.used_at.desc())
@@ -65,8 +85,16 @@ class SqlAlchemyUsageRepository(UsageRepository):
 
     async def popular(
         self, *, limit: int = 10, success_only: bool = True
-    ) -> list[tuple[str, int]]:
-        """Return most-used item IDs and counts."""
+    ) -> PopularItemRows:
+        """Return most-used item IDs and counts.
+
+        Args:
+            limit [int]: Value supplied to popular.
+            success_only [bool]: Value supplied to popular.
+
+        Returns:
+            PopularItemRows: Value produced by popular.
+        """
         query = (
             select(
                 UsageHistoryORM.item_id,
@@ -82,10 +110,15 @@ class SqlAlchemyUsageRepository(UsageRepository):
         result = await self._session.execute(query)
         return [(str(row.item_id), int(row.usage_count)) for row in result.all()]
 
-    async def popular_by_category(
-        self, *, limit: int = 10
-    ) -> list[tuple[str, str, int]]:
-        """Return category-level popularity."""
+    async def popular_by_category(self, *, limit: int = 10) -> PopularByCategoryRows:
+        """Return category-level popularity.
+
+        Args:
+            limit [int]: Value supplied to popular_by_category.
+
+        Returns:
+            PopularByCategoryRows: Value produced by popular_by_category.
+        """
         query = (
             select(
                 LibraryItemORM.category_id,
@@ -112,7 +145,14 @@ class SqlAlchemyUsageRepository(UsageRepository):
         ]
 
     async def list_by_item(self, item_id: str) -> list[UsageHistory]:
-        """Return usage events for one item."""
+        """Return usage events for one item.
+
+        Args:
+            item_id [str]: Value supplied to list_by_item.
+
+        Returns:
+            list[UsageHistory]: Value produced by list_by_item.
+        """
         rows = await self._session.execute(
             select(UsageHistoryORM)
             .where(UsageHistoryORM.item_id == item_id)
@@ -132,21 +172,31 @@ class SqlAlchemyUsageRepository(UsageRepository):
         success: bool,
         feedback: str | None,
     ) -> None:
-        """Create a usage row and return quickly."""
+        """Create a usage row and return quickly.
+
+        Args:
+            item_id [str]: Value supplied to record_event.
+            item_type [str]: Value supplied to record_event.
+            agent_name [str]: Value supplied to record_event.
+            query [str | None]: Value supplied to record_event.
+            librarian_provider [str | None]: Value supplied to record_event.
+            selection_source [SelectionSource]: Value supplied to record_event.
+            success [bool]: Value supplied to record_event.
+            feedback [str | None]: Value supplied to record_event.
+        """
+        feedback_payload: UsageFeedbackPayload | None = (
+            {"comment": feedback} if feedback else None
+        )
         await self.create(
-            {
-                "item_id": item_id,
-                "item_type": item_type,
-                "agent_name": agent_name,
-                "librarian_provider": librarian_provider,
-                "query": query,
-                "selection_source": selection_source.value,
-                "used_at": datetime.now(UTC),
-                "success": success,
-                "feedback": {
-                    "comment": feedback,
-                }
-                if feedback
-                else None,
-            }
+            UsageCreate(
+                item_id=item_id,
+                item_type=item_type,
+                agent_name=agent_name,
+                librarian_provider=librarian_provider,
+                query=query,
+                selection_source=selection_source,
+                used_at=datetime.now(UTC),
+                success=success,
+                feedback=feedback_payload,
+            )
         )

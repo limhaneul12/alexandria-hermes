@@ -5,10 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from app.library.interface.routers.dependencies import (
-    get_knowledge_service,
-    get_workflow_service,
-)
+from tests.library.interface.provider_overrides import override_library_provider
 from app.main import app
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
@@ -132,8 +129,7 @@ def test_create_knowledge_accepts_json_status_and_string_related_item_ids() -> N
     def override_knowledge_service() -> FakeKnowledgeService:
         return service
 
-    app.dependency_overrides[get_knowledge_service] = override_knowledge_service
-    try:
+    with override_library_provider("knowledge_service", override_knowledge_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
                 "/knowledge",
@@ -148,8 +144,6 @@ def test_create_knowledge_accepts_json_status_and_string_related_item_ids() -> N
                     "tags": ["strict-json"],
                 },
             )
-    finally:
-        app.dependency_overrides.pop(get_knowledge_service, None)
 
     assert response.status_code == 201
     assert response.json()["details"]["related_items"] == [_RELATED_ID]
@@ -164,15 +158,12 @@ def test_patch_knowledge_accepts_json_status_and_string_related_item_ids() -> No
     def override_knowledge_service() -> FakeKnowledgeService:
         return service
 
-    app.dependency_overrides[get_knowledge_service] = override_knowledge_service
-    try:
+    with override_library_provider("knowledge_service", override_knowledge_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.patch(
                 "/knowledge/00000000-0000-4000-8000-000000000777",
                 json={"status": "ACTIVE", "related_items": [_RELATED_ID]},
             )
-    finally:
-        app.dependency_overrides.pop(get_knowledge_service, None)
 
     assert response.status_code == 200
     assert response.json()["details"]["related_items"] == [_RELATED_ID]
@@ -187,8 +178,7 @@ def test_create_workflow_accepts_json_status_and_string_related_skill_ids() -> N
     def override_workflow_service() -> FakeWorkflowService:
         return service
 
-    app.dependency_overrides[get_workflow_service] = override_workflow_service
-    try:
+    with override_library_provider("workflow_service", override_workflow_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
                 "/workflows",
@@ -202,8 +192,6 @@ def test_create_workflow_accepts_json_status_and_string_related_skill_ids() -> N
                     "tags": ["strict-json"],
                 },
             )
-    finally:
-        app.dependency_overrides.pop(get_workflow_service, None)
 
     assert response.status_code == 201
     assert response.json()["details"]["related_skill_ids"] == [_RELATED_ID]
@@ -218,15 +206,12 @@ def test_patch_workflow_accepts_json_status_and_string_related_skill_ids() -> No
     def override_workflow_service() -> FakeWorkflowService:
         return service
 
-    app.dependency_overrides[get_workflow_service] = override_workflow_service
-    try:
+    with override_library_provider("workflow_service", override_workflow_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.patch(
                 "/workflows/00000000-0000-4000-8000-000000000777",
                 json={"status": "ACTIVE", "related_skill_ids": [_RELATED_ID]},
             )
-    finally:
-        app.dependency_overrides.pop(get_workflow_service, None)
 
     assert response.status_code == 200
     assert response.json()["details"]["related_skill_ids"] == [_RELATED_ID]

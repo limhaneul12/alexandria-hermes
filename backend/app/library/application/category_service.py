@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from app.library.domain.entities.read_models import Category
-from app.library.domain.repositories.category_repository import CategoryRepository
+from app.library.domain.repositories.category_repository import ICategoryRepository
 from app.shared.exceptions import (
     CircularCategoryError,
     NotFoundError,
@@ -13,16 +11,20 @@ from app.shared.exceptions import (
 )
 
 
-@dataclass(frozen=True)
 class CategoryService:
     """Category service object."""
 
-    category_repo: CategoryRepository
-    max_depth: int = 10
+    def __init__(
+        self,
+        category_repo: ICategoryRepository,
+        max_depth: int = 10,
+    ) -> None:
+        """Initialize category service dependencies."""
+        self.category_repo = category_repo
+        self.max_depth = max_depth
 
     async def create_category(
         self,
-        *,
         name: str,
         parent_id: str | None = None,
     ) -> Category:
@@ -32,7 +34,7 @@ class CategoryService:
             name: Name used by clients.
             parent_id: Optional parent category id.
 
-        Return:
+        Returns:
             Created category row.
         """
         if parent_id is not None and await self.category_repo.get(parent_id) is None:
@@ -45,7 +47,7 @@ class CategoryService:
         Args:
             None.
 
-        Return:
+        Returns:
             Category rows.
         """
         return await self.category_repo.list_all()
@@ -56,19 +58,19 @@ class CategoryService:
         Args:
             category_id: Target id.
 
-        Return:
+        Returns:
             Category row or ``None``.
         """
         return await self.category_repo.get(category_id)
 
-    async def update_category(self, category_id: str, *, name: str) -> Category:
+    async def update_category(self, category_id: str, name: str) -> Category:
         """Rename one category.
 
         Args:
             category_id: Target id.
             name: New name.
 
-        Return:
+        Returns:
             Updated category row.
         """
         row = await self.category_repo.update_name(category_id, name=name)
@@ -77,7 +79,6 @@ class CategoryService:
     async def move_category(
         self,
         category_id: str,
-        *,
         parent_id: str | None,
         position: int,
     ) -> Category:
@@ -88,7 +89,7 @@ class CategoryService:
             parent_id: New parent id (or ``None``).
             position: New sibling position.
 
-        Return:
+        Returns:
             Updated category row.
         """
         if category_id == parent_id:
@@ -117,14 +118,14 @@ class CategoryService:
             position=position,
         )
 
-    async def reorder_category(self, category_id: str, *, position: int) -> Category:
+    async def reorder_category(self, category_id: str, position: int) -> Category:
         """Re-order category among siblings.
 
         Args:
             category_id: Target id.
             position: New position.
 
-        Return:
+        Returns:
             Updated category row.
         """
         return await self.category_repo.reorder(
@@ -137,7 +138,7 @@ class CategoryService:
         Args:
             category_id: Target id.
 
-        Return:
+        Returns:
             None.
         """
         if await self.category_repo.get(category_id) is None:
@@ -150,14 +151,13 @@ class CategoryService:
         Args:
             None.
 
-        Return:
+        Returns:
             All category rows.
         """
         return await self.category_repo.build_tree()
 
     async def _max_depth_after_move(
         self,
-        *,
         category_id: str,
         parent_id: str | None,
     ) -> int:
@@ -167,7 +167,7 @@ class CategoryService:
             category_id: Source id.
             parent_id: New parent id.
 
-        Return:
+        Returns:
             Resulting maximum depth.
         """
         if parent_id is None:
@@ -183,7 +183,7 @@ class CategoryService:
         Args:
             root_id: Root node id.
 
-        Return:
+        Returns:
             Maximum child depth.
         """
         # Lightweight approximation for small trees.

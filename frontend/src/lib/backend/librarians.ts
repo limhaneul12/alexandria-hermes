@@ -32,7 +32,6 @@ type BackendAgent = {
   provider: string;
   description: string | null;
   capabilities: string[];
-  preferred_librarian_provider: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -45,13 +44,34 @@ function jsonInit(method: "POST" | "PATCH", body: unknown): RequestInit {
   };
 }
 
-function toSafeProviderConfig(config: Record<string, unknown>): Record<string, unknown> {
+function toSafeProviderConfig(
+  config: Record<string, unknown>,
+  providerType: ProviderType,
+): Record<string, unknown> {
   const safeConfig: Record<string, unknown> = {};
-  if (typeof config.model === "string" && config.model.trim()) {
-    safeConfig.model = config.model.trim();
-  }
-  if (typeof config.base_url === "string" && config.base_url.trim()) {
-    safeConfig.base_url = config.base_url.trim();
+  if (providerType === "MINIO") {
+    if (typeof config.endpoint === "string" && config.endpoint.trim()) {
+      safeConfig.endpoint = config.endpoint.trim();
+    }
+    if (typeof config.bucket === "string" && config.bucket.trim()) {
+      safeConfig.bucket = config.bucket.trim();
+    }
+    if (typeof config.prefix === "string") {
+      safeConfig.prefix = config.prefix.trim();
+    }
+    if (typeof config.region === "string" && config.region.trim()) {
+      safeConfig.region = config.region.trim();
+    }
+    if (typeof config.use_ssl === "boolean") {
+      safeConfig.use_ssl = config.use_ssl;
+    }
+  } else {
+    if (typeof config.model === "string" && config.model.trim()) {
+      safeConfig.model = config.model.trim();
+    }
+    if (typeof config.base_url === "string" && config.base_url.trim()) {
+      safeConfig.base_url = config.base_url.trim();
+    }
   }
   return safeConfig;
 }
@@ -64,7 +84,10 @@ function toBackendProviderPayload(
   if (payload.providerType !== undefined) body.provider_type = payload.providerType;
   if (payload.authType !== undefined) body.auth_type = payload.authType;
   if (payload.enabled !== undefined) body.enabled = payload.enabled;
-  if (payload.config !== undefined) body.config = toSafeProviderConfig(payload.config);
+  const providerType = payload.providerType;
+  if (payload.config !== undefined && providerType !== undefined) {
+    body.config = toSafeProviderConfig(payload.config, providerType);
+  }
   if (payload.credential !== undefined) {
     body.api_key = payload.credential;
   }
@@ -78,7 +101,7 @@ function toProviderDTO(provider: BackendLibrarianProvider): LibrarianProviderDTO
     providerType: provider.provider_type,
     authType: provider.auth_type,
     enabled: provider.enabled,
-    config: toSafeProviderConfig(provider.config),
+    config: toSafeProviderConfig(provider.config, provider.provider_type),
     createdAt: provider.created_at,
     updatedAt: provider.updated_at,
   };
@@ -101,7 +124,6 @@ function toAgentDTO(agent: BackendAgent): AgentDTO {
     provider: agent.provider,
     description: agent.description,
     capabilities: agent.capabilities,
-    preferredLibrarianProvider: agent.preferred_librarian_provider,
     createdAt: agent.created_at,
     updatedAt: agent.updated_at,
   };
@@ -147,15 +169,4 @@ export async function testLibrarianProviderInBackend(
 export async function loadAgentsFromBackend(): Promise<AgentDTO[]> {
   const agents = await backendFetch<BackendAgent[]>("/agents");
   return agents.map(toAgentDTO);
-}
-
-export async function updateAgentLibrarianProviderInBackend(
-  agentId: string,
-  providerId: string | null,
-): Promise<AgentDTO> {
-  const agent = await backendFetch<BackendAgent>(
-    `/agents/${encodeURIComponent(agentId)}`,
-    jsonInit("PATCH", { preferred_librarian_provider: providerId }),
-  );
-  return toAgentDTO(agent);
 }
