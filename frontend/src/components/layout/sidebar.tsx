@@ -1,128 +1,140 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Archive, BookOpen, Bot, Clock3, Gauge, Heart, History, Library, Search, Settings, Sparkles } from "lucide-react";
-import { motion } from "framer-motion";
+import { usePathname, useSearchParams } from "next/navigation";
+import {
+  Archive,
+  BookOpen,
+  Bot,
+  Clock3,
+  FolderTree,
+  Home,
+  Library,
+  PlusSquare,
+  Search,
+  Settings,
+  Sparkles,
+  Star,
+  type LucideIcon,
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { t, type TranslationKey } from "@/lib/i18n";
 import { useLibraryStore } from "@/store/library-store";
 
-const exploreItems = [
-  { label: "카테고리", href: "/library", icon: Library },
-  { label: "추천 아카이브", href: "/dashboard#recommended", icon: Sparkles },
-  { label: "최근에 가져간 스킬", href: "/dashboard#recent", icon: Clock3 },
-  { label: "즐겨찾기", href: "/library?view=favorites", icon: Heart },
-  { label: "내 기록", href: "/dashboard#usage", icon: History },
+type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active?: "exact" | "library" | "type-skill" | "type-prompt" | "settings" | "librarians" };
+type NavSection = { titleKey: TranslationKey | "libraryStatic"; items: NavItem[] };
+
+const sections: NavSection[] = [
+  {
+    titleKey: "libraryStatic",
+    items: [
+      { labelKey: "home", href: "/dashboard", icon: Home, active: "exact" },
+      { labelKey: "explore", href: "/library", icon: Search, active: "library" },
+      { labelKey: "categories", href: "/library#categories", icon: FolderTree },
+      { labelKey: "recent", href: "/library?sort=recent", icon: Clock3 },
+      { labelKey: "favorites", href: "/library?sort=popular", icon: Star },
+    ],
+  },
+  {
+    titleKey: "mySpace",
+    items: [
+      { labelKey: "myLibrary", href: "/library", icon: Library, active: "library" },
+      { labelKey: "mySkills", href: "/library?type=SKILL", icon: BookOpen, active: "type-skill" },
+      { labelKey: "myPrompts", href: "/library?type=PROMPT", icon: Archive, active: "type-prompt" },
+    ],
+  },
+  {
+    titleKey: "createSection",
+    items: [
+      { labelKey: "createSkill", href: "/library?create=skill", icon: PlusSquare },
+      { labelKey: "createPrompt", href: "/library?create=prompt", icon: PlusSquare },
+    ],
+  },
+  {
+    titleKey: "aiLibrarian",
+    items: [
+      { labelKey: "librarian", href: "/settings#librarians", icon: Bot, active: "librarians" },
+      { labelKey: "recommendations", href: "/dashboard#archive-philosophy", icon: Sparkles },
+    ],
+  },
+  {
+    titleKey: "settings",
+    items: [
+      { labelKey: "settings", href: "/settings", icon: Settings, active: "settings" },
+      { labelKey: "userGuide", href: "/dashboard", icon: BookOpen, active: "exact" },
+    ],
+  },
 ];
 
-const settingsItems = [
-  { label: "에이전트", href: "/agents", icon: Bot },
-  { label: "라이브러리 설정", href: "/settings#library", icon: BookOpen },
-  { label: "라리언 설정", href: "/settings", icon: Settings },
-];
-
-function isActive(pathname: string, href: string) {
-  const cleanHref = href.split("?")[0].split("#")[0];
-  if (cleanHref === "/dashboard") return pathname === "/dashboard";
-  if (cleanHref === "/library") return pathname.startsWith("/library");
-  return pathname === cleanHref;
+function isActive(pathname: string, params: URLSearchParams, active?: string) {
+  if (!active) return false;
+  if (active === "exact") return pathname === "/dashboard" || pathname === "/";
+  if (active === "settings") return pathname === "/settings" && typeof window !== "undefined" && window.location.hash !== "#librarians";
+  if (active === "librarians") return pathname === "/settings" && typeof window !== "undefined" && window.location.hash === "#librarians";
+  if (!pathname.startsWith("/library")) return false;
+  if (active === "type-skill") return params.get("type") === "SKILL";
+  if (active === "type-prompt") return params.get("type") === "PROMPT";
+  if (active === "library") return !params.get("type") && !params.get("create");
+  return false;
 }
 
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const language = useLibraryStore((state) => state.language);
   const collapsed = useLibraryStore((state) => state.sidebarCollapsed);
-  const setCollapsed = useLibraryStore((state) => state.setSidebarCollapsed);
-
-  const renderLink = (item: { label: string; href: string; icon: typeof Archive }) => {
-    const Icon = item.icon;
-    return (
-      <Link
-        key={item.label}
-        href={item.href}
-        className={cn(
-          "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition",
-          isActive(pathname, item.href)
-            ? "border border-gold-300/20 bg-gold-300/10 text-gold-100"
-            : "text-stone-400 hover:bg-white/[0.04] hover:text-parchment",
-        )}
-      >
-        <Icon className="h-4 w-4 shrink-0" />
-        {!collapsed && <span>{item.label}</span>}
-      </Link>
-    );
-  };
-
   return (
-    <motion.aside
-      animate={{ width: collapsed ? 82 : 250 }}
-      transition={{ duration: 0.2 }}
-      className="sticky top-0 hidden h-screen shrink-0 border-r border-white/10 bg-[#080807]/95 p-4 text-stone-300 lg:block"
-    >
-      <div className="flex h-full flex-col gap-5">
-        <div className="flex items-center gap-3 border-b border-white/10 pb-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-gold-300/30 bg-gold-300/10 text-gold-100">
-            <Archive className="h-5 w-5" />
+    <aside className={`fixed inset-y-0 left-0 z-40 hidden overflow-y-auto border-r border-white/15 bg-[#050505] text-white transition-[width] lg:block ${collapsed ? "w-[72px]" : "w-[240px]"}`}>
+      <div className={`flex h-[74px] items-center gap-3 border-b border-white/15 ${collapsed ? "justify-center px-0" : "px-7"}`}>
+        <Archive className="h-8 w-8 text-white/70" aria-hidden="true" />
+        {!collapsed ? (
+          <div className="font-serif text-lg font-bold uppercase leading-5 tracking-[0.13em]" translate="no">
+            <p>Alexandria</p>
+            <p>Archive</p>
           </div>
-          {!collapsed && (
-            <div>
-              <p className="font-serif text-base tracking-[0.22em] text-gold-100">ALEXANDRIA</p>
-              <p className="text-[10px] uppercase tracking-[0.34em] text-bronze">Hermes</p>
-            </div>
-          )}
-        </div>
-
-        <Link
-          href="/library"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition",
-            pathname.startsWith("/library")
-              ? "border border-gold-300/20 bg-gold-300/10 text-gold-100"
-              : "bg-white/[0.04] text-parchment hover:bg-white/[0.07]",
-          )}
-        >
-          <BookOpen className="h-4 w-4" />
-          {!collapsed && <span>서재로 가기</span>}
-        </Link>
-
-        <nav className="flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
-          <div className="space-y-1">
-            {renderLink({ label: "대시보드", href: "/dashboard", icon: Gauge })}
-          </div>
-
-          <div className="space-y-2">
-            {!collapsed && <p className="px-3 text-xs font-medium text-stone-500">탐색</p>}
-            <div className="space-y-1">{exploreItems.map(renderLink)}</div>
-          </div>
-
-          <div className="space-y-2">
-            {!collapsed && <p className="px-3 text-xs font-medium text-stone-500">설정</p>}
-            <div className="space-y-1">{settingsItems.map(renderLink)}</div>
-          </div>
-        </nav>
-
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-          {!collapsed ? (
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full border border-gold-300/30 bg-gold-300/10" />
-                <div>
-                  <p className="text-xs text-stone-500">현재 에이전트</p>
-                  <p className="font-serif text-lg text-parchment">Hermes</p>
-                </div>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setCollapsed(true)} aria-label="사이드바 접기">
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <Button variant="ghost" size="icon" onClick={() => setCollapsed(false)} aria-label="사이드바 펼치기">
-              <Bot className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
+        ) : null}
       </div>
-    </motion.aside>
+      <nav className={`space-y-5 py-6 ${collapsed ? "px-3" : "px-6"}`}>
+        {sections.map((section) => (
+          <section key={section.titleKey} className="border-b border-white/10 pb-4 last:border-b-0">
+            {!collapsed ? (
+              <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white/66">
+                {section.titleKey === "libraryStatic" ? t(language, "library") : t(language, section.titleKey)}
+              </p>
+            ) : null}
+            <div className="space-y-1">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(pathname, searchParams, item.active);
+                return (
+                  <Link
+                    key={`${section.titleKey}-${item.labelKey}`}
+                    href={item.href}
+                    title={collapsed ? t(language, item.labelKey) : undefined}
+                    className={`group flex h-8 items-center gap-3 border-l text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${collapsed ? "justify-center px-0" : "pl-3 pr-2"} ${
+                      active ? "border-white bg-transparent text-white" : "border-transparent text-white/70 hover:border-white/30 hover:bg-transparent hover:text-white"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    {!collapsed ? t(language, item.labelKey) : null}
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+        {!collapsed ? (
+          <Image
+            src="/librarian-reference.png"
+            alt="Librarian reading in the archive"
+            width={482}
+            height={512}
+            className="h-auto w-full object-cover grayscale"
+            priority
+          />
+        ) : null}
+      </nav>
+    </aside>
   );
 }

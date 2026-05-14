@@ -8,49 +8,47 @@ import pytest
 from app.library.application.item_service import ItemService
 from app.library.application.librarian_service import LibrarianService
 from app.library.application.skill_service import SkillService
-from app.library.domain.entities.enums import ItemType
+from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
+from app.library.domain.contracts.librarian_provider_contracts import (
+    LibrarianProviderCreate,
+    LibrarianProviderUpdate,
+)
+from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.entities.read_models import LibrarianProvider, LibraryItem
-from app.library.domain.repositories.item_repository import ItemRepository
+from app.library.domain.repositories.item_repository import IItemRepository
 from app.library.domain.repositories.librarian_repository import (
-    LibrarianProviderRepository,
-    ProviderSecretRepository,
+    ILibrarianProviderRepository,
+    IProviderSecretRepository,
 )
-from app.library.interface.routers.dependencies import (
-    get_librarian_service,
-    get_skill_service,
-)
+from tests.library.interface.provider_overrides import override_library_provider
 from app.main import app
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
 
 
-class FakeItemRepository(ItemRepository):
+class FakeItemRepository(IItemRepository):
     """In-memory item repository for skill router contract tests."""
 
     def __init__(self) -> None:
         """Initialize captured payload state."""
         self.created_payload: dict[str, JSONValue] | None = None
 
-    async def create(self, *, payload: dict[str, JSONValue]) -> LibraryItem:
+    async def create(self, *, payload: ItemCreate) -> LibraryItem:
         """Create one library item."""
-        self.created_payload = payload
+        self.created_payload = payload.to_record()
         return LibraryItem(
             id="00000000-0000-4000-8000-000000000123",
-            item_type=str(payload["item_type"]),
-            title=str(payload["title"]),
-            summary=payload["summary"] if isinstance(payload["summary"], str) else None,
-            content=str(payload["content"]),
-            category_id=payload["category_id"]
-            if isinstance(payload["category_id"], str)
-            else None,
-            tags=[tag for tag in payload["tags"] if isinstance(tag, str)]
-            if isinstance(payload["tags"], list)
-            else [],
-            status=str(payload["status"]),
-            source_type=str(payload["source_type"]),
-            created_by_type=str(payload["created_by_type"]),
-            created_by_name=str(payload["created_by_name"]),
-            details=payload["details"] if isinstance(payload["details"], dict) else {},
+            item_type=payload.item_type.value,
+            title=payload.title,
+            summary=payload.summary,
+            content=payload.content,
+            category_id=payload.category_id,
+            tags=payload.tags,
+            status=payload.status.value,
+            source_type=payload.source_type.value,
+            created_by_type=payload.created_by_type,
+            created_by_name=payload.created_by_name,
+            details=payload.details,
             created_at=datetime(2026, 5, 12, 10, 0, tzinfo=UTC),
             updated_at=datetime(2026, 5, 12, 10, 5, tzinfo=UTC),
             is_archived=False,
@@ -60,7 +58,7 @@ class FakeItemRepository(ItemRepository):
         self,
         item_id: str,
         *,
-        payload: dict[str, JSONValue],
+        payload: ItemUpdate,
     ) -> LibraryItem:
         """Update is unused by these tests."""
         raise AssertionError("update should not be called")
@@ -100,10 +98,10 @@ class FakeItemRepository(ItemRepository):
         return []
 
 
-class UnusedLibrarianProviderRepository(LibrarianProviderRepository):
+class UnusedLibrarianProviderRepository(ILibrarianProviderRepository):
     """Repository placeholder for deterministic librarian generation tests."""
 
-    async def create(self, payload: dict[str, JSONValue]) -> LibrarianProvider:
+    async def create(self, payload: LibrarianProviderCreate) -> LibrarianProvider:
         """Create is unused by these tests."""
         raise AssertionError("create should not be called")
 
@@ -126,7 +124,7 @@ class UnusedLibrarianProviderRepository(LibrarianProviderRepository):
         raise AssertionError("delete should not be called")
 
 
-class UnusedProviderSecretRepository(ProviderSecretRepository):
+class UnusedProviderSecretRepository(IProviderSecretRepository):
     """Secret repository placeholder for deterministic generation tests."""
 
     async def resolve(self, provider_id: str, key_name: str) -> str | None:
@@ -172,12 +170,9 @@ def _post_submit_skill_by_agent(
     def override_skill_service() -> SkillService:
         return SkillService(item_service=ItemService(item_repo=item_repo))
 
-    app.dependency_overrides[get_skill_service] = override_skill_service
-    try:
+    with override_library_provider("skill_service", override_skill_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post("/skills/submit-by-agent", json=payload)
-    finally:
-        app.dependency_overrides.pop(get_skill_service, None)
 
     return response.status_code, response.json()
 
@@ -189,8 +184,7 @@ def test_create_skill_registers_manual_skill_with_public_json_payload() -> None:
     def override_skill_service() -> SkillService:
         return SkillService(item_service=ItemService(item_repo=item_repo))
 
-    app.dependency_overrides[get_skill_service] = override_skill_service
-    try:
+    with override_library_provider("skill_service", override_skill_service()):
         with TestClient(app) as client:
             response = client.post(
                 "/skills",
@@ -211,8 +205,6 @@ def test_create_skill_registers_manual_skill_with_public_json_payload() -> None:
                     "status": "DRAFT",
                 },
             )
-    finally:
-        app.dependency_overrides.pop(get_skill_service, None)
 
     assert response.status_code == 201
     assert response.json()["title"] == "Manual FastAPI skill"
@@ -232,8 +224,7 @@ def test_submit_skill_by_agent_accepts_json_enum_values_and_returns_created_skil
     def override_skill_service() -> SkillService:
         return SkillService(item_service=ItemService(item_repo=item_repo))
 
-    app.dependency_overrides[get_skill_service] = override_skill_service
-    try:
+    with override_library_provider("skill_service", override_skill_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
                 "/skills/submit-by-agent",
@@ -255,8 +246,6 @@ def test_submit_skill_by_agent_accepts_json_enum_values_and_returns_created_skil
                     "status": "ACTIVE",
                 },
             )
-    finally:
-        app.dependency_overrides.pop(get_skill_service, None)
 
     assert response.status_code == 201
     assert response.json() == {
@@ -301,9 +290,10 @@ def test_generate_with_librarian_creates_draft_skill_from_public_json_payload() 
             secret_repo=UnusedProviderSecretRepository(),
         )
 
-    app.dependency_overrides[get_skill_service] = override_skill_service
-    app.dependency_overrides[get_librarian_service] = override_librarian_service
-    try:
+    with (
+        override_library_provider("skill_service", override_skill_service()),
+        override_library_provider("librarian_service", override_librarian_service()),
+    ):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
                 "/skills/generate-with-librarian",
@@ -315,9 +305,6 @@ def test_generate_with_librarian_creates_draft_skill_from_public_json_payload() 
                     "created_by_name": "alex",
                 },
             )
-    finally:
-        app.dependency_overrides.pop(get_skill_service, None)
-        app.dependency_overrides.pop(get_librarian_service, None)
 
     assert response.status_code == 201
     assert response.json() == {

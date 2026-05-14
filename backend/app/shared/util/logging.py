@@ -25,7 +25,7 @@ def redact_sensitive_text(value: str | None) -> str | None:
     Args:
         value: Text that may contain key-value formatted credentials.
 
-    Return:
+    Returns:
         Text with credential values replaced by ``<redacted>``.
     """
     if value is None:
@@ -53,7 +53,7 @@ def log_record_extra_str(
         key: Name of the extra field.
         default: Value returned when the field is missing or not a string.
 
-    Return:
+    Returns:
         Extra string value, or fallback default.
     """
     value = record.__dict__.get(key)
@@ -75,7 +75,7 @@ def log_record_extra_str_or_default(
         key: See function signature.
         default: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     value = log_record_extra_str(record=record, key=key, default=default)
@@ -97,7 +97,7 @@ def log_record_extra_float(
         key: Name of the extra field.
         default: Value returned when the field is missing or non-numeric.
 
-    Return:
+    Returns:
         Float-converted value, or fallback default.
     """
     value = record.__dict__.get(key)
@@ -119,7 +119,7 @@ def log_record_extra_int(
         key: Name of the extra field.
         default: Value returned when the field is missing or not an int.
 
-    Return:
+    Returns:
         Integer extra value, or fallback default.
     """
     value = record.__dict__.get(key)

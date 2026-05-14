@@ -11,7 +11,7 @@ def settings_model_config(*, env_prefix: str) -> SettingsConfigDict:
     Args:
         env_prefix: Environment variable prefix such as ``SERVICE_`` or ``STREAM_``.
 
-    Return:
+    Returns:
         Settings config dictionary that supports loading from ``.env``.
     """
     return SettingsConfigDict(

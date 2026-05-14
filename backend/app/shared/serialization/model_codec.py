@@ -13,7 +13,7 @@ def model_to_dict(model: BaseModel) -> JSONObject:
     Args:
         model: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     return model.model_dump()
@@ -25,7 +25,7 @@ def dumps_model(model: BaseModel) -> bytes:
     Args:
         model: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     return dumps_json(model_to_dict(model))

@@ -1,55 +1,63 @@
-"""Behavior tests for API-key librarian provider SDK client foundation."""
+"""Behavior tests for OpenAI-only API-key librarian provider SDK client foundation."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 
 import anyio
 from app.library.application.librarian_service import LibrarianService
-from app.library.domain.entities.enums import AuthType, ProviderType
+from app.library.domain.contracts.librarian_provider_contracts import (
+    LibrarianProviderCreate,
+    LibrarianProviderUpdate,
+)
+from app.library.domain.event_enum.provider_enums import AuthType, ProviderType
 from app.library.domain.entities.read_models import LibrarianProvider
 from app.library.domain.repositories.librarian_repository import (
-    LibrarianProviderRepository,
-    ProviderSecretRepository,
+    ILibrarianProviderRepository,
+    IProviderSecretRepository,
 )
 from app.library.infrastructure.librarians.clients import (
+    ApiKeyCredential,
     LibrarianClientFactory,
     ProviderClientTestResult,
     SecretResolver,
 )
+from app.library.infrastructure.librarians.openai_adapter import OpenAIClientConfig
 from app.shared.types.extra_types import JSONValue
+from openai import OpenAI
 
-SECRET_VALUE = "sk-test-secret-value-never-leak"
+SECRET_VALUE = "sk-tes...leak"
 PROVIDER_ID = "00000000-0000-4000-8000-000000000777"
 
 
 class RecordingSdkClient:
-    """Fake SDK client that records construction kwargs without network I/O."""
+    """Fake SDK client that records typed constructor config without network I/O."""
 
-    def __init__(self, **kwargs: object) -> None:
-        """Capture SDK constructor keyword args."""
-        self.kwargs = kwargs
+    def __init__(self, config: OpenAIClientConfig) -> None:
+        """Capture SDK constructor config."""
+        self.config = config
 
 
-class RecordingConstructor:
-    """Callable fake SDK constructor for assertions at the network boundary."""
+class RecordingOpenAIClientBuilder:
+    """Callable fake OpenAI SDK builder for assertions at the network boundary."""
 
     def __init__(self) -> None:
         """Initialize empty call list."""
-        self.calls: list[dict[str, object]] = []
+        self.calls: list[OpenAIClientConfig] = []
 
-    def __call__(self, **kwargs: object) -> RecordingSdkClient:
-        """Record SDK constructor kwargs and return a fake SDK client."""
-        self.calls.append(kwargs)
-        return RecordingSdkClient(**kwargs)
+    def __call__(self, config: OpenAIClientConfig) -> OpenAI:
+        """Record SDK constructor config and return a fake SDK client."""
+        self.calls.append(config)
+        return cast(OpenAI, RecordingSdkClient(config))
 
 
-class ExplodingConstructor:
-    """SDK constructor that fails if a disabled or uncredentialed provider instantiates."""
+class ExplodingOpenAIClientBuilder:
+    """OpenAI SDK builder that fails if construction is attempted."""
 
-    def __call__(self, **kwargs: object) -> RecordingSdkClient:
+    def __call__(self, config: OpenAIClientConfig) -> OpenAI:
         """Raise if client construction is attempted."""
-        raise AssertionError(f"SDK client should not instantiate: {kwargs!r}")
+        raise AssertionError(f"SDK client should not instantiate: {config!r}")
 
 
 class StaticSecretResolver:
@@ -66,14 +74,14 @@ class StaticSecretResolver:
         return self.value
 
 
-class FakeProviderRepository(LibrarianProviderRepository):
+class FakeProviderRepository(ILibrarianProviderRepository):
     """In-memory provider repository for service wiring behavior."""
 
     def __init__(self, provider: LibrarianProvider) -> None:
         """Store one provider."""
         self.provider = provider
 
-    async def create(self, payload: dict[str, JSONValue]) -> LibrarianProvider:
+    async def create(self, payload: LibrarianProviderCreate) -> LibrarianProvider:
         """Create is unused in this test double."""
         raise NotImplementedError
 
@@ -88,7 +96,7 @@ class FakeProviderRepository(LibrarianProviderRepository):
         return [self.provider]
 
     async def update(
-        self, provider_id: str, payload: dict[str, JSONValue]
+        self, provider_id: str, payload: LibrarianProviderUpdate
     ) -> LibrarianProvider:
         """Update is unused in this test double."""
         raise NotImplementedError
@@ -98,7 +106,7 @@ class FakeProviderRepository(LibrarianProviderRepository):
         raise NotImplementedError
 
 
-class FakeSecretRepository(ProviderSecretRepository):
+class FakeSecretRepository(IProviderSecretRepository):
     """In-memory secret repository for service wiring behavior."""
 
     def __init__(self, value: str | None) -> None:
@@ -148,7 +156,7 @@ class RecordingClientFactory:
 
 def _provider(
     *,
-    provider_type: ProviderType = ProviderType.OPENAI,
+    provider_type: str = ProviderType.OPENAI.value,
     auth_type: AuthType = AuthType.API_KEY,
     enabled: bool = True,
     config: dict[str, JSONValue] | None = None,
@@ -158,7 +166,7 @@ def _provider(
     return LibrarianProvider(
         id=PROVIDER_ID,
         name="sdk-backed librarian",
-        provider_type=provider_type.value,
+        provider_type=provider_type,
         auth_type=auth_type.value,
         enabled=enabled,
         config={} if config is None else config,
@@ -172,69 +180,18 @@ def _secret_is_absent_from(value: object) -> bool:
     return SECRET_VALUE not in repr(value) and SECRET_VALUE not in str(value)
 
 
-def test_connection_uses_openai_style_sdk_for_openai_and_openrouter_api_keys() -> None:
-    """OPENAI and OPENROUTER providers should use OpenAI-style SDK construction."""
+def test_connection_uses_official_openai_sdk_for_openai_api_keys() -> None:
+    """OPENAI providers should use official OpenAI SDK construction only."""
 
     async def scenario() -> None:
-        openai_constructor = RecordingConstructor()
+        openai_client_builder = RecordingOpenAIClientBuilder()
         factory = LibrarianClientFactory(
-            openai_constructor=openai_constructor,
-            anthropic_constructor=ExplodingConstructor(),
-            dry_run=True,
-        )
-
-        openai_result = await factory.test_connection(
-            provider=_provider(config={"model": "gpt-4.1"}),
-            secret_resolver=StaticSecretResolver(SECRET_VALUE),
-            test_query="ping",
-        )
-        openrouter_result = await factory.test_connection(
-            provider=_provider(
-                provider_type=ProviderType.OPENROUTER,
-                config={"model": "openai/gpt-4.1"},
-            ),
-            secret_resolver=StaticSecretResolver(SECRET_VALUE),
-            test_query="ping",
-        )
-
-        assert openai_result.as_public_dict() == {
-            "provider_id": PROVIDER_ID,
-            "ok": True,
-            "message": "OPENAI SDK client dry-run accepted query",
-        }
-        assert openrouter_result.as_public_dict() == {
-            "provider_id": PROVIDER_ID,
-            "ok": True,
-            "message": "OPENROUTER SDK client dry-run accepted query",
-        }
-        assert openai_constructor.calls == [
-            {"api_key": SECRET_VALUE},
-            {"api_key": SECRET_VALUE, "base_url": "https://openrouter.ai/api/v1"},
-        ]
-        assert _secret_is_absent_from(openai_result.as_public_dict())
-        assert _secret_is_absent_from(openrouter_result.as_public_dict())
-        assert _secret_is_absent_from(openai_result)
-        assert _secret_is_absent_from(openrouter_result)
-
-    anyio.run(scenario)
-
-
-def test_connection_uses_anthropic_style_sdk_for_anthropic_api_keys() -> None:
-    """ANTHROPIC providers should use Anthropic-style SDK construction."""
-
-    async def scenario() -> None:
-        anthropic_constructor = RecordingConstructor()
-        factory = LibrarianClientFactory(
-            openai_constructor=ExplodingConstructor(),
-            anthropic_constructor=anthropic_constructor,
+            openai_client_builder=openai_client_builder,
             dry_run=True,
         )
 
         result = await factory.test_connection(
-            provider=_provider(
-                provider_type=ProviderType.ANTHROPIC,
-                config={"model": "claude-sonnet-4-5"},
-            ),
+            provider=_provider(config={"model": "gpt-5.5"}),
             secret_resolver=StaticSecretResolver(SECRET_VALUE),
             test_query="ping",
         )
@@ -242,11 +199,37 @@ def test_connection_uses_anthropic_style_sdk_for_anthropic_api_keys() -> None:
         assert result.as_public_dict() == {
             "provider_id": PROVIDER_ID,
             "ok": True,
-            "message": "ANTHROPIC SDK client dry-run accepted query",
+            "message": "OPENAI SDK client dry-run accepted query",
         }
-        assert anthropic_constructor.calls == [{"api_key": SECRET_VALUE}]
+        assert openai_client_builder.calls == [OpenAIClientConfig(api_key=SECRET_VALUE)]
         assert _secret_is_absent_from(result.as_public_dict())
         assert _secret_is_absent_from(result)
+
+    anyio.run(scenario)
+
+
+def test_connection_rejects_stale_non_openai_agent_provider_rows() -> None:
+    """Removed non-OpenAI agent provider rows should stop before SDK construction."""
+
+    async def scenario() -> None:
+        factory = LibrarianClientFactory(
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
+            dry_run=True,
+        )
+
+        for provider_type in ["OPENROUTER", "ANTHROPIC", "HERMES", "LOCAL", "CUSTOM"]:
+            result = await factory.test_connection(
+                provider=_provider(provider_type=provider_type),
+                secret_resolver=StaticSecretResolver(SECRET_VALUE),
+                test_query="ping",
+            )
+            assert result.as_public_dict() == {
+                "provider_id": PROVIDER_ID,
+                "ok": False,
+                "message": (
+                    f"provider type {provider_type} is unsupported for librarian SDK clients"
+                ),
+            }
 
     anyio.run(scenario)
 
@@ -258,11 +241,9 @@ def test_connection_does_not_instantiate_sdk_when_provider_is_disabled_or_secret
 
     async def scenario() -> None:
         factory = LibrarianClientFactory(
-            openai_constructor=ExplodingConstructor(),
-            anthropic_constructor=ExplodingConstructor(),
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
             dry_run=True,
         )
-
         disabled_secret_resolver = StaticSecretResolver(SECRET_VALUE)
         disabled_result = await factory.test_connection(
             provider=_provider(enabled=False),
@@ -290,25 +271,16 @@ def test_connection_does_not_instantiate_sdk_when_provider_is_disabled_or_secret
     anyio.run(scenario)
 
 
-def test_connection_reports_clear_unsupported_provider_and_auth_for_api_key_only_scope() -> (
-    None
-):
-    """Unsupported providers and OAuth auth should be clear without SDK construction."""
+def test_connection_reports_clear_unsupported_auth_for_api_key_only_scope() -> None:
+    """OAuth auth should be clear without SDK construction."""
 
     async def scenario() -> None:
         factory = LibrarianClientFactory(
-            openai_constructor=ExplodingConstructor(),
-            anthropic_constructor=ExplodingConstructor(),
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
             dry_run=True,
         )
-
         oauth_result = await factory.test_connection(
             provider=_provider(auth_type=AuthType.OAUTH),
-            secret_resolver=StaticSecretResolver(SECRET_VALUE),
-            test_query="ping",
-        )
-        custom_result = await factory.test_connection(
-            provider=_provider(provider_type=ProviderType.CUSTOM),
             secret_resolver=StaticSecretResolver(SECRET_VALUE),
             test_query="ping",
         )
@@ -318,18 +290,12 @@ def test_connection_reports_clear_unsupported_provider_and_auth_for_api_key_only
             "ok": False,
             "message": "auth type OAUTH is unsupported for API-key SDK clients",
         }
-        assert custom_result.as_public_dict() == {
-            "provider_id": PROVIDER_ID,
-            "ok": False,
-            "message": "provider type CUSTOM is unsupported for librarian SDK clients",
-        }
 
     anyio.run(scenario)
 
 
 def test_provider_client_result_never_exposes_api_key_value() -> None:
     """Connection result repr, str, and dict should never include credential values."""
-
     result = ProviderClientTestResult(
         provider_id=PROVIDER_ID,
         ok=True,
@@ -345,18 +311,69 @@ def test_provider_client_result_never_exposes_api_key_value() -> None:
     assert _secret_is_absent_from(result)
 
 
+def test_api_key_credential_repr_never_exposes_api_key_value() -> None:
+    """API-key credential wrapper should redact repr and str output."""
+    credential = ApiKeyCredential(SECRET_VALUE)
+
+    assert repr(credential) == "ApiKeyCredential(value=***redacted***)"
+    assert str(credential) == "ApiKeyCredential(value=***redacted***)"
+    assert _secret_is_absent_from(credential)
+
+
+def test_minio_connection_messages_never_expose_credential_values() -> None:
+    """MINIO validation remains storage-only and should not expose credential values."""
+
+    async def scenario() -> None:
+        factory = LibrarianClientFactory(
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
+            dry_run=True,
+        )
+        minio_provider = _provider(
+            provider_type=ProviderType.MINIO.value,
+            config={"endpoint": "https://minio.local", "bucket": "library"},
+        )
+
+        valid_result = await factory.test_connection(
+            provider=minio_provider,
+            secret_resolver=StaticSecretResolver("access-key:secret-key"),
+            test_query="ping",
+        )
+        malformed_result = await factory.test_connection(
+            provider=minio_provider,
+            secret_resolver=StaticSecretResolver("access-key-without-secret"),
+            test_query="ping",
+        )
+
+        assert valid_result.as_public_dict() == {
+            "provider_id": PROVIDER_ID,
+            "ok": True,
+            "message": "MINIO settings accepted for object listing",
+        }
+        assert malformed_result.as_public_dict() == {
+            "provider_id": PROVIDER_ID,
+            "ok": False,
+            "message": "MINIO credential must be access_key:secret_key",
+        }
+        for result in [valid_result, malformed_result]:
+            assert "access-key" not in repr(result)
+            assert "secret-key" not in repr(result)
+            assert "access-key" not in str(result.as_public_dict())
+            assert "secret-key" not in str(result.as_public_dict())
+
+    anyio.run(scenario)
+
+
 def test_librarian_service_test_provider_uses_client_factory_without_network() -> None:
     """LibrarianService should delegate provider testing to the client factory abstraction."""
 
     async def scenario() -> None:
-        provider = _provider(provider_type=ProviderType.ANTHROPIC)
+        provider = _provider()
         factory = RecordingClientFactory()
         service = LibrarianService(
             provider_repo=FakeProviderRepository(provider),
             secret_repo=FakeSecretRepository(SECRET_VALUE),
             client_factory=factory,
         )
-
         result = await service.test_provider(provider.id, test_query="library ping")
 
         assert result == {

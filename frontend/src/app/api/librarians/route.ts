@@ -16,12 +16,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function safeConfig(value: unknown): Record<string, unknown> {
+function safeConfig(value: unknown, providerType: ProviderType): Record<string, unknown> {
   if (!isRecord(value)) return {};
   const config: Record<string, unknown> = {};
-  if (typeof value.model === "string" && value.model.trim()) config.model = value.model.trim();
-  if (typeof value.base_url === "string" && value.base_url.trim()) {
-    config.base_url = value.base_url.trim();
+  if (providerType === "MINIO") {
+    if (typeof value.endpoint === "string" && value.endpoint.trim()) {
+      config.endpoint = value.endpoint.trim();
+    }
+    if (typeof value.bucket === "string" && value.bucket.trim()) {
+      config.bucket = value.bucket.trim();
+    }
+    if (typeof value.prefix === "string") config.prefix = value.prefix.trim();
+    if (typeof value.region === "string" && value.region.trim()) {
+      config.region = value.region.trim();
+    }
+    if (typeof value.use_ssl === "boolean") config.use_ssl = value.use_ssl;
+  } else {
+    if (typeof value.model === "string" && value.model.trim()) config.model = value.model.trim();
+    if (typeof value.base_url === "string" && value.base_url.trim()) {
+      config.base_url = value.base_url.trim();
+    }
   }
   return config;
 }
@@ -67,7 +81,7 @@ export async function POST(request: Request) {
       providerType: body.providerType,
       authType: body.authType,
       enabled: typeof body.enabled === "boolean" ? body.enabled : true,
-      config: safeConfig(body.config),
+      config: safeConfig(body.config, body.providerType),
       credential,
     };
     const provider = await createLibrarianProviderInBackend(payload);

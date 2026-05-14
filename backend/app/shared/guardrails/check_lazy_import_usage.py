@@ -25,7 +25,7 @@ class LazyImportVisitor(ast.NodeVisitor):
             path: See function signature.
             lines: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._path = path
@@ -40,7 +40,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         if self._is_type_checking_guard(node.test):
@@ -59,7 +59,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._scope_depth += 1
@@ -72,7 +72,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._scope_depth += 1
@@ -85,7 +85,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._scope_depth += 1
@@ -98,7 +98,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._check_local_import(node=node, label="local import")
@@ -110,7 +110,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._check_local_import(node=node, label="local import-from")
@@ -122,7 +122,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         call_name = self._call_name(node.func)
@@ -142,7 +142,7 @@ class LazyImportVisitor(ast.NodeVisitor):
             node: See function signature.
             label: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         if self._type_checking_depth > 0:
@@ -158,7 +158,7 @@ class LazyImportVisitor(ast.NodeVisitor):
             lineno: See function signature.
             label: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         if has_justification(
@@ -175,7 +175,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             Return value.
         """
         if isinstance(node, ast.Name):
@@ -190,7 +190,7 @@ class LazyImportVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             Return value.
         """
         if isinstance(node, ast.Name):
@@ -206,7 +206,7 @@ def collect_failures(backend_root: Path | None = None) -> list[str]:
     Args:
         backend_root: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     failures: list[str] = []
@@ -226,7 +226,7 @@ def ensure_clean(backend_root: Path | None = None) -> None:
     Args:
         backend_root: See function signature.
 
-    Return:
+    Returns:
         None.
     """
     failures = collect_failures(backend_root)
@@ -246,7 +246,7 @@ def main() -> int:
     Args:
         None.
 
-    Return:
+    Returns:
         Return value.
     """
     failures = collect_failures()

@@ -5,11 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from app.library.application.item_service import ItemService
-from app.library.domain.entities.enums import (
+from app.library.domain.event_enum.item_enums import (
     CreatedByType,
     ItemStatus,
     ItemType,
     SourceType,
+)
+from app.library.domain.types.item_payload_types import (
+    LibraryItemListResult,
+    LibraryItemPayload,
 )
 from app.shared.exceptions import ValidationError
 from app.shared.types.extra_types import JSONValue
@@ -28,7 +32,6 @@ class WorkflowService:
 
     async def create_workflow(
         self,
-        *,
         title: str,
         summary: str | None,
         content: str,
@@ -41,7 +44,7 @@ class WorkflowService:
         created_by_name: str,
         activate: bool = True,
         status: ItemStatus | None = None,
-    ) -> dict[str, JSONValue]:
+    ) -> LibraryItemPayload:
         """Create a workflow entry.
 
         Args:
@@ -58,7 +61,7 @@ class WorkflowService:
             activate: Default activation flag.
             status: Optional forced status.
 
-        Return:
+        Returns:
             Item payload.
         """
         resolved_status = (
@@ -87,17 +90,16 @@ class WorkflowService:
 
     async def list_workflows(
         self,
-        *,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[list[dict[str, JSONValue]], int]:
+    ) -> LibraryItemListResult:
         """List workflow items.
 
         Args:
             limit: Page size.
             offset: Page offset.
 
-        Return:
+        Returns:
             Tuple of payload list and total.
         """
         return await self.item_service.list_items(
@@ -108,17 +110,16 @@ class WorkflowService:
 
     async def patch_workflow(
         self,
-        *,
         item_id: str,
         payload: Mapping[str, JSONValue],
-    ) -> dict[str, JSONValue]:
+    ) -> LibraryItemPayload:
         """Patch one workflow entry.
 
         Args:
             item_id: Target ID.
             payload: Patch payload map.
 
-        Return:
+        Returns:
             Patched payload.
         """
         item = await self.item_service.get_item(item_id)
@@ -137,11 +138,7 @@ class WorkflowService:
                 detail_fields[key] = payload[key]
 
         if detail_fields:
-            detail_payload = item.get("details")
-            if isinstance(detail_payload, dict):
-                details = detail_payload.copy()
-            else:
-                details = {}
+            details = item["details"].copy()
             details.update(detail_fields)
             base_fields["details"] = details
 

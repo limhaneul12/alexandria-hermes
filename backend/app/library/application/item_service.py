@@ -2,24 +2,75 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from app.library.application.common import item_to_dict, now_utc
-from app.library.domain.entities.enums import ItemStatus, ItemType, SourceType
-from app.library.domain.repositories.item_repository import ItemRepository
+from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
+from app.library.domain.event_enum.item_enums import (
+    CreatedByType,
+    ItemStatus,
+    ItemType,
+    SourceType,
+)
+from app.library.domain.repositories.item_repository import IItemRepository
+from app.library.domain.types.item_payload_types import (
+    ItemUpdateValues,
+    LibraryItemListResult,
+    LibraryItemPayload,
+    LibraryItemPayloadList,
+)
 from app.shared.exceptions import NotFoundError, ValidationError
-from app.shared.types.extra_types import JSONValue
+from app.shared.types.extra_types import JSONObject, JSONValue
+from app.shared.types.types_convert_utils import (
+    enum_value,
+    json_object_value,
+    now_utc,
+    required_string_value,
+    string_items,
+)
 
 
-@dataclass(frozen=True)
+def _item_update_values(payload: dict[str, JSONValue]) -> ItemUpdateValues:
+    """Convert raw patch payload into explicit item update fields.
+
+    Args:
+        payload: Patch payload from the API boundary.
+
+    Returns:
+        ItemUpdateValues: Typed patch fields accepted by the item repository.
+    """
+    values: ItemUpdateValues = {}
+    if "title" in payload:
+        values["title"] = required_string_value(payload["title"], "title")
+    if "summary" in payload:
+        summary = payload["summary"]
+        values["summary"] = (
+            None if summary is None else required_string_value(summary, "summary")
+        )
+    if "content" in payload:
+        values["content"] = required_string_value(payload["content"], "content")
+    if "category_id" in payload:
+        category_id = payload["category_id"]
+        values["category_id"] = (
+            None
+            if category_id is None
+            else required_string_value(category_id, "category_id")
+        )
+    if "tags" in payload:
+        values["tags"] = string_items(payload["tags"])
+    if "status" in payload:
+        values["status"] = enum_value(payload["status"], ItemStatus, "status")
+    if "details" in payload:
+        values["details"] = json_object_value(payload["details"])
+    return values
+
+
 class ItemService:
     """Item orchestration service."""
 
-    item_repo: ItemRepository
+    def __init__(self, item_repo: IItemRepository) -> None:
+        """Initialize item service dependencies."""
+        self.item_repo = item_repo
 
     async def create_item(
         self,
-        *,
         item_type: ItemType,
         title: str,
         summary: str | None,
@@ -28,10 +79,10 @@ class ItemService:
         tags: list[str],
         status: ItemStatus,
         source_type: SourceType,
-        created_by_type: str,
+        created_by_type: CreatedByType,
         created_by_name: str,
-        details: dict[str, JSONValue],
-    ) -> dict[str, JSONValue]:
+        details: JSONObject,
+    ) -> LibraryItemPayload:
         """Create one item and return API payload.
 
         Args:
@@ -47,63 +98,70 @@ class ItemService:
             created_by_name: Creator display name.
             details: Subtype specific detail payload.
 
-        Return:
+        Returns:
             Item payload dictionary.
         """
         now = now_utc()
         model = await self.item_repo.create(
-            payload={
-                "item_type": item_type.value,
-                "title": title,
-                "summary": summary,
-                "content": content,
-                "category_id": category_id,
-                "tags": tags,
-                "status": status.value,
-                "source_type": source_type.value,
-                "created_by_type": created_by_type,
-                "created_by_name": created_by_name,
-                "created_at": now,
-                "updated_at": now,
-                "details": details,
-                "is_archived": status is ItemStatus.ARCHIVED,
-            },
+            payload=ItemCreate(
+                item_type=item_type,
+                title=title,
+                summary=summary,
+                content=content,
+                category_id=category_id,
+                tags=tags,
+                status=status,
+                source_type=source_type,
+                created_by_type=created_by_type,
+                created_by_name=created_by_name,
+                created_at=now,
+                updated_at=now,
+                details=details,
+                is_archived=status is ItemStatus.ARCHIVED,
+            ),
         )
-        return item_to_dict(model)
+        return model.to_dict()
 
     async def update_item(
         self,
         item_id: str,
         payload: dict[str, JSONValue],
-    ) -> dict[str, JSONValue]:
+    ) -> LibraryItemPayload:
         """Patch item fields.
 
         Args:
             item_id: Target id.
             payload: Partial field map.
 
-        Return:
-            Updated payload dictionary.
+        Returns:
+            Updated item payload.
         """
         if not payload:
             raise ValidationError("No fields to update")
 
-        updated = await self.item_repo.update(item_id, payload=payload)
-        return item_to_dict(updated)
+        values = _item_update_values(payload)
+        if not values:
+            raise ValidationError("No fields to update")
 
-    async def get_item(self, item_id: str) -> dict[str, JSONValue]:
+        updated = await self.item_repo.update(
+            item_id,
+            payload=ItemUpdate(values=values),
+        )
+        return updated.to_dict()
+
+    async def get_item(self, item_id: str) -> LibraryItemPayload:
         """Read one item by id.
 
         Args:
             item_id: Target id.
 
-        Return:
+        Returns:
             Item payload dictionary.
         """
         model = await self.item_repo.get(item_id)
         if model is None:
             raise NotFoundError(f"Item not found: {item_id}")
-        return item_to_dict(model)
+        return model.to_dict()
 
     async def delete_item(self, item_id: str) -> None:
         """Delete one item.
@@ -111,7 +169,7 @@ class ItemService:
         Args:
             item_id: Target id.
 
-        Return:
+        Returns:
             None.
         """
         model = await self.item_repo.get(item_id)
@@ -121,13 +179,12 @@ class ItemService:
 
     async def list_items(
         self,
-        *,
         item_type: ItemType | None = None,
         limit: int = 100,
         offset: int = 0,
         category_id: str | None = None,
         search_query: str | None = None,
-    ) -> tuple[list[dict[str, JSONValue]], int]:
+    ) -> LibraryItemListResult:
         """List all items with optional filters.
 
         Args:
@@ -137,7 +194,7 @@ class ItemService:
             category_id: Optional category filter.
             search_query: Optional text filter.
 
-        Return:
+        Returns:
             Tuple of ``(items, total_count)``.
         """
         if item_type is None:
@@ -165,20 +222,20 @@ class ItemService:
                     or pattern in row.content.lower()
                 ]
             count = len(rows)
-        return [item_to_dict(row) for row in rows], count
+        return [row.to_dict() for row in rows], count
 
     async def search(
         self,
         query: str,
         item_type: ItemType | None = None,
-    ) -> list[dict[str, JSONValue]]:
+    ) -> LibraryItemPayloadList:
         """Search across all items via FTS5.
 
         Args:
             query: Search input.
             item_type: Optional filter.
 
-        Return:
+        Returns:
             Matched item payload list.
         """
         if not query.strip():
@@ -187,4 +244,4 @@ class ItemService:
             query=query,
             item_type=item_type,
         )
-        return [item_to_dict(row) for row in rows]
+        return [row.to_dict() for row in rows]

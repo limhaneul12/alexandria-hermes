@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from app.library.domain.entities.enums import ItemType
+from app.library.domain.event_enum.item_enums import ItemType
+from app.library.domain.types.item_payload_types import LibraryItemPayload
 from app.shared.types.extra_types import JSONValue
 from fastapi import HTTPException, status
 
@@ -14,7 +15,7 @@ def build_patch_payload(payload: Mapping[str, JSONValue]) -> dict[str, JSONValue
     Args:
         payload: Raw patch payload.
 
-    Return:
+    Returns:
         A new dict without None entries.
 
     Raises:
@@ -32,7 +33,7 @@ def build_patch_payload(payload: Mapping[str, JSONValue]) -> dict[str, JSONValue
 
 
 def ensure_item_type(
-    payload: Mapping[str, JSONValue],
+    payload: LibraryItemPayload,
     *,
     expected: ItemType,
     detail: str,
@@ -48,7 +49,8 @@ def ensure_item_type(
         HTTPException: If item type does not match.
     """
 
-    if payload.get("item_type") != expected:
+    actual_item_type = payload["item_type"]
+    if actual_item_type != expected:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=detail,

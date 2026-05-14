@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
+    "prebuild": "node scripts/clean-next-webpack-cache.mjs",
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "eslint . --max-warnings=0",

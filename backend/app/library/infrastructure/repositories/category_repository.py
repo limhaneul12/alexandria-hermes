@@ -5,27 +5,23 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.library.domain.entities.read_models import Category
-from app.library.domain.repositories.category_repository import CategoryRepository
-from app.library.infrastructure.models.category import CategoryORM
-from app.library.infrastructure.models.item import LibraryItemORM
+from app.library.domain.repositories.category_repository import ICategoryRepository
+from app.library.infrastructure.models.category_models import CategoryORM
+from app.library.infrastructure.models.item_models import LibraryItemORM
+from app.library.infrastructure.repositories.categories.hierarchy import (
+    descendants_of as hierarchy_descendants_of,
+    has_descendant as hierarchy_has_descendant,
+    max_depth as hierarchy_max_depth,
+)
+from app.library.infrastructure.repositories.categories.mapper import (
+    category_to_read_model,
+)
 from app.shared.exceptions import NotFoundError
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-def _to_read_model(row: CategoryORM) -> Category:
-    """Map a category ORM row into the domain read model."""
-    return Category(
-        id=row.id,
-        name=row.name,
-        parent_id=row.parent_id,
-        position=row.position,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
-
-
-class SqlAlchemyCategoryRepository(CategoryRepository):
+class SqlAlchemyCategoryRepository(ICategoryRepository):
     """Category persistence with adjacency-list hierarchy."""
 
     def __init__(self, *, session: AsyncSession) -> None:
@@ -34,7 +30,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         Args:
             session: Active async session.
 
-        Return:
+        Returns:
             None.
         """
         self._session = session
@@ -45,13 +41,14 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         Args:
             None.
 
-        Return:
+        Returns:
             Ordered category rows.
         """
         rows = await self._session.execute(
             select(CategoryORM).order_by(CategoryORM.parent_id, CategoryORM.position),
         )
-        return [_to_read_model(row) for row in rows.scalars().all()]
+        categories = [category_to_read_model(row) for row in rows.scalars().all()]
+        return categories
 
     async def create(self, *, name: str, parent_id: str | None = None) -> Category:
         """Create category node with next sibling position.
@@ -60,7 +57,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             name: Display name.
             parent_id: Parent category id.
 
-        Return:
+        Returns:
             Created category row.
         """
         max_position = await self._session.scalar(
@@ -81,7 +78,8 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         )
         self._session.add(model)
         await self._session.flush()
-        return _to_read_model(model)
+        category = category_to_read_model(model)
+        return category
 
     async def get(self, category_id: str) -> Category | None:
         """Get one category by primary key.
@@ -89,11 +87,12 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         Args:
             category_id: Target id.
 
-        Return:
+        Returns:
             Category row or ``None``.
         """
         model = await self._session.get(CategoryORM, category_id)
-        return None if model is None else _to_read_model(model)
+        category = None if model is None else category_to_read_model(model)
+        return category
 
     async def update_name(self, category_id: str, *, name: str) -> Category:
         """Rename category by primary key.
@@ -102,7 +101,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             category_id: Target id.
             name: New display name.
 
-        Return:
+        Returns:
             Updated category row.
         """
         model = await self._session.get(CategoryORM, category_id)
@@ -112,7 +111,8 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         model.name = name
         model.updated_at = datetime.now(UTC)
         await self._session.flush()
-        return _to_read_model(model)
+        category = category_to_read_model(model)
+        return category
 
     async def move(
         self,
@@ -128,7 +128,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             parent_id: New parent id (or ``None`` for root).
             position: New sibling order.
 
-        Return:
+        Returns:
             Updated category row.
         """
         model = await self._session.get(CategoryORM, category_id)
@@ -139,7 +139,8 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         model.position = position
         model.updated_at = datetime.now(UTC)
         await self._session.flush()
-        return _to_read_model(model)
+        category = category_to_read_model(model)
+        return category
 
     async def reorder(self, *, category_id: str, position: int) -> Category:
         """Reorder one node in sibling list.
@@ -148,7 +149,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             category_id: Target id.
             position: New position value.
 
-        Return:
+        Returns:
             Updated category row.
         """
         model = await self._session.get(CategoryORM, category_id)
@@ -158,7 +159,8 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         model.position = position
         model.updated_at = datetime.now(UTC)
         await self._session.flush()
-        return _to_read_model(model)
+        category = category_to_read_model(model)
+        return category
 
     async def delete(self, category_id: str) -> None:
         """Delete one category and all descendants through DB cascade.
@@ -166,7 +168,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         Args:
             category_id: Target id.
 
-        Return:
+        Returns:
             None.
         """
         model = await self._session.get(CategoryORM, category_id)
@@ -184,7 +186,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         Args:
             None.
 
-        Return:
+        Returns:
             All categories ordered by root/position.
         """
         return await self.list_all()
@@ -195,21 +197,11 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         Args:
             category_id: Ancestor id.
 
-        Return:
+        Returns:
             Descendant rows in nearest order.
         """
         all_nodes = await self.list_all()
-        children_map: dict[str | None, list[Category]] = {}
-        for node in all_nodes:
-            children_map.setdefault(node.parent_id, []).append(node)
-
-        descendants: list[Category] = []
-        queue = [category_id]
-        while queue:
-            current = queue.pop(0)
-            direct = children_map.get(current, [])
-            descendants.extend(direct)
-            queue.extend(node.id for node in direct)
+        descendants = hierarchy_descendants_of(all_nodes, category_id)
         return descendants
 
     async def max_depth(self, category_id: str) -> int:
@@ -218,14 +210,11 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         Args:
             category_id: Target id.
 
-        Return:
+        Returns:
             Zero-based depth.
         """
-        depth = 0
-        node = await self.get(category_id)
-        while node is not None and node.parent_id is not None:
-            depth += 1
-            node = await self.get(node.parent_id)
+        all_nodes = await self.list_all()
+        depth = hierarchy_max_depth(all_nodes, category_id)
         return depth
 
     async def count_items(self, category_id: str) -> int:
@@ -234,10 +223,10 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
         Args:
             category_id: Category id.
 
-        Return:
+        Returns:
             Number of direct items.
         """
-        return int(
+        item_count = int(
             await self._session.scalar(
                 select(func.count(LibraryItemORM.id)).where(
                     LibraryItemORM.category_id == category_id,
@@ -245,6 +234,7 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             )
             or 0
         )
+        return item_count
 
     async def has_descendant(self, ancestor_id: str, node_id: str) -> bool:
         """Return true when ``node_id`` is in ``ancestor_id`` subtree.
@@ -253,8 +243,9 @@ class SqlAlchemyCategoryRepository(CategoryRepository):
             ancestor_id: Candidate ancestor.
             node_id: Node id to check.
 
-        Return:
+        Returns:
             ``True`` when node is descendant.
         """
-        descendants = await self.descendants_of(ancestor_id)
-        return any(item.id == node_id for item in descendants)
+        all_nodes = await self.list_all()
+        descendant_found = hierarchy_has_descendant(all_nodes, ancestor_id, node_id)
+        return descendant_found

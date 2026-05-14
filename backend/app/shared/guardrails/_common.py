@@ -27,7 +27,7 @@ def resolve_backend_root(reference_file: Path, backend_root: Path | None) -> Pat
         reference_file: See function signature.
         backend_root: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     return backend_root or reference_file.resolve().parents[3]
@@ -40,7 +40,7 @@ def should_check(path: Path, *, backend_root: Path) -> bool:
         path: See function signature.
         backend_root: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     try:
@@ -67,7 +67,7 @@ def iter_guard_target_paths(
         reference_file: See function signature.
         backend_root: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     resolved_root = resolve_backend_root(reference_file, backend_root)
@@ -84,7 +84,7 @@ def parse_module(path: Path) -> ast.AST:
     Args:
         path: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -103,7 +103,7 @@ def has_justification(
         lineno: See function signature.
         markers: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     current_line = lines[lineno - 1]

@@ -2,55 +2,32 @@
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime
 
-from app.library.domain.entities.enums import ItemType
+from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
 from app.library.domain.entities.read_models import LibraryItem
-from app.library.domain.repositories.item_repository import ItemRepository
-from app.library.infrastructure.models.item import LibraryItemORM
+from app.library.domain.event_enum.item_enums import ItemType
+from app.library.domain.repositories.item_repository import IItemRepository
+from app.library.infrastructure.models.item_models import LibraryItemORM
+from app.library.infrastructure.repositories.items.fts import (
+    build_item_fts_payload,
+    build_item_fts_query,
+)
+from app.library.infrastructure.repositories.items.mapping import (
+    map_item_row_to_read_model,
+)
+from app.library.infrastructure.repositories.items.queries import (
+    build_items_by_type_statement,
+    build_items_count_statement,
+    build_items_filtered_statement,
+    build_items_page_statement,
+)
 from app.shared.exceptions import NotFoundError
-from app.shared.types.extra_types import JSONValue
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-FTS_TOKEN_PATTERN = re.compile(r"\w+")
 
-
-def _details_from(row: LibraryItemORM) -> dict[str, JSONValue]:
-    """Return a typed details dictionary from an ORM row."""
-    details = row.details
-    return details if isinstance(details, dict) else {}
-
-
-def _tags_from(row: LibraryItemORM) -> list[str]:
-    """Return a typed tags list from an ORM row."""
-    tags = row.tags
-    return tags if isinstance(tags, list) else []
-
-
-def _to_read_model(row: LibraryItemORM) -> LibraryItem:
-    """Map an item ORM row into the domain read model."""
-    return LibraryItem(
-        id=row.id,
-        item_type=row.item_type,
-        title=row.title,
-        summary=row.summary,
-        content=row.content,
-        category_id=row.category_id,
-        tags=_tags_from(row),
-        status=row.status,
-        source_type=row.source_type,
-        created_by_type=row.created_by_type,
-        created_by_name=row.created_by_name,
-        details=_details_from(row),
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-        is_archived=row.is_archived,
-    )
-
-
-class SqlAlchemyItemRepository(ItemRepository):
+class SqlAlchemyItemRepository(IItemRepository):
     """Concrete repository for library item persistence."""
 
     def __init__(self, *, session: AsyncSession) -> None:
@@ -61,26 +38,26 @@ class SqlAlchemyItemRepository(ItemRepository):
         """
         self._session = session
 
-    async def create(self, *, payload: dict[str, JSONValue]) -> LibraryItem:
+    async def create(self, *, payload: ItemCreate) -> LibraryItem:
         """Persist one library item.
 
         Args:
             payload: Dictionary used to initialize ORM object.
 
-        Return:
+        Returns:
             Created ORM object.
         """
-        model = LibraryItemORM(**payload)
+        model = LibraryItemORM(**payload.to_record())
         self._session.add(model)
         await self._session.flush()
         await self.upsert_fts(model)
-        return _to_read_model(model)
+        return map_item_row_to_read_model(model)
 
     async def update(
         self,
         item_id: str,
         *,
-        payload: dict[str, JSONValue],
+        payload: ItemUpdate,
     ) -> LibraryItem:
         """Patch fields and refresh the updated timestamp.
 
@@ -88,19 +65,32 @@ class SqlAlchemyItemRepository(ItemRepository):
             item_id: Target record identifier.
             payload: Field map to apply.
 
-        Return:
+        Returns:
             Updated ORM object.
         """
         model = await self._session.get(LibraryItemORM, item_id)
         if model is None:
             raise NotFoundError(f"Item not found: {item_id}")
 
-        for key, value in payload.items():
-            setattr(model, key, value)
+        values = payload.to_record()
+        if "title" in values:
+            model.title = values["title"]
+        if "summary" in values:
+            model.summary = values["summary"]
+        if "content" in values:
+            model.content = values["content"]
+        if "category_id" in values:
+            model.category_id = values["category_id"]
+        if "tags" in values:
+            model.tags = values["tags"]
+        if "status" in values:
+            model.status = values["status"].value
+        if "details" in values:
+            model.details = values["details"]
         model.updated_at = datetime.now(UTC)
         await self._session.flush()
         await self.upsert_fts(model)
-        return _to_read_model(model)
+        return map_item_row_to_read_model(model)
 
     async def get(self, item_id: str) -> LibraryItem | None:
         """Get one item by primary key.
@@ -108,11 +98,11 @@ class SqlAlchemyItemRepository(ItemRepository):
         Args:
             item_id: Target record identifier.
 
-        Return:
+        Returns:
             Item ORM object or ``None``.
         """
         model = await self._session.get(LibraryItemORM, item_id)
-        return None if model is None else _to_read_model(model)
+        return None if model is None else map_item_row_to_read_model(model)
 
     async def delete(self, item_id: str) -> None:
         """Delete one item and remove FTS rows.
@@ -120,7 +110,7 @@ class SqlAlchemyItemRepository(ItemRepository):
         Args:
             item_id: Target record identifier.
 
-        Return:
+        Returns:
             None.
         """
         model = await self._session.get(LibraryItemORM, item_id)
@@ -147,16 +137,16 @@ class SqlAlchemyItemRepository(ItemRepository):
             limit: Optional item limit.
             offset: Optional offset.
 
-        Return:
+        Returns:
             Matching ORM rows.
         """
-        statement = select(LibraryItemORM).where(
-            LibraryItemORM.item_type == item_type.value
+        statement = build_items_by_type_statement(
+            item_type=item_type,
+            limit=limit,
+            offset=offset,
         )
-        if limit is not None:
-            statement = statement.limit(limit).offset(offset)
         rows = await self._session.execute(statement)
-        return [_to_read_model(row) for row in rows.scalars().all()]
+        return [map_item_row_to_read_model(row) for row in rows.scalars().all()]
 
     async def list_all(
         self,
@@ -174,31 +164,23 @@ class SqlAlchemyItemRepository(ItemRepository):
             category_id: Optional category filter.
             search_query: Optional title/summary/content like search.
 
-        Return:
+        Returns:
             Tuple of (items, total_count).
         """
-        statement = select(LibraryItemORM)
-        if category_id is not None:
-            statement = statement.where(LibraryItemORM.category_id == category_id)
-        if search_query:
-            pattern = f"%{search_query.strip().lower()}%"
-            statement = statement.where(
-                func.lower(LibraryItemORM.title).like(pattern)
-                | func.lower(LibraryItemORM.summary).like(pattern)
-                | func.lower(LibraryItemORM.content).like(pattern),
-            )
-
-        count = await self._session.scalar(
-            select(func.count()).select_from(statement.subquery()),
+        statement = build_items_filtered_statement(
+            category_id=category_id,
+            search_query=search_query,
         )
+        count = await self._session.scalar(build_items_count_statement(statement))
         total = 0 if count is None else int(count)
 
-        statement = statement.order_by(LibraryItemORM.updated_at.desc())
-        if limit is not None:
-            statement = statement.limit(limit).offset(offset)
-
-        rows = await self._session.execute(statement)
-        return [_to_read_model(row) for row in rows.scalars().all()], total
+        page_statement = build_items_page_statement(
+            statement,
+            limit=limit,
+            offset=offset,
+        )
+        rows = await self._session.execute(page_statement)
+        return [map_item_row_to_read_model(row) for row in rows.scalars().all()], total
 
     async def upsert_fts(self, item: LibraryItemORM) -> None:
         """Synchronize FTS index rows for one item.
@@ -206,34 +188,13 @@ class SqlAlchemyItemRepository(ItemRepository):
         Args:
             item: Item ORM row.
 
-        Return:
+        Returns:
             None.
         """
-        details = item.details
-        if not isinstance(details, dict):
-            details = {}
-
-        tags = details.get("tags", item.tags)
-        if isinstance(tags, list):
-            tags_text = " ".join(str(tag) for tag in tags)
-        else:
-            tags_text = ""
-
-        text_payload = " ".join(
-            str(value)
-            for value in [
-                details.get("content", item.content),
-                details.get("purpose", ""),
-                details.get("summary", item.summary),
-                details.get("body", ""),
-                details.get("expected_result", ""),
-            ]
-            if value
-        )
-
+        fts_payload = build_item_fts_payload(item)
         await self._session.execute(
             text("DELETE FROM item_search_fts WHERE item_id = :item_id"),
-            {"item_id": item.id},
+            {"item_id": fts_payload.item_id},
         )
         await self._session.execute(
             text(
@@ -250,15 +211,7 @@ class SqlAlchemyItemRepository(ItemRepository):
                 VALUES (:item_id, :item_type, :title, :summary, :content, :tags, :details)
                 """
             ),
-            {
-                "item_id": item.id,
-                "item_type": item.item_type,
-                "title": item.title,
-                "summary": "" if item.summary is None else item.summary,
-                "content": text_payload,
-                "tags": tags_text,
-                "details": str(details),
-            },
+            fts_payload.as_parameters(),
         )
 
     async def remove_fts(self, item_id: str) -> None:
@@ -267,7 +220,7 @@ class SqlAlchemyItemRepository(ItemRepository):
         Args:
             item_id: Target item identifier.
 
-        Return:
+        Returns:
             None.
         """
         await self._session.execute(
@@ -284,25 +237,16 @@ class SqlAlchemyItemRepository(ItemRepository):
             query: Raw user search text.
             item_type: Optional type filter.
 
-        Return:
+        Returns:
             Matched ORM rows.
         """
-        tokens = FTS_TOKEN_PATTERN.findall(query.strip())
-        if not tokens:
+        fts_query = build_item_fts_query(query, item_type)
+        if fts_query is None:
             return []
-        normalized = " ".join(f"{token}*" for token in tokens)
-        fts_query = (
-            "SELECT item_id FROM item_search_fts WHERE item_search_fts MATCH :query"
-        )
-        if item_type is not None:
-            fts_query += " AND item_type = :item_type"
 
         ids_result = await self._session.execute(
-            text(fts_query),
-            {
-                "query": normalized,
-                "item_type": item_type.value if item_type is not None else None,
-            },
+            text(fts_query.sql),
+            fts_query.parameters,
         )
         ids = [row[0] for row in ids_result.all()]
         if not ids:
@@ -311,4 +255,4 @@ class SqlAlchemyItemRepository(ItemRepository):
         rows = await self._session.execute(
             select(LibraryItemORM).where(LibraryItemORM.id.in_(ids))
         )
-        return [_to_read_model(row) for row in rows.scalars().all()]
+        return [map_item_row_to_read_model(row) for row in rows.scalars().all()]

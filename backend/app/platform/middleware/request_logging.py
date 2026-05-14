@@ -7,16 +7,20 @@ import time
 from collections.abc import Awaitable, Callable
 
 from app.shared.serialization.orjson_codec import dumps_json
-from app.shared.util.http import (
-    apply_response_headers,
+from app.shared.util.http_helpers.request_logging import (
     log_request_exception,
     log_request_outcome,
     request_log_metadata,
+    should_skip_request_log,
+)
+from app.shared.util.http_helpers.response_headers import (
+    apply_response_headers,
+    response_headers,
+)
+from app.shared.util.http_helpers.trace_context import (
     resolve_endpoint_name,
     resolve_request_id,
     resolve_trace_context,
-    response_headers,
-    should_skip_request_log,
 )
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
@@ -45,7 +49,7 @@ def install_request_logging_middleware(
             request: See function signature.
             call_next: See function signature.
 
-        Return:
+        Returns:
             Return value.
         """
         start = time.perf_counter()
