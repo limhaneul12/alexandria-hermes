@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -15,6 +17,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+
+_current_request_sessions: ContextVar[dict[int, AsyncSession] | None] = ContextVar(
+    "current_request_sessions",
+    default=None,
+)
 
 
 class Base(DeclarativeBase):
@@ -99,7 +106,11 @@ class Database:
         await self.engine.dispose()
 
     async def ping(self) -> bool:
-        """Check if the async database connection is available."""
+        """Check if the async database connection is available.
+
+        Returns:
+            bool: Value produced by ping.
+        """
         try:
             async with self._session_factory() as session:
                 await session.execute(text("SELECT 1"))
@@ -110,20 +121,57 @@ class Database:
     def session(self) -> AsyncSession:
         """Create a new SQLAlchemy session.
 
-        Return:
-            AsyncSession instance.
+        Returns:
+            Active request session when one is bound, otherwise a new AsyncSession.
         """
-        return self._session_factory()
+        current_sessions = _current_request_sessions.get()
+        if (
+            current_sessions is not None
+            and (current_session := current_sessions.get(id(self))) is not None
+        ):
+            return current_session
+
+        session = self._session_factory()
+        return session
+
+    @asynccontextmanager
+    async def request_session(self) -> AsyncIterator[AsyncSession]:
+        """Bind one managed session to the current request context.
+
+        Yields:
+            AsyncSession used by DI-created repositories during one request.
+        """
+        async with self._session_factory() as session:
+            current_sessions = _current_request_sessions.get()
+            next_sessions = {} if current_sessions is None else current_sessions.copy()
+            next_sessions[id(self)] = session
+            token = _current_request_sessions.set(next_sessions)
+            try:
+                yield session
+            finally:
+                _current_request_sessions.reset(token)
+
+    def session_factory(self) -> async_sessionmaker[AsyncSession]:
+        """Return the configured async session factory.
+
+        Returns:
+            async_sessionmaker[AsyncSession]: Value produced by session_factory.
+        """
+        return self._session_factory
 
     async def get_session(self) -> AsyncGenerator[AsyncSession]:
-        """Yield a managed SQLAlchemy session for FastAPI dependencies."""
+        """Yield a managed SQLAlchemy session for FastAPI dependencies.
+
+        Yields:
+            AsyncGenerator[AsyncSession]: Value produced by get_session.
+        """
         async with self._session_factory() as session:
             yield session
 
     def _extract_sqlite_path(self) -> str | None:
         """Get a local filesystem path for sqlite URLs.
 
-        Return:
+        Returns:
             Path string when url scheme is sqlite/aiosqlite.
         """
         parsed = urlparse(self._database_url)

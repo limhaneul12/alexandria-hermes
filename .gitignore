@@ -239,3 +239,13 @@ frontend/prisma/*.sqlite3-*
 
 # Local frontend agent skill packs
 frontend/.agents/skills/
+
+# Local agent runtime state
+.agent-remote/
+
+dev_timeline/
+
+# Local/generated planning docs stay out of git; only shared assets are kept.
+docs/*
+!docs/assets/
+!docs/assets/**

@@ -5,15 +5,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.library.application.usage_service import UsageService
+from app.library.domain.contracts.usage_contracts import UsageCreate
 from app.library.domain.entities.read_models import UsageHistory
-from app.library.domain.repositories.usage_repository import UsageRepository
-from app.library.interface.routers.dependencies import get_usage_service
+from app.library.domain.event_enum.usage_enums import SelectionSource
+from app.library.domain.repositories.usage_repository import IUsageRepository
+from tests.library.interface.provider_overrides import override_library_provider
 from app.main import app
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
 
 
-class FakeUsageRepository(UsageRepository):
+class FakeUsageRepository(IUsageRepository):
     """In-memory usage repository for router contract tests."""
 
     def __init__(self) -> None:
@@ -31,21 +33,19 @@ class FakeUsageRepository(UsageRepository):
             feedback={"comment": "Useful result."},
         )
 
-    async def create(self, payload: dict[str, JSONValue]) -> UsageHistory:
+    async def create(self, payload: UsageCreate) -> UsageHistory:
         """Create one usage row."""
         return UsageHistory(
             id=self.event.id,
-            item_id=str(payload["item_id"]),
-            item_type=str(payload["item_type"]),
-            agent_name=str(payload["agent_name"]),
-            librarian_provider=payload.get("librarian_provider")
-            if isinstance(payload.get("librarian_provider"), str)
-            else None,
-            query=payload.get("query") if isinstance(payload.get("query"), str) else None,
-            selection_source=str(payload["selection_source"]),
+            item_id=payload.item_id,
+            item_type=payload.item_type,
+            agent_name=payload.agent_name,
+            librarian_provider=payload.librarian_provider,
+            query=payload.query,
+            selection_source=payload.selection_source.value,
             used_at=self.event.used_at,
-            success=bool(payload["success"]),
-            feedback={"comment": "Useful result."},
+            success=payload.success,
+            feedback=payload.feedback,
         )
 
     async def recent(self, *, limit: int = 20) -> list[UsageHistory]:
@@ -78,7 +78,7 @@ class FakeUsageRepository(UsageRepository):
         agent_name: str,
         query: str | None,
         librarian_provider: str | None,
-        selection_source: str,
+        selection_source: SelectionSource,
         success: bool,
         feedback: str | None,
     ) -> None:
@@ -91,8 +91,7 @@ def test_record_usage_persists_event_and_returns_created_record() -> None:
     def override_usage_service() -> UsageService:
         return UsageService(usage_repo=FakeUsageRepository())
 
-    app.dependency_overrides[get_usage_service] = override_usage_service
-    try:
+    with override_library_provider("usage_service", override_usage_service()):
         with TestClient(app) as client:
             response = client.post(
                 "/usage",
@@ -107,8 +106,6 @@ def test_record_usage_persists_event_and_returns_created_record() -> None:
                     "feedback": "Useful result.",
                 },
             )
-    finally:
-        app.dependency_overrides.pop(get_usage_service, None)
 
     assert response.status_code == 201
     assert response.json() == {
@@ -123,21 +120,15 @@ def test_record_usage_persists_event_and_returns_created_record() -> None:
     }
 
 
-
 def test_item_usage_returns_complete_usage_records_when_item_has_history() -> None:
     """Item usage history should include full usage record fields."""
 
     def override_usage_service() -> UsageService:
         return UsageService(usage_repo=FakeUsageRepository())
 
-    app.dependency_overrides[get_usage_service] = override_usage_service
-    try:
+    with override_library_provider("usage_service", override_usage_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.get(
-                "/usage/items/00000000-0000-4000-8000-000000000010"
-            )
-    finally:
-        app.dependency_overrides.pop(get_usage_service, None)
+            response = client.get("/usage/items/00000000-0000-4000-8000-000000000010")
 
     assert response.status_code == 200
     assert response.json() == [

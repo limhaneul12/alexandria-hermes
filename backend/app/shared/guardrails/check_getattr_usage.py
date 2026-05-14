@@ -12,7 +12,7 @@ from app.shared.guardrails._common import (
     parse_module,
 )
 
-FORBIDDEN_DYNAMIC_ATTRIBUTE_CALLS = {"getattr", "hasattr"}
+FORBIDDEN_DYNAMIC_ATTRIBUTE_CALLS = {"getattr", "hasattr", "setattr"}
 
 
 class DynamicAttributeVisitor(ast.NodeVisitor):
@@ -25,7 +25,7 @@ class DynamicAttributeVisitor(ast.NodeVisitor):
             path: See function signature.
             lines: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         self._path = path
@@ -38,7 +38,7 @@ class DynamicAttributeVisitor(ast.NodeVisitor):
         Args:
             node: See function signature.
 
-        Return:
+        Returns:
             None.
         """
         if not isinstance(node.func, ast.Name):
@@ -70,7 +70,7 @@ def collect_failures(backend_root: Path | None = None) -> list[str]:
     Args:
         backend_root: See function signature.
 
-    Return:
+    Returns:
         Return value.
     """
     failures: list[str] = []
@@ -90,7 +90,7 @@ def ensure_clean(backend_root: Path | None = None) -> None:
     Args:
         backend_root: See function signature.
 
-    Return:
+    Returns:
         None.
     """
     failures = collect_failures(backend_root)
@@ -110,7 +110,7 @@ def main() -> int:
     Args:
         None.
 
-    Return:
+    Returns:
         Return value.
     """
     failures = collect_failures()

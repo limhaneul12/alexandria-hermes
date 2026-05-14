@@ -1,16 +1,19 @@
-"""Repository protocol exports."""
+"""Repository port exports."""
 
-from .agent_repository import AgentRepository
-from .category_repository import CategoryRepository
-from .item_repository import ItemRepository
-from .librarian_repository import LibrarianProviderRepository, ProviderSecretRepository
-from .usage_repository import UsageRepository
+from .agent_repository import IAgentRepository
+from .category_repository import ICategoryRepository
+from .item_repository import IItemRepository
+from .librarian_repository import (
+    ILibrarianProviderRepository,
+    IProviderSecretRepository,
+)
+from .usage_repository import IUsageRepository
 
 __all__ = [
-    "AgentRepository",
-    "CategoryRepository",
-    "ItemRepository",
-    "LibrarianProviderRepository",
-    "ProviderSecretRepository",
-    "UsageRepository",
+    "IAgentRepository",
+    "ICategoryRepository",
+    "IItemRepository",
+    "ILibrarianProviderRepository",
+    "IProviderSecretRepository",
+    "IUsageRepository",
 ]

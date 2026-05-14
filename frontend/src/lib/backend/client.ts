@@ -22,5 +22,6 @@ export async function backendFetch<T>(path: string, init: RequestInit = {}): Pro
     throw new BackendRequestError(response.status, path);
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }

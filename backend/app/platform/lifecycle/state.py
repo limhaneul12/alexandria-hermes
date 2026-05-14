@@ -10,84 +10,24 @@ event history should be revisited on external shared storage.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import StrEnum
 from threading import Lock
 
-
-class LifecycleStatus(StrEnum):
-    """Lifecycle status values for the service."""
-
-    STARTING = "starting"
-    RUNNING = "running"
-    DRAINING = "draining"
-    STOPPING = "stopping"
-
-
-class DependencyHealthStatus(StrEnum):
-    """Shared dependency health states."""
-
-    DISABLED = "disabled"
-    STARTING = "starting"
-    OK = "ok"
-    DRAINING = "draining"
-    UNAVAILABLE = "unavailable"
-
-
-@dataclass(frozen=True, slots=True)
-class LifecycleSnapshot:
-    """Read-only snapshot of lifecycle state."""
-
-    status: LifecycleStatus
-    redis_status: DependencyHealthStatus
-    database_status: DependencyHealthStatus
-    started_at: datetime
-    drain_started_at: datetime | None
-    drain_reason: str | None
-
-    @property
-    def draining(self) -> bool:
-        """Whether the lifecycle state is currently ``draining``.
-
-        Args:
-            None.
-
-        Return:
-            Return value.
-        """
-        return self.status is LifecycleStatus.DRAINING
-
-    @property
-    def ready(self) -> bool:
-        """Whether the service is ready to accept new traffic.
-
-        Args:
-            None.
-
-        Return:
-            Return value.
-        """
-        return (
-            self.status is LifecycleStatus.RUNNING
-            and dependency_is_ready(self.redis_status)
-            and dependency_is_ready(self.database_status)
-        )
-
-
-def dependency_is_ready(status: DependencyHealthStatus) -> bool:
-    """Check if a dependency status permits readiness.
-
-    Args:
-        status: See function signature.
-
-    Return:
-        Return value.
-    """
-    return status in {
-        DependencyHealthStatus.DISABLED,
-        DependencyHealthStatus.OK,
-    }
+from app.platform.lifecycle.dependency_health import (
+    DependencyHealthStatus as DependencyHealthStatus,
+)
+from app.platform.lifecycle.dependency_status_store import DependencyStatusStore
+from app.platform.lifecycle.snapshot import (
+    LifecycleSnapshot,
+    lifecycle_accepts_traffic,
+    lifecycle_is_ready,
+)
+from app.platform.lifecycle.status import LifecycleStatus
+from app.platform.lifecycle.transitions import (
+    apply_drain_transition,
+    apply_stopping_transition,
+    status_when_marked_running,
+)
 
 
 class LifecycleState:
@@ -102,8 +42,7 @@ class LifecycleState:
         self._lock = Lock()
         self._started_at = started_at or datetime.now(UTC)
         self._status = LifecycleStatus.STARTING
-        self._redis_status = DependencyHealthStatus.DISABLED
-        self._database_status = DependencyHealthStatus.DISABLED
+        self._dependencies = DependencyStatusStore()
         self._drain_started_at: datetime | None = None
         self._drain_reason: str | None = None
 
@@ -116,12 +55,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            if self._status in {LifecycleStatus.STARTING, LifecycleStatus.STOPPING}:
-                self._status = LifecycleStatus.RUNNING
+            self._status = status_when_marked_running(self._status)
 
     def mark_stopping(self) -> None:
         """Transition state to ``stopping``.
@@ -129,13 +67,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._status = LifecycleStatus.STOPPING
-            self._redis_status = _drain_dependency(self._redis_status)
-            self._database_status = _drain_dependency(self._database_status)
+            self._status = apply_stopping_transition(self._dependencies)
 
     def mark_redis_starting(self) -> None:
         """Set Redis dependency status to ``starting``.
@@ -143,11 +79,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._redis_status = DependencyHealthStatus.STARTING
+            self._dependencies.mark_redis_starting()
 
     def mark_redis_healthy(self) -> None:
         """Set Redis dependency status to healthy.
@@ -155,11 +91,13 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._redis_status = self._healthy_dependency_status()
+            self._dependencies.mark_redis_healthy(
+                lifecycle_accepts_traffic=self._lifecycle_accepts_traffic(),
+            )
 
     def mark_redis_unavailable(self) -> None:
         """Set Redis dependency status to ``unavailable``.
@@ -167,11 +105,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._redis_status = DependencyHealthStatus.UNAVAILABLE
+            self._dependencies.mark_redis_unavailable()
 
     def mark_redis_draining(self) -> None:
         """Set Redis dependency status to ``draining``.
@@ -179,11 +117,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._redis_status = _drain_dependency(self._redis_status)
+            self._dependencies.mark_redis_draining()
 
     def mark_redis_disabled(self) -> None:
         """Set Redis dependency status to ``disabled``.
@@ -191,11 +129,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._redis_status = DependencyHealthStatus.DISABLED
+            self._dependencies.mark_redis_disabled()
 
     def mark_database_starting(self) -> None:
         """Set Database dependency status to ``starting``.
@@ -203,11 +141,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._database_status = DependencyHealthStatus.STARTING
+            self._dependencies.mark_database_starting()
 
     def mark_database_healthy(self) -> None:
         """Set Database dependency status to healthy.
@@ -215,11 +153,13 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._database_status = self._healthy_dependency_status()
+            self._dependencies.mark_database_healthy(
+                lifecycle_accepts_traffic=self._lifecycle_accepts_traffic(),
+            )
 
     def mark_database_unavailable(self) -> None:
         """Set Database dependency status to ``unavailable``.
@@ -227,11 +167,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._database_status = DependencyHealthStatus.UNAVAILABLE
+            self._dependencies.mark_database_unavailable()
 
     def mark_database_draining(self) -> None:
         """Set Database dependency status to ``draining``.
@@ -239,11 +179,11 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._database_status = _drain_dependency(self._database_status)
+            self._dependencies.mark_database_draining()
 
     def mark_database_disabled(self) -> None:
         """Set Database dependency status to ``disabled``.
@@ -251,11 +191,73 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             None.
         """
         with self._lock:
-            self._database_status = DependencyHealthStatus.DISABLED
+            self._dependencies.mark_database_disabled()
+
+    def mark_minio_starting(self) -> None:
+        """Set MINIO dependency status to ``starting``.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
+        with self._lock:
+            self._dependencies.mark_minio_starting()
+
+    def mark_minio_healthy(self) -> None:
+        """Set MINIO dependency status to healthy.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
+        with self._lock:
+            self._dependencies.mark_minio_healthy(
+                lifecycle_accepts_traffic=self._lifecycle_accepts_traffic(),
+            )
+
+    def mark_minio_unavailable(self) -> None:
+        """Set MINIO dependency status to ``unavailable``.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
+        with self._lock:
+            self._dependencies.mark_minio_unavailable()
+
+    def mark_minio_draining(self) -> None:
+        """Set MINIO dependency status to ``draining``.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
+        with self._lock:
+            self._dependencies.mark_minio_draining()
+
+    def mark_minio_disabled(self) -> None:
+        """Set MINIO dependency status to ``disabled``.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
+        with self._lock:
+            self._dependencies.mark_minio_disabled()
 
     def start_draining(self, *, reason: str, now: datetime | None = None) -> bool:
         """Start draining state.
@@ -264,20 +266,22 @@ class LifecycleState:
             reason: Initial draining reason.
             now: Draining start timestamp, defaults to current UTC.
 
-        Return:
+        Returns:
             ``True`` if this call initiated draining.
         """
         with self._lock:
-            if self._status is LifecycleStatus.DRAINING:
-                return False
-            if self._status is LifecycleStatus.STOPPING:
-                return False
-            self._status = LifecycleStatus.DRAINING
-            self._redis_status = _drain_dependency(self._redis_status)
-            self._database_status = _drain_dependency(self._database_status)
-            self._drain_started_at = now or datetime.now(UTC)
-            self._drain_reason = reason
-            return True
+            result = apply_drain_transition(
+                status=self._status,
+                dependencies=self._dependencies,
+                reason=reason,
+                now=now,
+                drain_started_at=self._drain_started_at,
+                drain_reason=self._drain_reason,
+            )
+            self._status = result.status
+            self._drain_started_at = result.drain_started_at
+            self._drain_reason = result.drain_reason
+            return result.started
 
     def is_ready(self) -> bool:
         """Whether traffic can be accepted in the current state.
@@ -285,15 +289,15 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             Return value.
         """
         with self._lock:
-            return (
-                self._status is LifecycleStatus.RUNNING
-                and dependency_is_ready(self._redis_status)
-                and dependency_is_ready(self._database_status)
+            ready = lifecycle_is_ready(
+                status=self._status,
+                dependencies=self._dependencies,
             )
+            return ready
 
     def snapshot(self) -> LifecycleSnapshot:
         """Return a read-only snapshot of current lifecycle state.
@@ -301,26 +305,20 @@ class LifecycleState:
         Args:
             None.
 
-        Return:
+        Returns:
             Return value.
         """
         with self._lock:
             return LifecycleSnapshot(
                 status=self._status,
-                redis_status=self._redis_status,
-                database_status=self._database_status,
+                redis_status=self._dependencies.redis_status,
+                database_status=self._dependencies.database_status,
+                minio_status=self._dependencies.minio_status,
                 started_at=self._started_at,
                 drain_started_at=self._drain_started_at,
                 drain_reason=self._drain_reason,
             )
 
-    def _healthy_dependency_status(self) -> DependencyHealthStatus:
-        if self._status in {LifecycleStatus.DRAINING, LifecycleStatus.STOPPING}:
-            return DependencyHealthStatus.DRAINING
-        return DependencyHealthStatus.OK
-
-
-def _drain_dependency(status: DependencyHealthStatus) -> DependencyHealthStatus:
-    if status is DependencyHealthStatus.OK:
-        return DependencyHealthStatus.DRAINING
-    return status
+    def _lifecycle_accepts_traffic(self) -> bool:
+        accepts_traffic = lifecycle_accepts_traffic(self._status)
+        return accepts_traffic

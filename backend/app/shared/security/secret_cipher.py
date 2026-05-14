@@ -56,6 +56,12 @@ class SecretCipher:
         Local development gets a stable development key so tests and smoke runs work
         without extra setup. Stage/prod fail closed if SERVICE_SECRET_ENCRYPTION_KEY is
         missing.
+
+        Args:
+            config [AppConfig | None]: Value supplied to from_app_config.
+
+        Returns:
+            SecretCipher: Value produced by from_app_config.
         """
         app_config = AppConfig() if config is None else config
         configured_key = app_config.secret_encryption_key
@@ -64,10 +70,19 @@ class SecretCipher:
         if app_config.app_env == "local":
             local_seed = f"{app_config.app_name}:{_LOCAL_DEV_KEY_SEED}"
             return cls(key=_derive_key(local_seed))
-        raise RuntimeError("SERVICE_SECRET_ENCRYPTION_KEY is required outside local env")
+        raise RuntimeError(
+            "SERVICE_SECRET_ENCRYPTION_KEY is required outside local env"
+        )
 
     def encrypt(self, value: str) -> str:
-        """Encrypt one secret string for database storage."""
+        """Encrypt one secret string for database storage.
+
+        Args:
+            value [str]: Value supplied to encrypt.
+
+        Returns:
+            str: Value produced by encrypt.
+        """
         nonce = secrets.token_bytes(_NONCE_SIZE)
         ciphertext = AESGCM(self.key).encrypt(nonce, value.encode("utf-8"), None)
         return f"{_TOKEN_PREFIX}:{_urlsafe_b64encode(nonce)}:{_urlsafe_b64encode(ciphertext)}"
@@ -76,6 +91,12 @@ class SecretCipher:
         """Decrypt one stored secret string.
 
         Legacy plaintext values are returned only when allow_legacy_plaintext is true.
+
+        Args:
+            stored_value [str]: Value supplied to decrypt.
+
+        Returns:
+            str: Value produced by decrypt.
         """
         if not stored_value.startswith(f"{_TOKEN_PREFIX}:"):
             if self.allow_legacy_plaintext:

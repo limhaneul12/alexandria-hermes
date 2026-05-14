@@ -2,27 +2,46 @@
 
 from __future__ import annotations
 
+from app.container import ApplicationContainer
 from app.library.application.item_service import ItemService
-from app.library.domain.entities.enums import ItemType
+from app.library.domain.event_enum.item_enums import ItemType
 from app.library.interface.routers._helpers import build_patch_payload
-from app.library.interface.routers.dependencies import get_item_service
-from app.library.interface.schemas.item_schema import (
+from app.library.interface.schemas.item.item_schema import (
     ItemCreateRequest,
     ItemResponse,
+    ItemResponseList,
     ItemUpdateRequest,
 )
-from app.shared.exceptions import LibraryResourceNotFoundError
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from app.shared.exceptions.exception_decorators import router_exception_status
+from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, Query, status
 
 router = APIRouter(prefix="/items", tags=["items"])
 
 
-@router.post("", response_model=ItemResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ItemResponse,
+    status_code=status.HTTP_201_CREATED,
+    description="Library API operation.",
+    summary="Create item",
+)
+@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@inject
 async def create_item(
     request: ItemCreateRequest,
-    service: ItemService = Depends(get_item_service),
+    service: ItemService = Depends(Provide[ApplicationContainer.library.item_service]),
 ) -> ItemResponse:
-    """Create a generic library item."""
+    """Create a generic library item.
+
+    Args:
+        request [ItemCreateRequest]: Value supplied to create_item.
+        service [ItemService]: Value supplied to create_item.
+
+    Returns:
+        ItemResponse: Value produced by create_item.
+    """
     result = await service.create_item(
         item_type=request.item_type,
         title=request.title,
@@ -36,54 +55,98 @@ async def create_item(
         created_by_name=request.created_by_name,
         details=request.details,
     )
-    return ItemResponse.model_validate(result)
+    validation = ItemResponse.model_validate(result)
+    return validation
 
 
-@router.get("/{item_id}", response_model=ItemResponse)
+@router.get(
+    "/{item_id}",
+    response_model=ItemResponse,
+    description="Library API operation.",
+    status_code=status.HTTP_200_OK,
+    summary="Get item",
+)
+@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@inject
 async def get_item(
     item_id: str,
-    service: ItemService = Depends(get_item_service),
+    service: ItemService = Depends(Provide[ApplicationContainer.library.item_service]),
 ) -> ItemResponse:
-    """Get one generic item."""
-    try:
-        payload = await service.get_item(item_id)
-    except LibraryResourceNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
-    return ItemResponse.model_validate(payload)
+    """Get one generic item.
+
+    Args:
+        item_id [str]: Value supplied to get_item.
+        service [ItemService]: Value supplied to get_item.
+
+    Returns:
+        ItemResponse: Value produced by get_item.
+    """
+    payload = await service.get_item(item_id)
+    validation = ItemResponse.model_validate(payload)
+    return validation
 
 
-@router.patch("/{item_id}", response_model=ItemResponse)
+@router.patch(
+    "/{item_id}",
+    response_model=ItemResponse,
+    description="Library API operation.",
+    status_code=status.HTTP_200_OK,
+    summary="Patch item",
+)
+@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@inject
 async def patch_item(
     item_id: str,
     request: ItemUpdateRequest,
-    service: ItemService = Depends(get_item_service),
+    service: ItemService = Depends(Provide[ApplicationContainer.library.item_service]),
 ) -> ItemResponse:
-    """Patch item metadata/details."""
+    """Patch item metadata/details.
+
+    Args:
+        item_id [str]: Value supplied to patch_item.
+        request [ItemUpdateRequest]: Value supplied to patch_item.
+        service [ItemService]: Value supplied to patch_item.
+
+    Returns:
+        ItemResponse: Value produced by patch_item.
+    """
     patch_payload = build_patch_payload(request.model_dump())
 
-    try:
-        payload = await service.update_item(item_id, payload=patch_payload)
-    except LibraryResourceNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
-    return ItemResponse.model_validate(payload)
+    payload = await service.update_item(item_id, payload=patch_payload)
+    validation = ItemResponse.model_validate(payload)
+    return validation
 
 
-@router.get("", response_model=list[ItemResponse])
+@router.get(
+    "",
+    response_model=ItemResponseList,
+    description="Library API operation.",
+    status_code=status.HTTP_200_OK,
+    summary="List items",
+)
+@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@inject
 async def list_items(
     item_type: ItemType | None = Query(default=None),
     category_id: str | None = Query(default=None),
     q: str | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
-    service: ItemService = Depends(get_item_service),
-) -> list[ItemResponse]:
-    """List items with optional filters."""
+    service: ItemService = Depends(Provide[ApplicationContainer.library.item_service]),
+) -> ItemResponseList:
+    """List items with optional filters.
+
+    Args:
+        item_type [ItemType | None]: Value supplied to list_items.
+        category_id [str | None]: Value supplied to list_items.
+        q [str | None]: Value supplied to list_items.
+        limit [int]: Value supplied to list_items.
+        offset [int]: Value supplied to list_items.
+        service [ItemService]: Value supplied to list_items.
+
+    Returns:
+        ItemResponseList: Value produced by list_items.
+    """
     payloads, _ = await service.list_items(
         item_type=item_type,
         limit=limit,
@@ -91,19 +154,26 @@ async def list_items(
         category_id=category_id,
         search_query=q,
     )
-    return [ItemResponse.model_validate(payload) for payload in payloads]
+    validation = ItemResponseList.model_validate(payloads)
+    return validation
 
 
-@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    description="Library API operation.",
+    summary="Delete item",
+)
+@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@inject
 async def delete_item(
     item_id: str,
-    service: ItemService = Depends(get_item_service),
+    service: ItemService = Depends(Provide[ApplicationContainer.library.item_service]),
 ) -> None:
-    """Delete item."""
-    try:
-        await service.delete_item(item_id)
-    except LibraryResourceNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+    """Delete item.
+
+    Args:
+        item_id [str]: Value supplied to delete_item.
+        service [ItemService]: Value supplied to delete_item.
+    """
+    await service.delete_item(item_id)

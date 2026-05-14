@@ -19,7 +19,7 @@ def _json_default(value: object) -> str:
     Args:
         value: Unsupported value received from orjson.
 
-    Return:
+    Returns:
         String representation for fallback serialization.
     """
     return str(value)
@@ -31,7 +31,7 @@ def dumps_json(value: JSONValue) -> bytes:
     Args:
         value: JSON-compatible value.
 
-    Return:
+    Returns:
         Serialized UTF-8 JSON bytes.
     """
     if orjson is None:  # pragma: no cover

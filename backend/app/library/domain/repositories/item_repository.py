@@ -4,22 +4,22 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from app.library.domain.entities.enums import ItemType
+from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
 from app.library.domain.entities.read_models import LibraryItem
-from app.shared.types.extra_types import JSONValue
+from app.library.domain.event_enum.item_enums import ItemType
 
 
-class ItemRepository(ABC):
+class IItemRepository(ABC):
     """Persistence contract for library item operations."""
 
     @abstractmethod
-    async def create(self, *, payload: dict[str, JSONValue]) -> LibraryItem:
+    async def create(self, *, payload: ItemCreate) -> LibraryItem:
         """Create a new item from persisted payload.
 
         Args:
             payload: Dictionary of ORM fields.
 
-        Return:
+        Returns:
             Persisted ORM object.
         """
 
@@ -28,7 +28,7 @@ class ItemRepository(ABC):
         self,
         item_id: str,
         *,
-        payload: dict[str, JSONValue],
+        payload: ItemUpdate,
     ) -> LibraryItem:
         """Apply partial update to an existing item.
 
@@ -36,7 +36,7 @@ class ItemRepository(ABC):
             item_id: Target identifier.
             payload: Partial field map.
 
-        Return:
+        Returns:
             Updated ORM object.
         """
 
@@ -47,7 +47,7 @@ class ItemRepository(ABC):
         Args:
             item_id: Target identifier.
 
-        Return:
+        Returns:
             ORM item or ``None``.
         """
 
@@ -58,7 +58,7 @@ class ItemRepository(ABC):
         Args:
             item_id: Target identifier.
 
-        Return:
+        Returns:
             None.
         """
 
@@ -77,7 +77,7 @@ class ItemRepository(ABC):
             limit: Optional limit.
             offset: Optional offset.
 
-        Return:
+        Returns:
             Matching items.
         """
 
@@ -98,7 +98,7 @@ class ItemRepository(ABC):
             category_id: Optional category filter.
             search_query: Optional substring search text.
 
-        Return:
+        Returns:
             ``(items, total_count)``.
         """
 
@@ -112,6 +112,6 @@ class ItemRepository(ABC):
             query: Search string.
             item_type: Optional type filter.
 
-        Return:
+        Returns:
             Matching ORM rows.
         """

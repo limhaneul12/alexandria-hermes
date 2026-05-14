@@ -105,7 +105,9 @@ def upgrade() -> None:
             f"created_by_type IN ({_in_constraint(CREATED_BY_TYPES)})",
             name="ck_library_items_created_by_type",
         ),
-        sa.ForeignKeyConstraint(["category_id"], ["categories.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["category_id"], ["categories.id"], ondelete="SET NULL"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
