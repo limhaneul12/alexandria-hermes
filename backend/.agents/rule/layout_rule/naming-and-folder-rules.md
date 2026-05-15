@@ -88,10 +88,10 @@ Good direction:
 
 ### Avoid overly generic filenames
 
-Avoid broad technical bucket names such as:
+Avoid broad technical bucket names at arbitrary locations such as:
 - `enums.py`
 - `types.py`
-- `utils.py`
+- unqualified `utils.py`
 - `helpers.py`
 - `common.py`
 - `models.py`
@@ -121,15 +121,44 @@ Examples:
 - use `execution_types.py` instead of `types.py`
 - use `payload_json.py` only if the role is specifically JSON payload handling
 
+### Utility placement
+
+Utility code is allowed when it has clear ownership.
+
+- backend-wide reusable utilities belong under `shared/utils/`.
+- domain-local utilities belong under a domain-owned folder named
+  `{domain}_utils/`.
+- utility files inside those folders should still be named by purpose, not as a
+  catch-all `utils.py` or `helpers.py`.
+
+Examples:
+
+```text
+shared/
+└── utils/
+    └── string_normalization.py
+
+library/
+└── library_utils/
+    └── payload_merge.py
+```
+
+Do not promote a helper to `shared/utils/` just because it is reused twice.
+Promote it only when the behavior is genuinely backend-wide and not owned by a
+single domain.
+
 ## Concept-Split Rule
 
 When a kind of artifact should be grouped by category, keep similar things together **and** split them by concept.
+
+The structures below are examples. Follow the nearest existing concept-owned
+path in the current slice instead of forcing a hard-coded directory layout.
 
 ### Enums
 
 Keep enums with enums.
 
-Preferred structure:
+Preferred cross-cutting structure:
 
 ```text
 shared/
@@ -140,6 +169,9 @@ shared/
     ├── history_enums.py
     └── bridge_enums.py
 ```
+
+For feature-local enums, prefer the feature's existing enum path such as
+`domain/event_enum/{concept}_enums.py`.
 
 ### Exceptions
 
@@ -161,7 +193,7 @@ shared/
 
 Keep schemas with schemas.
 
-Preferred structure:
+Preferred local or cross-cutting structure:
 
 ```text
 schemas/
@@ -171,6 +203,9 @@ schemas/
 ├── history_schemas.py
 └── bridge_schemas.py
 ```
+
+For backend I/O schemas, prefer the existing boundary path such as
+`interface/schemas/{concept}/...`.
 
 ### Types
 
@@ -203,6 +238,7 @@ Bad direction:
 Good direction:
 - `shared/omx_enums/runtime_enums.py`
 - `shared/omx_enums/execution_enums.py`
+- `shared/utils/string_normalization.py`
 - future concept-split shared helpers only when they are truly cross-cutting and intentionally named
 
 ## Comment and Docstring Rule
@@ -228,23 +264,14 @@ Use a short comment only when it communicates something the code itself cannot m
 
 - Public CLI commands, public-facing adapter entrypoints, and custom exceptions may use short docstrings.
 - Keep docstrings concise and factual.
-- Use Google-style Python docstrings when a docstring is present.
+- Use the project docstring format from
+  `backend/.agents/rule/archtecture_rule/05-type-and-schema-rules.md` when a
+  docstring is present.
 - Start with a short summary line ending in punctuation that explains what the function does.
 - Leave one blank line between the summary and any section blocks.
-- Use the exact Google-style section labels when relevant:
-  - `Args:`
-  - `Returns:`
-  - `Yields:`
-  - `Raises:`
-- Under `Args:`, document one parameter per line as `name [Type]: description`.
-- Explain how each parameter is used, not just what it is called.
-- Under `Returns:`, document returned values as `Type: description`.
-- Explain what shape or meaning comes back to the caller, not just the type name.
-- Do not repeat types in prose beyond the required `[Type]` and `Type:` field markers.
-- Use `Returns:` only when the function returns a meaningful value.
-- Omit `Returns:` for side-effect-only functions that return `None`.
-- Use `Yields:` instead of `Returns:` for generator functions.
-- Use `Raises:` only for caller-relevant exceptions.
+- Default section labels are `Args:` and `Return:`.
+- `Returns:`, `Yields:`, and `Raises:` are allowed when they are semantically
+  needed or when matching an existing public surface.
 - Do not write essay-style docstrings for straightforward internal helpers.
 
 ### Review questions

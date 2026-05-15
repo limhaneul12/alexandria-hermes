@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Literal
 
 from app.shared.util.config import settings_model_config
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 
 
@@ -33,3 +33,13 @@ class AppConfig(BaseSettings):
     app_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     # 32-byte URL-safe base64 key or passphrase used to encrypt provider secrets at rest.
     secret_encryption_key: str | None = Field(default=None)
+    # Operator API key required for sensitive settings/provider operations.
+    operator_api_key: SecretStr = Field(min_length=32)
+    # OpenAI Codex OAuth issuer used to derive official device-flow endpoints.
+    codex_oauth_issuer: str = Field(min_length=1)
+    # Public OpenAI Codex OAuth client id. This is configurable but not a secret.
+    codex_oauth_client_id: str = Field(min_length=1)
+    # Pending device authorization lifetime when provider omits expires_in.
+    codex_oauth_device_expires_in_seconds: int = Field(ge=60, le=60 * 60)
+    # Lower bound for polling interval when provider returns an aggressive value.
+    codex_oauth_min_poll_interval_seconds: int = Field(ge=1, le=60)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
 
@@ -14,6 +15,7 @@ from app.cli_support.contracts.runtime_contracts import (
     CommandContext,
 )
 from app.cli_support.routing.url_paths import normalized_base_url
+from app.cli_support.typer_commands.collaboration import librarian_app, usage_app
 from app.cli_support.typer_commands.context import context_app
 from app.cli_support.typer_commands.hermes import hermes_app
 from app.cli_support.typer_commands.library import (
@@ -40,6 +42,8 @@ typer_app.add_typer(library_app, name="library")
 typer_app.add_typer(minio_app, name="minio")
 typer_app.add_typer(context_app, name="context")
 typer_app.add_typer(hermes_app, name="hermes")
+typer_app.add_typer(librarian_app, name="librarian")
+typer_app.add_typer(usage_app, name="usage")
 typer_app.add_typer(mcp_app, name=McpLaunchArgument.MCP.value)
 
 
@@ -58,6 +62,12 @@ def _configure(
         "--timeout",
         help="HTTP timeout in seconds.",
     ),
+    operator_api_key: str | None = typer.Option(
+        None,
+        "--operator-api-key",
+        envvar="ALEXANDRIA_OPERATOR_API_KEY",
+        help="Operator API key for sensitive settings/provider routes.",
+    ),
 ) -> None:
     """Create the runtime context shared by command callbacks.
 
@@ -66,6 +76,7 @@ def _configure(
         base_url: Backend API URL.
         json_output: Whether JSON output was requested.
         timeout: HTTP timeout in seconds.
+        operator_api_key: Operator API key header value.
 
     Returns:
         None.
@@ -76,6 +87,11 @@ def _configure(
     ctx.obj = CommandContext(
         base_url=normalized_base_url(base_url),
         json_output=json_output,
+        operator_api_key=(
+            operator_api_key
+            or os.environ.get("SERVICE_OPERATOR_API_KEY")
+            or os.environ.get("ALEXANDRIA_API_TOKEN")
+        ),
         timeout=max(1.0, float(timeout)),
         stdout=runtime.stdout,
         stderr=runtime.stderr,

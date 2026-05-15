@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from app.library.application.retrieval.chunker import chunk_markdown
-from app.library.application.retrieval.embedding_provider import FakeEmbeddingProvider
+from app.retrieval.application.chunker import chunk_markdown
+from app.retrieval.application.embedding_provider import FakeEmbeddingProvider
 
 
 def test_markdown_chunker_keeps_heading_metadata_and_hashes() -> None:

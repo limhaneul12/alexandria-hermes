@@ -239,22 +239,22 @@ function compactBody(payload: ContextPrepareCompactDTO) {
 
 export async function loadContextsFromBackend(searchParams: URLSearchParams): Promise<ContextListDTO> {
   const query = searchParams.toString();
-  const result = await backendFetch<BackendContextList>(`/library/contexts${query ? `?${query}` : ""}`);
+  const result = await backendFetch<BackendContextList>(`/memory/contexts${query ? `?${query}` : ""}`);
   return { items: result.items.map(toContextDTO), total: result.total };
 }
 
 export async function loadContextFromBackend(contextId: string): Promise<ContextDTO> {
-  const context = await backendFetch<BackendContext>(`/library/contexts/${encodeURIComponent(contextId)}`);
+  const context = await backendFetch<BackendContext>(`/memory/contexts/${encodeURIComponent(contextId)}`);
   return toContextDTO(context);
 }
 
 export async function loadContextChunksFromBackend(contextId: string): Promise<ContextChunkDTO[]> {
-  const chunks = await backendFetch<BackendContextChunk[]>(`/library/contexts/${encodeURIComponent(contextId)}/chunks`);
+  const chunks = await backendFetch<BackendContextChunk[]>(`/memory/contexts/${encodeURIComponent(contextId)}/chunks`);
   return chunks.map(toContextChunkDTO);
 }
 
 export async function lintContextInBackend(payload: ContextLintRequestDTO): Promise<ContextLintResultDTO> {
-  const result = await backendFetch<BackendLintResult>("/library/contexts/lint", {
+  const result = await backendFetch<BackendLintResult>("/memory/contexts/lint", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(lintBody(payload)),
@@ -263,7 +263,7 @@ export async function lintContextInBackend(payload: ContextLintRequestDTO): Prom
 }
 
 export async function saveContextInBackend(payload: ContextSaveDTO): Promise<ContextDTO> {
-  const context = await backendFetch<BackendContext>("/library/contexts", {
+  const context = await backendFetch<BackendContext>("/memory/contexts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(contextBody(payload)),
@@ -272,7 +272,7 @@ export async function saveContextInBackend(payload: ContextSaveDTO): Promise<Con
 }
 
 export async function captureContextInBackend(payload: ContextSaveDTO): Promise<ContextDTO> {
-  const context = await backendFetch<BackendContext>("/library/contexts/capture", {
+  const context = await backendFetch<BackendContext>("/memory/contexts/capture", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(contextBody(payload)),
@@ -281,7 +281,7 @@ export async function captureContextInBackend(payload: ContextSaveDTO): Promise<
 }
 
 export async function prepareCompactInBackend(payload: ContextPrepareCompactDTO): Promise<ContextDTO> {
-  const context = await backendFetch<BackendContext>("/library/contexts/prepare-compact", {
+  const context = await backendFetch<BackendContext>("/memory/contexts/prepare-compact", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(compactBody(payload)),
@@ -290,7 +290,7 @@ export async function prepareCompactInBackend(payload: ContextPrepareCompactDTO)
 }
 
 export async function searchContextsInBackend(payload: ContextSearchDTO): Promise<ContextPackDTO> {
-  const pack = await backendFetch<BackendContextPack>("/library/contexts/search", {
+  const pack = await backendFetch<BackendContextPack>("/memory/contexts/retrieval/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(searchBody(payload)),
@@ -299,20 +299,20 @@ export async function searchContextsInBackend(payload: ContextSearchDTO): Promis
 }
 
 export async function archiveContextInBackend(contextId: string): Promise<ContextDTO> {
-  const context = await backendFetch<BackendContext>(`/library/contexts/${encodeURIComponent(contextId)}/archive`, {
+  const context = await backendFetch<BackendContext>(`/memory/contexts/${encodeURIComponent(contextId)}/archive`, {
     method: "POST",
   });
   return toContextDTO(context);
 }
 
 export async function accessContextInBackend(contextId: string): Promise<ContextDTO> {
-  const context = await backendFetch<BackendContext>(`/library/contexts/${encodeURIComponent(contextId)}/access`, {
+  const context = await backendFetch<BackendContext>(`/memory/contexts/${encodeURIComponent(contextId)}/access`, {
     method: "POST",
   });
   return toContextDTO(context);
 }
 
 export async function loadRagStatusFromBackend(): Promise<RagStatusDTO> {
-  const status = await backendFetch<BackendRagStatus>("/library/contexts/rag/status");
+  const status = await backendFetch<BackendRagStatus>("/memory/contexts/rag/status");
   return toRagStatusDTO(status);
 }

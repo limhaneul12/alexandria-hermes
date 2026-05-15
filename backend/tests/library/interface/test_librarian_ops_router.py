@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.library.domain.contracts.librarian_candidate_contracts import (
+from app.library.domain.contracts.skill_candidate_contracts import (
     CreateSkillCandidateResult,
 )
 from app.library.domain.event_enum.item_enums import ItemType
@@ -76,7 +76,7 @@ class FakeLibrarianGenerationService:
 
 
 def test_recommend_accepts_json_item_type_string_and_returns_items() -> None:
-    """POST /librarian/recommend should accept public item_type enum strings."""
+    """POST /librarians/recommend should accept public item_type enum strings."""
     item_service = FakeItemSearchService()
 
     def override_item_service() -> FakeItemSearchService:
@@ -85,7 +85,7 @@ def test_recommend_accepts_json_item_type_string_and_returns_items() -> None:
     with override_library_provider("item_service", override_item_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
-                "/librarian/recommend",
+                "/librarians/recommend",
                 json={"query": "strict JSON", "item_type": "SKILL", "limit": 1},
             )
 
@@ -112,7 +112,7 @@ def test_recommend_accepts_json_item_type_string_and_returns_items() -> None:
 
 
 def test_create_skill_candidate_returns_strict_item_response_shape() -> None:
-    """POST /librarian/create-skill-candidate should return valid ItemResponse JSON."""
+    """POST /librarians/create-skill-candidate should return valid ItemResponse JSON."""
 
     def override_librarian_service() -> FakeLibrarianGenerationService:
         return FakeLibrarianGenerationService()
@@ -120,7 +120,7 @@ def test_create_skill_candidate_returns_strict_item_response_shape() -> None:
     with override_library_provider("librarian_service", override_librarian_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
-                "/librarian/create-skill-candidate",
+                "/librarians/create-skill-candidate",
                 json={
                     "provider_id": "00000000-0000-4000-8000-000000000501",
                     "prompt": "Create a strict JSON skill.",

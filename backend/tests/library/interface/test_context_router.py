@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any
 
 import anyio
-from app.library.application.context_service import ContextService
-from app.library.infrastructure.repositories.context_repository import (
+from app.main import app
+from app.memory.application.context_service import ContextService
+from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
-from app.main import app
 from app.shared.infrastructure.database import Database
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,27 +77,29 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
             TestClient(app, raise_server_exceptions=False) as client,
         ):
             lint_response = client.post(
-                "/library/contexts/lint", json=_context_payload()
+                "/memory/contexts/lint", json=_context_payload()
             )
-            create_response = client.post("/library/contexts", json=_context_payload())
+            create_response = client.post("/memory/contexts", json=_context_payload())
             context_id = create_response.json()["id"]
             list_response = client.get(
-                "/library/contexts", params={"project": "alexandria-hermes"}
+                "/memory/contexts", params={"project": "alexandria-hermes"}
             )
-            get_response = client.get(f"/library/contexts/{context_id}")
-            chunks_response = client.get(f"/library/contexts/{context_id}/chunks")
+            get_response = client.get(f"/memory/contexts/{context_id}")
+            chunks_response = client.get(f"/memory/contexts/{context_id}/chunks")
             search_response = client.post(
-                "/library/contexts/search",
+                "/memory/contexts/retrieval/search",
                 json={"query": "API saves recalls", "strategy": "HYBRID"},
             )
-            access_response = client.post(f"/library/contexts/{context_id}/access")
-            archive_response = client.post(f"/library/contexts/{context_id}/archive")
-            rag_response = client.get("/library/contexts/rag/status")
+            access_response = client.post(f"/memory/contexts/{context_id}/access")
+            archive_response = client.post(f"/memory/contexts/{context_id}/archive")
+            rag_response = client.get("/memory/contexts/rag/status")
     finally:
         anyio.run(_close_context_service, database, session_context, session)
 
     assert lint_response.status_code == 200
     assert lint_response.json()["status"] == "SAVED"
+    assert "redaction_report" in lint_response.json()
+    assert lint_response.json()["save_suggestion"]["should_save"] is True
     assert create_response.status_code == 201
     assert create_response.json()["restore_prompt"] == "Continue from the API context."
     assert create_response.json()["source_type"] == "AGENT"
@@ -118,6 +120,45 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
     assert rag_response.json()["fts"] == "HEALTHY"
 
 
+def test_context_api_filters_recall_by_memory_scope(tmp_path: Path) -> None:
+    """Scoped recall should return only contexts from requested memory lanes."""
+
+    database, session_context, session, service = anyio.run(
+        _open_context_service, tmp_path / "scope-recall.db"
+    )
+    try:
+        base_payload = _context_payload() | {
+            "title": "Scoped recall",
+            "summary": "Scoped recall token.",
+            "content": "# Scoped recall\n\n## Summary\nScoped recall token.",
+        }
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            project_response = client.post(
+                "/memory/contexts",
+                json=base_payload | {"scope": "PROJECT"},
+            )
+            user_response = client.post(
+                "/memory/contexts",
+                json=base_payload | {"scope": "USER", "user_id": "ha_nori"},
+            )
+            search_response = client.post(
+                "/memory/contexts/retrieval/search",
+                json={"query": "Scoped recall token", "include_scopes": ["USER"]},
+            )
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert project_response.status_code == 201
+    assert user_response.status_code == 201
+    assert search_response.status_code == 200
+    matches = search_response.json()["matches"]
+    assert {match["context"]["id"] for match in matches} == {user_response.json()["id"]}
+    assert search_response.json()["recall_scopes"] == ["USER"]
+
+
 def test_context_api_prepare_compact_saves_structured_handoff(tmp_path: Path) -> None:
     """Prepare-compact should turn structured state into a COMPACT context."""
 
@@ -130,7 +171,7 @@ def test_context_api_prepare_compact_saves_structured_handoff(tmp_path: Path) ->
             TestClient(app, raise_server_exceptions=False) as client,
         ):
             response = client.post(
-                "/library/contexts/prepare-compact",
+                "/memory/contexts/prepare-compact",
                 json={
                     "project": "alexandria-hermes",
                     "source_agent": "Hermes",
@@ -164,7 +205,7 @@ def test_context_api_accepts_imported_source_type(tmp_path: Path) -> None:
             override_library_provider("context_service", service),
             TestClient(app, raise_server_exceptions=False) as client,
         ):
-            response = client.post("/library/contexts", json=payload)
+            response = client.post("/memory/contexts", json=payload)
     finally:
         anyio.run(_close_context_service, database, session_context, session)
 
@@ -184,7 +225,7 @@ def test_context_api_returns_validation_error_for_invalid_kind(tmp_path: Path) -
             override_library_provider("context_service", service),
             TestClient(app, raise_server_exceptions=False) as client,
         ):
-            response = client.post("/library/contexts", json=payload)
+            response = client.post("/memory/contexts", json=payload)
     finally:
         anyio.run(_close_context_service, database, session_context, session)
 

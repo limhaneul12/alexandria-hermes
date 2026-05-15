@@ -86,7 +86,7 @@ class FakeUsageRepository(IUsageRepository):
 
 
 def test_record_usage_persists_event_and_returns_created_record() -> None:
-    """POST /usage should record one event and return the created usage record."""
+    """POST /library/usage should record one event and return the created usage record."""
 
     def override_usage_service() -> UsageService:
         return UsageService(usage_repo=FakeUsageRepository())
@@ -94,7 +94,7 @@ def test_record_usage_persists_event_and_returns_created_record() -> None:
     with override_library_provider("usage_service", override_usage_service()):
         with TestClient(app) as client:
             response = client.post(
-                "/usage",
+                "/library/usage",
                 json={
                     "item_id": "00000000-0000-4000-8000-000000000010",
                     "item_type": "SKILL",
@@ -128,7 +128,9 @@ def test_item_usage_returns_complete_usage_records_when_item_has_history() -> No
 
     with override_library_provider("usage_service", override_usage_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.get("/usage/items/00000000-0000-4000-8000-000000000010")
+            response = client.get(
+                "/library/usage/library/items/00000000-0000-4000-8000-000000000010"
+            )
 
     assert response.status_code == 200
     assert response.json() == [

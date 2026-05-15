@@ -7,12 +7,12 @@ from datetime import UTC, datetime
 from typing import cast
 
 import pytest
-from app.library.domain.contracts.librarian_provider_contracts import (
+from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
     LibrarianProviderUpdate,
 )
-from app.library.domain.entities.read_models import LibrarianProvider
-from app.library.domain.repositories.librarian_repository import (
+from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )

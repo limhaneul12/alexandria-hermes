@@ -37,7 +37,7 @@ class _FakeCategoryService:
 
 
 def test_create_category_registers_folder_with_optional_parent() -> None:
-    """POST /categories should create a folder/category for the library shelf."""
+    """POST /library/categories should create a folder/category for the library shelf."""
     service = _FakeCategoryService()
 
     def override_category_service() -> _FakeCategoryService:
@@ -46,7 +46,7 @@ def test_create_category_registers_folder_with_optional_parent() -> None:
     with override_library_provider("category_service", override_category_service()):
         with TestClient(app) as client:
             response = client.post(
-                "/categories",
+                "/library/categories",
                 json={
                     "name": "Backend 사서 폴더",
                     "parent_id": "00000000-0000-4000-8000-000000000001",

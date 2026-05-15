@@ -4,12 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.library.domain.event_enum.context_enums import (
-    ContextImportance,
-    ContextKind,
-    ContextSourceType,
-    RagStrategy,
-)
 from app.library.domain.event_enum.item_enums import CreatedByType, ItemType, SourceType
 from app.library.domain.event_enum.prompt_enums import (
     PromptContentFormat,
@@ -18,7 +12,15 @@ from app.library.domain.event_enum.prompt_enums import (
     PromptTaskType,
 )
 from app.library.domain.event_enum.skill_enums import RiskLevel
+from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.mcp_server.mcp_protocol_enums import McpTransport
+from app.memory.domain.event_enum.context_enums import (
+    ContextImportance,
+    ContextKind,
+    ContextScope,
+    ContextSourceType,
+    RagStrategy,
+)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -58,6 +60,9 @@ class SkillsCreateCommand:
     version: str
     created_by: str
     active: bool
+    source_agent: str | None
+    evidence_url: list[str]
+    source_summary: str | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -107,6 +112,40 @@ class PromptsUseCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class PromptsSearchCommand:
+    """Parameters for searching prompt library items."""
+
+    query: str
+    limit: int
+    offset: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PromptVersionCommand:
+    """Parameters for updating a prompt version and optional change summary."""
+
+    item_id: str
+    version: str
+    change_summary: str | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PromptDeprecateCommand:
+    """Parameters for deprecating one prompt."""
+
+    item_id: str
+    reason: str | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PromptDiffCommand:
+    """Parameters for diffing two prompt records."""
+
+    left_item_id: str
+    right_item_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class FoldersListCommand:
     """Parameters for listing folders."""
 
@@ -119,6 +158,13 @@ class FoldersCreateCommand:
 
     name: str
     parent_id: str | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FoldersEnsureCommand:
+    """Parameters for ensuring a nested folder path."""
+
+    path: str
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -147,6 +193,141 @@ class LibrarySearchCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class UsageRecordCliCommand:
+    """Parameters for recording usage from the CLI."""
+
+    item_id: str
+    item_type: str
+    selection_source: SelectionSource
+    agent_name: str
+    success: bool
+    query: str | None
+    librarian_provider: str | None
+    project: str | None
+    task_summary: str | None
+    feedback: str | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianAskCommand:
+    """Parameters for asking or delegating work to the librarian."""
+
+    prompt: str
+    delegate_to_librarian: bool
+    provider_id: str | None
+    agent_name: str
+    project: str | None
+    task_summary: str | None
+    librarian_profile_id: str | None
+    librarian_model: str | None
+    librarian_role_prompt: str | None
+    max_librarian_agents: int | None
+    routing_specialties: list[str]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianRoutePreviewCommand:
+    """Parameters for previewing librarian routing before delegation."""
+
+    prompt: str
+    provider_id: str | None
+    agent_name: str
+    project: str | None
+    task_summary: str | None
+    librarian_profile_id: str | None
+    librarian_model: str | None
+    librarian_role_prompt: str | None
+    max_librarian_agents: int | None
+    routing_specialties: list[str]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianProviderCreateCommand:
+    """Parameters for creating a librarian provider from the CLI."""
+
+    name: str
+    provider_type: str
+    auth_type: str
+    enabled: bool
+    config: dict[str, str | int | bool]
+    api_key_env: str | None
+    access_key_env: str | None = None
+    secret_key_env: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianProviderActionCommand:
+    """Parameters for reading, deleting, testing, or connecting one provider."""
+
+    provider_id: str
+    test_query: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianProviderConnectCodexOAuthCommand:
+    """Parameters for creating and starting a Codex OAuth provider."""
+
+    name: str
+    enabled: bool
+    config: dict[str, str | int | bool]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianProfileCreateCommand:
+    """Parameters for creating a librarian profile from the CLI."""
+
+    name: str
+    role: str
+    specialties: list[str]
+    provider_id: str | None
+    model: str | None
+    delegate_limit: int
+    role_prompt: str | None
+    role_prompt_file: str | None
+    routing_priority: int
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianProfileUpdateCommand:
+    """Parameters for patching a librarian profile from the CLI."""
+
+    profile_id: str
+    name: str | None
+    role: str | None
+    add_specialties: list[str]
+    remove_specialties: list[str]
+    provider_id: str | None
+    model: str | None
+    delegate_limit: int | None
+    role_prompt: str | None
+    role_prompt_file: str | None
+    routing_priority: int | None
+    enabled: bool | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianProfileActionCommand:
+    """Parameters for reading, deleting, enabling, or disabling one profile."""
+
+    profile_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianJobStatusCommand:
+    """Parameters for reading librarian job status."""
+
+    job_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianOAuthCommand:
+    """Parameters for librarian OAuth lifecycle commands."""
+
+    provider_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MinioCommand:
     """Parameters for MINIO scan/import operations."""
 
@@ -162,6 +343,12 @@ class ContextMetadataCommand:
     kind: ContextKind
     summary: str | None
     project: str | None
+    scope: ContextScope
+    workspace_id: str | None
+    agent_id: str | None
+    user_id: str | None
+    session_id: str | None
+    visibility: ContextScope
     source_agent: str
     tag: list[str]
 
@@ -192,6 +379,11 @@ class ContextRecallCommand:
     limit: int
     project: str | None
     kind: ContextKind | None
+    include_scopes: list[ContextScope]
+    workspace_id: str | None
+    agent_id: str | None
+    user_id: str | None
+    session_id: str | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -199,6 +391,44 @@ class ContextIdCommand:
     """Parameters for commands targeting one context."""
 
     context_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ContextCompactCommand:
+    """Parameters for preparing a compact handoff context."""
+
+    current_goal: str
+    completed: list[str]
+    in_progress: list[str]
+    key_decisions: list[str]
+    next_actions: list[str]
+    risks: list[str]
+    project: str | None
+    scope: ContextScope
+    workspace_id: str | None
+    agent_id: str | None
+    user_id: str | None
+    session_id: str | None
+    visibility: ContextScope
+    source_agent: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ContextMemoryMapCommand:
+    """Parameters for building a project memory map."""
+
+    project: str | None
+    limit: int
+    include_archived: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ContextCurateCommand:
+    """Parameters for listing curation candidates."""
+
+    project: str | None
+    stale_after_days: int
+    limit: int
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -210,6 +440,9 @@ class HermesBundleCommand:
     api_token: str
     dry_run: bool
     overwrite: bool
+    apply: bool
+    restart_hint: bool
+    print_first_prompt: bool
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -231,6 +464,11 @@ class HermesOnboardCommand(HermesBundleCommand):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class HermesInstallCommand(HermesBundleCommand):
+    """Parameters for one-command Hermes installation."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class HermesDoctorCommand:
     """Parameters for Hermes diagnostics."""
 
@@ -238,6 +476,7 @@ class HermesDoctorCommand:
     api_url: str | None
     api_token: str
     require_home: bool
+    deep: bool
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

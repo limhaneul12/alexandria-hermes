@@ -10,7 +10,8 @@
     "start": "next start -p 3000",
     "lint": "eslint . --max-warnings=0",
     "security:npm-supply-chain": "node scripts/check-npm-supply-chain.mjs",
-    "test:ui-contract": "node scripts/check-product-ui-contract.mjs"
+    "test:ui-contract": "node scripts/check-product-ui-contract.mjs",
+    "test:agent-route-payload": "node scripts/check-agent-route-payload.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

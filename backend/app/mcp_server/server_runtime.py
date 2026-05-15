@@ -5,10 +5,15 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from app.library.domain.event_enum.context_enums import ContextKind, RagStrategy
+from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
 from app.mcp_server.mcp_protocol_enums import McpTransport
+from app.memory.domain.event_enum.context_enums import (
+    ContextKind,
+    ContextScope,
+    RagStrategy,
+)
 from app.shared.types.extra_types import JSONValue
 from mcp.server.fastmcp import FastMCP
 
@@ -42,6 +47,11 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
         strategy: RagStrategy = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_STRATEGY,
         project: str | None = None,
         kind: ContextKind | None = None,
+        include_scopes: list[ContextScope] | None = None,
+        workspace_id: str | None = None,
+        agent_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
     ) -> JSONValue:
         """Search Context Vault and return a Context Pack.
 
@@ -51,12 +61,27 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             strategy: Retrieval strategy.
             project: Optional project filter.
             kind: Optional context kind filter.
+            include_scopes: Optional recall scopes.
+            workspace_id: Optional workspace filter.
+            agent_id: Optional agent filter.
+            user_id: Optional user filter.
+            session_id: Optional session filter.
 
         Returns:
             Backend Context Pack response.
         """
         return await backend_tool_gateway.alexandria_search(
-            api_client, query, limit, strategy, project, kind
+            api_client,
+            query,
+            limit,
+            strategy,
+            project,
+            kind,
+            include_scopes,
+            workspace_id,
+            agent_id,
+            user_id,
+            session_id,
         )
 
     @server.tool(name="alexandria_get_skill")
@@ -89,6 +114,11 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
         limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
         project: str | None = None,
         kind: ContextKind | None = None,
+        include_scopes: list[ContextScope] | None = None,
+        workspace_id: str | None = None,
+        agent_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
     ) -> JSONValue:
         """Recall durable context by query.
 
@@ -97,12 +127,26 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             limit: Maximum number of matching contexts.
             project: Optional project filter.
             kind: Optional context kind filter.
+            include_scopes: Optional recall scopes.
+            workspace_id: Optional workspace filter.
+            agent_id: Optional agent filter.
+            user_id: Optional user filter.
+            session_id: Optional session filter.
 
         Returns:
             Backend Context Pack response.
         """
         return await backend_tool_gateway.alexandria_recall_context(
-            api_client, query, limit, project, kind
+            api_client,
+            query,
+            limit,
+            project,
+            kind,
+            include_scopes,
+            workspace_id,
+            agent_id,
+            user_id,
+            session_id,
         )
 
     @server.tool(name="alexandria_rag_context")
@@ -110,6 +154,9 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
         query: str,
         strategy: RagStrategy = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_STRATEGY,
         limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
+        project: str | None = None,
+        kind: ContextKind | None = None,
+        include_scopes: list[ContextScope] | None = None,
     ) -> JSONValue:
         """Retrieve a RAG Context Pack by query and strategy.
 
@@ -117,12 +164,15 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             query: Search query.
             strategy: Retrieval strategy.
             limit: Maximum number of matching contexts.
+            project: Optional project filter.
+            kind: Optional context kind filter.
+            include_scopes: Optional recall scopes.
 
         Returns:
             Backend Context Pack response.
         """
         return await backend_tool_gateway.alexandria_rag_context(
-            api_client, query, strategy, limit
+            api_client, query, strategy, limit, project, kind, include_scopes
         )
 
     @server.tool(name="alexandria_capture_context")
@@ -132,6 +182,11 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
         kind: ContextKind = backend_tool_gateway.DEFAULT_CAPTURE_KIND,
         summary: str | None = None,
         project: str | None = None,
+        scope: ContextScope = ContextScope.PROJECT,
+        workspace_id: str | None = None,
+        agent_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
         source_agent: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
     ) -> JSONValue:
         """Capture a Context Vault entry.
@@ -142,13 +197,29 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             kind: Context kind.
             summary: Optional context summary.
             project: Optional project scope.
+            scope: Recall-routing scope.
+            workspace_id: Optional workspace identifier.
+            agent_id: Optional agent identifier.
+            user_id: Optional user identifier.
+            session_id: Optional session identifier.
             source_agent: Producing agent name.
 
         Returns:
             Stored context response.
         """
         return await backend_tool_gateway.alexandria_capture_context(
-            api_client, title, content, kind, summary, project, source_agent
+            api_client,
+            title,
+            content,
+            kind,
+            summary,
+            project,
+            scope,
+            workspace_id,
+            agent_id,
+            user_id,
+            session_id,
+            source_agent,
         )
 
     @server.tool(name="alexandria_prepare_compact")
@@ -185,6 +256,8 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
         purpose: str,
         content: str,
         summary: str | None = None,
+        evidence_urls: list[str] | None = None,
+        source_summary: str | None = None,
     ) -> JSONValue:
         """Submit a Hermes-authored skill candidate.
 
@@ -193,12 +266,225 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             purpose: Candidate purpose.
             content: Candidate Markdown content.
             summary: Optional candidate summary.
+            evidence_urls: Source URLs gathered by Hermes.
+            source_summary: Optional source/evidence summary.
 
         Returns:
             Stored skill response.
         """
         return await backend_tool_gateway.alexandria_submit_skill_candidate(
-            api_client, title, purpose, content, summary
+            api_client,
+            title=title,
+            purpose=purpose,
+            content=content,
+            summary=summary,
+            evidence_urls=evidence_urls,
+            source_summary=source_summary,
+        )
+
+    @server.tool(name="alexandria_record_usage")
+    async def _tool_record_usage(
+        item_id: str,
+        item_type: str,
+        selection_source: SelectionSource,
+        agent_name: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        success: bool = True,
+        query: str | None = None,
+        librarian_provider: str | None = None,
+        project: str | None = None,
+        task_summary: str | None = None,
+        feedback: str | None = None,
+    ) -> JSONValue:
+        """Record that Hermes used a skill, prompt, or context.
+
+        Args:
+            item_id: Used library item id.
+            item_type: Used item type.
+            selection_source: How Hermes selected the item.
+            agent_name: Agent recording usage.
+            success: Whether the item helped the task.
+            query: Optional search or recall query.
+            librarian_provider: Optional provider involved in selection.
+            project: Optional project scope.
+            task_summary: Optional task summary.
+            feedback: Optional usefulness note.
+
+        Returns:
+            Backend usage record response.
+        """
+        return await backend_tool_gateway.alexandria_record_usage(
+            api_client,
+            item_id,
+            item_type,
+            selection_source,
+            agent_name,
+            success,
+            query,
+            librarian_provider,
+            project,
+            task_summary,
+            feedback,
+        )
+
+    @server.tool(name="alexandria_ask_librarian")
+    async def _tool_ask_librarian(
+        prompt: str,
+        delegate_to_librarian: bool = False,
+        agent_name: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        project: str | None = None,
+        task_summary: str | None = None,
+        provider_id: str | None = None,
+        librarian_profile_id: str | None = None,
+        librarian_model: str | None = None,
+        librarian_role_prompt: str | None = None,
+        max_librarian_agents: int | None = None,
+        routing_specialties: list[str] | None = None,
+    ) -> JSONValue:
+        """Ask for self-acquisition or profile-backed librarian guidance.
+
+        Args:
+            prompt: Missing-capability or research request.
+            delegate_to_librarian: Whether to request librarian delegation guidance.
+            agent_name: Requesting agent.
+            project: Optional project scope.
+            task_summary: Optional task summary.
+            provider_id: Optional provider preference.
+            librarian_profile_id: Optional agent profile preference.
+            librarian_model: Optional request-level model override.
+            librarian_role_prompt: Optional request-level role prompt override.
+            max_librarian_agents: Optional request-level maximum librarian count.
+            routing_specialties: Optional specialty routing hints.
+
+        Returns:
+            Backend ask-librarian response.
+        """
+        return await backend_tool_gateway.alexandria_ask_librarian(
+            api_client,
+            prompt,
+            delegate_to_librarian,
+            agent_name,
+            project,
+            task_summary,
+            provider_id,
+            librarian_profile_id,
+            librarian_model,
+            librarian_role_prompt,
+            max_librarian_agents,
+            routing_specialties,
+        )
+
+    @server.tool(name="alexandria_librarian_route_preview")
+    async def _tool_librarian_route_preview(
+        prompt: str,
+        agent_name: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        project: str | None = None,
+        task_summary: str | None = None,
+        provider_id: str | None = None,
+        librarian_profile_id: str | None = None,
+        librarian_model: str | None = None,
+        librarian_role_prompt: str | None = None,
+        max_librarian_agents: int | None = None,
+        routing_specialties: list[str] | None = None,
+    ) -> JSONValue:
+        """Preview librarian routing without delegation.
+
+        Args:
+            prompt: Missing-capability or research request.
+            agent_name: Requesting agent.
+            project: Optional project scope.
+            task_summary: Optional task summary.
+            provider_id: Optional provider preference.
+            librarian_profile_id: Optional agent profile preference.
+            librarian_model: Optional request-level model override.
+            librarian_role_prompt: Optional request-level role prompt override.
+            max_librarian_agents: Optional request-level maximum librarian count.
+            routing_specialties: Optional specialty routing hints.
+
+        Returns:
+            Backend route-preview response.
+        """
+        return await backend_tool_gateway.alexandria_librarian_route_preview(
+            api_client,
+            prompt,
+            agent_name,
+            project,
+            task_summary,
+            provider_id,
+            librarian_profile_id,
+            librarian_model,
+            librarian_role_prompt,
+            max_librarian_agents,
+            routing_specialties,
+        )
+
+    @server.tool(name="alexandria_librarian_job_status")
+    async def _tool_librarian_job_status(job_id: str) -> JSONValue:
+        """Read status for a guidance-only librarian request.
+
+        Args:
+            job_id: Job id returned by ask-librarian.
+
+        Returns:
+            Backend job status response.
+        """
+        return await backend_tool_gateway.alexandria_librarian_job_status(
+            api_client, job_id
+        )
+
+    @server.tool(name="alexandria_librarian_oauth_start")
+    async def _tool_librarian_oauth_start(provider_id: str) -> JSONValue:
+        """Start OAuth device authorization for a librarian provider.
+
+        Args:
+            provider_id: Librarian provider id.
+
+        Returns:
+            Public OAuth start response with secret codes removed.
+        """
+        return await backend_tool_gateway.alexandria_librarian_oauth_start(
+            api_client, provider_id
+        )
+
+    @server.tool(name="alexandria_librarian_oauth_poll")
+    async def _tool_librarian_oauth_poll(provider_id: str) -> JSONValue:
+        """Poll OAuth device authorization for a librarian provider.
+
+        Args:
+            provider_id: Librarian provider id.
+
+        Returns:
+            Public OAuth status response without token material.
+        """
+        return await backend_tool_gateway.alexandria_librarian_oauth_poll(
+            api_client, provider_id
+        )
+
+    @server.tool(name="alexandria_librarian_oauth_status")
+    async def _tool_librarian_oauth_status(provider_id: str) -> JSONValue:
+        """Read OAuth connection status for a librarian provider.
+
+        Args:
+            provider_id: Librarian provider id.
+
+        Returns:
+            Public OAuth status response without token material.
+        """
+        return await backend_tool_gateway.alexandria_librarian_oauth_status(
+            api_client, provider_id
+        )
+
+    @server.tool(name="alexandria_librarian_oauth_refresh")
+    async def _tool_librarian_oauth_refresh(provider_id: str) -> JSONValue:
+        """Refresh OAuth tokens for a librarian provider when needed.
+
+        Args:
+            provider_id: Librarian provider id.
+
+        Returns:
+            Public OAuth status response without token material.
+        """
+        return await backend_tool_gateway.alexandria_librarian_oauth_refresh(
+            api_client, provider_id
         )
 
     @server.tool(name="alexandria_archive_context")

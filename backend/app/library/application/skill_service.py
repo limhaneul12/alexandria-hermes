@@ -14,7 +14,7 @@ from app.library.application.skills.item_commands import (
     build_user_skill_create_command,
 )
 from app.library.application.skills.payload_mapper import shape_skill_patch_payload
-from app.library.domain.contracts.librarian_candidate_contracts import (
+from app.library.domain.contracts.skill_candidate_contracts import (
     CreateSkillCandidateResult,
 )
 from app.library.domain.event_enum.item_enums import ItemStatus, ItemType
@@ -117,6 +117,8 @@ class SkillService:
         created_by_name: str,
         activate: bool,
         status: ItemStatus | None = None,
+        evidence_urls: list[str] | None = None,
+        source_summary: str | None = None,
     ) -> LibraryItemPayload:
         """Create skill payload from a structured agent candidate.
 
@@ -136,6 +138,8 @@ class SkillService:
             created_by_name: Source name.
             activate: Whether to activate directly.
             status: Optional forced status.
+            evidence_urls: Source URLs gathered by the agent.
+            source_summary: Summary of how the agent produced the candidate.
 
         Returns:
             Item payload.
@@ -157,6 +161,8 @@ class SkillService:
                 created_by_name=created_by_name,
                 activate=activate,
                 status=status,
+                evidence_urls=evidence_urls,
+                source_summary=source_summary,
             )
         )
         created = await self._create_item_from_command(command)

@@ -209,8 +209,8 @@ def test_search_endpoint_returns_success_when_query_contains_fts_special_charact
     try:
         with override_library_provider("item_service", item_service):
             with TestClient(app, raise_server_exceptions=False) as client:
-                quote_response = client.get("/search", params={"q": '"'})
-                hyphen_response = client.get("/search", params={"q": "-"})
+                quote_response = client.get("/retrieval/search", params={"q": '"'})
+                hyphen_response = client.get("/retrieval/search", params={"q": "-"})
     finally:
         anyio.run(session_context.__aexit__, None, None, None)
         anyio.run(database.shutdown)

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import typer
 from app.cli_support.contracts.command_contracts import (
+    ContextCompactCommand,
+    ContextCurateCommand,
     ContextIdCommand,
     ContextLintCommand,
+    ContextMemoryMapCommand,
     ContextMetadataCommand,
     ContextRecallCommand,
     ContextSaveCommand,
@@ -13,9 +16,12 @@ from app.cli_support.contracts.command_contracts import (
 )
 from app.cli_support.handlers.context import (
     handle_context_chunks,
+    handle_context_compact,
+    handle_context_curate,
     handle_context_doctor_rag,
     handle_context_embed,
     handle_context_lint,
+    handle_context_memory_map,
     handle_context_recall,
     handle_context_reindex,
     handle_context_save,
@@ -26,9 +32,10 @@ from app.cli_support.typer_commands.typer_runtime import (
     run_local,
     values,
 )
-from app.library.domain.event_enum.context_enums import (
+from app.memory.domain.event_enum.context_enums import (
     ContextImportance,
     ContextKind,
+    ContextScope,
     ContextSourceType,
     RagStrategy,
 )
@@ -41,6 +48,12 @@ def _metadata(
     kind: ContextKind,
     summary: str | None,
     project: str | None,
+    scope: ContextScope,
+    workspace_id: str | None,
+    agent_id: str | None,
+    user_id: str | None,
+    session_id: str | None,
+    visibility: ContextScope,
     source_agent: str,
     tag: list[str] | None,
 ) -> ContextMetadataCommand:
@@ -49,6 +62,12 @@ def _metadata(
         kind=kind,
         summary=summary,
         project=project,
+        scope=scope,
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        user_id=user_id,
+        session_id=session_id,
+        visibility=visibility,
         source_agent=source_agent,
         tag=values(tag),
     )
@@ -62,6 +81,12 @@ def context_lint(
     kind: ContextKind = typer.Option(ContextKind.HANDOFF, "--kind"),
     summary: str | None = typer.Option(None, "--summary"),
     project: str | None = typer.Option(None, "--project"),
+    scope: ContextScope = typer.Option(ContextScope.PROJECT, "--scope"),
+    workspace_id: str | None = typer.Option(None, "--workspace-id"),
+    agent_id: str | None = typer.Option(None, "--agent-id"),
+    user_id: str | None = typer.Option(None, "--user-id"),
+    session_id: str | None = typer.Option(None, "--session-id"),
+    visibility: ContextScope = typer.Option(ContextScope.PROJECT, "--visibility"),
     source_agent: str = typer.Option("Hermes", "--source-agent"),
     tag: list[str] | None = typer.Option(None, "--tag"),
 ) -> None:
@@ -80,7 +105,20 @@ def context_lint(
     Returns:
         None.
     """
-    metadata = _metadata(title, kind, summary, project, source_agent, tag)
+    metadata = _metadata(
+        title,
+        kind,
+        summary,
+        project,
+        scope,
+        workspace_id,
+        agent_id,
+        user_id,
+        session_id,
+        visibility,
+        source_agent,
+        tag,
+    )
     run_client(
         ctx,
         ContextLintCommand(
@@ -88,6 +126,12 @@ def context_lint(
             kind=metadata.kind,
             summary=metadata.summary,
             project=metadata.project,
+            scope=metadata.scope,
+            workspace_id=metadata.workspace_id,
+            agent_id=metadata.agent_id,
+            user_id=metadata.user_id,
+            session_id=metadata.session_id,
+            visibility=metadata.visibility,
             source_agent=metadata.source_agent,
             tag=metadata.tag,
             content_file=content_file,
@@ -105,6 +149,12 @@ def context_save(
     kind: ContextKind = typer.Option(ContextKind.HANDOFF, "--kind"),
     summary: str | None = typer.Option(None, "--summary"),
     project: str | None = typer.Option(None, "--project"),
+    scope: ContextScope = typer.Option(ContextScope.PROJECT, "--scope"),
+    workspace_id: str | None = typer.Option(None, "--workspace-id"),
+    agent_id: str | None = typer.Option(None, "--agent-id"),
+    user_id: str | None = typer.Option(None, "--user-id"),
+    session_id: str | None = typer.Option(None, "--session-id"),
+    visibility: ContextScope = typer.Option(ContextScope.PROJECT, "--visibility"),
     source_agent: str = typer.Option("Hermes", "--source-agent"),
     tag: list[str] | None = typer.Option(None, "--tag"),
     source_type: ContextSourceType = typer.Option(
@@ -134,7 +184,20 @@ def context_save(
     Returns:
         None.
     """
-    metadata = _metadata(title, kind, summary, project, source_agent, tag)
+    metadata = _metadata(
+        title,
+        kind,
+        summary,
+        project,
+        scope,
+        workspace_id,
+        agent_id,
+        user_id,
+        session_id,
+        visibility,
+        source_agent,
+        tag,
+    )
     run_client(
         ctx,
         ContextSaveCommand(
@@ -142,6 +205,12 @@ def context_save(
             kind=metadata.kind,
             summary=metadata.summary,
             project=metadata.project,
+            scope=metadata.scope,
+            workspace_id=metadata.workspace_id,
+            agent_id=metadata.agent_id,
+            user_id=metadata.user_id,
+            session_id=metadata.session_id,
+            visibility=metadata.visibility,
             source_agent=metadata.source_agent,
             tag=metadata.tag,
             content=content,
@@ -159,6 +228,11 @@ def _recall_command(
     limit: int,
     project: str | None,
     kind: ContextKind | None,
+    include_scopes: list[ContextScope],
+    workspace_id: str | None,
+    agent_id: str | None,
+    user_id: str | None,
+    session_id: str | None,
 ) -> ContextRecallCommand:
     return ContextRecallCommand(
         query=query,
@@ -166,6 +240,11 @@ def _recall_command(
         limit=limit,
         project=project,
         kind=kind,
+        include_scopes=include_scopes,
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        user_id=user_id,
+        session_id=session_id,
     )
 
 
@@ -177,6 +256,11 @@ def context_recall(
     limit: int = typer.Option(5, "--limit"),
     project: str | None = typer.Option(None, "--project"),
     kind: ContextKind | None = typer.Option(None, "--kind"),
+    include: list[ContextScope] | None = typer.Option(None, "--include"),
+    workspace_id: str | None = typer.Option(None, "--workspace-id"),
+    agent_id: str | None = typer.Option(None, "--agent-id"),
+    user_id: str | None = typer.Option(None, "--user-id"),
+    session_id: str | None = typer.Option(None, "--session-id"),
 ) -> None:
     """Recall a Context Pack by query.
 
@@ -193,7 +277,18 @@ def context_recall(
     """
     run_client(
         ctx,
-        _recall_command(query, strategy, limit, project, kind),
+        _recall_command(
+            query,
+            strategy,
+            limit,
+            project,
+            kind,
+            list(include or []),
+            workspace_id,
+            agent_id,
+            user_id,
+            session_id,
+        ),
         handle_context_recall,
     )
 
@@ -206,6 +301,11 @@ def context_rag(
     limit: int = typer.Option(5, "--limit"),
     project: str | None = typer.Option(None, "--project"),
     kind: ContextKind | None = typer.Option(None, "--kind"),
+    include: list[ContextScope] | None = typer.Option(None, "--include"),
+    workspace_id: str | None = typer.Option(None, "--workspace-id"),
+    agent_id: str | None = typer.Option(None, "--agent-id"),
+    user_id: str | None = typer.Option(None, "--user-id"),
+    session_id: str | None = typer.Option(None, "--session-id"),
 ) -> None:
     """Alias for context recall with RAG strategy controls.
 
@@ -222,7 +322,18 @@ def context_rag(
     """
     run_client(
         ctx,
-        _recall_command(query, strategy, limit, project, kind),
+        _recall_command(
+            query,
+            strategy,
+            limit,
+            project,
+            kind,
+            list(include or []),
+            workspace_id,
+            agent_id,
+            user_id,
+            session_id,
+        ),
         handle_context_recall,
     )
 
@@ -239,6 +350,126 @@ def context_chunks(ctx: typer.Context, context_id: str) -> None:
         None.
     """
     run_client(ctx, ContextIdCommand(context_id=context_id), handle_context_chunks)
+
+
+@context_app.command("compact")
+def context_compact(
+    ctx: typer.Context,
+    current_goal: str = typer.Option(..., "--current-goal"),
+    completed: list[str] | None = typer.Option(None, "--completed"),
+    in_progress: list[str] | None = typer.Option(None, "--in-progress"),
+    key_decision: list[str] | None = typer.Option(None, "--key-decision"),
+    next_action: list[str] | None = typer.Option(None, "--next-action"),
+    risk: list[str] | None = typer.Option(None, "--risk"),
+    project: str | None = typer.Option(None, "--project"),
+    scope: ContextScope = typer.Option(ContextScope.SESSION, "--scope"),
+    workspace_id: str | None = typer.Option(None, "--workspace-id"),
+    agent_id: str | None = typer.Option(None, "--agent-id"),
+    user_id: str | None = typer.Option(None, "--user-id"),
+    session_id: str | None = typer.Option(None, "--session-id"),
+    visibility: ContextScope = typer.Option(ContextScope.SESSION, "--visibility"),
+    source_agent: str = typer.Option("Hermes", "--source-agent"),
+) -> None:
+    """Prepare and save a compact handoff context.
+
+    Args:
+        ctx: Typer context.
+        current_goal: Current goal summary.
+        completed: Repeatable completed work bullet.
+        in_progress: Repeatable in-progress work bullet.
+        key_decision: Repeatable key decision bullet.
+        next_action: Repeatable next action bullet.
+        risk: Repeatable risk bullet.
+        project: Optional project scope.
+        scope: Recall-routing scope.
+        workspace_id: Optional workspace identifier.
+        agent_id: Optional agent identifier.
+        user_id: Optional user identifier.
+        session_id: Optional session identifier.
+        visibility: Recall visibility scope.
+        source_agent: Agent creating the compact.
+
+    Returns:
+        None.
+    """
+    run_client(
+        ctx,
+        ContextCompactCommand(
+            current_goal=current_goal,
+            completed=values(completed),
+            in_progress=values(in_progress),
+            key_decisions=values(key_decision),
+            next_actions=values(next_action),
+            risks=values(risk),
+            project=project,
+            scope=scope,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            session_id=session_id,
+            visibility=visibility,
+            source_agent=source_agent,
+        ),
+        handle_context_compact,
+    )
+
+
+@context_app.command("memory-map")
+def context_memory_map(
+    ctx: typer.Context,
+    project: str | None = typer.Option(None, "--project"),
+    limit: int = typer.Option(10, "--limit"),
+    include_archived: bool = typer.Option(False, "--include-archived"),
+) -> None:
+    """Build a project memory map from stored contexts.
+
+    Args:
+        ctx: Typer context.
+        project: Optional project filter.
+        limit: Maximum contexts per backend page.
+        include_archived: Whether archived contexts are included.
+
+    Returns:
+        None.
+    """
+    run_client(
+        ctx,
+        ContextMemoryMapCommand(
+            project=project,
+            limit=limit,
+            include_archived=include_archived,
+        ),
+        handle_context_memory_map,
+    )
+
+
+@context_app.command("curate")
+def context_curate(
+    ctx: typer.Context,
+    project: str | None = typer.Option(None, "--project"),
+    stale_after_days: int = typer.Option(90, "--stale-after-days"),
+    limit: int = typer.Option(50, "--limit"),
+) -> None:
+    """List stale or duplicate-looking memory curation candidates.
+
+    Args:
+        ctx: Typer context.
+        project: Optional project filter.
+        stale_after_days: Age threshold for stale candidate notes.
+        limit: Maximum contexts to scan.
+
+    Returns:
+        None.
+    """
+    run_client(
+        ctx,
+        ContextCurateCommand(
+            project=project,
+            stale_after_days=stale_after_days,
+            limit=limit,
+        ),
+        handle_context_curate,
+    )
 
 
 @context_app.command("embed")

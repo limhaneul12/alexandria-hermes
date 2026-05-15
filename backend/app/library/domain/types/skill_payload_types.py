@@ -21,6 +21,39 @@ class SkillDetailsPayload(TypedDict, closed=True):
     required_tools: list[str]
     risk_level: str
     version: str
+    quality_gate: dict[str, JSONValue]
+
+
+class SkillCandidateHarnessCheckPayload(TypedDict, closed=True):
+    """One deterministic candidate harness check result."""
+
+    name: str
+    passed: bool
+    message: str
+
+
+class SkillCandidateHarnessPayload(TypedDict, closed=True):
+    """Persistent harness result for an agent-authored skill candidate."""
+
+    status: str
+    checks: list[SkillCandidateHarnessCheckPayload]
+
+
+class AgentSubmittedSkillDetailsPayload(TypedDict, closed=True):
+    """Skill details enriched with self-acquisition metadata."""
+
+    purpose: str
+    input_schema: SkillSchemaPayload
+    output_schema: SkillSchemaPayload
+    usage_example: str | None
+    required_tools: list[str]
+    risk_level: str
+    version: str
+    evidence_urls: list[str]
+    source_summary: str | None
+    acquisition_method: str
+    harness: SkillCandidateHarnessPayload
+    quality_gate: dict[str, JSONValue]
 
 
 class LibrarianGeneratedSkillDetailsPayload(TypedDict, closed=True):
@@ -35,6 +68,7 @@ class LibrarianGeneratedSkillDetailsPayload(TypedDict, closed=True):
     version: str
     librarian_provider_id: str
     prompt: str
+    quality_gate: dict[str, JSONValue]
 
 
 class SkillDetailsPatchPayload(TypedDict, total=False, closed=True):
@@ -47,6 +81,11 @@ class SkillDetailsPatchPayload(TypedDict, total=False, closed=True):
     required_tools: list[str]
     risk_level: str
     version: str
+    evidence_urls: list[str]
+    source_summary: str | None
+    acquisition_method: str
+    harness: SkillCandidateHarnessPayload
+    quality_gate: dict[str, JSONValue]
     librarian_provider_id: str
     prompt: str
 

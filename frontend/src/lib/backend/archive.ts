@@ -21,6 +21,9 @@ import type {
   PromptKind,
   PromptTaskType,
   SkillCreateDTO,
+  SkillAcquisitionMetadataDTO,
+  SkillCandidateHarnessDTO,
+  SkillCandidateHarnessStatus,
   SkillCreateResultDTO,
   SkillDetailDTO,
   SourceType,
@@ -100,6 +103,10 @@ function isVisibleItem(item: BackendItem): boolean {
   return VISIBLE_ITEM_TYPES.has(item.item_type);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function detailString(details: Record<string, unknown>, key: string): string | null {
   const value = details[key];
   return typeof value === "string" && value.trim() ? value : null;
@@ -136,6 +143,44 @@ function toPromptMetadata(details: Record<string, unknown>) {
     relatedItemIds: detailStringList(details, "related_item_ids"),
     safetyNotes: detailString(details, "safety_notes"),
     changeSummary: detailString(details, "change_summary"),
+  };
+}
+
+function isHarnessStatus(value: string): value is SkillCandidateHarnessStatus {
+  return value === "PASSED" || value === "NEEDS_REVIEW";
+}
+
+function toCandidateHarness(details: Record<string, unknown>): SkillCandidateHarnessDTO | null {
+  const rawHarness = details.harness;
+  if (!isRecord(rawHarness)) return null;
+  const status = typeof rawHarness.status === "string" && isHarnessStatus(rawHarness.status)
+    ? rawHarness.status
+    : null;
+  const rawChecks = rawHarness.checks;
+  if (!status || !Array.isArray(rawChecks)) return null;
+  return {
+    status,
+    checks: rawChecks
+      .filter(isRecord)
+      .map((check) => ({
+        name: typeof check.name === "string" ? check.name : "candidate_check",
+        passed: typeof check.passed === "boolean" ? check.passed : false,
+        message: typeof check.message === "string" ? check.message : "",
+      })),
+  };
+}
+
+function toSkillAcquisitionMetadata(details: Record<string, unknown>): SkillAcquisitionMetadataDTO | null {
+  const acquisitionMethod = detailString(details, "acquisition_method");
+  const evidenceUrls = detailStringList(details, "evidence_urls");
+  const sourceSummary = detailString(details, "source_summary");
+  const harness = toCandidateHarness(details);
+  if (!acquisitionMethod && evidenceUrls.length === 0 && !sourceSummary && !harness) return null;
+  return {
+    acquisitionMethod: acquisitionMethod ?? "SELF_ACQUISITION",
+    evidenceUrls,
+    sourceSummary,
+    harness,
   };
 }
 
@@ -247,7 +292,7 @@ function toExternalArchiveImportResultDTO(
 
 export async function createCategoryInBackend(payload: CategoryCreateDTO): Promise<CategoryDTO> {
   const category = await backendFetch<BackendCategory & { created_at: string; updated_at: string }>(
-    "/categories",
+    "/library/categories",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -258,15 +303,15 @@ export async function createCategoryInBackend(payload: CategoryCreateDTO): Promi
 }
 
 export async function deleteCategoryInBackend(categoryId: string): Promise<void> {
-  await backendFetch<void>(`/categories/${encodeURIComponent(categoryId)}`, { method: "DELETE" });
+  await backendFetch<void>(`/library/categories/${encodeURIComponent(categoryId)}`, { method: "DELETE" });
 }
 
 export async function deleteSkillInBackend(skillId: string): Promise<void> {
-  await backendFetch<void>(`/skills/${encodeURIComponent(skillId)}`, { method: "DELETE" });
+  await backendFetch<void>(`/library/skills/${encodeURIComponent(skillId)}`, { method: "DELETE" });
 }
 
 export async function deletePromptInBackend(promptId: string): Promise<void> {
-  await backendFetch<void>(`/prompts/${encodeURIComponent(promptId)}`, { method: "DELETE" });
+  await backendFetch<void>(`/library/prompts/${encodeURIComponent(promptId)}`, { method: "DELETE" });
 }
 
 export async function deleteLibraryItemInBackend(item: LibraryItemCardDTO): Promise<void> {
@@ -278,7 +323,7 @@ export async function deleteLibraryItemInBackend(item: LibraryItemCardDTO): Prom
 }
 
 export async function createSkillInBackend(payload: SkillCreateDTO): Promise<SkillCreateResultDTO> {
-  const item = await backendFetch<BackendItem>("/skills", {
+  const item = await backendFetch<BackendItem>("/library/skills", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -307,7 +352,7 @@ export async function createSkillInBackend(payload: SkillCreateDTO): Promise<Ski
 }
 
 export async function createPromptInBackend(payload: PromptCreateDTO): Promise<PromptCreateResultDTO> {
-  const item = await backendFetch<BackendItem>("/prompts", {
+  const item = await backendFetch<BackendItem>("/library/prompts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -384,16 +429,16 @@ function usageTrend(usages: BackendUsage[]) {
 
 async function loadArchiveContext() {
   const [dbItems, minioItems, categories, popular, recent] = await Promise.all([
-    backendFetch<BackendItem[]>("/items?limit=200"),
-    backendFetch<BackendItem[]>("/storage/minio/items?limit=200").catch(
+    backendFetch<BackendItem[]>("/library/items?limit=200"),
+    backendFetch<BackendItem[]>("/archive/minio/library/items?limit=200").catch(
       (error: unknown) => {
         if (error instanceof BackendRequestError) return [];
         throw error;
       },
     ),
-    backendFetch<BackendCategory[]>("/categories/tree"),
-    backendFetch<BackendPopular[]>("/usage/popular?limit=100"),
-    backendFetch<BackendUsage[]>("/usage/recent?limit=200"),
+    backendFetch<BackendCategory[]>("/library/categories/tree"),
+    backendFetch<BackendPopular[]>("/library/usage/popular?limit=100"),
+    backendFetch<BackendUsage[]>("/library/usage/recent?limit=200"),
   ]);
   const items = [...dbItems, ...minioItems].filter(isVisibleItem);
   const categoriesById = buildCategoryLookup(categories);
@@ -456,7 +501,7 @@ export async function loadExternalArchiveCandidatesFromBackend(
 ): Promise<ExternalArchiveCandidateDTO[]> {
   const boundedLimit = Math.min(Math.max(limit, 1), 1000);
   const candidates = await backendFetch<BackendExternalArchiveCandidate[]>(
-    `/storage/minio/import-candidates?limit=${boundedLimit}`,
+    `/archive/minio/import-candidates?limit=${boundedLimit}`,
   );
   return candidates.map(toExternalArchiveCandidateDTO);
 }
@@ -466,7 +511,7 @@ export async function importExternalArchiveCandidatesInBackend(
 ): Promise<ExternalArchiveImportResultDTO> {
   const boundedLimit = Math.min(Math.max(limit, 1), 1000);
   const result = await backendFetch<BackendExternalArchiveImportResult>(
-    "/storage/minio/import",
+    "/archive/minio/import",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -482,7 +527,7 @@ export async function loadDashboardFromBackend(): Promise<DashboardDTO> {
     categoryPopularity,
   ] = await Promise.all([
     loadArchiveContext(),
-    backendFetch<BackendCategoryPopularity[]>("/usage/popular/by-category?limit=12"),
+    backendFetch<BackendCategoryPopularity[]>("/library/usage/popular/by-category?limit=12"),
   ]);
   const cards = items.map((item) => toSkillCard(item, categoriesById, usageCounts, recentUsage));
   const skillsCount = items.filter((item) => item.item_type === "SKILL").length;
@@ -528,7 +573,7 @@ export async function loadDashboardFromBackend(): Promise<DashboardDTO> {
 async function loadItemCategory(item: BackendItem): Promise<BackendCategory | null> {
   if (!item.category_id) return null;
   const encodedCategoryId = encodeURIComponent(item.category_id);
-  return backendFetch<BackendCategory>(`/categories/${encodedCategoryId}`).catch((error: unknown) => {
+  return backendFetch<BackendCategory>(`/library/categories/${encodedCategoryId}`).catch((error: unknown) => {
     if (error instanceof BackendRequestError && error.status === 404) return null;
     throw error;
   });
@@ -536,7 +581,7 @@ async function loadItemCategory(item: BackendItem): Promise<BackendCategory | nu
 
 async function loadMinioItemById(skillId: string): Promise<BackendItem | null> {
   if (!skillId.startsWith("minio:")) return null;
-  const minioItems = await backendFetch<BackendItem[]>("/storage/minio/items?limit=1000").catch(
+  const minioItems = await backendFetch<BackendItem[]>("/archive/minio/library/items?limit=1000").catch(
     (error: unknown) => {
       if (error instanceof BackendRequestError) return [];
       throw error;
@@ -547,7 +592,7 @@ async function loadMinioItemById(skillId: string): Promise<BackendItem | null> {
 
 export async function loadLibraryItemDetailFromBackend(skillId: string): Promise<LibraryItemDetailDTO | null> {
   const encodedSkillId = encodeURIComponent(skillId);
-  const persistedItem = await backendFetch<BackendItem>(`/items/${encodedSkillId}`).catch((error: unknown) => {
+  const persistedItem = await backendFetch<BackendItem>(`/library/items/${encodedSkillId}`).catch((error: unknown) => {
     if (error instanceof BackendRequestError && error.status === 404) return null;
     throw error;
   });
@@ -555,7 +600,7 @@ export async function loadLibraryItemDetailFromBackend(skillId: string): Promise
   if (!item) return null;
   const usagePromise = item.id.startsWith("minio:")
     ? Promise.resolve<BackendUsage[]>([])
-    : backendFetch<BackendUsage[]>(`/usage/items/${encodedSkillId}`);
+    : backendFetch<BackendUsage[]>(`/library/usage/library/items/${encodedSkillId}`);
   const [usage, category] = await Promise.all([
     usagePromise,
     loadItemCategory(item),
@@ -568,8 +613,12 @@ export async function loadLibraryItemDetailFromBackend(skillId: string): Promise
     usage[0] ? [[item.id, usage[0].used_at]] : [],
   );
   const base = toSkillCard(item, categoriesById, usageCounts, recentUsage);
+  const skillAcquisition = item.item_type === "SKILL"
+    ? toSkillAcquisitionMetadata(item.details)
+    : null;
   return {
     ...base,
+    skillAcquisition,
     usageHistory: usage.map((entry) => ({
       id: entry.id,
       accessedAt: entry.used_at,
@@ -585,6 +634,9 @@ export async function loadLibraryItemDetailFromBackend(skillId: string): Promise
         ]
       : [
           { id: "overview", label: "Overview" },
+          ...(skillAcquisition
+            ? [{ id: "self-acquisition", label: "Self-acquisition" }]
+            : []),
           { id: "usage-guide", label: "Usage guide" },
           { id: "examples", label: "Code examples" },
           { id: "history", label: "Usage history" },

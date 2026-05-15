@@ -43,6 +43,8 @@ AGENT_SUBMIT_SKILL_EXAMPLE: JsonDict = {
     "created_by_name": "research-agent",
     "activate": False,
     "status": "DRAFT",
+    "evidence_urls": ["https://example.com/research/fastapi-dependency-overrides"],
+    "source_summary": "Agent researched the missing capability before submission.",
 }
 
 SKILL_PATCH_EXAMPLE: JsonDict = {

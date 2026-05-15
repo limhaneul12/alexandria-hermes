@@ -9,7 +9,7 @@ from app.library.application.skills.item_commands import (
     build_librarian_skill_create_command,
     build_user_skill_create_command,
 )
-from app.library.domain.contracts.librarian_candidate_contracts import (
+from app.library.domain.contracts.skill_candidate_contracts import (
     CreateSkillCandidateResult,
 )
 from app.library.domain.event_enum.item_enums import (
@@ -18,8 +18,8 @@ from app.library.domain.event_enum.item_enums import (
     ItemType,
     SourceType,
 )
-from app.shared.exceptions import ValidationError
 from app.library.domain.event_enum.skill_enums import RiskLevel
+from app.shared.exceptions import ValidationError
 
 
 def _skill_create_fields(
@@ -67,6 +67,36 @@ def test_user_skill_create_command_preserves_user_source_contract() -> None:
         "required_tools": ["pytest"],
         "risk_level": "LOW",
         "version": "1.0.0",
+        "quality_gate": {
+            "status": "NEEDS_REVIEW",
+            "checks": [
+                {
+                    "name": "title_present",
+                    "passed": True,
+                    "message": "title is present",
+                },
+                {
+                    "name": "content_present",
+                    "passed": True,
+                    "message": "content is present",
+                },
+                {
+                    "name": "dangerous_command_absent",
+                    "passed": True,
+                    "message": "dangerous shell command marker is absent",
+                },
+                {
+                    "name": "secret_redaction",
+                    "passed": True,
+                    "message": "secret content is redacted or safe",
+                },
+                {
+                    "name": "evidence_or_summary_present",
+                    "passed": False,
+                    "message": "evidence URL or source summary is present",
+                },
+            ],
+        },
     }
 
 

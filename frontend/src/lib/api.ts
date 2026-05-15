@@ -1,5 +1,7 @@
 import type {
   AgentDTO,
+  AgentCreateDTO,
+  AgentUpdateDTO,
   CategoryCreateDTO,
   CategoryDTO,
   ContextChunkDTO,
@@ -14,6 +16,10 @@ import type {
   DashboardDTO,
   ExternalArchiveCandidateDTO,
   ExternalArchiveImportResultDTO,
+  LibrarianOAuthStartDTO,
+  LibrarianOAuthStatusDTO,
+  LibrarianAskRequestDTO,
+  LibrarianAskResponseDTO,
   LibrarianProviderCreateDTO,
   LibrarianProviderDTO,
   LibrarianProviderTestDTO,
@@ -102,10 +108,51 @@ export function updateLibrarianProvider(
   );
 }
 
+export function deleteLibrarianProvider(providerId: string) {
+  return fetchJson<void>(
+    `/api/librarians/${encodeURIComponent(providerId)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function testLibrarianProvider(providerId: string, testQuery: string) {
   return fetchJson<LibrarianProviderTestDTO>(
     `/api/librarians/${encodeURIComponent(providerId)}/test`,
     jsonInit("POST", { testQuery }),
+  );
+}
+
+export function startLibrarianOAuth(providerId: string) {
+  return fetchJson<LibrarianOAuthStartDTO>(
+    `/api/librarians/${encodeURIComponent(providerId)}/oauth/start`,
+    { method: "POST" },
+  );
+}
+
+export function pollLibrarianOAuth(providerId: string) {
+  return fetchJson<LibrarianOAuthStatusDTO>(
+    `/api/librarians/${encodeURIComponent(providerId)}/oauth/poll`,
+    { method: "POST" },
+  );
+}
+
+export function fetchLibrarianOAuthStatus(providerId: string) {
+  return fetchJson<LibrarianOAuthStatusDTO>(
+    `/api/librarians/${encodeURIComponent(providerId)}/oauth/status`,
+  );
+}
+
+export function refreshLibrarianOAuth(providerId: string) {
+  return fetchJson<LibrarianOAuthStatusDTO>(
+    `/api/librarians/${encodeURIComponent(providerId)}/oauth/refresh`,
+    { method: "POST" },
+  );
+}
+
+export function askLibrarian(payload: LibrarianAskRequestDTO) {
+  return fetchJson<LibrarianAskResponseDTO>(
+    "/api/librarians/ask",
+    jsonInit("POST", payload),
   );
 }
 
@@ -126,6 +173,28 @@ export function importExternalArchiveCandidates(limit = 48) {
 
 export function fetchAgents() {
   return fetchJson<AgentDTO[]>("/api/agents");
+}
+
+export function createAgent(payload: AgentCreateDTO) {
+  return fetchJson<AgentDTO>("/api/agents", jsonInit("POST", payload));
+}
+
+export function fetchAgent(agentId: string) {
+  return fetchJson<AgentDTO>(`/api/agents/${encodeURIComponent(agentId)}`);
+}
+
+export function updateAgent(agentId: string, payload: AgentUpdateDTO) {
+  return fetchJson<AgentDTO>(
+    `/api/agents/${encodeURIComponent(agentId)}`,
+    jsonInit("PATCH", payload),
+  );
+}
+
+export function deleteAgent(agentId: string) {
+  return fetchJson<void>(
+    `/api/agents/${encodeURIComponent(agentId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export function fetchContexts(params: URLSearchParams) {

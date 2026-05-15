@@ -3,7 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
 import {
   Archive,
   BookOpen,
@@ -58,7 +57,7 @@ const sections: NavSection[] = [
   {
     titleKey: "aiLibrarian",
     items: [
-      { labelKey: "librarian", href: "/settings#librarians", icon: Bot, active: "librarians" },
+      { labelKey: "librarian", href: "/settings/librarians", icon: Bot, active: "librarians" },
       { labelKey: "contextVault", href: "/contexts", icon: ScrollText, active: "contexts" },
       { labelKey: "ragInspector", href: "/rag-inspector", icon: Gauge, active: "rag" },
       { labelKey: "captureReview", href: "/capture-review", icon: ClipboardCheck, active: "capture" },
@@ -74,26 +73,11 @@ const sections: NavSection[] = [
   },
 ];
 
-function useHash() {
-  const [hash, setHash] = useState("");
-  useEffect(() => {
-    const updateHash = () => setHash(window.location.hash);
-    updateHash();
-    window.addEventListener("hashchange", updateHash);
-    window.addEventListener("popstate", updateHash);
-    return () => {
-      window.removeEventListener("hashchange", updateHash);
-      window.removeEventListener("popstate", updateHash);
-    };
-  }, []);
-  return hash;
-}
-
-function isActive(pathname: string, params: URLSearchParams, hash: string, active?: string) {
+function isActive(pathname: string, params: URLSearchParams, active?: string) {
   if (!active) return false;
   if (active === "exact") return pathname === "/dashboard" || pathname === "/";
-  if (active === "settings") return pathname === "/settings" && hash !== "#librarians";
-  if (active === "librarians") return pathname === "/settings" && hash === "#librarians";
+  if (active === "settings") return pathname === "/settings";
+  if (active === "librarians") return pathname === "/settings/librarians";
   if (active === "contexts") return pathname.startsWith("/contexts");
   if (active === "rag") return pathname === "/rag-inspector";
   if (active === "capture") return pathname === "/capture-review";
@@ -107,7 +91,6 @@ function isActive(pathname: string, params: URLSearchParams, hash: string, activ
 export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const hash = useHash();
   const language = useLibraryStore((state) => state.language);
   const collapsed = useLibraryStore((state) => state.sidebarCollapsed);
   return (
@@ -132,18 +115,25 @@ export function Sidebar() {
             <div className="space-y-1">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const active = isActive(pathname, searchParams, hash, item.active);
+                const active = isActive(pathname, searchParams, item.active);
+                const label = t(language, item.labelKey);
+                const className = `group flex h-8 items-center gap-3 border-l text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${collapsed ? "justify-center px-0" : "pl-3 pr-2"} ${
+                  active ? "border-white bg-transparent text-white" : "border-transparent text-white/70 hover:border-white/30 hover:bg-transparent hover:text-white"
+                }`;
+                const content = (
+                  <>
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    {!collapsed ? label : null}
+                  </>
+                );
                 return (
                   <Link
                     key={`${section.titleKey}-${item.labelKey}`}
                     href={item.href}
-                    title={collapsed ? t(language, item.labelKey) : undefined}
-                    className={`group flex h-8 items-center gap-3 border-l text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${collapsed ? "justify-center px-0" : "pl-3 pr-2"} ${
-                      active ? "border-white bg-transparent text-white" : "border-transparent text-white/70 hover:border-white/30 hover:bg-transparent hover:text-white"
-                    }`}
+                    title={collapsed ? label : undefined}
+                    className={className}
                   >
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                    {!collapsed ? t(language, item.labelKey) : null}
+                    {content}
                   </Link>
                 );
               })}

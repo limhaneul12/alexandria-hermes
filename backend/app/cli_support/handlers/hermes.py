@@ -8,6 +8,7 @@ from app.cli_support.contracts.command_contracts import (
     HermesBundleCommand,
     HermesConfigureCommand,
     HermesDoctorCommand,
+    HermesInstallCommand,
     HermesOnboardCommand,
     HermesScanCommand,
     HermesSyncCommand,
@@ -110,6 +111,29 @@ def handle_hermes_onboard(
     return 0
 
 
+def handle_hermes_install(
+    command: HermesInstallCommand,
+    context: CommandContext,
+) -> int:
+    """Run the guided one-command Hermes installation flow.
+
+    Args:
+        command: CLI command contract with install options.
+        context: Runtime context containing output streams and default API URL.
+
+    Returns:
+        Process-style exit code.
+    """
+    payload = install_hermes_bundle(
+        command=command,
+        context=context,
+        include_prompts=True,
+        include_mcp=True,
+    )
+    print_hermes_payload(payload, context)
+    return 0
+
+
 def handle_hermes_install_prompts(
     command: HermesBundleCommand,
     context: CommandContext,
@@ -176,6 +200,37 @@ def handle_hermes_doctor(
     home = resolved.path
     exists = home.exists()
     writable = os.access(home, os.W_OK) if exists else False
+    checks: dict[str, str] = {}
+    restart_needed = False
+    if command.deep:
+        checks = {
+            "backend_health": "CHECK_MANUALLY",
+            "database_migration_head": "CHECK_MANUALLY",
+            "prompt_item_type_constraint": "CHECK_MANUALLY",
+            "hermes_home": "OK" if exists and home.is_dir() else "FAIL",
+            "alexandria_prompt_assets": (
+                "OK" if (home / "alexandria-hermes" / "prompts").exists() else "FAIL"
+            ),
+            "operating_loop_prompt": (
+                "OK"
+                if (
+                    home
+                    / "alexandria-hermes"
+                    / "prompts"
+                    / "alexandria-operating-loop.md"
+                ).exists()
+                else "FAIL"
+            ),
+            "mcp_snippet": (
+                "OK"
+                if (home / "alexandria-hermes" / "mcp-config.json").exists()
+                else "FAIL"
+            ),
+            "hermes_native_mcp_servers_alexandria": "CHECK_MANUALLY",
+            "hermes_mcp_test_alexandria": "CHECK_MANUALLY",
+            "tool_discovery_count": "CHECK_MANUALLY",
+        }
+        restart_needed = True
     result = HermesDoctorResult(
         hermes_home=str(home),
         source=resolved.source,
@@ -193,6 +248,9 @@ def handle_hermes_doctor(
             api_url=hermes_api_url(command, context),
             api_token=command.api_token,
         ),
+        deep=command.deep,
+        checks=checks,
+        restart_needed=restart_needed,
     )
     payload = schema_payload(result, by_alias=True)
     print_hermes_payload(payload, context)

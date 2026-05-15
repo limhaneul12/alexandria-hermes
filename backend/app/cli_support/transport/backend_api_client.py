@@ -16,6 +16,7 @@ from app.cli_support.serialization.json_payloads import (
     error_message,
     json_bytes,
 )
+from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.exceptions.cli_exceptions import CliRequestError
 from app.shared.types.extra_types import JSONValue
 
@@ -56,6 +57,19 @@ class CliBackendApiClient:
         response = self._request("POST", path, payload)
         return response
 
+    def patch(self, path: str, payload: JSONValue) -> JSONValue:
+        """Send a PATCH request to the backend.
+
+        Args:
+            path: Backend API path beginning with slash.
+            payload: JSON-compatible request payload.
+
+        Returns:
+            Decoded JSON response payload.
+        """
+        response = self._request("PATCH", path, payload)
+        return response
+
     def delete(self, path: str) -> JSONValue:
         """Send a DELETE request to the backend.
 
@@ -74,6 +88,8 @@ class CliBackendApiClient:
         headers: HttpHeaders = {"Accept": "application/json"}
         if request_body is not None:
             headers["Content-Type"] = "application/json"
+        if self._context.operator_api_key:
+            headers[OPERATOR_API_KEY_HEADER] = self._context.operator_api_key
         try:
             status_code, response_body = self._context.transport(
                 method,

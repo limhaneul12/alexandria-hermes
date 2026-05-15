@@ -8,7 +8,11 @@ from contextlib import asynccontextmanager
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.archive.containers import ArchiveContainer
+from app.connections.containers import ConnectionsContainer
+from app.librarian.containers import LibrarianContainer
 from app.library.containers import LibraryContainer
+from app.memory.containers import MemoryContainer
 from app.platform.config.app_config import AppConfig
 from app.platform.config.database_config import DatabaseConfig
 from app.shared.infrastructure.database import Database
@@ -49,8 +53,12 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     wiring_config = containers.WiringConfiguration(
         packages=[
+            "app.archive.interface.routers",
+            "app.connections.interface.routers",
+            "app.librarian.interface.routers",
             "app.library.interface.routers",
-            "app.library.interface.routers.librarian",
+            "app.memory.interface.routers",
+            "app.retrieval.interface.routers",
         ],
     )
 
@@ -65,4 +73,21 @@ class ApplicationContainer(containers.DeclarativeContainer):
     library = providers.Container(
         LibraryContainer,
         db_session=db_session,
+    )
+    memory = providers.Container(
+        MemoryContainer,
+        db_session=db_session,
+    )
+    connections = providers.Container(
+        ConnectionsContainer,
+        db_session=db_session,
+    )
+    librarian = providers.Container(
+        LibrarianContainer,
+        db_session=db_session,
+    )
+    archive = providers.Container(
+        ArchiveContainer,
+        db_session=db_session,
+        item_service=library.item_service,
     )

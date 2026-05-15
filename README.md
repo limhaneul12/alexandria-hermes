@@ -44,12 +44,14 @@ The current implementation focuses on:
 - Context Vault linting, saving, chunking, recall, archive, and RAG health checks
 - hybrid Context Pack retrieval with FTS plus optional vector/embedding support
 - capture-review, context-vault, context-detail, and RAG-inspector UI surfaces
-- optional OpenAI-backed librarian provider registration
+- optional OpenAI API-key and ChatGPT/Codex OAuth librarian provider registration
 - optional MINIO scan/import for existing external archives
 - native Typer CLI access for humans and agents
 - MCP server access for agent/tool clients
 - typed FastAPI/Pydantic contracts backed by SQLite, SQLAlchemy, and Alembic
 - a Next.js document-style library UI
+
+For the canonical Hermes behavior contract — local skill first, Alexandria fallback, Context Vault recall, missing-skill acquisition, and librarian collaboration — see [`docs/project_subject/`](./docs/project_subject/).
 
 The cover art represents the long-term archive direction: skills and prompts are the shelves, Context Vault is the agent memory layer, and MCP is the tool-facing access path.
 
@@ -216,6 +218,28 @@ Short alias:
 alex-hermes health
 ```
 
+Hermes integration install/apply flow:
+
+```bash
+alexandria-hermes --json hermes onboard \
+  --hermes-home ~/.hermes \
+  --api-url http://localhost:8000 \
+  --install-prompts \
+  --install-mcp \
+  --dry-run
+
+alexandria-hermes --json hermes onboard \
+  --hermes-home ~/.hermes \
+  --api-url http://localhost:8000 \
+  --install-prompts \
+  --install-mcp
+```
+
+This installs the Alexandria-Hermes skill/prompt guidance and writes an MCP
+config snippet under the Hermes home. For the full install/apply and
+no-librarian self-acquisition flow, see
+[`install.md`](./install.md).
+
 Configuration:
 
 - default API URL: `http://localhost:8000`
@@ -253,13 +277,14 @@ Primary surfaces:
 
 ### OpenAI
 
-Hermes uses the official OpenAI Python SDK and API-key authentication for the librarian provider path.
+Alexandria-Hermes separates official API usage from ChatGPT/Codex-style OAuth.
 
 Current position:
 
-- supported: OpenAI API key
-- not productized: ChatGPT/Codex OAuth proxy packages
-- reason: official OpenAI API usage is API-key based; OAuth is a different flow for actions/connectors or external-service login scenarios
+- supported: `OPENAI` provider with official OpenAI API key
+- supported: `OPENAI_CODEX` provider with one-click ChatGPT/Codex OAuth device authorization
+- behavior: the settings UI uses server-side Hermes-compatible OAuth defaults, opens the browser authorization page, stores token material only in backend provider secrets, and polls status without putting tokens in browser state
+- remaining: using the stored Codex OAuth token for full librarian execution is the next adapter-integration slice; the OAuth lifecycle itself is productized
 
 ### MINIO
 
@@ -312,11 +337,21 @@ Backend config is environment-based.
 Common local values:
 
 ```bash
-SERVICE_ENV=local
-SERVICE_NAME=alexandria-hermes
+SERVICE_APP_ENV=local
+SERVICE_APP_NAME=alexandria-hermes
+SERVICE_OPERATOR_API_KEY=<generate-a-local-operator-key>
+SERVICE_CODEX_OAUTH_ISSUER=https://auth.openai.com
+SERVICE_CODEX_OAUTH_CLIENT_ID=app_EMoamEEZ73f0CkXaXp7hrann
+SERVICE_CODEX_OAUTH_DEVICE_EXPIRES_IN_SECONDS=900
+SERVICE_CODEX_OAUTH_MIN_POLL_INTERVAL_SECONDS=3
 ```
 
 Provider credentials should stay in local environment/config paths only. Do not commit secrets.
+Codex OAuth protocol paths and grant types are intentionally code-locked; only
+issuer, public client id, and timing knobs are configured through `.env`.
+Sensitive provider/settings routes require `X-Alexandria-Operator-Key`; the
+Next.js server proxy forwards it from `ALEXANDRIA_OPERATOR_API_KEY`, and
+`docker-compose.yml` maps that value from `SERVICE_OPERATOR_API_KEY`.
 
 ---
 

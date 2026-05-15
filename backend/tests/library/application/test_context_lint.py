@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from app.library.application.context_lint import ContextLintInput, lint_context
-from app.library.domain.event_enum.context_enums import (
+from app.memory.application.context_lint import ContextLintInput, lint_context
+from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextStorageStatus,
 )

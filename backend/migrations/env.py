@@ -7,7 +7,10 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
+from app.connections.infrastructure import models as _connection_models  # noqa: F401
+from app.librarian.infrastructure import models as _librarian_models  # noqa: F401
 from app.library.infrastructure import models as _library_models  # noqa: F401
+from app.memory.infrastructure import models as _memory_models  # noqa: F401
 from app.shared.infrastructure.database import Base
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection

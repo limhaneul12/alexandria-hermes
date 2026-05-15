@@ -5,6 +5,9 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from app.archive.interface.schemas.minio_archive.minio_archive_schema import (
+    MinioImportRequest,
+)
 from app.cli_support.contracts.command_contracts import (
     ContextLintCommand,
     ContextRecallCommand,
@@ -20,20 +23,20 @@ from app.cli_support.serialization.json_payloads import schema_payload
 from app.library.domain.event_enum.item_enums import ItemStatus, ItemType
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.library.interface.schemas.category.category_schema import CategoryCreateRequest
-from app.library.interface.schemas.context.context_schema import (
-    ContextLintRequest,
-    ContextSaveRequest,
-    ContextSearchRequest,
-)
-from app.library.interface.schemas.minio_archive.minio_archive_schema import (
-    MinioImportRequest,
-)
 from app.library.interface.schemas.prompt.request_schemas import (
     PromptCreateRequest,
     PromptVariableRequest,
 )
-from app.library.interface.schemas.skill.request_schemas import SkillCreateRequest
+from app.library.interface.schemas.skill.request_schemas import (
+    AgentSubmitSkillRequest,
+    SkillCreateRequest,
+)
 from app.library.interface.schemas.usage.usage_schema import UsageRecordRequest
+from app.memory.interface.schemas.context.context_schema import (
+    ContextLintRequest,
+    ContextSaveRequest,
+    ContextSearchRequest,
+)
 from app.shared.exceptions.cli_exceptions import CliInputError
 from app.shared.types.extra_types import JSONObject
 
@@ -64,6 +67,43 @@ def skill_create_payload(command: SkillsCreateCommand) -> JSONObject:
         version=command.version,
         created_by_name=command.created_by,
         status=status,
+    )
+    payload = schema_payload(request)
+    return payload
+
+
+def agent_skill_submit_payload(command: SkillsCreateCommand) -> JSONObject:
+    """Map a skill create command to the agent-submit request contract.
+
+    Args:
+        command: CLI command contract for creating a skill candidate.
+
+    Returns:
+        JSON-compatible agent skill submit request payload.
+    """
+    content = skill_content(command.content, command.content_file)
+    status = ItemStatus.ACTIVE if command.active else ItemStatus.DRAFT
+    created_by_name = command.created_by
+    if command.source_agent is not None:
+        created_by_name = command.source_agent
+    request = AgentSubmitSkillRequest(
+        title=command.title,
+        purpose=command.purpose,
+        summary=optional_text(command.summary),
+        content=content,
+        category_id=optional_text(command.category_id),
+        tags=[str(tag) for tag in command.tag],
+        input_schema={},
+        output_schema={},
+        usage_example=optional_text(command.usage_example),
+        required_tools=[str(tool) for tool in command.tool],
+        risk_level=command.risk_level,
+        version=command.version,
+        created_by_name=created_by_name,
+        activate=command.active,
+        status=status,
+        evidence_urls=[url.strip() for url in command.evidence_url if url.strip()],
+        source_summary=optional_text(command.source_summary),
     )
     payload = schema_payload(request)
     return payload
@@ -252,6 +292,12 @@ def context_base_payload(
             content=content.strip(),
             summary=optional_text(command.summary),
             project=optional_text(command.project),
+            scope=command.scope,
+            workspace_id=optional_text(command.workspace_id),
+            agent_id=optional_text(command.agent_id),
+            user_id=optional_text(command.user_id),
+            session_id=optional_text(command.session_id),
+            visibility=command.visibility,
             source_agent=command.source_agent,
             tags=[str(tag) for tag in command.tag],
             source_type=command.source_type,
@@ -266,10 +312,19 @@ def context_base_payload(
             content=content.strip(),
             summary=optional_text(command.summary),
             project=optional_text(command.project),
+            scope=command.scope,
+            workspace_id=optional_text(command.workspace_id),
+            agent_id=optional_text(command.agent_id),
+            user_id=optional_text(command.user_id),
+            session_id=optional_text(command.session_id),
+            visibility=command.visibility,
             source_agent=command.source_agent,
             tags=[str(tag) for tag in command.tag],
         )
     payload = schema_payload(request)
+    for key in ("workspace_id", "agent_id", "user_id", "session_id"):
+        if payload.get(key) is None:
+            del payload[key]
     return payload
 
 
@@ -288,8 +343,15 @@ def context_search_payload(command: ContextRecallCommand) -> JSONObject:
         limit=bounded_limit(command.limit, default=5),
         project=optional_text(command.project),
         kind=command.kind,
+        include_scopes=command.include_scopes,
+        workspace_id=optional_text(command.workspace_id),
+        agent_id=optional_text(command.agent_id),
+        user_id=optional_text(command.user_id),
+        session_id=optional_text(command.session_id),
     )
     payload = schema_payload(request, exclude_none=True)
+    if payload.get("include_scopes") == []:
+        del payload["include_scopes"]
     return payload
 
 

@@ -9,10 +9,23 @@ export type SourceType =
   | "LIBRARIAN_CREATED"
   | "IMPORTED";
 export type CreatedByType = "USER" | "AGENT" | "LIBRARIAN";
-export type SelectionSource = "RECOMMENDATION" | "MANUAL_BROWSE" | "SEARCH" | "DIRECT_LINK";
-export type ProviderType = "OPENAI" | "MINIO";
+export type SelectionSource =
+  | "RECOMMENDATION"
+  | "MANUAL_BROWSE"
+  | "SEARCH"
+  | "DIRECT_LINK"
+  | "CONTEXT_RECALL"
+  | "SELF_ACQUISITION"
+  | "LIBRARIAN_DELEGATION";
+export type ProviderType = "OPENAI" | "OPENAI_CODEX" | "MINIO";
 export type AuthType = "API_KEY" | "OAUTH" | "NONE";
+export type LibrarianProfileRole =
+  | "DEFAULT_SEARCH"
+  | "SPECIALIST"
+  | "QUALITY_REVIEWER"
+  | "ARCHIVIST_CURATOR";
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
+export type SkillCandidateHarnessStatus = "PASSED" | "NEEDS_REVIEW";
 
 export type PromptContentFormat = "MARKDOWN" | "XML" | "JSON" | "TEXT";
 export type PromptKind = "SYSTEM" | "DEVELOPER" | "USER_TEMPLATE" | "EVAL" | "TOOL_GUIDE" | "CHAIN";
@@ -56,8 +69,8 @@ export const PROMPT_CONTENT_FORMATS = ["MARKDOWN", "XML", "JSON", "TEXT"] as con
 export const PROMPT_KINDS = ["SYSTEM", "DEVELOPER", "USER_TEMPLATE", "EVAL", "TOOL_GUIDE", "CHAIN"] as const satisfies readonly PromptKind[];
 export const PROMPT_DOMAINS = ["DEVELOPMENT", "DESIGN", "WRITING", "RESEARCH", "ANALYSIS", "PLANNING", "REVIEW", "TESTING", "DEBUGGING", "OPERATIONS", "DATA", "EDUCATION", "MARKETING", "PRODUCT", "SECURITY", "GENERAL"] as const satisfies readonly PromptDomain[];
 export const PROMPT_TASK_TYPES = ["CODE_GENERATION", "CODE_REVIEW", "TEST_GENERATION", "BUG_DIAGNOSIS", "FEATURE_PLANNING", "UI_COPYWRITING", "DOCUMENT_SUMMARY", "DOCUMENT_CREATION", "REQUIREMENTS_ANALYSIS", "RESEARCH_SYNTHESIS", "IMAGE_PROMPTING", "AGENT_INSTRUCTION", "TOOL_USAGE_GUIDE", "EVALUATION", "GENERAL_TASK"] as const satisfies readonly PromptTaskType[];
-export const PROVIDER_TYPES = ["OPENAI", "MINIO"] as const satisfies readonly ProviderType[];
-export const LIBRARIAN_AUTH_TYPES = ["API_KEY"] as const satisfies readonly AuthType[];
+export const PROVIDER_TYPES = ["OPENAI", "OPENAI_CODEX", "MINIO"] as const satisfies readonly ProviderType[];
+export const LIBRARIAN_AUTH_TYPES = ["API_KEY", "OAUTH"] as const satisfies readonly AuthType[];
 
 export function isItemType(value: string): value is VisibleItemType {
   return (ITEM_TYPES as readonly string[]).includes(value);
@@ -100,6 +113,24 @@ export type PromptMetadataDTO = {
   changeSummary: string | null;
 };
 
+export type SkillCandidateHarnessCheckDTO = {
+  name: string;
+  passed: boolean;
+  message: string;
+};
+
+export type SkillCandidateHarnessDTO = {
+  status: SkillCandidateHarnessStatus;
+  checks: SkillCandidateHarnessCheckDTO[];
+};
+
+export type SkillAcquisitionMetadataDTO = {
+  acquisitionMethod: string;
+  evidenceUrls: string[];
+  sourceSummary: string | null;
+  harness: SkillCandidateHarnessDTO | null;
+};
+
 export type LibraryItemCardDTO = {
   id: string;
   title: string;
@@ -120,6 +151,7 @@ export type LibraryItemCardDTO = {
 export type SkillCardDTO = LibraryItemCardDTO;
 
 export type LibraryItemDetailDTO = LibraryItemCardDTO & {
+  skillAcquisition: SkillAcquisitionMetadataDTO | null;
   usageHistory: Array<{
     id: string;
     accessedAt: string;
@@ -221,7 +253,7 @@ export type LibrarianProviderDTO = {
   updatedAt: string;
 };
 
-export type LibrarianProviderCredentialMode = Extract<AuthType, "API_KEY">;
+export type LibrarianProviderCredentialMode = Extract<AuthType, "API_KEY" | "OAUTH">;
 
 export type LibrarianProviderCreateDTO = {
   name: string;
@@ -229,7 +261,7 @@ export type LibrarianProviderCreateDTO = {
   authType: LibrarianProviderCredentialMode;
   enabled: boolean;
   config: Record<string, unknown>;
-  credential: string;
+  credential?: string;
 };
 
 export type LibrarianProviderUpdateDTO = Partial<
@@ -240,6 +272,25 @@ export type LibrarianProviderTestDTO = {
   providerId: string;
   ok: boolean;
   message: string;
+};
+
+export type LibrarianOAuthStartDTO = {
+  providerId: string;
+  status: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete: string | null;
+  expiresAt: string;
+  intervalSeconds: number;
+};
+
+export type LibrarianOAuthStatusDTO = {
+  providerId: string;
+  status: string;
+  authorized: boolean;
+  expiresAt: string | null;
+  refreshRequired: boolean;
+  message: string | null;
 };
 
 export type ExternalArchiveCandidateDTO = {
@@ -269,8 +320,77 @@ export type AgentDTO = {
   provider: string;
   description: string | null;
   capabilities: string[];
+  preferredLibrarianProvider: string | null;
+  preferredLibrarianModel: string | null;
+  maxLibrarianAgents: number;
+  librarianRolePrompt: string | null;
+  librarianRole: LibrarianProfileRole;
+  librarianSpecialties: string[];
+  librarianRoutingPriority: number;
+  librarianEnabled: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AgentCreateDTO = {
+  name: string;
+  provider: string;
+  description: string | null;
+  capabilities: string[];
+  preferredLibrarianProvider: string | null;
+  preferredLibrarianModel: string | null;
+  maxLibrarianAgents: number;
+  librarianRolePrompt: string | null;
+  librarianRole: LibrarianProfileRole;
+  librarianSpecialties: string[];
+  librarianRoutingPriority: number;
+  librarianEnabled: boolean;
+};
+
+export type AgentUpdateDTO = Partial<AgentCreateDTO>;
+
+export type LibrarianAskRequestDTO = {
+  prompt: string;
+  agentName?: string;
+  project?: string | null;
+  taskSummary?: string | null;
+  delegateToLibrarian?: boolean;
+  providerId?: string | null;
+  librarianProfileId?: string | null;
+  librarianModel?: string | null;
+  librarianRolePrompt?: string | null;
+  maxLibrarianAgents?: number | null;
+  routingSpecialties?: string[];
+};
+
+export type LibrarianDelegateDTO = {
+  profileId: string;
+  providerId: string | null;
+  status: string;
+  delegateType: string;
+  summary: string;
+  matchedSpecialties: string[];
+};
+
+export type LibrarianAskResponseDTO = {
+  jobId: string;
+  status: string;
+  decision: string;
+  librarianAvailable: boolean;
+  selfAcquisitionAllowed: boolean;
+  recommendation: string;
+  providerId: string | null;
+  candidateId: string | null;
+  librarianProfileId: string | null;
+  librarianModel: string | null;
+  librarianRolePrompt: string | null;
+  maxLibrarianAgents: number | null;
+  routePreview: string[];
+  selectedProfiles: string[];
+  matchedSpecialties: string[];
+  qualityReviewAdded: boolean;
+  routingReason: string;
+  delegates: LibrarianDelegateDTO[];
 };
 
 export type ContextKind =

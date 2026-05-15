@@ -8,7 +8,10 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 APP_ROOT = BACKEND_ROOT / "app"
 APPLICATION_ROOT = APP_ROOT / "library" / "application"
-PROVIDER_PAYLOAD_MAPPER = APPLICATION_ROOT / "librarians" / "provider_payload_mapper.py"
+CONNECTIONS_APPLICATION_ROOT = APP_ROOT / "connections" / "application"
+PROVIDER_PAYLOAD_MAPPER = (
+    CONNECTIONS_APPLICATION_ROOT / "librarians" / "provider_payload_mapper.py"
+)
 
 CONVERSION_HELPER_NAMES = frozenset(
     {
@@ -104,8 +107,8 @@ def test_librarian_provider_payload_mapper_returns_named_contract() -> None:
 
 def test_librarian_config_credential_keys_are_enum_members() -> None:
     """Ensure credential config keys are modeled as provider enum values."""
-    policy_path = APPLICATION_ROOT / "librarians" / "credential_policy.py"
-    enum_path = APP_ROOT / "library" / "domain" / "event_enum" / "provider_enums.py"
+    policy_path = CONNECTIONS_APPLICATION_ROOT / "librarians" / "credential_policy.py"
+    enum_path = APP_ROOT / "connections" / "domain" / "event_enum" / "provider_enums.py"
     policy_tree = ast.parse(policy_path.read_text())
     enum_tree = ast.parse(enum_path.read_text())
     class_names = {

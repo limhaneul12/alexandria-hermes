@@ -247,5 +247,9 @@ dev_timeline/
 
 # Local/generated planning docs stay out of git; only shared assets are kept.
 docs/*
+!docs/project_subject/
+!docs/project_subject/**
+!docs/project_remaining_work/
+!docs/project_remaining_work/**
 !docs/assets/
 !docs/assets/**

@@ -10,7 +10,7 @@ from app.library.application.skills.payload_mapper import (
     build_skill_details,
     shape_skill_patch_payload,
 )
-from app.library.domain.contracts.librarian_candidate_contracts import (
+from app.library.domain.contracts.skill_candidate_contracts import (
     CreateSkillCandidateResult,
 )
 from app.library.domain.event_enum.item_enums import (
@@ -55,7 +55,7 @@ def _skill_item_payload(details: JSONObject) -> LibraryItemPayload:
 
 
 def test_build_skill_details_preserves_skill_contract_fields() -> None:
-    """Skill details mapper should keep the public detail contract unchanged."""
+    """Skill details mapper should include quality-gate metadata."""
     details = build_skill_details(
         purpose="Automate review steps.",
         input_schema={"type": "object"},
@@ -74,6 +74,36 @@ def test_build_skill_details_preserves_skill_contract_fields() -> None:
         "required_tools": ["pytest"],
         "risk_level": "LOW",
         "version": "1.0.0",
+        "quality_gate": {
+            "status": "NEEDS_REVIEW",
+            "checks": [
+                {
+                    "name": "title_present",
+                    "passed": True,
+                    "message": "title is present",
+                },
+                {
+                    "name": "content_present",
+                    "passed": True,
+                    "message": "content is present",
+                },
+                {
+                    "name": "dangerous_command_absent",
+                    "passed": True,
+                    "message": "dangerous shell command marker is absent",
+                },
+                {
+                    "name": "secret_redaction",
+                    "passed": True,
+                    "message": "secret content is redacted or safe",
+                },
+                {
+                    "name": "evidence_or_summary_present",
+                    "passed": False,
+                    "message": "evidence URL or source summary is present",
+                },
+            ],
+        },
     }
 
 
@@ -116,6 +146,36 @@ def test_build_librarian_skill_item_payload_preserves_typed_candidate_fields() -
             "version": "1.0.0",
             "librarian_provider_id": "provider-123",
             "prompt": "Create a skill.",
+            "quality_gate": {
+                "status": "PASSED",
+                "checks": [
+                    {
+                        "name": "title_present",
+                        "passed": True,
+                        "message": "title is present",
+                    },
+                    {
+                        "name": "content_present",
+                        "passed": True,
+                        "message": "content is present",
+                    },
+                    {
+                        "name": "dangerous_command_absent",
+                        "passed": True,
+                        "message": "dangerous shell command marker is absent",
+                    },
+                    {
+                        "name": "secret_redaction",
+                        "passed": True,
+                        "message": "secret content is redacted or safe",
+                    },
+                    {
+                        "name": "evidence_or_summary_present",
+                        "passed": True,
+                        "message": "evidence URL or source summary is present",
+                    },
+                ],
+            },
         },
     }
 

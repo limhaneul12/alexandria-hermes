@@ -11,7 +11,7 @@ from uuid import UUID
 import anyio
 
 from app.library.domain.contracts.item_contracts import ItemCreate
-from app.library.domain.contracts.librarian_provider_contracts import (
+from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
 )
 from app.library.domain.contracts.usage_contracts import UsageCreate
@@ -21,7 +21,7 @@ from app.library.domain.event_enum.item_enums import (
     ItemType,
     SourceType,
 )
-from app.library.domain.event_enum.provider_enums import AuthType, ProviderType
+from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.library.infrastructure.repositories.category_repository import (
     SqlAlchemyCategoryRepository,
@@ -29,7 +29,7 @@ from app.library.infrastructure.repositories.category_repository import (
 from app.library.infrastructure.repositories.item_repository import (
     SqlAlchemyItemRepository,
 )
-from app.library.infrastructure.repositories.librarian_repository import (
+from app.connections.infrastructure.repositories.librarian_repository import (
     ProviderSecretRepository,
     SqlAlchemyLibrarianProviderRepository,
 )

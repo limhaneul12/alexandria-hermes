@@ -9,8 +9,10 @@ from app.library.domain.event_enum.item_enums import (
     CreatedByType,
     ItemStatus,
     ItemType,
+    LibraryItemPatchField,
     SourceType,
 )
+from app.library.domain.event_enum.workflow_enums import WorkflowDetailField
 from app.library.domain.types.item_payload_types import (
     LibraryItemListResult,
     LibraryItemPayload,
@@ -129,11 +131,12 @@ class WorkflowService:
         base_fields = {
             key: value
             for key, value in payload.items()
-            if key in {"title", "summary", "content", "category_id", "tags", "status"}
+            if any(key == field.value for field in LibraryItemPatchField)
         }
 
         detail_fields: dict[str, JSONValue] = {}
-        for key in ["steps", "related_skill_ids", "expected_result", "use_case"]:
+        for field in WorkflowDetailField:
+            key = field.value
             if key in payload:
                 detail_fields[key] = payload[key]
 

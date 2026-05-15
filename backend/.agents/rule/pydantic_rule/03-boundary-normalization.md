@@ -27,16 +27,25 @@ Preferred flow:
 2. parse the transport unit minimally
 3. route or normalize based on event/source shape
 4. validate the canonical contract boundary with Pydantic
-5. pass structured values onward
+5. convert to an inner dataclass or `TypedDict` DTO when domain/application
+   logic should own the value
+6. pass structured values onward
 
 Do not keep raw dictionaries moving through multiple layers when a stable schema can be defined.
 Do not force every inbound payload into a canonical schema before transport parsing and routing are complete.
+Do not keep Pydantic request/response schemas as the default internal DTO after
+the I/O boundary has been crossed.
 
 ## Schema Placement Rule
 
-Keep schemas under `schemas/`.
+Keep Pydantic I/O schemas under the nearest existing schema boundary for the
+current slice.
 
-Split them by concept using:
+In this backend that often means `interface/schemas/...`; in a smaller slice it
+may mean a local `schemas/` folder. Follow the current path shape instead of
+creating a hard-coded example path.
+
+Split schemas by concept using:
 - `{concept}_schemas.py`
 
 Examples:
@@ -45,6 +54,8 @@ Examples:
 - `teamwork_schemas.py`
 - `history_schemas.py`
 - `bridge_schemas.py`
+
+These examples are naming patterns, not mandatory directory roots.
 
 ## Dynamic Boundary Rule
 

@@ -18,9 +18,11 @@ class ItemStatus(StrEnum):
     """Item publishing state."""
 
     DRAFT = "DRAFT"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
     DEPRECATED = "DEPRECATED"
+    SUPERSEDED = "SUPERSEDED"
 
 
 class SourceType(StrEnum):
@@ -38,3 +40,14 @@ class CreatedByType(StrEnum):
     USER = "USER"
     AGENT = "AGENT"
     LIBRARIAN = "LIBRARIAN"
+
+
+class LibraryItemPatchField(StrEnum):
+    """Public base fields accepted by item-family patch payloads."""
+
+    TITLE = "title"
+    SUMMARY = "summary"
+    CONTENT = "content"
+    CATEGORY_ID = "category_id"
+    TAGS = "tags"
+    STATUS = "status"

@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 
 import httpx
+from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
 
@@ -21,6 +22,7 @@ class AlexandriaApiSettings:
 
     base_url: str = DEFAULT_ALEXANDRIA_API_URL
     api_token: str | None = None
+    operator_api_key: str | None = None
     timeout: float = DEFAULT_MCP_TIMEOUT_SECONDS
 
     @classmethod
@@ -46,6 +48,15 @@ class AlexandriaApiSettings:
             token: str | None = raw_token
         else:
             token = None
+        raw_operator_key = os.environ.get("ALEXANDRIA_OPERATOR_API_KEY")
+        if raw_operator_key is None or raw_operator_key == "":
+            raw_operator_key = os.environ.get("SERVICE_OPERATOR_API_KEY")
+        if raw_operator_key is None or raw_operator_key == "":
+            raw_operator_key = raw_token
+        if raw_operator_key is not None and raw_operator_key != "":
+            operator_key: str | None = raw_operator_key
+        else:
+            operator_key = None
         raw_timeout = os.environ.get("ALEXANDRIA_API_TIMEOUT_SECONDS")
         timeout = DEFAULT_MCP_TIMEOUT_SECONDS
         if raw_timeout is not None:
@@ -54,7 +65,12 @@ class AlexandriaApiSettings:
             except ValueError as exc:
                 message = "ALEXANDRIA_API_TIMEOUT_SECONDS must be numeric"
                 raise AlexandriaApiConfigurationError(message) from exc
-        settings = cls(base_url=base_url.rstrip("/"), api_token=token, timeout=timeout)
+        settings = cls(
+            base_url=base_url.rstrip("/"),
+            api_token=token,
+            operator_api_key=operator_key,
+            timeout=timeout,
+        )
         return settings
 
 
@@ -139,6 +155,8 @@ class AlexandriaApiClient:
             headers["Content-Type"] = "application/json"
         if self._settings.api_token:
             headers["Authorization"] = f"Bearer {self._settings.api_token}"
+        if self._settings.operator_api_key:
+            headers[OPERATOR_API_KEY_HEADER] = self._settings.operator_api_key
         try:
             async with httpx.AsyncClient(
                 base_url=self._settings.base_url,

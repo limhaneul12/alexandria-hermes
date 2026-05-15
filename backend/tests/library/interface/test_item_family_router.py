@@ -123,7 +123,7 @@ class FakeWorkflowService:
 
 
 def test_create_knowledge_accepts_json_status_and_string_related_item_ids() -> None:
-    """POST /knowledge should accept public enum strings and string item IDs."""
+    """POST /library/knowledge should accept public enum strings and string item IDs."""
     service = FakeKnowledgeService()
 
     def override_knowledge_service() -> FakeKnowledgeService:
@@ -132,7 +132,7 @@ def test_create_knowledge_accepts_json_status_and_string_related_item_ids() -> N
     with override_library_provider("knowledge_service", override_knowledge_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
-                "/knowledge",
+                "/library/knowledge",
                 json={
                     "title": "Strict JSON knowledge",
                     "content": "Keep item IDs as strings.",
@@ -152,7 +152,7 @@ def test_create_knowledge_accepts_json_status_and_string_related_item_ids() -> N
 
 
 def test_patch_knowledge_accepts_json_status_and_string_related_item_ids() -> None:
-    """PATCH /knowledge/{id} should accept enum strings and string related IDs."""
+    """PATCH /library/knowledge/{id} should accept enum strings and string related IDs."""
     service = FakeKnowledgeService()
 
     def override_knowledge_service() -> FakeKnowledgeService:
@@ -161,7 +161,7 @@ def test_patch_knowledge_accepts_json_status_and_string_related_item_ids() -> No
     with override_library_provider("knowledge_service", override_knowledge_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.patch(
-                "/knowledge/00000000-0000-4000-8000-000000000777",
+                "/library/knowledge/00000000-0000-4000-8000-000000000777",
                 json={"status": "ACTIVE", "related_items": [_RELATED_ID]},
             )
 
@@ -172,7 +172,7 @@ def test_patch_knowledge_accepts_json_status_and_string_related_item_ids() -> No
 
 
 def test_create_workflow_accepts_json_status_and_string_related_skill_ids() -> None:
-    """POST /workflows should accept public enum strings and string skill IDs."""
+    """POST /library/workflows should accept public enum strings and string skill IDs."""
     service = FakeWorkflowService()
 
     def override_workflow_service() -> FakeWorkflowService:
@@ -181,7 +181,7 @@ def test_create_workflow_accepts_json_status_and_string_related_skill_ids() -> N
     with override_library_provider("workflow_service", override_workflow_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.post(
-                "/workflows",
+                "/library/workflows",
                 json={
                     "title": "Strict JSON workflow",
                     "content": "Review string IDs.",
@@ -200,7 +200,7 @@ def test_create_workflow_accepts_json_status_and_string_related_skill_ids() -> N
 
 
 def test_patch_workflow_accepts_json_status_and_string_related_skill_ids() -> None:
-    """PATCH /workflows/{id} should accept enum strings and string skill IDs."""
+    """PATCH /library/workflows/{id} should accept enum strings and string skill IDs."""
     service = FakeWorkflowService()
 
     def override_workflow_service() -> FakeWorkflowService:
@@ -209,7 +209,7 @@ def test_patch_workflow_accepts_json_status_and_string_related_skill_ids() -> No
     with override_library_provider("workflow_service", override_workflow_service()):
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.patch(
-                "/workflows/00000000-0000-4000-8000-000000000777",
+                "/library/workflows/00000000-0000-4000-8000-000000000777",
                 json={"status": "ACTIVE", "related_skill_ids": [_RELATED_ID]},
             )
 

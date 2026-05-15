@@ -8,14 +8,14 @@ from pathlib import Path
 
 import anyio
 import pytest
-from app.library.application.context_service import ContextService
-from app.library.domain.event_enum.context_enums import (
+from app.memory.application.context_service import ContextService
+from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextSourceType,
     ContextStorageStatus,
     RagStrategy,
 )
-from app.library.infrastructure.repositories.context_repository import (
+from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
 from app.shared.exceptions import NotFoundError, ValidationError

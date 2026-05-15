@@ -10,12 +10,14 @@ Current target naming:
 
 ## Current Reality
 
-The repo currently uses mixed composition styles:
+The repo has several app areas with different responsibilities:
 
-- `classic_feed` uses the root DI container
-- `collector` mixes local container composition, local bootstrap, and bounded-context workers/maintenance paths
+- `platform` owns FastAPI/runtime concerns.
+- `library` owns library, provider, context, and item behavior.
+- `mcp_server` owns MCP-facing tool surfaces.
+- `cli_support` owns local CLI/onboarding support.
 
-This means a single giant shared container is not the right immediate target.
+This means a single giant shared container is not the right target.
 
 The target is a small shared infrastructure container plus domain-local composition where needed.
 
@@ -78,9 +80,11 @@ Reason:
 
 Runtime bootstrap should use one stable module entrypoint.
 
-Current preferred pattern:
+Current preferred patterns:
 
-- `cd backend && uv run --group local --python 3.12.10 python -m app.collector.bootstrap`
+- backend HTTP runtime follows the `app.main:app` entrypoint used by Docker/compose.
+- admin/bootstrap flows should be exposed through one stable module entrypoint or
+  Makefile target instead of scattered ad-hoc scripts.
 
 Do not spread runtime bootstrap across many standalone scripts.
 

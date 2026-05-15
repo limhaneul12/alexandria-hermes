@@ -11,7 +11,7 @@ Rules in this folder should prefer logical path variables in normative sections.
 - `<backend_root>` — backend runtime source root
 - `<test_root>` — backend test root
 - `<shared_root>` — shared backend code root
-- `<docs_rule_root>` — backend rule document root
+- `<rule_root>` — backend rule document root
 - `<domain>` — bounded-context directory name under `<backend_root>`
 
 ## Project-local Mapping
@@ -21,10 +21,12 @@ For this repository:
 - `<backend_root>` = `backend/app`
 - `<test_root>` = `backend/tests`
 - `<shared_root>` = `backend/app/shared`
-- `<docs_rule_root>` = `docs/rule/backend_dev_rule`
-- current active domains:
-  - `classic_feed`
-  - `collector`
+- `<rule_root>` = `backend/.agents/rule`
+- current active app areas:
+  - `cli_support`
+  - `library`
+  - `mcp_server`
+  - `platform`
 
 ## Usage Rule
 
@@ -40,8 +42,8 @@ Use logical paths in rules:
 Avoid hardcoding project-local paths in normative rules:
 
 ```text
-backend/app/collector/domain/repositories/
-backend/tests/collector/
+backend/app/library/domain/repositories/
+backend/tests/library/
 backend/app/shared/exceptions/
 ```
 

@@ -23,7 +23,7 @@ from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPI
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
-router = APIRouter(prefix="/workflows", tags=["workflows"])
+router = APIRouter(prefix="/library/workflows", tags=["workflows"])
 
 
 @router.post(

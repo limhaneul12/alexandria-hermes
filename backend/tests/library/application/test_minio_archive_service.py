@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
-from app.library.application.use_cases.minio_archive.list_archive_items import (
+from app.archive.application.minio.use_cases.list_archive_items import (
     ListMinioArchiveItemsUseCase,
 )
-from app.library.domain.contracts.librarian_provider_contracts import (
+from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
     LibrarianProviderUpdate,
 )
@@ -18,8 +18,8 @@ from app.library.domain.event_enum.item_enums import (
     ItemType,
     SourceType,
 )
-from app.library.domain.entities.read_models import LibrarianProvider
-from app.library.domain.repositories.librarian_repository import (
+from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )

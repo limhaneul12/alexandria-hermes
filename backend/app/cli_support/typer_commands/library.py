@@ -6,6 +6,7 @@ import typer
 from app.cli_support.contracts.command_contracts import (
     FolderIdCommand,
     FoldersCreateCommand,
+    FoldersEnsureCommand,
     FoldersListCommand,
     ItemIdCommand,
     LibraryListCommand,
@@ -17,6 +18,7 @@ from app.cli_support.contracts.command_contracts import (
 from app.cli_support.handlers.library import (
     handle_folders_create,
     handle_folders_delete,
+    handle_folders_ensure,
     handle_folders_list,
     handle_library_list,
     handle_library_search,
@@ -88,8 +90,11 @@ def skills_create(
     version: str = typer.Option("1.0.0", "--version"),
     created_by: str = typer.Option("Hermes CLI", "--created-by"),
     active: bool = typer.Option(False, "--active"),
+    source_agent: str | None = typer.Option(None, "--source-agent"),
+    evidence_url: list[str] | None = typer.Option(None, "--evidence-url"),
+    source_summary: str | None = typer.Option(None, "--source-summary"),
 ) -> None:
-    """Create a manual skill.
+    """Create a manual skill or submit an agent-authored candidate.
 
     Args:
         ctx: Typer context.
@@ -106,6 +111,9 @@ def skills_create(
         version: Skill version.
         created_by: Creator display name.
         active: Whether the skill is active.
+        source_agent: Agent name for self-acquired candidate submissions.
+        evidence_url: Repeatable source URLs for self-acquired candidates.
+        source_summary: Optional source/evidence summary.
 
     Returns:
         None.
@@ -126,6 +134,9 @@ def skills_create(
             version=version,
             created_by=created_by,
             active=active,
+            source_agent=source_agent,
+            evidence_url=values(evidence_url),
+            source_summary=source_summary,
         ),
         handle_skills_create,
     )
@@ -183,6 +194,37 @@ def folders_create(
         FoldersCreateCommand(name=name, parent_id=parent_id),
         handle_folders_create,
     )
+
+
+@folders_app.command("ensure")
+def folders_ensure(
+    ctx: typer.Context,
+    path: str = typer.Option(..., "--path"),
+) -> None:
+    """Ensure a slash-separated folder path exists.
+
+    Args:
+        ctx: Typer context.
+        path: Slash-separated folder path.
+
+    Returns:
+        None.
+    """
+    run_client(ctx, FoldersEnsureCommand(path=path), handle_folders_ensure)
+
+
+@folders_app.command("mkdir")
+def folders_mkdir(ctx: typer.Context, path: str) -> None:
+    """Alias for ensuring a slash-separated folder path exists.
+
+    Args:
+        ctx: Typer context.
+        path: Slash-separated folder path.
+
+    Returns:
+        None.
+    """
+    run_client(ctx, FoldersEnsureCommand(path=path), handle_folders_ensure)
 
 
 @folders_app.command("delete")

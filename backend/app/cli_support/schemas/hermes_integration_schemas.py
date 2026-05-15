@@ -46,6 +46,8 @@ class HermesBundleInstallationResult(StrictSchemaModel):
     skipped: tuple[str, ...]
     backups: tuple[str, ...]
     mcp_config: McpConfiguration
+    restart_hint: str | None = None
+    first_prompt: str | None = None
 
 
 class HermesConfigurationResult(StrictSchemaModel):
@@ -78,6 +80,9 @@ class HermesDoctorResult(StrictSchemaModel):
     mcp_config_installed: bool
     config_path: str
     mcp_config: McpConfiguration
+    deep: bool = False
+    checks: dict[str, str] = Field(default_factory=dict)
+    restart_needed: bool = False
 
 
 class HermesScannedFile(StrictSchemaModel):

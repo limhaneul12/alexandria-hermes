@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from app.library.domain.event_enum.item_enums import ItemStatus
+from app.library.application.quality_gate import run_library_quality_gate
+from app.library.domain.event_enum.item_enums import ItemStatus, ItemType
 from app.library.domain.event_enum.prompt_enums import (
     PromptContentFormat,
+    PromptDetailField,
     PromptDomain,
     PromptKind,
     PromptTaskType,
@@ -27,22 +29,6 @@ from app.shared.types.types_convert_utils import (
     optional_string_value,
     required_string_value,
     string_items,
-)
-
-_PROMPT_DETAIL_FIELDS = (
-    "content_format",
-    "prompt_kind",
-    "prompt_domain",
-    "prompt_task_type",
-    "input_variables",
-    "output_format",
-    "target_actor",
-    "target_model_family",
-    "language",
-    "related_item_ids",
-    "safety_notes",
-    "version",
-    "change_summary",
 )
 
 
@@ -78,6 +64,8 @@ def _variables_payload(value: JSONValue) -> list[PromptVariablePayload]:
 
 
 def build_prompt_details(
+    title: str,
+    content: str,
     content_format: PromptContentFormat,
     prompt_kind: PromptKind,
     prompt_domain: PromptDomain,
@@ -95,6 +83,8 @@ def build_prompt_details(
     """Build persistent details for a prompt item.
 
     Args:
+        title: Prompt title.
+        content: Prompt body.
         content_format: Body syntax.
         prompt_kind: Prompt usage position.
         prompt_domain: Business domain.
@@ -112,6 +102,11 @@ def build_prompt_details(
     Returns:
         Persistent details dictionary.
     """
+    quality_gate = run_library_quality_gate(
+        item_type=ItemType.PROMPT,
+        title=title,
+        content=content,
+    )
     details: PromptDetailsPayload = {
         "content_format": content_format.value,
         "prompt_kind": prompt_kind.value,
@@ -126,6 +121,7 @@ def build_prompt_details(
         "safety_notes": safety_notes,
         "version": version,
         "change_summary": change_summary,
+        "quality_gate": quality_gate.to_payload(),
     }
     return details
 
@@ -171,6 +167,8 @@ def _prompt_details_patch_payload(
         payload["version"] = required_string_value(details["version"], "version")
     if "change_summary" in details:
         payload["change_summary"] = optional_string_value(details["change_summary"])
+    if "quality_gate" in details and isinstance(details["quality_gate"], dict):
+        payload["quality_gate"] = dict(details["quality_gate"])
     return payload
 
 
@@ -203,9 +201,10 @@ def shape_prompt_patch_payload(
         shaped_payload["tags"] = string_items(payload["tags"])
     if "status" in payload:
         shaped_payload["status"] = enum_value(payload["status"], ItemStatus, "status")
-    if any(key in payload for key in _PROMPT_DETAIL_FIELDS):
+    if any(field.value in payload for field in PromptDetailField):
         details = item["details"].copy()
-        for key in _PROMPT_DETAIL_FIELDS:
+        for field in PromptDetailField:
+            key = field.value
             if key in payload:
                 details[key] = payload[key]
         shaped_payload["details"] = _prompt_details_patch_payload(

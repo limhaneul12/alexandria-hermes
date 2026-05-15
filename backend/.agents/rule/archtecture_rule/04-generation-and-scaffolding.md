@@ -37,7 +37,7 @@ Repository contract folders generated for new domains should use plural `reposit
 - `<backend_root>/<domain>/domain/repositories/` for ABC contracts / ports
 - `<backend_root>/<domain>/infrastructure/repositories/` for concrete persistence adapters when needed
 
-Existing singular `repository/` folders are legacy and should not be copied into new collector work.
+Existing singular `repository/` folders are legacy and should not be copied into new domain work.
 
 ## Test Scaffold Rule
 

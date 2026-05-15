@@ -6,7 +6,6 @@ from typing import cast
 
 from app.container import ApplicationContainer
 from app.library.application.item_service import ItemService
-from app.library.application.librarian_service import LibrarianService
 from app.library.application.skill_service import SkillService
 from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.types.skill_payload_types import SkillSchemaPayload
@@ -20,7 +19,6 @@ from app.library.interface.schemas.item.item_schema import (
 )
 from app.library.interface.schemas.skill.request_schemas import (
     AgentSubmitSkillRequest,
-    LibrarianSkillRequest,
     SkillCreateRequest,
     SkillPatchRequest,
 )
@@ -29,7 +27,7 @@ from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPI
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
-router = APIRouter(prefix="/skills", tags=["skills"])
+router = APIRouter(prefix="/library/skills", tags=["skills"])
 
 
 @router.post(
@@ -117,48 +115,8 @@ async def submit_skill_by_agent(
         created_by_name=request.created_by_name,
         activate=request.activate,
         status=request.status,
-    )
-    validation = ItemResponse.model_validate(payload)
-    return validation
-
-
-@router.post(
-    "/generate-with-librarian",
-    response_model=ItemResponse,
-    status_code=status.HTTP_201_CREATED,
-    description="Library API operation.",
-    summary="Generate with librarian",
-)
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def generate_with_librarian(
-    request: LibrarianSkillRequest,
-    librarian_service: LibrarianService = Depends(
-        Provide[ApplicationContainer.library.librarian_service]
-    ),
-    skill_service: SkillService = Depends(
-        Provide[ApplicationContainer.library.skill_service]
-    ),
-) -> ItemResponse:
-    """Generate skill using configured librarian provider.
-
-    Args:
-        request [LibrarianSkillRequest]: Value supplied to generate_with_librarian.
-        librarian_service [LibrarianService]: Value supplied to generate_with_librarian.
-        skill_service [SkillService]: Value supplied to generate_with_librarian.
-
-    Returns:
-        ItemResponse: Value produced by generate_with_librarian.
-    """
-    generated = librarian_service.generate_candidate_stub(
-        provider_id=request.provider_id,
-        prompt=request.prompt,
-    )
-    payload = await skill_service.create_from_librarian_candidate(
-        generated=generated,
-        category_id=request.category_id,
-        tags=request.tags,
-        created_by_name=request.created_by_name,
+        evidence_urls=request.evidence_urls,
+        source_summary=request.source_summary,
     )
     validation = ItemResponse.model_validate(payload)
     return validation

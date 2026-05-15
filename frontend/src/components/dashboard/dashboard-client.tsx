@@ -19,6 +19,7 @@ import Link from "next/link";
 
 import { fetchDashboard } from "@/lib/api";
 import { t, tx, type Language } from "@/lib/i18n";
+import { openLibrarianAsk } from "@/lib/librarian/ask-events";
 import { useLibraryStore } from "@/store/library-store";
 import type { DashboardDTO } from "@/types/library";
 
@@ -192,7 +193,7 @@ export function DashboardClient() {
                 ["02", "Getting Started", "#getting-started"],
                 ["03", "Core Concepts", "#core-concepts"],
                 ["04", "Key Features", "/library"],
-                ["05", "Librarian & Recommendations", "/settings#librarians"],
+                ["05", "Librarian & Recommendations", "/settings/librarians"],
                 ["06", "Settings & Providers", "/settings"],
               ].map(([number, label, href], index) => (
                 <Link key={label} href={href} className={`flex gap-3 rounded px-3 py-2 ${index === 0 ? "bg-[#e4e0d7] font-semibold" : "hover:bg-[#e9e4da]"}`}>
@@ -210,9 +211,13 @@ export function DashboardClient() {
                 <div>
                   <p className="font-bold text-[#111111]">{t(language, "askLibrarian")}</p>
                   <p className="mt-1 text-sm text-[#514c44]">Get help from your AI librarian.</p>
-                  <Link href="/settings#librarians" className="mt-4 inline-flex items-center gap-2 rounded border border-[#bdb4a5] px-4 py-2 text-sm font-semibold text-[#111111] hover:bg-white">
+                  <button
+                    type="button"
+                    onClick={() => openLibrarianAsk()}
+                    className="mt-4 inline-flex items-center gap-2 rounded border border-[#bdb4a5] px-4 py-2 text-sm font-semibold text-[#111111] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15"
+                  >
                     {t(language, "askQuestion")} <Search className="h-4 w-4" />
-                  </Link>
+                  </button>
                 </div>
               </div>
             </div>

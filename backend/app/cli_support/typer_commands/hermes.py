@@ -7,6 +7,7 @@ from app.cli_support.contracts.command_contracts import (
     HermesBundleCommand,
     HermesConfigureCommand,
     HermesDoctorCommand,
+    HermesInstallCommand,
     HermesOnboardCommand,
     HermesScanCommand,
     HermesSyncCommand,
@@ -14,6 +15,7 @@ from app.cli_support.contracts.command_contracts import (
 from app.cli_support.handlers.hermes import (
     handle_hermes_configure,
     handle_hermes_doctor,
+    handle_hermes_install,
     handle_hermes_install_mcp,
     handle_hermes_install_prompts,
     handle_hermes_onboard,
@@ -38,6 +40,59 @@ def _bundle_command(
         api_token=api_token,
         dry_run=dry_run,
         overwrite=overwrite,
+        apply=True,
+        restart_hint=False,
+        print_first_prompt=False,
+    )
+
+
+@hermes_app.command("install")
+def hermes_install(
+    ctx: typer.Context,
+    hermes_home: str | None = typer.Option(None, "--hermes-home"),
+    api_url: str | None = typer.Option(
+        None,
+        "--api-url",
+        envvar="ALEXANDRIA_API_URL",
+    ),
+    api_token: str = typer.Option(
+        "",
+        "--api-token",
+        envvar="ALEXANDRIA_API_TOKEN",
+    ),
+    apply: bool = typer.Option(False, "--apply"),
+    restart_hint: bool = typer.Option(False, "--restart-hint"),
+    print_first_prompt: bool = typer.Option(False, "--print-first-prompt"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    """Install Hermes prompts and MCP config in one guided command.
+
+    Args:
+        ctx: Typer context.
+        hermes_home: Optional Hermes home path.
+        api_url: Optional Alexandria API URL.
+        api_token: Optional Alexandria API token.
+        apply: Whether to write files; omitted means preview.
+        restart_hint: Whether to include session restart guidance.
+        print_first_prompt: Whether to include the first Hermes prompt.
+        overwrite: Whether to overwrite existing files.
+
+    Returns:
+        None.
+    """
+    run_local(
+        ctx,
+        HermesInstallCommand(
+            hermes_home=hermes_home,
+            api_url=api_url,
+            api_token=api_token,
+            dry_run=not apply,
+            overwrite=overwrite,
+            apply=apply,
+            restart_hint=restart_hint,
+            print_first_prompt=print_first_prompt or restart_hint,
+        ),
+        handle_hermes_install,
     )
 
 
@@ -125,6 +180,9 @@ def hermes_onboard(
             overwrite=overwrite,
             install_prompts=install_prompts,
             install_mcp=install_mcp,
+            apply=True,
+            restart_hint=False,
+            print_first_prompt=False,
         ),
         handle_hermes_onboard,
     )
@@ -231,6 +289,7 @@ def hermes_doctor(
         envvar="ALEXANDRIA_API_TOKEN",
     ),
     require_home: bool = typer.Option(False, "--require-home"),
+    deep: bool = typer.Option(False, "--deep"),
 ) -> None:
     """Check Hermes integration.
 
@@ -240,6 +299,7 @@ def hermes_doctor(
         api_url: Optional Alexandria API URL.
         api_token: Optional Alexandria API token.
         require_home: Whether missing Hermes home should fail.
+        deep: Whether to run deep readiness diagnostics.
 
     Returns:
         None.
@@ -251,6 +311,7 @@ def hermes_doctor(
             api_url=api_url,
             api_token=api_token,
             require_home=require_home,
+            deep=deep,
         ),
         handle_hermes_doctor,
     )
@@ -308,6 +369,9 @@ def hermes_sync(
             api_token="",
             dry_run=dry_run,
             overwrite=overwrite,
+            apply=True,
+            restart_hint=False,
+            print_first_prompt=False,
         ),
         handle_hermes_sync,
     )

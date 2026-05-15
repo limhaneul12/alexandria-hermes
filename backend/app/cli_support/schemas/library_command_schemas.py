@@ -9,3 +9,12 @@ class DeletedResourceResult(StrictSchemaModel):
     """JSON output contract for delete-style CLI commands."""
 
     deleted: str
+
+
+class FolderEnsureResult(StrictSchemaModel):
+    """JSON output contract for path-based folder ensure commands."""
+
+    path: str
+    created: list[str]
+    existing: list[str]
+    folder_id: str

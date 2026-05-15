@@ -18,7 +18,7 @@ from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPI
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
-router = APIRouter(prefix="/usage", tags=["usage"])
+router = APIRouter(prefix="/library/usage", tags=["usage"])
 
 
 @router.post(
@@ -138,7 +138,7 @@ async def popular_by_category(
 
 
 @router.get(
-    "/items/{item_id}",
+    "/library/items/{item_id}",
     response_model=UsageRecordResponseList,
     description="Library API operation.",
     status_code=status.HTTP_200_OK,

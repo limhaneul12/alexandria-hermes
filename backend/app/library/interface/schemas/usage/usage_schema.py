@@ -5,8 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.library.domain.event_enum.usage_enums import SelectionSource
-from app.library.domain.types.usage_payload_types import UsageRecordCommandPayload
+from app.library.domain.types.usage_payload_types import (
+    UsageFeedbackPayload,
+    UsageRecordCommandPayload,
+)
 from app.library.interface.schemas._types import StrictRootSchema, StrictSchema
+from app.shared.types.extra_types import JSONObject
 from pydantic import ConfigDict, field_validator
 
 
@@ -37,7 +41,7 @@ class UsageRecordRequest(StrictSchema):
     query: str | None = None
     selection_source: SelectionSource
     success: bool
-    feedback: str | None = None
+    feedback: str | JSONObject | None = None
 
     @field_validator("selection_source", mode="before")
     @classmethod
@@ -75,7 +79,7 @@ class UsageRecordRequest(StrictSchema):
             "selection_source": self.selection_source,
             "used_at": used_at,
             "success": self.success,
-            "feedback": self.feedback,
+            "feedback": _feedback_payload(self.feedback),
         }
         return payload
 
@@ -155,3 +159,19 @@ class PopularByCategoryResponse(StrictSchema):
 
 class PopularByCategoryResponseList(StrictRootSchema[list[PopularByCategoryResponse]]):
     """Root response schema for popular-by-category arrays."""
+
+
+def _feedback_payload(
+    value: str | JSONObject | None,
+) -> str | UsageFeedbackPayload | None:
+    """Normalize schema feedback into the application usage payload shape.
+
+    Args:
+        value: Optional string or JSON object feedback.
+
+    Returns:
+        Usage feedback payload accepted by the application service.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    return UsageFeedbackPayload(**value)

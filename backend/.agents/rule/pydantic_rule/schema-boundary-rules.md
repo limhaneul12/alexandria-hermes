@@ -2,7 +2,7 @@
 
 ## Goal
 
-Keep schema boundaries explicit so that OMX control surfaces remain reliable, inspectable, and easy for agents to consume.
+Keep schema boundaries explicit so that agent-facing control surfaces remain reliable, inspectable, and easy to consume.
 
 This repository is built around contracts. Schema boundaries should therefore be treated as primary design surfaces, not as incidental implementation details.
 
@@ -18,8 +18,8 @@ This repository is built around contracts. Schema boundaries should therefore be
 This document defines repository-level boundary design rules.
 
 For Pydantic-specific modeling policy, read:
-- `docs/rules/pydantic/README.md`
-- especially `docs/rules/pydantic/03-boundary-normalization.md`
+- `backend/.agents/rule/pydantic_rule/README.md`
+- especially `backend/.agents/rule/pydantic_rule/03-boundary-normalization.md`
 
 Use this file to decide **where boundaries exist and how they should be managed across the repository**.
 Use the Pydantic rule set to decide **how schemas should model those boundaries**.
@@ -61,7 +61,7 @@ Repository expectation:
 - stdout/stderr and transport noise should not leak across the adapter surface.
 
 Detailed normalization mechanics live in:
-- `docs/rules/pydantic/03-boundary-normalization.md`
+- `backend/.agents/rule/pydantic_rule/03-boundary-normalization.md`
 
 ### 3. Adapter public output boundary
 
@@ -103,8 +103,23 @@ Each important boundary should answer:
 - which module is responsible for interpreting it?
 - where does transport-shaped data stop?
 - where does the stable adapter contract begin?
+- where is the Pydantic I/O schema converted into an inner dataclass or
+  `TypedDict` DTO?
 
 If those answers are unclear, the boundary design is unclear.
+
+## Boundary Model Selection Rule
+
+Use the model type that matches the side of the boundary.
+
+- External I/O: Pydantic v2 `BaseModel` / `RootModel`.
+- Internal object DTO: dataclass.
+- Internal dictionary payload DTO: `TypedDict`.
+- Raw dynamic transport: narrow `dict[str, JSONValue]` /
+  `Mapping[str, JSONValue]` only at parsing or normalization seams.
+
+Pydantic schemas should validate and document I/O contracts. They should not
+become the default shape passed through domain/application internals.
 
 ## JSON and Transport Boundary Rule
 
@@ -151,9 +166,14 @@ Normalize once, then pass stable meanings forward.
 
 ## Schema Placement Rule
 
-Keep schemas under `schemas/`.
+Keep Pydantic I/O schemas under the nearest existing schema boundary for the
+current slice.
 
-Split them by concept using:
+In this backend that often means `interface/schemas/...`; in a smaller slice it
+may mean a local `schemas/` folder. Follow the current path shape instead of
+creating a hard-coded example path.
+
+Split schemas by concept using:
 - `{concept}_schemas.py`
 
 Examples:
@@ -162,6 +182,8 @@ Examples:
 - `teamwork_schemas.py`
 - `history_schemas.py`
 - `bridge_schemas.py`
+
+These examples are naming patterns, not mandatory directory roots.
 
 Do not centralize unrelated contracts in one giant schema file.
 
@@ -214,6 +236,16 @@ For transport-owned or normalization-owned `TypedDict` contracts:
 
 This repository prefers explicit key-presence annotations where they add real meaning, especially on stable mixed-requiredness subsets. It does not use `Required[...]` / `NotRequired[...]` as blanket style on every transport shape.
 
+## TypedDict Construction Rule
+
+Prefer `payload = SomeTypedDict(...)` when creating a `TypedDict` payload.
+Avoid `payload: SomeTypedDict = {}` unless incremental construction is genuinely
+needed for conditional patch assembly, validated dynamic keys, non-identifier
+keys, or similarly unavoidable branching.
+
+Keep annotated empty `TypedDict` construction local to the normalization seam
+and document the reason when it is not obvious.
+
 ## Dynamic Boundary Rule
 
 Some OMX surfaces may remain dynamic for practical reasons.
@@ -226,7 +258,7 @@ When that happens:
 - allow a raw passthrough lane when runtime/event-stream payloads are not yet ready for canonical schema promotion.
 
 Detailed schema-handling guidance for this case lives in:
-- `docs/rules/pydantic/03-boundary-normalization.md`
+- `backend/.agents/rule/pydantic_rule/03-boundary-normalization.md`
 
 ## Design Principle
 

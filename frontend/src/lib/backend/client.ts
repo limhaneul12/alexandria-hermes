@@ -1,4 +1,8 @@
-import { BACKEND_BASE_URL } from "@/lib/backend/config";
+import {
+  BACKEND_BASE_URL,
+  BACKEND_OPERATOR_API_KEY,
+  BACKEND_OPERATOR_API_KEY_HEADER,
+} from "@/lib/backend/config";
 
 export class BackendRequestError extends Error {
   constructor(
@@ -13,10 +17,17 @@ export class BackendRequestError extends Error {
 
 export async function backendFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { headers, ...restInit } = init;
+  const requestHeaders = new Headers(headers);
+  if (!requestHeaders.has("Accept")) {
+    requestHeaders.set("Accept", "application/json");
+  }
+  if (BACKEND_OPERATOR_API_KEY) {
+    requestHeaders.set(BACKEND_OPERATOR_API_KEY_HEADER, BACKEND_OPERATOR_API_KEY);
+  }
   const response = await fetch(`${BACKEND_BASE_URL}${path}`, {
     cache: "no-store",
     ...restInit,
-    headers: { Accept: "application/json", ...headers },
+    headers: requestHeaders,
   });
 
   if (!response.ok) {

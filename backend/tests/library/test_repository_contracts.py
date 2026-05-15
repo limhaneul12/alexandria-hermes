@@ -9,9 +9,9 @@ from pathlib import Path
 
 import anyio
 import pytest
-from app.library.domain.contracts.agent_contracts import AgentCreate, AgentUpdate
+from app.librarian.domain.contracts.agent_contracts import AgentCreate, AgentUpdate
 from app.library.domain.contracts.item_contracts import ItemCreate
-from app.library.domain.contracts.librarian_provider_contracts import (
+from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
     LibrarianProviderUpdate,
 )
@@ -21,13 +21,13 @@ from app.library.domain.event_enum.item_enums import (
     ItemType,
     SourceType,
 )
-from app.library.domain.event_enum.provider_enums import AuthType, ProviderType
+from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.library.domain.entities.read_models import Category
-from app.library.infrastructure.models.librarian_provider_models import (
+from app.connections.infrastructure.models.librarian_provider_models import (
     ProviderSecretORM,
 )
-from app.library.infrastructure.repositories.agent_repository import (
+from app.librarian.infrastructure.repositories.agent_repository import (
     SqlAlchemyAgentRepository,
 )
 from app.library.infrastructure.repositories.categories.hierarchy import descendants_of
@@ -37,7 +37,7 @@ from app.library.infrastructure.repositories.category_repository import (
 from app.library.infrastructure.repositories.item_repository import (
     SqlAlchemyItemRepository,
 )
-from app.library.infrastructure.repositories.librarian_repository import (
+from app.connections.infrastructure.repositories.librarian_repository import (
     ProviderSecretRepository,
     SqlAlchemyLibrarianProviderRepository,
 )
@@ -70,6 +70,14 @@ def _agent_payload(name: str = "codex") -> AgentCreate:
         provider="openai",
         description="Uses the library",
         capabilities=["code"],
+        preferred_librarian_provider="00000000-0000-4000-8000-000000000777",
+        preferred_librarian_model="gpt-5.5",
+        max_librarian_agents=3,
+        librarian_role_prompt="Act as a codebase librarian.",
+        librarian_role="SPECIALIST",
+        librarian_specialties=["code"],
+        librarian_routing_priority=20,
+        librarian_enabled=True,
         created_at=now,
         updated_at=now,
     )
@@ -188,13 +196,31 @@ def test_agent_repository_persists_updates_and_reports_missing_deletes(
                 created.id,
                 AgentUpdate(
                     values={
+                        "name": "review-codex",
                         "description": "Uses skills",
                         "capabilities": ["code", "review"],
+                        "preferred_librarian_provider": "provider-2",
+                        "preferred_librarian_model": "gpt-5.4",
+                        "max_librarian_agents": 2,
+                        "librarian_role_prompt": "Review plans before execution.",
+                        "librarian_role": "QUALITY_REVIEWER",
+                        "librarian_specialties": ["code", "review"],
+                        "librarian_routing_priority": 5,
+                        "librarian_enabled": False,
                     }
                 ),
             )
+            assert updated.name == "review-codex"
             assert updated.description == "Uses skills"
             assert updated.capabilities == ["code", "review"]
+            assert updated.preferred_librarian_provider == "provider-2"
+            assert updated.preferred_librarian_model == "gpt-5.4"
+            assert updated.max_librarian_agents == 2
+            assert updated.librarian_role_prompt == "Review plans before execution."
+            assert updated.librarian_role == "QUALITY_REVIEWER"
+            assert updated.librarian_specialties == ["code", "review"]
+            assert updated.librarian_routing_priority == 5
+            assert updated.librarian_enabled is False
 
             await repository.delete(created.id)
             assert await repository.get(created.id) is None

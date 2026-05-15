@@ -2,22 +2,24 @@
 
 ## Goal
 
-Use dataclasses for internal domain/application shapes and Pydantic for IO boundaries, with purpose-driven boundary validation and explicit type modeling.
+Use dataclasses for internal domain/application DTOs, Pydantic v2 for I/O
+boundaries, and `TypedDict` for explicit dictionary payload contracts.
 
 These are preferred defaults for backend design.
 They are not meant as blind rules to follow without judgment.
 If a case needs a different choice, the reason should be explicit.
 
-## Dataclass Rule
+## Internal DTO / Dataclass Rule
 
 ### Adopt now
 
-Prefer Python `dataclass` for internal backend models such as:
+Prefer Python `dataclass` for internal backend DTOs and models such as:
 
 - domain entities
 - value objects
 - internal commands
 - internal read models
+- application-layer command/result DTOs
 
 Preferred options:
 
@@ -26,24 +28,29 @@ Preferred options:
 - `kw_only=True` when it improves call-site clarity
 - `field(default_factory=...)` for mutable defaults such as lists and dicts
 
-Dataclasses are preferred here because they are lightweight Python objects and fit internal typed models without dragging IO validation concerns into the domain.
+Dataclasses are preferred here because they are lightweight Python objects and
+fit internal typed models without dragging I/O validation concerns into the
+domain.
 
 Additional guidance:
 
 - use `frozen=True` for value objects and invariant-heavy internal shapes
 - use `slots=True` for stable lightweight model objects
 - use `kw_only=True` when positional construction would make call sites fragile or unclear
+- do not pass Pydantic request/response models through domain/application logic
+  when an internal DTO would make the boundary clearer
 
-## Pydantic Rule
+## I/O DTO / Pydantic Rule
 
 ### Adopt now
 
-Prefer Pydantic at IO boundaries:
+Prefer Pydantic v2 for I/O DTOs at external boundaries:
 
 - request bodies
 - response payloads
 - external input validation
 - settings/config parsing when needed
+- CLI/MCP command input and output contracts when they cross process/tool boundaries
 
 Do not use Pydantic models as internal domain state by default unless there is a concrete validation/serialization reason.
 
@@ -56,6 +63,34 @@ Preferred boundary split:
 - external read schemas → shape clarity first, with selective strictness only where it materially improves the contract
 
 Every Pydantic boundary schema should make intentional configuration choices for its role instead of relying on defaults by accident.
+
+## Layer Contract Split Rule
+
+### Adopt now
+
+Use the model type that matches the layer boundary.
+
+- inner object DTOs in `domain/` and `application/`: prefer `dataclass`.
+- explicit dictionary payload contracts: prefer `TypedDict`.
+- reusable type expressions: prefer `TypeAlias`.
+- owned ports/interfaces: prefer `ABC`.
+- I/O boundary shapes: prefer Pydantic v2 `BaseModel` / `RootModel` schemas.
+- persistence shapes: keep ORM models and repository records in the
+  infrastructure/persistence layer; do not treat them as public I/O contracts.
+
+Normalize external Pydantic schemas into inner typed shapes before business
+logic spreads across layers. Do not drag Pydantic into inner domain/application
+code just to reuse request/response models.
+
+Preferred flow:
+
+```text
+external JSON / tool payload
+-> Pydantic v2 I/O schema
+-> dataclass or TypedDict inner DTO
+-> domain/application logic
+-> Pydantic v2 response schema at the outgoing boundary
+```
 
 Boundary strictness can be applied at three levels:
 
@@ -322,7 +357,22 @@ Allowed justification styles:
 
 - inline marker above the specific line
 
-Use `TypedDict` for explicit dictionary payload shapes that should stay typed without becoming Pydantic models.
+## Dictionary DTO / TypedDict Rule
+
+### Adopt now
+
+Use `TypedDict` for explicit dictionary payload shapes that should stay typed
+without becoming Pydantic models.
+
+Good candidates:
+
+- repository record dictionaries
+- item/detail payload dictionaries
+- normalized provider/MCP/CLI payload dictionaries after boundary parsing
+- patch/update payload shapes that still need dictionary semantics
+
+Use dataclasses instead when the shape is object state with behavior or
+invariants. Use Pydantic instead when the shape is an external I/O schema.
 
 For dictionary-like payloads, do not default to:
 
@@ -337,6 +387,42 @@ Prefer this order instead:
 2. named `TypeAlias`
 3. `ABC` when you own the contract and need a real explicit interface
 4. broad dictionary typing only as a last resort with explicit justification
+
+Raw `dict[str, JSONValue]` / `Mapping[str, JSONValue]` may remain at a narrow
+transport or normalization seam, but stable downstream dictionary contracts
+should be promoted to `TypedDict`.
+
+### TypedDict Construction Rule
+
+Prefer constructing `TypedDict` payloads through the `TypedDict` class instead
+of annotating an empty or broad dictionary.
+
+Good:
+
+```python
+payload = SkillDetailsPatchPayload(
+    purpose=purpose,
+    version=version,
+)
+```
+
+Avoid by default:
+
+```python
+payload: SkillDetailsPatchPayload = {}
+```
+
+The annotated-empty-dict form is allowed only when incremental construction is
+genuinely clearer or unavoidable, for example:
+
+- a `total=False` patch payload is assembled across multiple conditional
+  branches,
+- keys are added from a validated dynamic key set,
+- a `TypedDict` key cannot be expressed as a Python keyword argument,
+- using the constructor would duplicate complex branching logic.
+
+When this exception is used in production code, keep the assignment local to the
+normalization function and add a short comment if the reason is not obvious.
 
 Allowed exception:
 
@@ -362,13 +448,23 @@ Use `TypeAlias` for named reusable type shapes.
 
 ### Adopt now
 
-Do not use `Protocol` in this backend.
+Prefer explicit owned contracts over structural typing.
 
-Preferred rule:
+Default rule:
 
 - dictionary shapes → `TypedDict`
 - owned explicit interfaces/ports → `ABC`
 - reusable union/container shapes → `TypeAlias`
+
+`Protocol` is not the default contract language for this backend. Use it only
+when structural typing is the actual requirement, for example when adapting a
+third-party object family that cannot reasonably inherit an owned ABC.
+
+If `Protocol` is used:
+
+- keep it at the narrow boundary where structural typing is needed,
+- explain why `TypedDict`, `ABC`, or `TypeAlias` is not the better fit,
+- do not use it to model dictionary payloads or owned provider/repository ports.
 
 Why:
 
@@ -376,25 +472,31 @@ Why:
 - owned contracts should be obvious and intentional
 - dictionary payloads should be modeled as dictionary shapes, not pseudo-object contracts
 
-`Protocol` should be treated as disallowed in this codebase.
-
 ## Attribute Access Rule
 
 ### Adopt now — hard ban
 
-Do not use `getattr(...)` or `hasattr(...)` in backend application/domain/infrastructure/interface code.
+Do not use `getattr(...)` or `hasattr(...)` in backend production code.
 
 `getattr(...)` and `hasattr(...)` hide attribute usage from search, weaken static analysis, and make refactors/debugging unsafe. If a shape is dynamic, model it explicitly instead of reading/checking it dynamically.
 
 Use one of these alternatives:
 
 - explicit attributes on dataclasses / ORM models / read models
+- Pydantic fields at I/O boundaries
 - `TypedDict` key access for dictionary payloads
 - `ABC` contracts with explicit methods or properties
+- union types with explicit `isinstance(...)` narrowing
 - a small adapter/wrapper that exposes explicit methods for optional SDK behavior
 - `hasattr(...)` is also banned for the same reason; prefer explicit contracts
 
-If an upstream SDK exposes optional version-dependent methods, do **not** call them via `getattr(...)` or check them via `hasattr(...)` at the call site. Create a narrow compatibility adapter with explicit methods and tests around the version behavior.
+If an upstream SDK exposes optional version-dependent methods, do **not** call
+them via `getattr(...)` or check them via `hasattr(...)` at the call site or
+inside the adapter. Create an explicit compatibility adapter with explicit
+methods and tests around each supported version behavior.
+
+This is a hard debugging and refactor-safety rule. Do not add convenience
+exceptions.
 
 Reason:
 
@@ -448,23 +550,31 @@ The rule is:
 
 ### Adopt now
 
-Externally visible boundary schemas must include at least one representative example payload through `json_schema_extra`.
+Public or operator-visible request/response schemas should include at least one
+representative example payload through `json_schema_extra`.
 
-This applies to public, admin, system, and other operator-visible request/response schemas.
-Purely internal schemas may omit examples unless they are treated as externally consumed contracts.
+Keep examples focused on contract shape, not exhaustive fixture data. Purely
+internal schemas may omit examples unless they are treated as externally
+consumed contracts.
 
-## Google-style Docstring Rule
+## Project Docstring Rule
 
 ### Adopt now
 
-공개 함수·클래스에는 반드시 Google-style docstring을 작성한다.
+공개 함수·클래스에는 프로젝트 고정 형식의 docstring을 작성한다.
 
 필수 포함 항목:
 
 - 한 줄 요약 (함수가 **무엇**을 하는지)
-- `Args:` — 각 파라미터의 의미, 단위, 제약 조건
-- `Returns:` — 반환 타입과 의미
-- `Raises:` — 발생 가능한 예외 (해당 시)
+- `Args:` — 파라미터가 있을 때 각 파라미터의 의미, 단위, 제약 조건
+- `Return:` — 의미 있는 반환값이 있을 때 반환 타입과 의미
+
+기본 섹션 라벨은 `Args:` / `Return:`이다. 단, 의미상 필요한 경우에는
+`Returns:`, `Yields:`, `Raises:`도 작성한다.
+
+- `Returns:` — 기존 Google-style 호환이 필요한 공개 surface 또는 해당 파일의 기존 스타일과 맞출 때
+- `Yields:` — generator/async generator가 값을 산출할 때
+- `Raises:` — 호출자가 알아야 하는 도메인/경계 예외가 있을 때
 
 형식:
 
@@ -488,8 +598,8 @@ def compute_triage(
         source_count: 독립 근거 소스 수.
         text_cleanliness_flags: 텍스트 품질 플래그 목록.
 
-    Returns:
-        (triage_status, triage_reason) 튜플.
+    Return:
+        tuple[str, str]: (triage_status, triage_reason) 튜플.
     """
 ```
 
@@ -532,8 +642,8 @@ def compute_triage(
 권장 형식:
 
 ```python
-# Broad type justified: worker tests pass lightweight config stubs without full runtime config.
-def coerce_collector_runtime_config(config: object) -> CollectorRuntimeConfig:
+# Broad type justified: boundary validators receive raw request input before contract validation.
+def parse_provider_config(config: object) -> ProviderConfig:
     ...
 
 # Do not use getattr/hasattr for optional SDK behavior.
@@ -544,7 +654,7 @@ await redis_durability_adapter.wait_for_replicas(replicas=1, timeout_ms=100)
 TODO 주석은 임시 작업 표시로만 사용하고, 조건과 제거 기준을 함께 적는다.
 
 ```python
-# TODO(collector-v0.2): replace rule-only parsing after source_entries fixtures exist.
+# TODO(library-v0.2): replace rule-only parsing after provider fixtures exist.
 ```
 
 Rule of thumb:
@@ -557,27 +667,28 @@ Rule of thumb:
 
 ### Adopt now
 
-수치 계산(scoring, analytics, 통계 집계)에는 **NumPy**를 우선 사용한다.
+수치 계산(scoring, analytics, 통계 집계)은 먼저 plain Python으로 명확하게
+작성하고, 배열/대량 처리나 수치 일관성 요구가 있을 때 **NumPy**를 사용한다.
 
 이유:
 
-- 가중합, clip, round 등 반복 패턴을 벡터 연산으로 간결하게 표현
-- 향후 배치 계산·대량 데이터 확장 시 성능 이점
-- 코드베이스 전체에서 계산 스타일 일관성 유지
+- 작은 스칼라 계산에 NumPy를 강제하면 코드와 의존성이 불필요하게 무거워진다.
+- 대량 배열 계산, 반복 집계, 벡터 유사도, 통계 처리에는 NumPy가 더 명확하고 빠를 수 있다.
+- 계산 스타일은 성능보다 의미와 검증 가능성을 먼저 따른다.
 
 적용 대상:
 
-- 가중합 계산 (예: impact scoring)
-- 점수 정규화, clip, 구간 매핑
-- Counter/ratio 기반 집계를 배열 연산으로 대체 가능한 경우
-- analytics repository의 결과 가공
+- 벡터/행렬 연산
+- embedding/vector similarity
+- 큰 배치의 점수 정규화, clip, 구간 매핑
+- Counter/ratio 기반 집계를 배열 연산으로 대체하는 것이 실제로 더 명확한 경우
 
 예시:
 
 ```python
 import numpy as np
 
-# Before (순수 Python)
+# Small scalar case: plain Python is acceptable.
 total = (
     market * w.market_change
     + ecosystem * w.ecosystem_influence
@@ -587,7 +698,7 @@ total = (
 )
 total = min(max(round(total, 2), 0.0), 100.0)
 
-# After (NumPy)
+# Larger vector case: NumPy is appropriate.
 scores = np.array([market, ecosystem, technical, company, trust])
 weights = np.array([w.market_change, w.ecosystem_influence,
                     w.technical_significance, w.company_weight, w.trust])
@@ -606,7 +717,7 @@ These rules align with:
 - Python dataclass guidance for lightweight typed data containers
 - Pydantic v2 strict and specialized boundary validation patterns
 - Google-style docstring conventions (PEP 257 + Google Python Style Guide)
-- NumPy vectorized computation for numerical consistency and performance
+- NumPy vectorized computation only when scale or numerical clarity warrants it
 
 In this repo, the architectural intent is:
 

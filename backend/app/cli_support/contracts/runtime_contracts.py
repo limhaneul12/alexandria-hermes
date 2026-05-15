@@ -22,6 +22,7 @@ class CommandContext:
 
     base_url: str
     json_output: bool
+    operator_api_key: str | None
     timeout: float
     stdout: TextIO
     stderr: TextIO
