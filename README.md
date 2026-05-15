@@ -1,6 +1,6 @@
 # ALEXANDRIA-HERMES
 
-> Library-style skill and prompt archive for humans, AI agents, and optional librarian agents.
+> Library-style archive and Context Vault for humans, AI agents, and optional librarian agents.
 
 <p align="center">
   <img src="./docs/assets/alexandria-hermes-cover.png" alt="ALEXANDRIA-HERMES archive cover" width="100%" />
@@ -10,78 +10,48 @@
   <a href="https://www.python.org/downloads/"><img alt="Python" src="https://img.shields.io/badge/python-3.13%20%7C%203.14-3776AB?logo=python&logoColor=white"></a>
   <a href="https://docs.astral.sh/uv/"><img alt="uv" src="https://img.shields.io/badge/uv-0.8.4-654FF0?logo=astral&logoColor=white"></a>
   <a href="https://fastapi.tiangolo.com/"><img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.136.1-009688?logo=fastapi&logoColor=white"></a>
+  <a href="https://docs.pydantic.dev/"><img alt="Pydantic" src="https://img.shields.io/badge/Pydantic-2.13.4-E92063?logo=pydantic&logoColor=white"></a>
   <a href="https://www.sqlalchemy.org/"><img alt="SQLAlchemy" src="https://img.shields.io/badge/SQLAlchemy-2.0.49-D71F00"></a>
-  <a href="https://nextjs.org/"><img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-black?logo=nextdotjs"></a>
-  <a href="https://react.dev/"><img alt="React" src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white"></a>
-  <img alt="Backend tests" src="https://img.shields.io/badge/backend_tests-164%20passed-brightgreen">
-  <img alt="Coverage" src="https://img.shields.io/badge/coverage-pytest%20suite-lightgrey">
+  <a href="https://modelcontextprotocol.io/"><img alt="MCP" src="https://img.shields.io/badge/MCP-1.27.1-5B5BD6"></a>
+  <a href="https://typer.tiangolo.com/"><img alt="Typer" src="https://img.shields.io/badge/Typer-0.25.1-009688"></a>
+  <a href="https://www.python-httpx.org/"><img alt="HTTPX" src="https://img.shields.io/badge/HTTPX-0.28.1-0A7EA4"></a>
+  <a href="https://nextjs.org/"><img alt="Next.js" src="https://img.shields.io/badge/Next.js-15.5.18-black?logo=nextdotjs"></a>
+  <a href="https://react.dev/"><img alt="React" src="https://img.shields.io/badge/React-19.2.6-149ECA?logo=react&logoColor=white"></a>
+  <img alt="Backend tests" src="https://img.shields.io/badge/backend_tests-191%20passed-brightgreen">
+  <img alt="Typecheck" src="https://img.shields.io/badge/pyrefly-0%20errors-brightgreen">
 </p>
 
 ---
 
 ## What is Alexandria-Hermes?
 
-ALEXANDRIA-HERMES is a digital archive for reusable AI-agent resources.
+ALEXANDRIA-HERMES is a digital archive and context memory layer for reusable AI-agent resources.
 
-The product goal is simple: manage **skills** and **prompts** like a library so people, agents, and optional librarian agents can find, register, classify, use, and revisit them later.
+The product goal is simple: manage **skills**, **prompts**, and **agent working context** like a library so humans, agents, and optional librarian agents can find, register, classify, recall, and reuse them later.
 
 Hermes is not the library itself. Hermes, humans, and other agents can all use the platform:
 
-- humans can directly create folders, skills, and prompts
-- agents can register or retrieve reusable resources
+- humans can directly create folders, skills, prompts, and captured context entries
+- agents can register, retrieve, and recall reusable resources through HTTP, CLI, or MCP
 - an optional librarian agent can help classify, recommend, and import resources
 - MINIO can hold original files while Hermes stores searchable metadata and placement
+- Context Vault can preserve handoffs, compact summaries, and RAG-ready chunks for later recall
 
 The current implementation focuses on:
 
 - skill and prompt archive management
-- folder/category organization
-- usage history and recently accessed resources
+- folder/category organization and usage history
+- Context Vault linting, saving, chunking, recall, archive, and RAG health checks
+- hybrid Context Pack retrieval with FTS plus optional vector/embedding support
+- capture-review, context-vault, context-detail, and RAG-inspector UI surfaces
 - optional OpenAI-backed librarian provider registration
 - optional MINIO scan/import for existing external archives
-- CLI access for humans and agents
+- native Typer CLI access for humans and agents
+- MCP server access for agent/tool clients
+- typed FastAPI/Pydantic contracts backed by SQLite, SQLAlchemy, and Alembic
 - a Next.js document-style library UI
 
-The cover art represents the long-term archive direction. The current MVP is focused on **Skills** and **Prompts** first; MCP and workflow shelves are planned expansion areas.
-
----
-
-## Concept Art
-
-<p align="center">
-  <img src="./docs/assets/alexandria-hermes-library.png" alt="ALEXANDRIA-HERMES library concept art" width="100%" />
-</p>
-
-The project uses archive imagery to communicate the product direction: skills and prompts first, with MCP and workflow shelves expanding as the platform matures.
-
----
-
-## Tech Stack
-
-### Backend
-
-| Area | Technology |
-| --- | --- |
-| Runtime | Python `>=3.13,<3.15` |
-| Package manager | uv `0.8.4` |
-| Web framework | FastAPI `0.136.1` |
-| Data validation | Pydantic `2.13.4` |
-| Database layer | SQLAlchemy `2.0.49` + Alembic |
-| Local DB | SQLite / aiosqlite |
-| Provider SDK | OpenAI Python SDK `2.36.0` |
-| Object storage | MINIO Python SDK `7.2.20` |
-| Quality gates | Ruff, Pyrefly, Pytest |
-
-### Frontend
-
-| Area | Technology |
-| --- | --- |
-| Framework | Next.js `15` |
-| UI runtime | React `19` |
-| Language | TypeScript |
-| Data fetching | TanStack Query |
-| State | Zustand |
-| Charts/icons | Recharts, Lucide React |
+The cover art represents the long-term archive direction: skills and prompts are the shelves, Context Vault is the agent memory layer, and MCP is the tool-facing access path.
 
 ---
 
@@ -91,19 +61,21 @@ This repository is an active MVP, not a finished product.
 
 Working surfaces include:
 
-- FastAPI backend with archive, category, provider, prompt, skill, and MINIO routes
-- SQLite-backed local development storage
-- Next.js frontend for dashboard, explore/library, details, settings, providers, and imports
-- CLI entrypoints:
+- FastAPI backend with archive, category, provider, prompt, skill, MINIO, Context Vault, RAG, and MCP surfaces
+- SQLite-backed local development storage with Alembic migrations
+- Next.js frontend for dashboard, explore/library, details, settings, providers, imports, Context Vault, capture review, and RAG inspection
+- native Typer CLI command tree:
   - `alexandria-hermes`
   - `alex-hermes`
-- backend quality gate with `164` passing tests
+  - `health`, `folders`, `library`, `skills`, `prompts`, `minio`, `context`, `hermes`, `mcp`
+- HTTP client paths built on `httpx`
+- backend quality gate with `191` passing tests and `pyrefly` clean
 
 Planned/expanding areas:
 
 - richer librarian classification
-- prompt preview/linting depth
-- MCP resource expansion
+- deeper prompt and context linting policies
+- broader MCP resource/tool coverage
 - stronger import review workflows
 - real deployment/auth hardening
 
@@ -121,22 +93,29 @@ make ci
 Result:
 
 ```text
-ruff format --check: 182 files already formatted
+ruff format --check: 244 files already formatted
 ruff check: All checks passed
 pyrefly check: 0 errors
 shared guardrails: 25 passed
-backend tests: 164 passed
+backend tests: 191 passed
 ```
 
 Frontend validation:
 
 ```bash
 cd frontend
-npm run lint
-npm run test:ui-contract
-npm run build
 npm run security:npm-supply-chain
+npm run test:ui-contract
+npm run lint
+npm run build
 ```
+
+Latest compose smoke QA covered:
+
+- backend health, archive, usage, provider, Context Vault, RAG status, lint/save/get/chunks/search/access/archive endpoints
+- frontend API proxies for Context Vault and RAG
+- frontend pages: dashboard, library, settings, agents, contexts, RAG inspector, capture review, context detail
+- compose log scan for traceback, unhandled errors, and 500-level failures
 
 Notes:
 
@@ -186,11 +165,13 @@ This starts:
 - backend: `http://localhost:8000`
 - frontend: `http://localhost:3000`
 
+During the active npm supply-chain hold, avoid rebuilding the frontend image unless the hold is explicitly lifted, because the frontend Dockerfile runs `npm ci`. If images already exist, use `docker compose up --no-build` for local smoke QA.
+
 ---
 
 ## CLI
 
-The CLI is a thin client over the backend HTTP API. It does not bypass backend permissions, validation, duplicate handling, or MINIO safety rules.
+The CLI is a native Typer command tree over the backend HTTP API. It does not bypass backend permissions, validation, duplicate handling, Context Vault rules, or MINIO safety rules.
 
 Install once for normal shell usage:
 
@@ -220,6 +201,11 @@ alexandria-hermes skills create \
   --tag fastapi \
   --tool pytest \
   --active
+alexandria-hermes context lint ./handoff.md --kind HANDOFF --title "Sprint handoff"
+alexandria-hermes context save --content-file ./handoff.md --kind HANDOFF --title "Sprint handoff"
+alexandria-hermes context recall "dependency injection" --strategy HYBRID
+alexandria-hermes context doctor-rag
+alexandria-hermes mcp serve
 alexandria-hermes minio scan --limit 24 --json
 alexandria-hermes minio import --limit 48
 ```
@@ -240,7 +226,30 @@ Configuration:
 
 ---
 
-## OpenAI and MINIO Providers
+## Context Vault and RAG
+
+Context Vault stores agent working context as first-class library material.
+
+Supported behaviors:
+
+- lint context Markdown before saving
+- redact and score context quality signals
+- save handoffs, notes, decisions, compact summaries, and project context
+- chunk saved context for retrieval
+- recall a Context Pack by query and strategy
+- inspect RAG dependency health
+- archive entries without hard deletion
+
+Primary surfaces:
+
+- Backend routes under `/library/contexts`
+- Frontend pages `/contexts`, `/contexts/{contextId}`, `/capture-review`, `/rag-inspector`
+- CLI commands under `alexandria-hermes context ...`
+- MCP server via `alexandria-hermes mcp serve`
+
+---
+
+## OpenAI, MINIO, and MCP
 
 ### OpenAI
 
@@ -263,40 +272,9 @@ Recommended model:
 - users can scan candidates before importing
 - imports should be reviewable and idempotent
 
-MINIO is not required for local development.
+### MCP
 
----
-
-## Project Layout
-
-```text
-backend/
-  app/
-    main.py                  # FastAPI app entrypoint
-    cli.py                   # CLI entrypoint
-    library/                 # archive domain/application/interface/infrastructure
-    platform/                # config, lifecycle, logging, middleware, storage
-    shared/                  # guardrails, exceptions, serialization, utilities
-  migrations/                # Alembic migrations
-  tests/                     # pytest suite
-  pyproject.toml
-
-frontend/
-  src/
-    app/                     # Next.js app routes
-    components/              # layout, library, dashboard, settings, ui
-    lib/                     # API clients, backend adapters, i18n, form helpers
-    store/                   # Zustand store
-    types/                   # shared DTO types
-  scripts/                   # UI contract and security checks
-
-scripts/
-  install-cli.sh
-
-docs/
-  librain/                   # implementation plans and library/librarian notes
-  prompting_lib/             # prompt-library implementation plans
-```
+The MCP server exposes Alexandria-Hermes to MCP-capable agents and tool clients. It should be treated as an agent-facing access path over the same backend contracts, not as a separate business-logic implementation.
 
 ---
 
@@ -352,7 +330,7 @@ ALEXANDRIA-HERMES aims to become an operational archive where:
 - skills are reusable capabilities
 - prompts are reusable instruction artifacts
 - folders behave like shelves
-- usage history helps retrieval
+- context entries preserve what agents learned and decided
+- usage history and RAG recall help retrieval
 - librarian agents are optional helpers, not hard dependencies
 - humans and agents can both participate
-

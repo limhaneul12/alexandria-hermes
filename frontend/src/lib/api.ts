@@ -2,6 +2,15 @@ import type {
   AgentDTO,
   CategoryCreateDTO,
   CategoryDTO,
+  ContextChunkDTO,
+  ContextDTO,
+  ContextLintRequestDTO,
+  ContextLintResultDTO,
+  ContextListDTO,
+  ContextPackDTO,
+  ContextPrepareCompactDTO,
+  ContextSaveDTO,
+  ContextSearchDTO,
   DashboardDTO,
   ExternalArchiveCandidateDTO,
   ExternalArchiveImportResultDTO,
@@ -15,6 +24,7 @@ import type {
   PromptCreateResultDTO,
   SkillCreateDTO,
   SkillCreateResultDTO,
+  RagStatusDTO,
   SkillDetailDTO,
 } from "@/types/library";
 
@@ -118,3 +128,67 @@ export function fetchAgents() {
   return fetchJson<AgentDTO[]>("/api/agents");
 }
 
+export function fetchContexts(params: URLSearchParams) {
+  const query = params.toString();
+  return fetchJson<ContextListDTO>(`/api/library/contexts${query ? `?${query}` : ""}`);
+}
+
+export function fetchContext(contextId: string) {
+  return fetchJson<ContextDTO>(`/api/library/contexts/${encodeURIComponent(contextId)}`);
+}
+
+export function fetchContextChunks(contextId: string) {
+  return fetchJson<ContextChunkDTO[]>(
+    `/api/library/contexts/${encodeURIComponent(contextId)}/chunks`,
+  );
+}
+
+export function lintContext(payload: ContextLintRequestDTO) {
+  return fetchJson<ContextLintResultDTO>(
+    "/api/library/contexts/lint",
+    jsonInit("POST", payload),
+  );
+}
+
+export function saveContext(payload: ContextSaveDTO) {
+  return fetchJson<ContextDTO>("/api/library/contexts", jsonInit("POST", payload));
+}
+
+export function captureContext(payload: ContextSaveDTO) {
+  return fetchJson<ContextDTO>(
+    "/api/library/contexts/capture",
+    jsonInit("POST", payload),
+  );
+}
+
+export function prepareCompact(payload: ContextPrepareCompactDTO) {
+  return fetchJson<ContextDTO>(
+    "/api/library/contexts/prepare-compact",
+    jsonInit("POST", payload),
+  );
+}
+
+export function searchContexts(payload: ContextSearchDTO) {
+  return fetchJson<ContextPackDTO>(
+    "/api/library/contexts/search",
+    jsonInit("POST", payload),
+  );
+}
+
+export function archiveContext(contextId: string) {
+  return fetchJson<ContextDTO>(
+    `/api/library/contexts/${encodeURIComponent(contextId)}/archive`,
+    jsonInit("POST", {}),
+  );
+}
+
+export function accessContext(contextId: string) {
+  return fetchJson<ContextDTO>(
+    `/api/library/contexts/${encodeURIComponent(contextId)}/access`,
+    jsonInit("POST", {}),
+  );
+}
+
+export function fetchRagStatus() {
+  return fetchJson<RagStatusDTO>("/api/library/contexts/rag/status");
+}

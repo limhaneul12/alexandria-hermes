@@ -33,12 +33,43 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
             row[1]: row[2]
             for row in connection.execute("PRAGMA table_info(library_items)").fetchall()
         }
+        context_columns = {
+            row[1]: row[2]
+            for row in connection.execute("PRAGMA table_info(contexts)").fetchall()
+        }
+        chunk_columns = {
+            row[1]: row[2]
+            for row in connection.execute(
+                "PRAGMA table_info(context_chunks)"
+            ).fetchall()
+        }
         fts_definition = connection.execute(
             "SELECT sql FROM sqlite_master WHERE name = 'item_search_fts'"
         ).fetchone()[0]
+        context_fts_definition = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'context_chunk_fts'"
+        ).fetchone()[0]
+        speculative_tables = {
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE name IN (
+                    'context_links',
+                    'context_embeddings',
+                    'context_chunk_vec'
+                )
+                """
+            ).fetchall()
+        }
 
     assert category_columns["id"] == "VARCHAR(36)"
     assert category_columns["parent_id"] == "VARCHAR(36)"
     assert item_columns["id"] == "VARCHAR(36)"
     assert item_columns["category_id"] == "VARCHAR(36)"
+    assert context_columns["id"] == "VARCHAR(36)"
+    assert context_columns["kind"] == "VARCHAR(32)"
+    assert chunk_columns["context_id"] == "VARCHAR(36)"
     assert "item_id UNINDEXED" in fts_definition
+    assert "chunk_id UNINDEXED" in context_fts_definition
+    assert speculative_tables == set()

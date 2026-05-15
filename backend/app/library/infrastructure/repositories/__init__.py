@@ -2,6 +2,7 @@
 
 from .agent_repository import SqlAlchemyAgentRepository
 from .category_repository import SqlAlchemyCategoryRepository
+from .context_repository import SqlAlchemyContextRepository
 from .item_repository import SqlAlchemyItemRepository
 from .librarian_repository import (
     ProviderSecretRepository,
@@ -13,6 +14,7 @@ __all__ = [
     "ProviderSecretRepository",
     "SqlAlchemyAgentRepository",
     "SqlAlchemyCategoryRepository",
+    "SqlAlchemyContextRepository",
     "SqlAlchemyItemRepository",
     "SqlAlchemyLibrarianProviderRepository",
     "SqlAlchemyUsageRepository",

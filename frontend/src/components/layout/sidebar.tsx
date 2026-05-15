@@ -3,12 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   Archive,
   BookOpen,
   Bot,
   Clock3,
+  ClipboardCheck,
   FolderTree,
+  Gauge,
   Home,
   Library,
   PlusSquare,
@@ -16,13 +19,14 @@ import {
   Settings,
   Sparkles,
   Star,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 
 import { t, type TranslationKey } from "@/lib/i18n";
 import { useLibraryStore } from "@/store/library-store";
 
-type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active?: "exact" | "library" | "type-skill" | "type-prompt" | "settings" | "librarians" };
+type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active?: "exact" | "library" | "type-skill" | "type-prompt" | "settings" | "librarians" | "contexts" | "rag" | "capture" };
 type NavSection = { titleKey: TranslationKey | "libraryStatic"; items: NavItem[] };
 
 const sections: NavSection[] = [
@@ -55,6 +59,9 @@ const sections: NavSection[] = [
     titleKey: "aiLibrarian",
     items: [
       { labelKey: "librarian", href: "/settings#librarians", icon: Bot, active: "librarians" },
+      { labelKey: "contextVault", href: "/contexts", icon: ScrollText, active: "contexts" },
+      { labelKey: "ragInspector", href: "/rag-inspector", icon: Gauge, active: "rag" },
+      { labelKey: "captureReview", href: "/capture-review", icon: ClipboardCheck, active: "capture" },
       { labelKey: "recommendations", href: "/dashboard#archive-philosophy", icon: Sparkles },
     ],
   },
@@ -67,11 +74,29 @@ const sections: NavSection[] = [
   },
 ];
 
-function isActive(pathname: string, params: URLSearchParams, active?: string) {
+function useHash() {
+  const [hash, setHash] = useState("");
+  useEffect(() => {
+    const updateHash = () => setHash(window.location.hash);
+    updateHash();
+    window.addEventListener("hashchange", updateHash);
+    window.addEventListener("popstate", updateHash);
+    return () => {
+      window.removeEventListener("hashchange", updateHash);
+      window.removeEventListener("popstate", updateHash);
+    };
+  }, []);
+  return hash;
+}
+
+function isActive(pathname: string, params: URLSearchParams, hash: string, active?: string) {
   if (!active) return false;
   if (active === "exact") return pathname === "/dashboard" || pathname === "/";
-  if (active === "settings") return pathname === "/settings" && typeof window !== "undefined" && window.location.hash !== "#librarians";
-  if (active === "librarians") return pathname === "/settings" && typeof window !== "undefined" && window.location.hash === "#librarians";
+  if (active === "settings") return pathname === "/settings" && hash !== "#librarians";
+  if (active === "librarians") return pathname === "/settings" && hash === "#librarians";
+  if (active === "contexts") return pathname.startsWith("/contexts");
+  if (active === "rag") return pathname === "/rag-inspector";
+  if (active === "capture") return pathname === "/capture-review";
   if (!pathname.startsWith("/library")) return false;
   if (active === "type-skill") return params.get("type") === "SKILL";
   if (active === "type-prompt") return params.get("type") === "PROMPT";
@@ -82,6 +107,7 @@ function isActive(pathname: string, params: URLSearchParams, active?: string) {
 export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const hash = useHash();
   const language = useLibraryStore((state) => state.language);
   const collapsed = useLibraryStore((state) => state.sidebarCollapsed);
   return (
@@ -106,7 +132,7 @@ export function Sidebar() {
             <div className="space-y-1">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const active = isActive(pathname, searchParams, item.active);
+                const active = isActive(pathname, searchParams, hash, item.active);
                 return (
                   <Link
                     key={`${section.titleKey}-${item.labelKey}`}

@@ -272,3 +272,154 @@ export type AgentDTO = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type ContextKind =
+  | "HANDOFF"
+  | "COMPACT"
+  | "DECISION"
+  | "BUG_ROOT_CAUSE"
+  | "PLAN"
+  | "RESEARCH"
+  | "USAGE"
+  | "MEMORY";
+export type ContextSourceType = "AGENT" | "USER" | "SYSTEM" | "IMPORTED";
+export type ContextImportance = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type ContextStorageStatus =
+  | "SAVED"
+  | "SAVED_WITH_WARNINGS"
+  | "REDACTED_AND_SAVED"
+  | "BLOCKED_SECRET_RISK"
+  | "PENDING_REVIEW";
+export type RagStrategy = "FTS_ONLY" | "VECTOR_ONLY" | "HYBRID";
+export type RagHealthState = "HEALTHY" | "DEGRADED" | "DISABLED";
+
+export const CONTEXT_KINDS = [
+  "HANDOFF",
+  "COMPACT",
+  "DECISION",
+  "BUG_ROOT_CAUSE",
+  "PLAN",
+  "RESEARCH",
+  "USAGE",
+  "MEMORY",
+] as const satisfies readonly ContextKind[];
+export const RAG_STRATEGIES = ["HYBRID", "FTS_ONLY", "VECTOR_ONLY"] as const satisfies readonly RagStrategy[];
+
+export type ContextDTO = {
+  id: string;
+  kind: ContextKind;
+  title: string;
+  summary: string;
+  content: string;
+  contentFormat: string;
+  project: string | null;
+  sourceAgent: string;
+  sourceType: ContextSourceType;
+  importance: ContextImportance;
+  tags: string[];
+  status: ContextStorageStatus;
+  qualityScore: number;
+  warnings: string[];
+  restorePrompt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  lastAccessedAt: string | null;
+  expiresAt: string | null;
+  archivedAt: string | null;
+  accessCount: number;
+  isArchived: boolean;
+};
+
+export type ContextChunkDTO = {
+  id: string;
+  contextId: string;
+  chunkIndex: number;
+  heading: string | null;
+  content: string;
+  tokenCount: number;
+  contentHash: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type ContextListDTO = {
+  items: ContextDTO[];
+  total: number;
+};
+
+export type ContextSaveDTO = {
+  kind: ContextKind;
+  title: string;
+  content: string;
+  summary: string | null;
+  project: string | null;
+  sourceAgent: string;
+  sourceType: ContextSourceType;
+  importance: ContextImportance;
+  tags: string[];
+  metadata: Record<string, unknown>;
+};
+
+export type ContextLintRequestDTO = Pick<
+  ContextSaveDTO,
+  "kind" | "title" | "content" | "summary" | "project" | "sourceAgent" | "tags"
+>;
+
+export type ContextLintResultDTO = {
+  ok: boolean;
+  status: ContextStorageStatus;
+  score: number;
+  errors: string[];
+  warnings: string[];
+  suggestions: string[];
+  redactedContent: string;
+  normalized: Record<string, unknown>;
+};
+
+export type ContextSearchDTO = {
+  query: string;
+  strategy: RagStrategy;
+  limit: number;
+  project: string | null;
+  kind: ContextKind | null;
+};
+
+export type ContextSearchMatchDTO = {
+  context: ContextDTO;
+  chunk: ContextChunkDTO;
+  score: number;
+  ftsScore: number | null;
+  vectorScore: number | null;
+  whyRetrieved: string;
+};
+
+export type ContextPackDTO = {
+  query: string;
+  strategy: RagStrategy;
+  effectiveStrategy: RagStrategy;
+  warnings: string[];
+  matches: ContextSearchMatchDTO[];
+  contextPack: string;
+};
+
+export type RagStatusDTO = {
+  fts: RagHealthState;
+  vector: RagHealthState;
+  embedding: RagHealthState;
+  defaultStrategy: RagStrategy;
+  modelName: string;
+  dimensions: number;
+  warnings: string[];
+};
+
+export type ContextPrepareCompactDTO = {
+  project: string | null;
+  sourceAgent: string;
+  currentGoal: string;
+  completed: string[];
+  inProgress: string[];
+  keyDecisions: string[];
+  nextActions: string[];
+  risks: string[];
+};

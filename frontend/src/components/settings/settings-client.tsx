@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cloud, KeyRound, Languages, PanelLeftClose, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react";
+import { Cloud, Gauge, KeyRound, Languages, PanelLeftClose, Plug, ShieldCheck, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import {
   createLibrarianProvider,
   fetchExternalArchiveCandidates,
   fetchLibrarianProviders,
+  fetchRagStatus,
   importExternalArchiveCandidates,
   testLibrarianProvider,
   updateLibrarianProvider,
@@ -145,6 +146,10 @@ export function SettingsClient() {
   const providersQuery = useQuery({
     queryKey: ["librarian-providers"],
     queryFn: fetchLibrarianProviders,
+  });
+  const ragStatusQuery = useQuery({
+    queryKey: ["rag-status"],
+    queryFn: fetchRagStatus,
   });
   const importCandidatesQuery = useQuery({
     queryKey: ["external-archive-candidates"],
@@ -557,6 +562,59 @@ export function SettingsClient() {
 
       {activeSettingsSection === "library" ? (
         <section id="library" className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" aria-hidden="true" /> Hermes Integration
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm leading-6 text-[#514c44]">
+              Install Alexandria prompts and the library skill with <code>alexandria-hermes hermes onboard --dry-run</code> before writing into a Hermes home folder.
+            </p>
+            <div className="rounded-xl border border-[#d8d3c7] bg-white/60 p-3 text-xs leading-5 text-[#36322d]">
+              Path order: command flag → HERMES_HOME → saved config → ~/.hermes → required-home error.
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plug className="h-5 w-5" aria-hidden="true" /> MCP Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm leading-6 text-[#514c44]">
+              MCP clients can launch <code>alexandria-hermes mcp serve</code> and use HTTP-only tools for search, recall, capture, compact, archive, and RAG health.
+            </p>
+            <pre className="overflow-auto rounded-xl border border-[#d8d3c7] bg-white/60 p-3 text-xs text-[#36322d]">{`{\"mcpServers\":{\"alexandria\":{\"command\":\"alexandria-hermes\",\"args\":[\"mcp\",\"serve\"]}}}`}</pre>
+          </CardContent>
+        </Card>
+
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Gauge className="h-5 w-5" aria-hidden="true" /> RAG Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-3">
+            {(["fts", "vector", "embedding"] as const).map((key) => (
+              <div key={key} className="rounded-xl border border-[#d8d3c7] bg-white/60 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-[#6f6a60]">{key}</p>
+                <p className="mt-2 font-serif text-2xl text-[#111111]">
+                  {ragStatusQuery.data ? ragStatusQuery.data[key] : "Checking…"}
+                </p>
+              </div>
+            ))}
+            {ragStatusQuery.data?.warnings.length ? (
+              <p className="md:col-span-3 text-sm leading-6 text-[#8f5037]">
+                {ragStatusQuery.data.warnings.join(" · ")}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

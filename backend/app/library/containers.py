@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.library.application.agent_service import AgentService
 from app.library.application.category_service import CategoryService
+from app.library.application.context_service import ContextService
 from app.library.application.item_service import ItemService
 from app.library.application.knowledge_service import KnowledgeService
 from app.library.application.librarian_service import LibrarianService
@@ -21,6 +22,7 @@ from app.library.infrastructure.repositories import (
     ProviderSecretRepository,
     SqlAlchemyAgentRepository,
     SqlAlchemyCategoryRepository,
+    SqlAlchemyContextRepository,
     SqlAlchemyItemRepository,
     SqlAlchemyLibrarianProviderRepository,
     SqlAlchemyUsageRepository,
@@ -36,6 +38,7 @@ class LibraryContainer(containers.DeclarativeContainer):
     item_repo = providers.Factory(SqlAlchemyItemRepository, session=db_session)
     usage_repo = providers.Factory(SqlAlchemyUsageRepository, session=db_session)
     category_repo = providers.Factory(SqlAlchemyCategoryRepository, session=db_session)
+    context_repo = providers.Factory(SqlAlchemyContextRepository, session=db_session)
     agent_repo = providers.Factory(SqlAlchemyAgentRepository, session=db_session)
     librarian_provider_repo = providers.Factory(
         SqlAlchemyLibrarianProviderRepository,
@@ -50,6 +53,10 @@ class LibraryContainer(containers.DeclarativeContainer):
     category_service = providers.Factory(
         CategoryService,
         category_repo=category_repo,
+    )
+    context_service = providers.Factory(
+        ContextService,
+        repository=context_repo,
     )
     skill_service = providers.Factory(
         SkillService,

@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from app.container import ApplicationContainer
 from app.library.interface.routers.agent_router import router as agent_router
 from app.library.interface.routers.category_router import router as category_router
+from app.library.interface.routers.context_router import router as context_router
 from app.library.interface.routers.item_router import router as item_router
 from app.library.interface.routers.knowledge_router import router as knowledge_router
 from app.library.interface.routers.librarian.librarian_ops_router import (
@@ -143,6 +144,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
     )
 
     app.include_router(category_router)
+    app.include_router(context_router)
     app.include_router(item_router)
     app.include_router(skill_router)
     app.include_router(prompt_router)

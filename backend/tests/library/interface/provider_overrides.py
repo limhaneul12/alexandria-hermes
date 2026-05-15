@@ -12,6 +12,7 @@ from dependency_injector import providers
 _LIBRARY_PROVIDER_NAMES: Final[set[str]] = {
     "agent_service",
     "category_service",
+    "context_service",
     "item_service",
     "knowledge_service",
     "prompt_service",
