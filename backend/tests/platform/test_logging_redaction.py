@@ -30,7 +30,10 @@ def test_json_formatter_redacts_secret_values_in_messages_and_exceptions() -> No
     try:
         raise RuntimeError(
             "provider failed api_key=do-not-log-api-key "
-            "oauth_access_token=do-not-log-token Authorization: Bearer do-not-log-bearer"
+            "oauth_access_token=do-not-log-token "
+            "oauth_refresh_token=do-not-log-refresh-token "
+            "device_code=do-not-log-device-code user_code=do-not-log-user-code "
+            "Authorization: Bearer do-not-log-bearer"
         )
     except RuntimeError:
         record = logger.makeRecord(
@@ -48,11 +51,16 @@ def test_json_formatter_redacts_secret_values_in_messages_and_exceptions() -> No
 
     assert "do-not-log-api-key" not in encoded
     assert "do-not-log-token" not in encoded
+    assert "do-not-log-refresh-token" not in encoded
+    assert "do-not-log-device-code" not in encoded
+    assert "do-not-log-user-code" not in encoded
     assert "do-not-log-bearer" not in encoded
     assert "do-not-log-password" not in encoded
     assert payload["msg"] == "request failed password=<redacted>"
     assert payload["error"]["message"] == (
         "provider failed api_key=<redacted> oauth_access_token=<redacted> "
+        "oauth_refresh_token=<redacted> device_code=<redacted> "
+        "user_code=<redacted> "
         "Authorization: Bearer <redacted>"
     )
     assert "api_key=<redacted>" in payload["error"]["stack"]

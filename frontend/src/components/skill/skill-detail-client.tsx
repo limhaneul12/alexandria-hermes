@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Clipboard, History, ScrollText, Table2, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, CheckCircle2, Clipboard, ExternalLink, History, ScrollText, ShieldCheck, Table2, Trash2, XCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,73 @@ function PromptBody({ data }: { data: LibraryItemDetailDTO }) {
   );
 }
 
+function SelfAcquisitionCard({
+  metadata,
+}: {
+  metadata: NonNullable<LibraryItemDetailDTO["skillAcquisition"]>;
+}) {
+  const harness = metadata.harness;
+  const passed = harness?.status === "PASSED";
+  const statusLabel = harness ? harness.status.replace("_", " ") : "UNVERIFIED";
+  return (
+    <Card id="self-acquisition" className="archive-paper-card scroll-mt-24">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5" /> Self-acquisition evidence
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-xl border border-[#d8d3c7] bg-white/60 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>{metadata.acquisitionMethod.replace("_", " ")}</Badge>
+            <Badge className={passed ? "border-[#9fbd8f] bg-[#f1f7ed] text-[#355b2e]" : "border-[#d9b4a3] bg-[#fff4ef] text-[#8f5037]"}>
+              {passed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />} {statusLabel}
+            </Badge>
+          </div>
+          {metadata.sourceSummary ? <p className="mt-3 text-sm leading-6 text-[#36322d]">{metadata.sourceSummary}</p> : null}
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6f6a60]">Evidence URLs</p>
+          {metadata.evidenceUrls.length ? (
+            <ul className="mt-2 space-y-2">
+              {metadata.evidenceUrls.map((url) => (
+                <li key={url}>
+                  <a href={url} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-2 rounded-lg border border-[#d8d3c7] bg-white/70 px-3 py-2 text-sm text-[#111111] hover:bg-[#f6f3ec]">
+                    <ExternalLink className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{url}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptySection message="아직 근거 URL이 없습니다. 후보는 검토가 필요합니다." />
+          )}
+        </div>
+
+        {harness ? (
+          <div className="overflow-hidden rounded-xl border border-[#d8d3c7]">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[#eee9df] text-[#6f6a60]">
+                <tr><th className="p-3">Check</th><th className="p-3">Result</th><th className="p-3">Message</th></tr>
+              </thead>
+              <tbody className="divide-y divide-[#d8d3c7] bg-white/50">
+                {harness.checks.map((check) => (
+                  <tr key={check.name}>
+                    <td className="p-3 font-medium text-[#111111]">{check.name.replaceAll("_", " ")}</td>
+                    <td className="p-3 text-[#514c44]">{check.passed ? "pass" : "review"}</td>
+                    <td className="p-3 text-[#514c44]">{check.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function SkillDetailClient({ skillId }: { skillId: string }) {
   const language = useLibraryStore((state) => state.language);
   const router = useRouter();
@@ -170,7 +237,10 @@ export function SkillDetailClient({ skillId }: { skillId: string }) {
             </Card>
 
             {isPrompt ? <PromptBody data={data} /> : (
-              <Card id="usage-guide" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><Table2 className="h-5 w-5" /> {t(language, "usageGuide")}</CardTitle></CardHeader><CardContent>{overview ? <p className="whitespace-pre-line leading-8 text-[#36322d]">{overview}</p> : <EmptySection message={t(language, "usageGuideEmpty")} />}</CardContent></Card>
+              <>
+                {item.skillAcquisition ? <SelfAcquisitionCard metadata={item.skillAcquisition} /> : null}
+                <Card id="usage-guide" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><Table2 className="h-5 w-5" /> {t(language, "usageGuide")}</CardTitle></CardHeader><CardContent>{overview ? <p className="whitespace-pre-line leading-8 text-[#36322d]">{overview}</p> : <EmptySection message={t(language, "usageGuideEmpty")} />}</CardContent></Card>
+              </>
             )}
 
             <Card id="history" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><History className="h-5 w-5" /> {t(language, "recentUsageHistory")}</CardTitle></CardHeader><CardContent>{item.usageHistory.length === 0 ? <EmptySection message={t(language, "usageHistoryEmpty")} /> : <div className="overflow-hidden rounded-xl border border-[#d8d3c7]"><table className="w-full text-left text-sm"><thead className="bg-white/[0.03] text-[#6f6a60]"><tr><th className="p-3">{t(language, "usedAt")}</th><th className="p-3">{t(language, "agent")}</th><th className="p-3">{t(language, "accessMethod")}</th></tr></thead><tbody className="divide-y divide-[#d8d3c7]">{item.usageHistory.map((usage) => <tr key={usage.id}><td className="p-3 text-[#514c44]">{formatDate(usage.accessedAt)}</td><td className="p-3 text-[#111111]">{usage.agentName}</td><td className="p-3 text-[#514c44]">{usage.accessMethod}</td></tr>)}</tbody></table></div>}</CardContent></Card>

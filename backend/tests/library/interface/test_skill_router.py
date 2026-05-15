@@ -6,24 +6,15 @@ from datetime import UTC, datetime
 
 import pytest
 from app.library.application.item_service import ItemService
-from app.library.application.librarian_service import LibrarianService
 from app.library.application.skill_service import SkillService
 from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
-from app.library.domain.contracts.librarian_provider_contracts import (
-    LibrarianProviderCreate,
-    LibrarianProviderUpdate,
-)
+from app.library.domain.entities.read_models import LibraryItem
 from app.library.domain.event_enum.item_enums import ItemType
-from app.library.domain.entities.read_models import LibrarianProvider, LibraryItem
 from app.library.domain.repositories.item_repository import IItemRepository
-from app.library.domain.repositories.librarian_repository import (
-    ILibrarianProviderRepository,
-    IProviderSecretRepository,
-)
-from tests.library.interface.provider_overrides import override_library_provider
 from app.main import app
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
+from tests.library.interface.provider_overrides import override_library_provider
 
 
 class FakeItemRepository(IItemRepository):
@@ -98,50 +89,8 @@ class FakeItemRepository(IItemRepository):
         return []
 
 
-class UnusedLibrarianProviderRepository(ILibrarianProviderRepository):
-    """Repository placeholder for deterministic librarian generation tests."""
-
-    async def create(self, payload: LibrarianProviderCreate) -> LibrarianProvider:
-        """Create is unused by these tests."""
-        raise AssertionError("create should not be called")
-
-    async def get(self, provider_id: str) -> LibrarianProvider | None:
-        """Get is unused by these tests."""
-        raise AssertionError("get should not be called")
-
-    async def list_all(self) -> list[LibrarianProvider]:
-        """List all is unused by these tests."""
-        raise AssertionError("list_all should not be called")
-
-    async def update(
-        self, provider_id: str, payload: dict[str, JSONValue]
-    ) -> LibrarianProvider:
-        """Update is unused by these tests."""
-        raise AssertionError("update should not be called")
-
-    async def delete(self, provider_id: str) -> None:
-        """Delete is unused by these tests."""
-        raise AssertionError("delete should not be called")
-
-
-class UnusedProviderSecretRepository(IProviderSecretRepository):
-    """Secret repository placeholder for deterministic generation tests."""
-
-    async def resolve(self, provider_id: str, key_name: str) -> str | None:
-        """Resolve is unused by these tests."""
-        raise AssertionError("resolve should not be called")
-
-    async def set_secret(self, *, provider_id: str, key_name: str, value: str) -> None:
-        """Set secret is unused by these tests."""
-        raise AssertionError("set_secret should not be called")
-
-    async def delete_for_provider(self, provider_id: str, key_name: str) -> None:
-        """Delete is unused by these tests."""
-        raise AssertionError("delete_for_provider should not be called")
-
-
 def _valid_submit_skill_by_agent_payload() -> dict[str, JSONValue]:
-    """Return a valid agent skill submission payload for negative contract tests."""
+    """Return a valid self-acquired skill submission payload."""
     return {
         "title": "Agent-authored FastAPI skill",
         "purpose": "Capture route testing guidance.",
@@ -170,41 +119,45 @@ def _post_submit_skill_by_agent(
     def override_skill_service() -> SkillService:
         return SkillService(item_service=ItemService(item_repo=item_repo))
 
-    with override_library_provider("skill_service", override_skill_service()):
-        with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.post("/skills/submit-by-agent", json=payload)
+    with (
+        override_library_provider("skill_service", override_skill_service()),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.post("/library/skills/submit-by-agent", json=payload)
 
     return response.status_code, response.json()
 
 
 def test_create_skill_registers_manual_skill_with_public_json_payload() -> None:
-    """POST /skills should create a manually registered user skill."""
+    """POST /library/skills should create a manually registered user skill."""
     item_repo = FakeItemRepository()
 
     def override_skill_service() -> SkillService:
         return SkillService(item_service=ItemService(item_repo=item_repo))
 
-    with override_library_provider("skill_service", override_skill_service()):
-        with TestClient(app) as client:
-            response = client.post(
-                "/skills",
-                json={
-                    "title": "Manual FastAPI skill",
-                    "summary": "Manual skill registration smoke.",
-                    "content": "Use narrow dependency overrides.",
-                    "category_id": "00000000-0000-4000-8000-000000000002",
-                    "tags": ["fastapi", "manual"],
-                    "purpose": "Register a reusable skill from the library UI.",
-                    "input_schema": {},
-                    "output_schema": {},
-                    "usage_example": "Fill the form and save the skill.",
-                    "required_tools": ["pytest"],
-                    "risk_level": "LOW",
-                    "version": "1.0.0",
-                    "created_by_name": "alex",
-                    "status": "DRAFT",
-                },
-            )
+    with (
+        override_library_provider("skill_service", override_skill_service()),
+        TestClient(app) as client,
+    ):
+        response = client.post(
+            "/library/skills",
+            json={
+                "title": "Manual FastAPI skill",
+                "summary": "Manual skill registration smoke.",
+                "content": "Use narrow dependency overrides.",
+                "category_id": "00000000-0000-4000-8000-000000000002",
+                "tags": ["fastapi", "manual"],
+                "purpose": "Register a reusable skill from the library UI.",
+                "input_schema": {},
+                "output_schema": {},
+                "usage_example": "Fill the form and save the skill.",
+                "required_tools": ["pytest"],
+                "risk_level": "LOW",
+                "version": "1.0.0",
+                "created_by_name": "alex",
+                "status": "DRAFT",
+            },
+        )
 
     assert response.status_code == 201
     assert response.json()["title"] == "Manual FastAPI skill"
@@ -218,34 +171,36 @@ def test_create_skill_registers_manual_skill_with_public_json_payload() -> None:
 def test_submit_skill_by_agent_accepts_json_enum_values_and_returns_created_skill() -> (
     None
 ):
-    """POST /skills/submit-by-agent should accept public JSON enum strings."""
+    """POST /library/skills/submit-by-agent should accept public JSON enum strings."""
     item_repo = FakeItemRepository()
 
     def override_skill_service() -> SkillService:
         return SkillService(item_service=ItemService(item_repo=item_repo))
 
-    with override_library_provider("skill_service", override_skill_service()):
-        with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.post(
-                "/skills/submit-by-agent",
-                json={
-                    "title": "Agent-authored FastAPI skill",
-                    "purpose": "Capture route testing guidance.",
-                    "summary": "Generated candidate from an agent.",
-                    "content": "Use narrow dependency overrides.",
-                    "category_id": "00000000-0000-4000-8000-000000000002",
-                    "tags": ["agent", "fastapi"],
-                    "input_schema": {"type": "object"},
-                    "output_schema": {"type": "object"},
-                    "usage_example": "Submit, review, then activate.",
-                    "required_tools": ["pytest"],
-                    "risk_level": "MEDIUM",
-                    "version": "1.0.0",
-                    "created_by_name": "research-agent",
-                    "activate": False,
-                    "status": "ACTIVE",
-                },
-            )
+    with (
+        override_library_provider("skill_service", override_skill_service()),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.post(
+            "/library/skills/submit-by-agent",
+            json={
+                "title": "Agent-authored FastAPI skill",
+                "purpose": "Capture route testing guidance.",
+                "summary": "Generated candidate from an agent.",
+                "content": "Use narrow dependency overrides.",
+                "category_id": "00000000-0000-4000-8000-000000000002",
+                "tags": ["agent", "fastapi"],
+                "input_schema": {"type": "object"},
+                "output_schema": {"type": "object"},
+                "usage_example": "Submit, review, then activate.",
+                "required_tools": ["pytest"],
+                "risk_level": "MEDIUM",
+                "version": "1.0.0",
+                "created_by_name": "research-agent",
+                "activate": False,
+                "status": "ACTIVE",
+            },
+        )
 
     assert response.status_code == 201
     assert response.json() == {
@@ -268,6 +223,64 @@ def test_submit_skill_by_agent_accepts_json_enum_values_and_returns_created_skil
             "required_tools": ["pytest"],
             "risk_level": "MEDIUM",
             "version": "1.0.0",
+            "evidence_urls": [],
+            "source_summary": None,
+            "acquisition_method": "SELF_ACQUISITION",
+            "harness": {
+                "status": "NEEDS_REVIEW",
+                "checks": [
+                    {
+                        "name": "title_present",
+                        "passed": True,
+                        "message": "title is present",
+                    },
+                    {
+                        "name": "purpose_present",
+                        "passed": True,
+                        "message": "purpose is present",
+                    },
+                    {
+                        "name": "content_present",
+                        "passed": True,
+                        "message": "content is present",
+                    },
+                    {
+                        "name": "evidence_present",
+                        "passed": False,
+                        "message": "at least one evidence URL is required",
+                    },
+                ],
+            },
+            "quality_gate": {
+                "status": "NEEDS_REVIEW",
+                "checks": [
+                    {
+                        "name": "title_present",
+                        "passed": True,
+                        "message": "title is present",
+                    },
+                    {
+                        "name": "content_present",
+                        "passed": True,
+                        "message": "content is present",
+                    },
+                    {
+                        "name": "dangerous_command_absent",
+                        "passed": True,
+                        "message": "dangerous shell command marker is absent",
+                    },
+                    {
+                        "name": "secret_redaction",
+                        "passed": True,
+                        "message": "secret content is redacted or safe",
+                    },
+                    {
+                        "name": "evidence_or_summary_present",
+                        "passed": False,
+                        "message": "evidence URL or source summary is present",
+                    },
+                ],
+            },
         },
         "created_at": "2026-05-12T10:00:00Z",
         "updated_at": "2026-05-12T10:05:00Z",
@@ -277,70 +290,85 @@ def test_submit_skill_by_agent_accepts_json_enum_values_and_returns_created_skil
     assert item_repo.created_payload["created_by_type"] == "AGENT"
 
 
-def test_generate_with_librarian_creates_draft_skill_from_public_json_payload() -> None:
-    """POST /skills/generate-with-librarian should create a librarian draft."""
-    item_repo = FakeItemRepository()
+def test_submit_skill_by_agent_preserves_self_acquisition_evidence_and_harness() -> (
+    None
+):
+    """Agent submissions should preserve evidence and expose harness status."""
+    payload = _valid_submit_skill_by_agent_payload()
+    payload["evidence_urls"] = ["https://example.com/hermes-skill-research"]
+    payload["source_summary"] = "Hermes researched the missing capability directly."
 
-    def override_skill_service() -> SkillService:
-        return SkillService(item_service=ItemService(item_repo=item_repo))
+    status_code, body = _post_submit_skill_by_agent(payload)
 
-    def override_librarian_service() -> LibrarianService:
-        return LibrarianService(
-            provider_repo=UnusedLibrarianProviderRepository(),
-            secret_repo=UnusedProviderSecretRepository(),
-        )
-
-    with (
-        override_library_provider("skill_service", override_skill_service()),
-        override_library_provider("librarian_service", override_librarian_service()),
-    ):
-        with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.post(
-                "/skills/generate-with-librarian",
-                json={
-                    "provider_id": "00000000-0000-4000-8000-000000000456",
-                    "prompt": "Create a skill for FastAPI dependency overrides.",
-                    "category_id": "00000000-0000-4000-8000-000000000002",
-                    "tags": ["fastapi", "librarian"],
-                    "created_by_name": "alex",
+    expected_details = {
+        "purpose": "Capture route testing guidance.",
+        "input_schema": {"type": "object"},
+        "output_schema": {"type": "object"},
+        "usage_example": "Submit, review, then activate.",
+        "required_tools": ["pytest"],
+        "risk_level": "MEDIUM",
+        "version": "1.0.0",
+        "evidence_urls": ["https://example.com/hermes-skill-research"],
+        "source_summary": "Hermes researched the missing capability directly.",
+        "acquisition_method": "SELF_ACQUISITION",
+        "harness": {
+            "status": "PASSED",
+            "checks": [
+                {
+                    "name": "title_present",
+                    "passed": True,
+                    "message": "title is present",
                 },
-            )
-
-    assert response.status_code == 201
-    assert response.json() == {
-        "id": "00000000-0000-4000-8000-000000000123",
-        "item_type": "SKILL",
-        "title": "Create a skill for FastAPI dependency overrides. [1ecb63cd]",
-        "summary": "Auto-generated skill candidate (1ecb63cd)",
-        "content": "Generated skill from librarian "
-        "00000000-0000-4000-8000-000000000456: "
-        "Create a skill for FastAPI dependency overrides.",
-        "category_id": "00000000-0000-4000-8000-000000000002",
-        "tags": ["fastapi", "librarian"],
-        "status": "DRAFT",
-        "source_type": "LIBRARIAN_CREATED",
-        "created_by_type": "LIBRARIAN",
-        "created_by_name": "alex",
-        "details": {
-            "purpose": "Create a skill for FastAPI dependency overrides.",
-            "input_schema": {
-                "type": "object",
-                "properties": {"request": {"type": "string"}},
-            },
-            "output_schema": {
-                "type": "object",
-                "properties": {"result": {"type": "string"}},
-            },
-            "usage_example": None,
-            "required_tools": ["planner"],
-            "risk_level": "LOW",
-            "version": "1.0.0",
-            "librarian_provider_id": "00000000-0000-4000-8000-000000000456",
-            "prompt": "Create a skill for FastAPI dependency overrides.",
+                {
+                    "name": "purpose_present",
+                    "passed": True,
+                    "message": "purpose is present",
+                },
+                {
+                    "name": "content_present",
+                    "passed": True,
+                    "message": "content is present",
+                },
+                {
+                    "name": "evidence_present",
+                    "passed": True,
+                    "message": "evidence URL is present",
+                },
+            ],
         },
-        "created_at": "2026-05-12T10:00:00Z",
-        "updated_at": "2026-05-12T10:05:00Z",
+        "quality_gate": {
+            "status": "PASSED",
+            "checks": [
+                {
+                    "name": "title_present",
+                    "passed": True,
+                    "message": "title is present",
+                },
+                {
+                    "name": "content_present",
+                    "passed": True,
+                    "message": "content is present",
+                },
+                {
+                    "name": "dangerous_command_absent",
+                    "passed": True,
+                    "message": "dangerous shell command marker is absent",
+                },
+                {
+                    "name": "secret_redaction",
+                    "passed": True,
+                    "message": "secret content is redacted or safe",
+                },
+                {
+                    "name": "evidence_or_summary_present",
+                    "passed": True,
+                    "message": "evidence URL or source summary is present",
+                },
+            ],
+        },
     }
+    assert status_code == 201
+    assert body["details"] == expected_details
 
 
 @pytest.mark.parametrize(
@@ -354,7 +382,7 @@ def test_submit_skill_by_agent_rejects_invalid_enum_strings(
     field: str,
     invalid_value: str,
 ) -> None:
-    """POST /skills/submit-by-agent should return 422 for invalid enum strings."""
+    """POST /library/skills/submit-by-agent should return 422 for invalid enum strings."""
     payload = _valid_submit_skill_by_agent_payload()
     payload[field] = invalid_value
 

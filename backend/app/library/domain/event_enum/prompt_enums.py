@@ -64,3 +64,21 @@ class PromptTaskType(StrEnum):
     TOOL_USAGE_GUIDE = "TOOL_USAGE_GUIDE"
     EVALUATION = "EVALUATION"
     GENERAL_TASK = "GENERAL_TASK"
+
+
+class PromptDetailField(StrEnum):
+    """Prompt details keys accepted by public patch payloads."""
+
+    CONTENT_FORMAT = "content_format"
+    PROMPT_KIND = "prompt_kind"
+    PROMPT_DOMAIN = "prompt_domain"
+    PROMPT_TASK_TYPE = "prompt_task_type"
+    INPUT_VARIABLES = "input_variables"
+    OUTPUT_FORMAT = "output_format"
+    TARGET_ACTOR = "target_actor"
+    TARGET_MODEL_FAMILY = "target_model_family"
+    LANGUAGE = "language"
+    RELATED_ITEM_IDS = "related_item_ids"
+    SAFETY_NOTES = "safety_notes"
+    VERSION = "version"
+    CHANGE_SUMMARY = "change_summary"

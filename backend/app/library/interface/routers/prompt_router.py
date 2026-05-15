@@ -26,7 +26,7 @@ from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPI
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
-router = APIRouter(prefix="/prompts", tags=["prompts"])
+router = APIRouter(prefix="/library/prompts", tags=["prompts"])
 
 
 def _variable_payloads(request: PromptCreateRequest) -> list[PromptVariablePayload]:

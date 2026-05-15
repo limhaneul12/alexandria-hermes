@@ -11,6 +11,7 @@ from app.library.domain.event_enum.item_enums import (
     SourceType,
 )
 from app.library.domain.types.skill_payload_types import (
+    AgentSubmittedSkillDetailsPayload,
     LibrarianGeneratedSkillDetailsPayload,
     SkillDetailsPayload,
     SkillSchemaPayload,
@@ -31,7 +32,11 @@ class SkillItemCreateCommand:
     source_type: SourceType
     created_by_type: CreatedByType
     created_by_name: str
-    details: SkillDetailsPayload | LibrarianGeneratedSkillDetailsPayload
+    details: (
+        SkillDetailsPayload
+        | AgentSubmittedSkillDetailsPayload
+        | LibrarianGeneratedSkillDetailsPayload
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -53,3 +58,5 @@ class SkillCreateFields:
     created_by_name: str
     activate: bool
     status: ItemStatus | None
+    evidence_urls: list[str] | None = None
+    source_summary: str | None = None

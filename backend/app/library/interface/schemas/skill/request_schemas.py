@@ -89,6 +89,8 @@ class AgentSubmitSkillRequest(StrictSchema):
     created_by_name: str
     activate: bool = False
     status: ItemStatus = ItemStatus.DRAFT
+    evidence_urls: list[str] = Field(default_factory=list)
+    source_summary: str | None = None
 
     @field_validator("risk_level", mode="before")
     @classmethod

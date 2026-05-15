@@ -10,6 +10,7 @@ from app.library.application.prompts.payload_mapper import (
     build_prompt_details,
     shape_prompt_patch_payload,
 )
+from app.library.application.quality_gate import run_library_quality_gate
 from app.library.domain.event_enum.item_enums import (
     CreatedByType,
     ItemStatus,
@@ -96,7 +97,15 @@ class PromptService:
         Returns:
             Created item payload.
         """
+        gate = run_library_quality_gate(
+            item_type=ItemType.PROMPT,
+            title=title,
+            content=content,
+        )
+        safe_content = gate.redacted_content
         details = build_prompt_details(
+            title=title,
+            content=safe_content,
             content_format=content_format,
             prompt_kind=prompt_kind,
             prompt_domain=prompt_domain,
@@ -115,7 +124,7 @@ class PromptService:
             item_type=ItemType.PROMPT,
             title=title,
             summary=summary,
-            content=content,
+            content=safe_content,
             category_id=category_id,
             tags=tags,
             status=status,

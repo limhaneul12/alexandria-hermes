@@ -4,7 +4,9 @@
 
 Keep enums with enums.
 
-Shared enum definitions belong under:
+Place enums in the nearest concept-owned enum path for the current slice.
+
+Shared cross-cutting enum definitions may belong under:
 
 ```text
 shared/
@@ -18,6 +20,8 @@ shared/
 
 Split enum files by concept.
 Do not create a giant `enums.py` catch-all.
+Do not force this example path when the current slice already has a clearer
+enum location such as `domain/event_enum/{concept}_enums.py`.
 
 ## Literal and Enum Usage Rule
 

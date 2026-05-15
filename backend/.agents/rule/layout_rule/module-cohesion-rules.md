@@ -1,103 +1,103 @@
-# Type Development Rules
+# Module Cohesion Rules
 
 ## Goal
 
-Keep production source code strongly typed, explicit, and predictable so that the adapter remains trustworthy as an agent-facing OMX control surface.
+Keep backend modules easy to search, reason about, and refactor by splitting by
+owned concept instead of by convenience buckets.
 
-This repository is contract-heavy. Type discipline is therefore a design rule, not an optional cleanup concern.
+This file owns cohesion and split guidance only. Type modeling policy lives in
+`backend/.agents/rule/type_enum_rule/type-development-rules.md`, and Pydantic
+boundary policy lives in `backend/.agents/rule/pydantic_rule/`.
 
 ## Core Direction
 
-- Treat types as a first-class design concern.
-- Missing or incorrect types in production source code are real defects.
-- Prefer explicit contracts over loosely typed dictionaries or implicit conventions.
-- Optimize for agent-facing runtime contracts, not backend-style domain modeling.
+- A module should have one clear reason to change.
+- A class should have one primary responsibility that can be described without
+  "and".
+- Split by business/concept ownership before creating broad utility buckets.
+- Prefer deleting thin compatibility wrappers once callers can use the real
+  concept-owned path.
 
-## Source of Truth Split
+## Module Split Rule
 
-Detailed Pydantic-specific policy lives under:
-- `docs/rules/pydantic/README.md`
+Treat a module as a split candidate when any of these are true:
 
-Detailed boundary and transport-seam policy lives under:
-- `docs/rules/schema-boundary-rules.md`
+- it mixes external I/O, persistence, mapping, and domain decisions;
+- it has several unrelated groups of private helpers;
+- new changes repeatedly touch different conceptual sections of the same file;
+- a future reader cannot find the owned behavior by filename alone;
+- the file is growing because it became the easiest place to add code.
 
-Use the Pydantic rule set for:
-- schema design
-- `ConfigDict` decisions
-- `BaseModel` vs `RootModel` decisions
-- strictness/default/nullability decisions
-- contract modeling after routing/normalization
-- enum/literal/shared-type decisions related to schema contracts
+Line count is only a review signal, not a hard rule. Generated files,
+well-documented transport tables, and compact schema collections can be larger
+when the concept is still cohesive.
 
-Use the boundary rule set for:
-- transport parsing ownership
-- JSON/JSONL seam policy
-- routing/normalization ownership
-- raw passthrough decisions
+## Class Cohesion Rule
 
-## Production Typing Rule
+Use method count as a warning signal, not a mechanical rejection rule.
 
-- Public adapter surfaces should be explicitly typed.
-- Avoid pushing `dict[str, Any]` through the core adapter surface.
-- Avoid broad `dict[str, object]` in production source unless the dynamic boundary truly requires it.
-- If a raw dictionary shape must remain, keep it localized to the parsing/normalization seam and add a short justification comment explaining why a stronger contract is not yet justified.
-- Avoid broad `Any` unless the dynamic boundary truly requires it.
-- If a runtime seam is inherently dynamic, localize that looseness to parsing/normalization boundaries and convert to explicit contracts quickly.
+Review a class when:
 
-## Source vs Test Rule
+- it has more than roughly 8 non-dunder methods;
+- it mixes parsing + persistence;
+- it mixes provider/external I/O + domain decisions;
+- it mixes read shaping + state transitions;
+- it needs an unclear name such as `Manager`, `Handler`, or `Service` because it
+  owns too many concerns.
 
-- Production `src/` code should be held to a stricter standard than tests.
-- Tests can be somewhat more flexible, but should not drive weak typing into production code.
+Split/refactor when the responsibility sentence is no longer clear.
 
-## Pyrefly Rule
+## Utility Placement Rule
 
-Pyrefly is the canonical static type checker for production source code in this repository.
+Use utilities only when the helper's ownership is clear.
 
-Current direction:
-- source code should stay type-clean under Pyrefly,
-- production `src/` code should remain stricter than tests,
-- do not silence type issues casually,
-- do not use broad casts or `Any` as the first escape hatch.
+- Cross-domain reusable helpers belong under `backend/app/shared/utils/`.
+- Domain-local helpers belong under the owning domain's `{domain}_utils/` folder
+  or a more specific concept folder.
+- If a helper is only used by one concept, keep it near that concept and give
+  the file a purpose-specific name.
+
+Avoid dumping unrelated helpers into `utils.py` or broad helper modules.
+
+## Enum, Type, and Constant Location Rule
+
+Stable field-name sets, enum-like strings, detail-field lists, and dispatch
+registries belong near the concept that owns them.
+
+Use shared enum/type modules only when the value set is genuinely cross-cutting.
+Do not force a hard-coded example path when the current slice already has a
+clearer local path.
 
 ## Return Style Rule
 
-- Production source should prefer returning named local variables over direct expression returns.
-- Especially in validation, normalization, transformation, and aggregation code, assign the final value to a clearly named variable before returning it.
-- Use the variable name to make the returned meaning obvious to a future reader or agent.
-- Trivial passthroughs may be tolerated, but named returns are the default preference.
+Named local returns are helpful when they clarify a transformation result, but
+are not mandatory for trivial expressions.
+
+Prefer named returns for:
+
+- multi-step normalization;
+- validation decisions;
+- payload assembly;
+- computations where the returned meaning is otherwise unclear.
+
+Direct returns are fine for obvious passthroughs or single-expression helpers.
+Do not add local variables just to satisfy style.
 
 ## Async Boundary Rule
 
-- Keep core transformation and schema logic synchronous by default.
-- Introduce `async` only at real boundary points where the code waits on external I/O, subprocess execution, or stream ingestion.
-- Prefer a thin async entrypoint over spreading `async` through pure helpers.
-- When bridging existing blocking code, prefer `asyncio.to_thread(...)` at the boundary instead of rewriting pure internals into coroutine-style code.
-- Do not convert small deterministic helpers to `async` unless they actually await something meaningful.
-- If a function becomes async, add or update tests so the async contract is explicit.
+Keep pure transformation/schema logic synchronous by default. Introduce `async`
+only where the function actually awaits external I/O, subprocesses, streams, or
+other async resources.
 
-Examples of good async candidates in this repo:
-- OMX subprocess/status invocation boundaries
-- execution event-stream ingestion boundaries
+When bridging blocking code, prefer a thin async boundary over spreading async
+through deterministic helpers.
 
-Examples that should usually remain sync:
-- payload normalization
-- schema promotion
-- anomaly assembly
-- small parsing helpers with no external wait state
+## Review Questions
 
-## Module and Class Cohesion Rule
+Before adding to an existing module, ask:
 
-- Runtime files should be split by concept/responsibility before they become omnibus control surfaces.
-- A runtime module that grows past roughly 430 lines should be treated as a refactor trigger unless it is generated code or a deliberately documented transport table.
-- Do not keep thin compatibility facades for unused internal modules. Move callers to the concept-owned module path in the same slice and delete the wrapper so cleanup is not done twice.
-- Move source reads, builders, classifiers, decisions, and summaries into concept-specific modules or subfolders when a folder becomes crowded.
-- Classes should group one cohesive behavior and normally expose no more than 6 methods. Split token normalization, snapshot classification, builders, and orchestration into separate classes/modules instead of making one manager class absorb everything.
-- Stable field-name sets, runtime marker tables, enum-like string markers, and dispatch registries belong in `adapter_types/type_contract/` or shared enum classes, not inline in runtime/control modules.
-- Do not create re-export bucket packages or marker-only `__init__.py` files to hide large modules; split the actual implementation files.
-
-## Design Principle
-
-This repository should prefer one explicit, strongly typed contract language and a predictable static type discipline.
-
-The detailed contract language rules are defined in the Pydantic rule set.
-The broader repository typing policy is defined here.
+1. Is this the concept-owned place for the behavior?
+2. Would a filename search lead future agents here?
+3. Is the helper reusable across domains, domain-local, or concept-local?
+4. Is this file growing because of cohesion, or because it is convenient?
+5. Can a smaller module name make the responsibility obvious?

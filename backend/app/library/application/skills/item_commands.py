@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from app.library.application.skills.payload_mapper import (
+    build_agent_skill_details,
     build_librarian_skill_item_payload,
     build_skill_details,
 )
-from app.library.domain.contracts.librarian_candidate_contracts import (
+from app.library.domain.contracts.skill_candidate_contracts import (
     CreateSkillCandidateResult,
 )
 from app.library.domain.contracts.skill_item_contracts import (
@@ -54,10 +55,32 @@ def build_agent_skill_create_command(
         Item-service create command for agent-submitted skills.
     """
     _validate_required_source_fields(fields=fields)
-    command = _build_skill_create_command(
-        fields=fields,
+    status = _initial_skill_status(fields)
+    evidence_urls = _candidate_evidence_urls(fields)
+    command = SkillItemCreateCommand(
+        item_type=ItemType.SKILL,
+        title=fields.title,
+        summary=fields.summary,
+        content=fields.content,
+        category_id=fields.category_id,
+        tags=fields.tags,
+        status=status,
         source_type=SourceType.AGENT_SUBMITTED,
         created_by_type=CreatedByType.AGENT,
+        created_by_name=fields.created_by_name,
+        details=build_agent_skill_details(
+            title=fields.title,
+            purpose=fields.purpose,
+            content=fields.content,
+            input_schema=fields.input_schema,
+            output_schema=fields.output_schema,
+            usage_example=fields.usage_example,
+            required_tools=fields.required_tools,
+            risk_level=fields.risk_level,
+            version=fields.version,
+            evidence_urls=evidence_urls,
+            source_summary=fields.source_summary,
+        ),
     )
     return command
 
@@ -109,10 +132,7 @@ def _build_skill_create_command(
     source_type: SourceType,
     created_by_type: CreatedByType,
 ) -> SkillItemCreateCommand:
-    status = fields.status
-    if status is None:
-        status = ItemStatus.ACTIVE if fields.activate else ItemStatus.DRAFT
-
+    status = _initial_skill_status(fields)
     command = SkillItemCreateCommand(
         item_type=ItemType.SKILL,
         title=fields.title,
@@ -135,6 +155,20 @@ def _build_skill_create_command(
         ),
     )
     return command
+
+
+def _initial_skill_status(fields: SkillCreateFields) -> ItemStatus:
+    status = fields.status
+    if status is None:
+        status = ItemStatus.ACTIVE if fields.activate else ItemStatus.DRAFT
+    return status
+
+
+def _candidate_evidence_urls(fields: SkillCreateFields) -> list[str]:
+    evidence_urls: list[str] = []
+    if fields.evidence_urls is not None:
+        evidence_urls = list(fields.evidence_urls)
+    return evidence_urls
 
 
 def _validate_required_source_fields(fields: SkillCreateFields) -> None:

@@ -17,20 +17,6 @@ from app.shared.types.extra_types import JSONObject
 
 
 @dataclass(frozen=True, slots=True)
-class AgentProfile:
-    """Read model for an agent profile."""
-
-    id: str
-    name: str
-    provider: str
-    description: str | None
-    capabilities: list[str]
-    preferred_librarian_provider: str | None
-    created_at: datetime
-    updated_at: datetime
-
-
-@dataclass(frozen=True, slots=True)
 class Category:
     """Read model for a library category."""
 
@@ -85,20 +71,6 @@ class LibraryItem:
             "updated_at": self.updated_at,
         }
         return payload
-
-
-@dataclass(frozen=True, slots=True)
-class LibrarianProvider:
-    """Read model for librarian provider configuration."""
-
-    id: str
-    name: str
-    provider_type: str
-    auth_type: str
-    enabled: bool
-    config: JSONObject
-    created_at: datetime
-    updated_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

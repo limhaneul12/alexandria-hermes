@@ -8,7 +8,9 @@ import {
   BookOpen,
   Bot,
   Clock3,
+  ClipboardCheck,
   FolderTree,
+  Gauge,
   Home,
   Library,
   PlusSquare,
@@ -16,13 +18,14 @@ import {
   Settings,
   Sparkles,
   Star,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 
 import { t, type TranslationKey } from "@/lib/i18n";
 import { useLibraryStore } from "@/store/library-store";
 
-type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active?: "exact" | "library" | "type-skill" | "type-prompt" | "settings" | "librarians" };
+type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active?: "exact" | "library" | "type-skill" | "type-prompt" | "settings" | "librarians" | "contexts" | "rag" | "capture" };
 type NavSection = { titleKey: TranslationKey | "libraryStatic"; items: NavItem[] };
 
 const sections: NavSection[] = [
@@ -54,7 +57,10 @@ const sections: NavSection[] = [
   {
     titleKey: "aiLibrarian",
     items: [
-      { labelKey: "librarian", href: "/settings#librarians", icon: Bot, active: "librarians" },
+      { labelKey: "librarian", href: "/settings/librarians", icon: Bot, active: "librarians" },
+      { labelKey: "contextVault", href: "/contexts", icon: ScrollText, active: "contexts" },
+      { labelKey: "ragInspector", href: "/rag-inspector", icon: Gauge, active: "rag" },
+      { labelKey: "captureReview", href: "/capture-review", icon: ClipboardCheck, active: "capture" },
       { labelKey: "recommendations", href: "/dashboard#archive-philosophy", icon: Sparkles },
     ],
   },
@@ -70,8 +76,11 @@ const sections: NavSection[] = [
 function isActive(pathname: string, params: URLSearchParams, active?: string) {
   if (!active) return false;
   if (active === "exact") return pathname === "/dashboard" || pathname === "/";
-  if (active === "settings") return pathname === "/settings" && typeof window !== "undefined" && window.location.hash !== "#librarians";
-  if (active === "librarians") return pathname === "/settings" && typeof window !== "undefined" && window.location.hash === "#librarians";
+  if (active === "settings") return pathname === "/settings";
+  if (active === "librarians") return pathname === "/settings/librarians";
+  if (active === "contexts") return pathname.startsWith("/contexts");
+  if (active === "rag") return pathname === "/rag-inspector";
+  if (active === "capture") return pathname === "/capture-review";
   if (!pathname.startsWith("/library")) return false;
   if (active === "type-skill") return params.get("type") === "SKILL";
   if (active === "type-prompt") return params.get("type") === "PROMPT";
@@ -107,17 +116,24 @@ export function Sidebar() {
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, searchParams, item.active);
+                const label = t(language, item.labelKey);
+                const className = `group flex h-8 items-center gap-3 border-l text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${collapsed ? "justify-center px-0" : "pl-3 pr-2"} ${
+                  active ? "border-white bg-transparent text-white" : "border-transparent text-white/70 hover:border-white/30 hover:bg-transparent hover:text-white"
+                }`;
+                const content = (
+                  <>
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                    {!collapsed ? label : null}
+                  </>
+                );
                 return (
                   <Link
                     key={`${section.titleKey}-${item.labelKey}`}
                     href={item.href}
-                    title={collapsed ? t(language, item.labelKey) : undefined}
-                    className={`group flex h-8 items-center gap-3 border-l text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${collapsed ? "justify-center px-0" : "pl-3 pr-2"} ${
-                      active ? "border-white bg-transparent text-white" : "border-transparent text-white/70 hover:border-white/30 hover:bg-transparent hover:text-white"
-                    }`}
+                    title={collapsed ? label : undefined}
+                    className={className}
                   >
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                    {!collapsed ? t(language, item.labelKey) : null}
+                    {content}
                   </Link>
                 );
               })}

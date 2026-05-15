@@ -9,8 +9,10 @@ from app.library.domain.event_enum.item_enums import (
     CreatedByType,
     ItemStatus,
     ItemType,
+    LibraryItemPatchField,
     SourceType,
 )
+from app.library.domain.event_enum.knowledge_enums import KnowledgeDetailField
 from app.library.domain.types.item_payload_types import (
     LibraryItemListResult,
     LibraryItemPayload,
@@ -126,11 +128,12 @@ class KnowledgeService:
         base_fields = {
             key: value
             for key, value in payload.items()
-            if key in {"title", "summary", "content", "category_id", "tags", "status"}
+            if any(key == field.value for field in LibraryItemPatchField)
         }
 
         detail_updates: dict[str, JSONValue] = {}
-        for key in ["body", "references", "related_items"]:
+        for field in KnowledgeDetailField:
+            key = field.value
             if key in payload:
                 detail_updates[key] = payload[key]
 

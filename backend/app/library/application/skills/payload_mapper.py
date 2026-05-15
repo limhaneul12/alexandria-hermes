@@ -5,13 +5,24 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
-from app.library.domain.contracts.librarian_candidate_contracts import (
+from app.library.application.quality_gate import run_library_quality_gate
+from app.library.application.skills.candidate_harness import (
+    run_skill_candidate_harness,
+)
+from app.library.domain.contracts.skill_candidate_contracts import (
     CreateSkillCandidateResult,
 )
-from app.library.domain.event_enum.item_enums import ItemStatus
+from app.library.domain.event_enum.item_enums import ItemStatus, ItemType
+from app.library.domain.event_enum.skill_enums import (
+    SkillAcquisitionMethod,
+    SkillDetailField,
+)
 from app.library.domain.types.item_payload_types import LibraryItemPayload
 from app.library.domain.types.skill_payload_types import (
+    AgentSubmittedSkillDetailsPayload,
     LibrarianSkillItemPayload,
+    SkillCandidateHarnessCheckPayload,
+    SkillCandidateHarnessPayload,
     SkillDetailsPatchPayload,
     SkillDetailsPayload,
     SkillItemUpdatePayload,
@@ -25,26 +36,6 @@ from app.shared.types.types_convert_utils import (
     optional_string_value,
     required_string_value,
     string_items,
-)
-
-_SKILL_BASE_PATCH_FIELDS = frozenset(
-    {
-        "title",
-        "summary",
-        "content",
-        "category_id",
-        "tags",
-        "status",
-    }
-)
-_SKILL_DETAIL_FIELDS = (
-    "purpose",
-    "input_schema",
-    "output_schema",
-    "usage_example",
-    "required_tools",
-    "risk_level",
-    "version",
 )
 
 
@@ -71,7 +62,7 @@ def _skill_details_patch_payload(
     Returns:
         SkillDetailsPatchPayload: Partial skill details payload preserving existing keys.
     """
-    payload: SkillDetailsPatchPayload = {}
+    payload = SkillDetailsPatchPayload()
     if "purpose" in details:
         payload["purpose"] = required_string_value(details["purpose"], "purpose")
     if "input_schema" in details:
@@ -94,6 +85,60 @@ def _skill_details_patch_payload(
         )
     if "prompt" in details:
         payload["prompt"] = required_string_value(details["prompt"], "prompt")
+    if "evidence_urls" in details:
+        payload["evidence_urls"] = string_items(details["evidence_urls"])
+    if "source_summary" in details:
+        payload["source_summary"] = optional_string_value(details["source_summary"])
+    if "acquisition_method" in details:
+        payload["acquisition_method"] = required_string_value(
+            details["acquisition_method"], "acquisition_method"
+        )
+    if "harness" in details:
+        payload["harness"] = _skill_candidate_harness_payload(details["harness"])
+    if "quality_gate" in details and isinstance(details["quality_gate"], dict):
+        payload["quality_gate"] = dict(details["quality_gate"])
+    return payload
+
+
+def _skill_candidate_harness_payload(
+    value: JSONValue,
+) -> SkillCandidateHarnessPayload:
+    """Return a typed candidate harness payload from item details.
+
+    Args:
+        value: Raw harness value from existing details.
+
+    Returns:
+        SkillCandidateHarnessPayload: Validated harness details payload.
+
+    Raises:
+        ValidationError: When the stored harness shape is invalid.
+    """
+    if not isinstance(value, dict):
+        raise ValidationError("harness must be an object")
+    status = required_string_value(value.get("status"), "harness.status")
+    checks_value = value.get("checks")
+    if not isinstance(checks_value, list):
+        raise ValidationError("harness.checks must be a list")
+    checks: list[SkillCandidateHarnessCheckPayload] = []
+    for check_value in checks_value:
+        if not isinstance(check_value, dict):
+            raise ValidationError("harness.checks items must be objects")
+        passed_value = check_value.get("passed")
+        if not isinstance(passed_value, bool):
+            raise ValidationError("harness.checks.passed must be a boolean")
+        checks.append(
+            SkillCandidateHarnessCheckPayload(
+                name=required_string_value(
+                    check_value.get("name"), "harness.checks.name"
+                ),
+                passed=passed_value,
+                message=required_string_value(
+                    check_value.get("message"), "harness.checks.message"
+                ),
+            )
+        )
+    payload = SkillCandidateHarnessPayload(status=status, checks=checks)
     return payload
 
 
@@ -120,6 +165,13 @@ def build_skill_details(
     Returns:
         Persistent details dictionary.
     """
+    quality_gate = run_library_quality_gate(
+        item_type=ItemType.SKILL,
+        title=purpose,
+        content=usage_example or purpose,
+        evidence_urls=[],
+        source_summary=None,
+    )
     skill_details: SkillDetailsPayload = {
         "purpose": purpose,
         "input_schema": input_schema,
@@ -128,8 +180,70 @@ def build_skill_details(
         "required_tools": required_tools,
         "risk_level": risk_level,
         "version": version,
+        "quality_gate": quality_gate.to_payload(),
     }
     return skill_details
+
+
+def build_agent_skill_details(
+    title: str,
+    purpose: str,
+    content: str,
+    input_schema: SkillSchemaPayload,
+    output_schema: SkillSchemaPayload,
+    usage_example: str | None,
+    required_tools: list[str],
+    risk_level: str,
+    version: str,
+    evidence_urls: list[str],
+    source_summary: str | None,
+) -> AgentSubmittedSkillDetailsPayload:
+    """Build persistent details for a self-acquired agent skill candidate.
+
+    Args:
+        title: Candidate title.
+        purpose: Candidate purpose statement.
+        content: Candidate Markdown content.
+        input_schema: Expected input data shape.
+        output_schema: Expected output data shape.
+        usage_example: Example run.
+        required_tools: Required tools list.
+        risk_level: Risk classification.
+        version: Version string.
+        evidence_urls: Research or source URLs gathered by the agent.
+        source_summary: Optional summary of how the candidate was produced.
+
+    Returns:
+        AgentSubmittedSkillDetailsPayload: Persistent self-acquisition details.
+    """
+    harness = run_skill_candidate_harness(
+        title=title,
+        purpose=purpose,
+        content=content,
+        evidence_urls=evidence_urls,
+    )
+    quality_gate = run_library_quality_gate(
+        item_type=ItemType.SKILL,
+        title=title,
+        content=content,
+        evidence_urls=evidence_urls,
+        source_summary=source_summary,
+    )
+    details = AgentSubmittedSkillDetailsPayload(
+        purpose=purpose,
+        input_schema=input_schema,
+        output_schema=output_schema,
+        usage_example=usage_example,
+        required_tools=required_tools,
+        risk_level=risk_level,
+        version=version,
+        evidence_urls=list(evidence_urls),
+        source_summary=source_summary,
+        acquisition_method=SkillAcquisitionMethod.SELF_ACQUISITION.value,
+        harness=harness.to_payload(),
+        quality_gate=quality_gate.to_payload(),
+    )
+    return details
 
 
 def build_librarian_skill_item_payload(
@@ -165,6 +279,13 @@ def build_librarian_skill_item_payload(
             "version": generated.version,
             "librarian_provider_id": generated.provider_id,
             "prompt": generated.prompt,
+            "quality_gate": run_library_quality_gate(
+                item_type=ItemType.SKILL,
+                title=generated.title,
+                content=generated.content,
+                evidence_urls=[],
+                source_summary=generated.summary,
+            ).to_payload(),
         },
     }
     return item_payload
@@ -186,7 +307,7 @@ def shape_skill_patch_payload(
     Raises:
         ValidationError: When no supported fields are provided.
     """
-    shaped_payload: SkillItemUpdatePayload = {}
+    shaped_payload = SkillItemUpdatePayload()
     if "title" in payload:
         shaped_payload["title"] = required_string_value(payload["title"], "title")
     if "summary" in payload:
@@ -200,9 +321,10 @@ def shape_skill_patch_payload(
     if "status" in payload:
         shaped_payload["status"] = enum_value(payload["status"], ItemStatus, "status")
 
-    if any(key in payload for key in _SKILL_DETAIL_FIELDS):
+    if any(field.value in payload for field in SkillDetailField):
         details = item["details"].copy()
-        for key in _SKILL_DETAIL_FIELDS:
+        for field in SkillDetailField:
+            key = field.value
             if key in payload:
                 details[key] = payload[key]
         shaped_payload["details"] = _skill_details_patch_payload(details)

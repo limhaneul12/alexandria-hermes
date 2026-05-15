@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 
 class LibraryItemORM(Base):
-    """Single table for skill/workflow/knowledge entries."""
+    """Single table for skill/workflow/library/knowledge entries."""
 
     __tablename__ = "library_items"
 

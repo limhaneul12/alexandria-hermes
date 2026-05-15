@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.library.domain.event_enum.item_enums import ItemStatus
+from app.shared.types.extra_types import JSONObject
 from typing_extensions import TypedDict
 
 
@@ -33,6 +34,7 @@ class PromptDetailsPayload(TypedDict, closed=True):
     safety_notes: str | None
     version: str
     change_summary: str | None
+    quality_gate: JSONObject
 
 
 class PromptDetailsPatchPayload(TypedDict, total=False, closed=True):
@@ -51,6 +53,7 @@ class PromptDetailsPatchPayload(TypedDict, total=False, closed=True):
     safety_notes: str | None
     version: str
     change_summary: str | None
+    quality_gate: JSONObject
 
 
 class PromptPatchPayload(TypedDict, total=False, closed=True):

@@ -6,24 +6,25 @@ from datetime import UTC, datetime
 from typing import cast
 
 import anyio
-from app.library.application.librarian_service import LibrarianService
-from app.library.domain.contracts.librarian_provider_contracts import (
+from app.connections.application.librarian_service import LibrarianService
+from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
     LibrarianProviderUpdate,
 )
-from app.library.domain.event_enum.provider_enums import AuthType, ProviderType
-from app.library.domain.entities.read_models import LibrarianProvider
-from app.library.domain.repositories.librarian_repository import (
+from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
+from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )
-from app.library.infrastructure.librarians.clients import (
+from app.connections.infrastructure.librarians.clients import (
     ApiKeyCredential,
     LibrarianClientFactory,
+    LibrarianProviderClientFactory,
     ProviderClientTestResult,
     SecretResolver,
 )
-from app.library.infrastructure.librarians.openai_adapter import OpenAIClientConfig
+from app.connections.infrastructure.librarians.openai_adapter import OpenAIClientConfig
 from app.shared.types.extra_types import JSONValue
 from openai import OpenAI
 
@@ -60,7 +61,7 @@ class ExplodingOpenAIClientBuilder:
         raise AssertionError(f"SDK client should not instantiate: {config!r}")
 
 
-class StaticSecretResolver:
+class StaticSecretResolver(IProviderSecretRepository):
     """Provider secret resolver test double."""
 
     def __init__(self, value: str | None) -> None:
@@ -72,6 +73,36 @@ class StaticSecretResolver:
         """Return configured secret value."""
         self.resolved.append((provider_id, key_name))
         return self.value
+
+    async def set_secret(self, *, provider_id: str, key_name: str, value: str) -> None:
+        """Set secret is unused in this test double."""
+        raise NotImplementedError
+
+    async def delete_for_provider(self, provider_id: str, key_name: str) -> None:
+        """Delete secret is unused in this test double."""
+        raise NotImplementedError
+
+
+class StaticSecretMapResolver(IProviderSecretRepository):
+    """Provider secret resolver backed by explicit key values."""
+
+    def __init__(self, secrets: dict[str, str]) -> None:
+        """Store explicit secret values by key name."""
+        self.secrets = secrets
+        self.resolved: list[tuple[str, str]] = []
+
+    async def resolve(self, provider_id: str, key_name: str) -> str | None:
+        """Return configured secret value by key name."""
+        self.resolved.append((provider_id, key_name))
+        return self.secrets.get(key_name)
+
+    async def set_secret(self, *, provider_id: str, key_name: str, value: str) -> None:
+        """Set secret is unused in this test double."""
+        raise NotImplementedError
+
+    async def delete_for_provider(self, provider_id: str, key_name: str) -> None:
+        """Delete secret is unused in this test double."""
+        raise NotImplementedError
 
 
 class FakeProviderRepository(ILibrarianProviderRepository):
@@ -128,7 +159,7 @@ class FakeSecretRepository(IProviderSecretRepository):
         raise NotImplementedError
 
 
-class RecordingClientFactory:
+class RecordingClientFactory(LibrarianProviderClientFactory):
     """Client factory fake for LibrarianService boundary wiring."""
 
     def __init__(self) -> None:
@@ -289,6 +320,160 @@ def test_connection_reports_clear_unsupported_auth_for_api_key_only_scope() -> N
             "provider_id": PROVIDER_ID,
             "ok": False,
             "message": "auth type OAUTH is unsupported for API-key SDK clients",
+        }
+
+    anyio.run(scenario)
+
+
+def test_connection_accepts_openai_codex_oauth_credentials_without_token_leak() -> None:
+    """OPENAI_CODEX provider tests should validate OAuth secret availability."""
+
+    async def scenario() -> None:
+        factory = LibrarianClientFactory(
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
+            dry_run=True,
+        )
+        secret_resolver = StaticSecretMapResolver(
+            {
+                "oauth_access_token": SECRET_VALUE,
+                "oauth_expires_at": "2999-01-01T00:00:00+00:00",
+            }
+        )
+
+        result = await factory.test_connection(
+            provider=_provider(
+                provider_type=ProviderType.OPENAI_CODEX.value,
+                auth_type=AuthType.OAUTH,
+            ),
+            secret_resolver=secret_resolver,
+            test_query="ping",
+        )
+
+        assert result.as_public_dict() == {
+            "provider_id": PROVIDER_ID,
+            "ok": True,
+            "message": "OPENAI_CODEX OAuth credentials available",
+        }
+        assert secret_resolver.resolved == [
+            (PROVIDER_ID, "oauth_access_token"),
+            (PROVIDER_ID, "oauth_refresh_token"),
+            (PROVIDER_ID, "oauth_expires_at"),
+        ]
+        assert _secret_is_absent_from(result.as_public_dict())
+
+    anyio.run(scenario)
+
+
+def test_connection_reports_missing_openai_codex_oauth_credentials() -> None:
+    """OPENAI_CODEX provider tests should be explicit when tokens are absent."""
+
+    async def scenario() -> None:
+        factory = LibrarianClientFactory(
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
+            dry_run=True,
+        )
+
+        result = await factory.test_connection(
+            provider=_provider(
+                provider_type=ProviderType.OPENAI_CODEX.value,
+                auth_type=AuthType.OAUTH,
+            ),
+            secret_resolver=StaticSecretResolver(None),
+            test_query="ping",
+        )
+
+        assert result.as_public_dict() == {
+            "provider_id": PROVIDER_ID,
+            "ok": False,
+            "message": "oauth credentials missing",
+        }
+
+    anyio.run(scenario)
+
+
+def test_connection_rejects_openai_codex_oauth_expired_access_token() -> None:
+    """OPENAI_CODEX provider tests should not pass stale OAuth access tokens."""
+
+    async def scenario() -> None:
+        factory = LibrarianClientFactory(
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
+            dry_run=True,
+        )
+
+        result = await factory.test_connection(
+            provider=_provider(
+                provider_type=ProviderType.OPENAI_CODEX.value,
+                auth_type=AuthType.OAUTH,
+            ),
+            secret_resolver=StaticSecretMapResolver(
+                {
+                    "oauth_access_token": SECRET_VALUE,
+                    "oauth_refresh_token": "refresh-secret",
+                    "oauth_expires_at": "2000-01-01T00:00:00+00:00",
+                }
+            ),
+            test_query="ping",
+        )
+
+        assert result.as_public_dict() == {
+            "provider_id": PROVIDER_ID,
+            "ok": False,
+            "message": "oauth access token expired",
+        }
+        assert _secret_is_absent_from(result.as_public_dict())
+
+    anyio.run(scenario)
+
+
+def test_connection_rejects_openai_codex_oauth_refresh_only_secret() -> None:
+    """OPENAI_CODEX provider tests should not pass refresh-only credentials."""
+
+    async def scenario() -> None:
+        factory = LibrarianClientFactory(
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
+            dry_run=True,
+        )
+
+        result = await factory.test_connection(
+            provider=_provider(
+                provider_type=ProviderType.OPENAI_CODEX.value,
+                auth_type=AuthType.OAUTH,
+            ),
+            secret_resolver=StaticSecretMapResolver(
+                {"oauth_refresh_token": "refresh-secret"}
+            ),
+            test_query="ping",
+        )
+
+        assert result.as_public_dict() == {
+            "provider_id": PROVIDER_ID,
+            "ok": False,
+            "message": "oauth access token missing",
+        }
+        assert _secret_is_absent_from(result.as_public_dict())
+
+    anyio.run(scenario)
+
+
+def test_connection_rejects_openai_codex_api_key_auth() -> None:
+    """OPENAI_CODEX provider tests should keep OAuth-only auth semantics."""
+
+    async def scenario() -> None:
+        factory = LibrarianClientFactory(
+            openai_client_builder=ExplodingOpenAIClientBuilder(),
+            dry_run=True,
+        )
+
+        result = await factory.test_connection(
+            provider=_provider(provider_type=ProviderType.OPENAI_CODEX.value),
+            secret_resolver=StaticSecretResolver(SECRET_VALUE),
+            test_query="ping",
+        )
+
+        assert result.as_public_dict() == {
+            "provider_id": PROVIDER_ID,
+            "ok": False,
+            "message": "provider type OPENAI_CODEX requires OAUTH auth",
         }
 
     anyio.run(scenario)

@@ -21,7 +21,7 @@ from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPI
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
 
-router = APIRouter(prefix="/categories", tags=["categories"])
+router = APIRouter(prefix="/library/categories", tags=["categories"])
 
 
 def _to_tree_node(

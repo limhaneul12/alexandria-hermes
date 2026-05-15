@@ -7,21 +7,21 @@ from datetime import UTC, datetime
 from typing import cast
 
 from app.library.application.item_service import ItemService
-from app.library.application.use_cases.minio_archive.import_archive_items import (
+from app.archive.application.minio.use_cases.import_archive_items import (
     MinioArchiveImportUseCase,
 )
-from app.library.domain.contracts.librarian_provider_contracts import (
+from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
     LibrarianProviderUpdate,
 )
-from app.library.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.entities.read_models import LibrarianProvider
 from app.library.domain.event_enum.item_enums import (
     CreatedByType,
     ItemStatus,
     ItemType,
     SourceType,
 )
-from app.library.domain.repositories.librarian_repository import (
+from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )

@@ -1,10 +1,25 @@
 import type {
   AgentDTO,
+  AgentCreateDTO,
+  AgentUpdateDTO,
   CategoryCreateDTO,
   CategoryDTO,
+  ContextChunkDTO,
+  ContextDTO,
+  ContextLintRequestDTO,
+  ContextLintResultDTO,
+  ContextListDTO,
+  ContextPackDTO,
+  ContextPrepareCompactDTO,
+  ContextSaveDTO,
+  ContextSearchDTO,
   DashboardDTO,
   ExternalArchiveCandidateDTO,
   ExternalArchiveImportResultDTO,
+  LibrarianOAuthStartDTO,
+  LibrarianOAuthStatusDTO,
+  LibrarianAskRequestDTO,
+  LibrarianAskResponseDTO,
   LibrarianProviderCreateDTO,
   LibrarianProviderDTO,
   LibrarianProviderTestDTO,
@@ -15,6 +30,7 @@ import type {
   PromptCreateResultDTO,
   SkillCreateDTO,
   SkillCreateResultDTO,
+  RagStatusDTO,
   SkillDetailDTO,
 } from "@/types/library";
 
@@ -92,10 +108,51 @@ export function updateLibrarianProvider(
   );
 }
 
+export function deleteLibrarianProvider(providerId: string) {
+  return fetchJson<void>(
+    `/api/librarians/${encodeURIComponent(providerId)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function testLibrarianProvider(providerId: string, testQuery: string) {
   return fetchJson<LibrarianProviderTestDTO>(
     `/api/librarians/${encodeURIComponent(providerId)}/test`,
     jsonInit("POST", { testQuery }),
+  );
+}
+
+export function startLibrarianOAuth(providerId: string) {
+  return fetchJson<LibrarianOAuthStartDTO>(
+    `/api/librarians/${encodeURIComponent(providerId)}/oauth/start`,
+    { method: "POST" },
+  );
+}
+
+export function pollLibrarianOAuth(providerId: string) {
+  return fetchJson<LibrarianOAuthStatusDTO>(
+    `/api/librarians/${encodeURIComponent(providerId)}/oauth/poll`,
+    { method: "POST" },
+  );
+}
+
+export function fetchLibrarianOAuthStatus(providerId: string) {
+  return fetchJson<LibrarianOAuthStatusDTO>(
+    `/api/librarians/${encodeURIComponent(providerId)}/oauth/status`,
+  );
+}
+
+export function refreshLibrarianOAuth(providerId: string) {
+  return fetchJson<LibrarianOAuthStatusDTO>(
+    `/api/librarians/${encodeURIComponent(providerId)}/oauth/refresh`,
+    { method: "POST" },
+  );
+}
+
+export function askLibrarian(payload: LibrarianAskRequestDTO) {
+  return fetchJson<LibrarianAskResponseDTO>(
+    "/api/librarians/ask",
+    jsonInit("POST", payload),
   );
 }
 
@@ -118,3 +175,89 @@ export function fetchAgents() {
   return fetchJson<AgentDTO[]>("/api/agents");
 }
 
+export function createAgent(payload: AgentCreateDTO) {
+  return fetchJson<AgentDTO>("/api/agents", jsonInit("POST", payload));
+}
+
+export function fetchAgent(agentId: string) {
+  return fetchJson<AgentDTO>(`/api/agents/${encodeURIComponent(agentId)}`);
+}
+
+export function updateAgent(agentId: string, payload: AgentUpdateDTO) {
+  return fetchJson<AgentDTO>(
+    `/api/agents/${encodeURIComponent(agentId)}`,
+    jsonInit("PATCH", payload),
+  );
+}
+
+export function deleteAgent(agentId: string) {
+  return fetchJson<void>(
+    `/api/agents/${encodeURIComponent(agentId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function fetchContexts(params: URLSearchParams) {
+  const query = params.toString();
+  return fetchJson<ContextListDTO>(`/api/library/contexts${query ? `?${query}` : ""}`);
+}
+
+export function fetchContext(contextId: string) {
+  return fetchJson<ContextDTO>(`/api/library/contexts/${encodeURIComponent(contextId)}`);
+}
+
+export function fetchContextChunks(contextId: string) {
+  return fetchJson<ContextChunkDTO[]>(
+    `/api/library/contexts/${encodeURIComponent(contextId)}/chunks`,
+  );
+}
+
+export function lintContext(payload: ContextLintRequestDTO) {
+  return fetchJson<ContextLintResultDTO>(
+    "/api/library/contexts/lint",
+    jsonInit("POST", payload),
+  );
+}
+
+export function saveContext(payload: ContextSaveDTO) {
+  return fetchJson<ContextDTO>("/api/library/contexts", jsonInit("POST", payload));
+}
+
+export function captureContext(payload: ContextSaveDTO) {
+  return fetchJson<ContextDTO>(
+    "/api/library/contexts/capture",
+    jsonInit("POST", payload),
+  );
+}
+
+export function prepareCompact(payload: ContextPrepareCompactDTO) {
+  return fetchJson<ContextDTO>(
+    "/api/library/contexts/prepare-compact",
+    jsonInit("POST", payload),
+  );
+}
+
+export function searchContexts(payload: ContextSearchDTO) {
+  return fetchJson<ContextPackDTO>(
+    "/api/library/contexts/search",
+    jsonInit("POST", payload),
+  );
+}
+
+export function archiveContext(contextId: string) {
+  return fetchJson<ContextDTO>(
+    `/api/library/contexts/${encodeURIComponent(contextId)}/archive`,
+    jsonInit("POST", {}),
+  );
+}
+
+export function accessContext(contextId: string) {
+  return fetchJson<ContextDTO>(
+    `/api/library/contexts/${encodeURIComponent(contextId)}/access`,
+    jsonInit("POST", {}),
+  );
+}
+
+export function fetchRagStatus() {
+  return fetchJson<RagStatusDTO>("/api/library/contexts/rag/status");
+}

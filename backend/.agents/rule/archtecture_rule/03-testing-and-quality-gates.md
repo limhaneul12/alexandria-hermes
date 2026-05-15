@@ -10,8 +10,11 @@ Keep tests centralized under one backend test root, while preserving domain owne
 
 Current layout:
 
-- `<test_root>/classic_feed/`
-- `<test_root>/collector/`
+- `<test_root>/cli/`
+- `<test_root>/library/`
+- `<test_root>/mcp/`
+- `<test_root>/platform/`
+- `<test_root>/shared/`
 - `<test_root>/<domain>/`
 
 ## Root Test Rule

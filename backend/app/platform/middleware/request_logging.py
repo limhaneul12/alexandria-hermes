@@ -36,6 +36,9 @@ def install_request_logging_middleware(
     Args:
         app: FastAPI app to attach middleware to.
         logger: Logger used for request events.
+
+    Returns:
+        None.
     """
 
     @app.middleware("http")

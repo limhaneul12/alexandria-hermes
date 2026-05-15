@@ -4,7 +4,7 @@
 
 Keep backend implementation units traceable by separating side effects, pure transformations, persistence introduction, infrastructure adapter behavior, and responsibility naming.
 
-This rule is backend-wide and intentionally module-neutral. Product- or module-specific rules such as collector/engine LLM boundaries belong in the owning domain docs, not here.
+This rule is backend-wide and intentionally module-neutral. Product- or module-specific rules such as librarian/provider execution boundaries belong in the owning domain docs, not here.
 
 ## Side Effect Boundary Rule
 
@@ -176,7 +176,9 @@ Naming checks:
 
 - If the class name needs “and” to describe it, split the responsibility.
 - If the class name says “manager,” ask what it actually manages and rename to that responsibility.
-- If the file name says “utils,” prefer a feature-specific module name.
+- If the file name says “utils,” prefer a feature-specific module name unless
+  the file lives inside an intentional `shared/utils/` or `{domain}_utils/`
+  folder and the file itself is purpose-named.
 - If “base” grows behavior, reconsider whether it is an abstraction or a dumping ground.
 
 Allowed exceptions:

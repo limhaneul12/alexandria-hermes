@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const root = new URL("../src", import.meta.url).pathname;
+const userCopyScanExcludedSegments = ["/lib/backend/"];
 const bannedUserCopy = [
   /SQLite/i,
   /Prisma/i,
@@ -31,6 +32,10 @@ function walk(dir) {
 
 const violations = [];
 for (const path of walk(root)) {
+  const normalizedPath = path.replaceAll("\\\\", "/");
+  if (userCopyScanExcludedSegments.some((segment) => normalizedPath.includes(segment))) {
+    continue;
+  }
   const content = readFileSync(path, "utf8");
   for (const pattern of bannedUserCopy) {
     if (pattern.test(content)) {
@@ -71,23 +76,23 @@ const requiredFeatureContracts = [
   [
     "OpenAI and MINIO librarian providers",
     `${settings}\n${api}\n${store}\n${archiveAdapter}`,
-    ["OPENAI", "MINIO", "minioPlacementHint"],
+    ["OPENAI", "OPENAI_CODEX", "MINIO", "oauthDeviceCodeTitle", "librarianAgentProfiles", "minioPlacementHint"],
   ],
   [
     "settings information architecture",
     `${settings}\n${layout}`,
     [
       'href: "/settings"',
-      'href: "/settings#librarians"',
-      'activeSettingsSection === "library"',
-      'activeSettingsSection === "librarians"',
+      'href: "/settings/librarians"',
+      'section === "library"',
+      'section === "librarians"',
     ],
   ],
   ["removed old agent panel", `${layout}\n${topHeader}\n${i18n}`, ["Library", "User Guide"]],
 ];
 
 if (layout.includes('labelKey: "librarianSettings", href: "/settings"')) {
-  violations.push("sidebar routes librarian settings to /settings instead of /settings#librarians");
+  violations.push("sidebar routes librarian settings to /settings instead of /settings/librarians");
 }
 
 for (const [name, content, required] of [...requiredPageCopy, ...requiredFeatureContracts]) {

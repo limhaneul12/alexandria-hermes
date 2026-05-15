@@ -8,7 +8,9 @@ import re
 _SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"(?P<prefix>[\"']?"
     r"(?:api[_-]?key|oauth[_-]?access[_-]?token|access[_-]?token|"
-    r"refresh[_-]?token|password|secret)"
+    r"oauth[_-]?refresh[_-]?token|refresh[_-]?token|"
+    r"oauth[_-]?device[_-]?code|device[_-]?code|user[_-]?code|"
+    r"password|secret)"
     r"[\"']?\s*[:=]\s*[\"']?)"
     r"(?P<value>[^\"'\s,;}&]+)",
     re.IGNORECASE,

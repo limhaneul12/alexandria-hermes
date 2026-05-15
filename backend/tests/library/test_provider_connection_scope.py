@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import anyio
-from app.library.domain.entities.read_models import LibrarianProvider
-from app.library.domain.event_enum.provider_enums import AuthType, ProviderType
-from app.library.infrastructure.librarians.clients import (
+from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
+from app.connections.infrastructure.librarians.clients import (
     LibrarianClientFactory,
     ProviderClientTestResult,
 )
-from app.library.infrastructure.librarians.openai_adapter import OpenAIClientConfig
+from app.connections.infrastructure.librarians.openai_adapter import OpenAIClientConfig
 from app.shared.types.extra_types import JSONValue
 from openai import OpenAI
 
@@ -55,9 +55,10 @@ def _provider(
 def test_provider_type_enum_keeps_only_openai_agent_connection_and_minio_storage() -> (
     None
 ):
-    """Non-OpenAI agent provider choices should not remain in the public enum."""
+    """Provider enum should keep official API, Codex OAuth, and object storage."""
     assert {provider_type.value for provider_type in ProviderType} == {
         "OPENAI",
+        "OPENAI_CODEX",
         "MINIO",
     }
 

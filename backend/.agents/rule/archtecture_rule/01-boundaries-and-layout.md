@@ -10,9 +10,11 @@ Keep the backend organized by bounded context, while avoiding both root-level sp
 - `<shared_root>/` is the narrow shared area for code that multiple domains truly share.
 - `<test_root>/` is the root test area.
 - Domain-specific code belongs in bounded-context folders.
-- Current active bounded contexts are:
-  - `<backend_root>/classic_feed/`
-  - `<backend_root>/collector/`
+- Current active app areas are:
+  - `<backend_root>/cli_support/`
+  - `<backend_root>/library/`
+  - `<backend_root>/mcp_server/`
+  - `<backend_root>/platform/`
 
 ## Root Rule
 
@@ -107,23 +109,27 @@ Allowed exception:
 
 - a small orchestrator class may keep a few lifecycle/helper methods if the class still has one clear sentence-level responsibility
 
-Current repo examples that justify this rule:
+Current repo review target:
 
-- `<backend_root>/collector/application/source_collection.py`
+- classes and modules under `<backend_root>/library/` should stay split by
+  search, item, prompt, skill, provider, import/export, usage, and context
+  ownership instead of becoming one omnibus library manager.
 
 Good example direction:
 
-- `SourceDiscoveryService`
-  - discovers refs from feed/html
-  - does not persist, score, or publish
-- `ReviewQueueMapper`
-  - maps review queue items into read/response shapes
-  - does not publish, reject, recompute, or own state transitions
+- `ProviderCredentialPolicy`
+  - decides credential validity
+  - does not persist providers or call external providers
+- `LibraryItemPayloadMapper`
+  - maps item models into read payloads
+  - does not search, mutate status, or own provider calls
 
 Bad example direction:
 
-- one worker class that discovers sources, filters refs, persists raw articles, writes logs, and publishes streams together
-- one admin review class that lists queue items, builds diagnostics, publishes events, rejects events, recomputes scores, and shapes responses together
+- one service that searches library items, mutates item details, calls provider
+  credentials, imports archives, records usage, and shapes responses together
+- one router/helper that validates request payloads, persists data, calls
+  providers, and formats response DTOs together
 
 ## Shared Rule
 
@@ -137,6 +143,7 @@ Good candidates:
 - shared infrastructure container/resources
 - shared constants
 - small runtime/config primitives
+- backend-wide utilities under `shared/utils/` when they are truly cross-domain
 - neutral infrastructure exceptions
 - common container helpers truly used by multiple domains
 - shared guardrails/checkers that express backend-wide architectural policy
@@ -147,7 +154,8 @@ Bad candidates:
 - request/response schemas
 - repositories query logic
 - use cases
-- feature helpers that only happen to be reused twice
+- feature helpers that only happen to be reused twice; keep those under the
+  owning domain's `{domain}_utils/` folder when a utility folder is justified
 
 ## Constants Rule
 
@@ -176,7 +184,7 @@ Do not create environment variables for values that should be stable product or 
 - Concrete repository implementations belong under `<backend_root>/<domain>/infrastructure/repositories/`.
 - Do not mix repository contracts and repository implementations in the same layer.
 - Do not use shared repositories as a shortcut for unrelated query families.
-- Existing singular `repository/` folders are legacy and should not be used for new collector work.
+- Existing singular `repository/` folders are legacy and should not be used for new backend work.
 
 ## Exception Rule
 
@@ -187,8 +195,10 @@ Do not introduce a big exception taxonomy up front.
 Current repo rule:
 
 - keep one discoverable exception catalog under `<shared_root>/exceptions/`
-- domain-specific failures live in domain-scoped modules such as `collector_exceptions.py` and `classic_feed_exceptions.py`
-- exception class names must stay domain-scoped, for example `CollectorSeedValidationError`
+- domain-specific failures live in domain-scoped modules such as
+  `library_exceptions.py` and `cli_exceptions.py`
+- exception class names must stay domain-scoped, for example
+  `LibraryProviderConfigError`
 - only truly cross-domain route/runtime/stream contracts belong in neutral shared modules such as `route_exceptions.py`, `stream_exceptions.py`, and `common_exceptions.py`
 
 Do not create `<backend_root>/<domain>/exceptions/` for new backend work unless the exception policy is deliberately changed across the backend rule set.

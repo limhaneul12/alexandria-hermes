@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  BookOpen,
   Bot,
   Code2,
   Folder,
@@ -23,6 +23,7 @@ import { LibraryItemCard } from "@/components/library/library-item-card";
 import { Button } from "@/components/ui/button";
 import { createCategory, createPrompt, createSkill, deleteCategory, fetchLibrary } from "@/lib/api";
 import { t, type Language } from "@/lib/i18n";
+import { openLibrarianAsk } from "@/lib/librarian/ask-events";
 import {
   buildCategoryCreatePayload,
   buildPromptCreatePayload,
@@ -133,6 +134,7 @@ export function LibraryClient({ initialCategory }: { initialCategory?: string })
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const tagSelectRef = useRef<HTMLSelectElement>(null);
 
   const searchQuery = searchParams.get("q") ?? "";
   const categorySlug = initialCategory ?? null;
@@ -220,6 +222,11 @@ export function LibraryClient({ initialCategory }: { initialCategory?: string })
 
   function clearLibraryFilters() {
     router.push("/library", { scroll: false });
+  }
+
+  function focusTagFilter() {
+    tagSelectRef.current?.focus();
+    tagSelectRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   const createCategoryMutation = useMutation({
@@ -344,7 +351,11 @@ export function LibraryClient({ initialCategory }: { initialCategory?: string })
             </label>
             <label className="archive-field-box">
               <span>Tags</span>
-              <select value={tag ?? ""} onChange={(event) => replaceLibraryQuery({ tag: event.target.value || null })}>
+              <select
+                ref={tagSelectRef}
+                value={tag ?? ""}
+                onChange={(event) => replaceLibraryQuery({ tag: event.target.value || null })}
+              >
                 <option value="">All Tags</option>
                 {(data?.tags ?? []).map((tagName) => <option key={tagName} value={tagName}>{tagName}</option>)}
               </select>
@@ -424,7 +435,7 @@ export function LibraryClient({ initialCategory }: { initialCategory?: string })
           <ExploreMetric icon={Code2} title="Skills" description="Reusable capabilities your agent can perform." count={`${skillCount} items`} onClick={() => replaceLibraryQuery({ type: "SKILL" })} />
           <ExploreMetric icon={ScrollText} title="Prompts" description="Templates and instructions with tracked formats." count={`${promptCount} items`} onClick={() => replaceLibraryQuery({ type: "PROMPT" })} />
           <ExploreMetric icon={Folder} title="Folders" description="Shelves that keep related resources together." count={`${flatCategories.length} folders`} />
-          <ExploreMetric icon={Tags} title="Tags" description="Fast labels for domains, tools, and use cases." count={`${data?.tags.length ?? 0} tags`} />
+          <ExploreMetric icon={Tags} title="Tags" description="Fast labels for domains, tools, and use cases." count={`${data?.tags.length ?? 0} tags`} onClick={focusTagFilter} />
         </section>
 
         <section className="mb-9" aria-labelledby="popular-heading">
@@ -493,13 +504,24 @@ export function LibraryClient({ initialCategory }: { initialCategory?: string })
             <div>
               <h2>Ask the Librarian</h2>
               <p className="mt-1 text-sm text-[#625c52]">Get help from your AI librarian.</p>
-              <a href="/settings#librarians" className="mt-4 inline-flex items-center rounded border border-[#cfc8b8] bg-white px-4 py-2 text-sm font-semibold text-[#111111] hover:bg-[#f6f3ec]">Ask a Question</a>
+              <button
+                type="button"
+                onClick={() => openLibrarianAsk()}
+                className="mt-4 inline-flex items-center rounded border border-[#cfc8b8] bg-white px-4 py-2 text-sm font-semibold text-[#111111] hover:bg-[#f6f3ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15"
+              >
+                Ask a Question
+              </button>
             </div>
           </div>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-[#d8d3c7] bg-white/55">
-          <Image src="/librarian-archive.svg" alt="Librarian reading in the archive" width={420} height={420} className="h-auto w-full" />
+          <div className="relative h-64 overflow-hidden bg-[#f6f3ec]" aria-hidden="true">
+            <div className="absolute left-8 top-10 h-36 w-36 rounded-full border border-[#111111]/20" />
+            <BookOpen className="absolute bottom-8 left-14 h-28 w-28 stroke-[1.1] text-[#111111]" />
+            <Bot className="absolute right-12 top-14 h-32 w-32 stroke-[1] text-[#111111]" />
+            <div className="absolute bottom-12 right-20 h-1 w-36 border-b border-[#111111]/35" />
+          </div>
           <div className="p-5">
             <h2 className="font-serif text-xl font-bold text-[#111111]">A Living Archive</h2>
             <p className="mt-2 text-sm leading-6 text-[#514c44]">New skills and prompts are added every day by contributors like you.</p>

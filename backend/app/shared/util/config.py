@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import SettingsConfigDict
+
+_REPOSITORY_ENV_FILE = Path(__file__).resolve().parents[4] / ".env"
 
 
 def settings_model_config(*, env_prefix: str) -> SettingsConfigDict:
@@ -16,7 +20,7 @@ def settings_model_config(*, env_prefix: str) -> SettingsConfigDict:
     """
     return SettingsConfigDict(
         env_prefix=env_prefix,
-        env_file=".env",
+        env_file=(_REPOSITORY_ENV_FILE, ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
