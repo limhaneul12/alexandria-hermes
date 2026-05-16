@@ -19,6 +19,66 @@ BOUNDED_INTERFACE_ROOTS = tuple(
 )
 SHARED_EXCEPTIONS = APP_ROOT / "shared" / "exceptions"
 
+MODULE_LINE_BUDGET = 450
+OVERSIZED_MODULE_ALLOWLIST = {
+    "archive/application/minio/use_cases/import_archive_items.py": (
+        "Archive import use case still coordinates object reads, mapping, and writes; "
+        "split into provider config/content reader/import persister next."
+    ),
+    "cli_support/contracts/command_contracts.py": (
+        "CLI command dataclass catalog is intentionally centralized until command "
+        "groups receive package-local contract modules."
+    ),
+    "cli_support/handlers/collaboration.py": (
+        "Collaboration CLI remains a route-handler facade after helper extraction; "
+        "split provider/profile/oauth handlers by command group next."
+    ),
+    "cli_support/handlers/library.py": (
+        "Library CLI handler combines legacy folders/items/skills flows; split by "
+        "resource family when touching those commands."
+    ),
+    "cli_support/hermes/integration_files.py": (
+        "Hermes install-file generation owns several template renderers; split into "
+        "per-target writer modules before adding new templates."
+    ),
+    "cli_support/typer_commands/collaboration.py": (
+        "Typer collaboration command tree spans provider/profile/oauth verbs; split "
+        "into command-group modules before adding more verbs."
+    ),
+    "cli_support/typer_commands/context.py": (
+        "Context CLI command tree covers lint/save/search/compact flows; split by "
+        "Context Vault operation family on next CLI expansion."
+    ),
+    "connections/application/librarians/oauth_service.py": (
+        "OAuth service owns the full device-flow lifecycle; extract token storage and "
+        "status projection before adding new OAuth providers."
+    ),
+    "connections/infrastructure/librarians/openai_codex_oauth_adapter.py": (
+        "OpenAI Codex OAuth adapter includes endpoint discovery and token mapping; "
+        "split discovery/client DTO mapping before expanding providers."
+    ),
+    "mcp_server/backend_tool_gateway.py": (
+        "MCP gateway aggregates backend tool adapters; split by tool namespace before "
+        "adding new MCP write tools."
+    ),
+    "mcp_server/server_runtime.py": (
+        "MCP server runtime still combines protocol registration and process runtime; "
+        "extract transport/bootstrap before adding transports."
+    ),
+    "memory/application/context_service.py": (
+        "Context service coordinates lint/save/search/archive lifecycle; extract recall "
+        "and archive operations before adding memory features."
+    ),
+    "memory/interface/routers/context_router.py": (
+        "Context router exposes the full Context Vault surface; split route modules by "
+        "lint/save/search/archive when changing context routes."
+    ),
+    "memory/interface/schemas/context/context_schema.py": (
+        "Context API schema catalog covers all Context Vault I/O contracts; split by "
+        "operation family before adding schema groups."
+    ),
+}
+
 
 def _python_files(root: Path) -> list[Path]:
     return sorted(
@@ -383,3 +443,36 @@ def test_split_context_tests_do_not_live_under_library_suite() -> None:
     )
 
     assert offenders == []
+
+
+def _line_count(path: Path) -> int:
+    return len(path.read_text(encoding="utf-8").splitlines())
+
+
+def test_backend_app_modules_stay_under_line_budget_or_are_justified() -> None:
+    oversized: list[str] = []
+    for path in _python_files(APP_ROOT):
+        relative = str(path.relative_to(APP_ROOT))
+        line_count = _line_count(path)
+        if (
+            line_count > MODULE_LINE_BUDGET
+            and relative not in OVERSIZED_MODULE_ALLOWLIST
+        ):
+            oversized.append(f"{relative}:{line_count}")
+
+    stale_or_invalid_allowlist: list[str] = []
+    for relative, reason in OVERSIZED_MODULE_ALLOWLIST.items():
+        path = APP_ROOT / relative
+        if not path.exists():
+            stale_or_invalid_allowlist.append(f"{relative}:missing")
+            continue
+        line_count = _line_count(path)
+        if line_count <= MODULE_LINE_BUDGET:
+            stale_or_invalid_allowlist.append(
+                f"{relative}:{line_count}:remove allowlist"
+            )
+        if len(reason.strip()) < 40:
+            stale_or_invalid_allowlist.append(f"{relative}:reason too short")
+
+    assert oversized == []
+    assert stale_or_invalid_allowlist == []
