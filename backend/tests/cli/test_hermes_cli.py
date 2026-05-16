@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 import pytest
 from app.cli import HttpHeaders, run
+from app.cli_support.hermes.integration_files import first_conversation_prompt
 
 RecordedCall = tuple[str, str, bytes | None, HttpHeaders, float]
 TEST_OPERATOR_API_KEY = "test-operator-api-key-for-route-contracts-000000000000"
@@ -1050,6 +1051,53 @@ def test_hermes_onboard_dry_run_plans_prompts_skill_and_mcp_config(tmp_path) -> 
     assert "alexandria-hermes/policy.yaml" in payload["planned_files"]
     assert "alexandria-hermes/prompts/capture-context.md" in payload["planned_files"]
     assert not (hermes_home / "alexandria-hermes").exists()
+
+
+def test_hermes_install_writes_self_identifying_default_recall_skill(tmp_path) -> None:
+    """Installed skill should make new agents notice Alexandria without user coaching."""
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir()
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "hermes",
+            "install",
+            "--hermes-home",
+            str(hermes_home),
+            "--api-url",
+            "http://backend:8000",
+            "--apply",
+        ],
+        stdout=stdout,
+    )
+
+    skill = (
+        hermes_home / "skills" / "alexandria-hermes" / "alexandria-library" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    operating_loop = (
+        hermes_home / "alexandria-hermes" / "prompts" / "alexandria-operating-loop.md"
+    ).read_text(encoding="utf-8")
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert "skills/alexandria-hermes/alexandria-library/SKILL.md" in payload["written"]
+    assert skill.startswith("---\nname: alexandria-library")
+    assert "Use at the beginning of substantial tasks" in skill
+    assert "quiet default recall layer" in skill
+    assert "START_HERE" in skill
+    assert "START_HERE" in operating_loop
+    assert "without asking the user first" in operating_loop
+
+
+def test_hermes_first_prompt_describes_automatic_awareness_not_user_coaching() -> None:
+    """First-use guidance should not make users manually teach agents to recall."""
+    prompt = first_conversation_prompt()
+
+    assert "자동으로" in prompt
+    assert "START_HERE" in prompt
+    assert "먼저 RAG status" not in prompt
+    assert "확인해 주세요" not in prompt
 
 
 def test_hermes_install_writes_default_enabled_policy_contract(tmp_path) -> None:

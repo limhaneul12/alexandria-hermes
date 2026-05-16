@@ -180,23 +180,21 @@ hermes mcp test alexandria
 
 설정 후에는 Hermes CLI/Gateway/Discord 세션을 새로 시작한다. MCP tool discovery는 세션 시작 시점에 일어난다.
 
-### 0-3. 선택 사항: 설치 후 확인 프롬프트
+### 0-3. 선택 사항: 설치 후 인지 확인 프롬프트
 
-설치와 재시작이 끝나면 policy 기본값이 ON이라 Hermes는 별도 주문 없이도 Alexandria를 사용할 수 있어야 한다.
-아래 프롬프트는 필수 설정이 아니라 확인용이다.
+설치와 재시작이 끝나면 policy 기본값이 ON이라 Hermes는 별도 주문 없이도 Alexandria를 조용한 recall layer로 인지해야 한다.
+아래 프롬프트는 필수 설정이 아니라 “새 agent가 사용자를 다시 코칭시키지 않는지” 확인하는 용도다.
 
 ```text
-Alexandria-Hermes가 설치되어 있습니다.
-`~/.hermes/alexandria-hermes/policy.yaml`을 usage policy로 취급하세요.
+Alexandria-Hermes가 설치되어 있습니다. 새 Hermes/agent는 사용자가 다시 설명하지 않아도 자동으로 `~/.hermes/alexandria-hermes/policy.yaml`을 확인하고, policy가 enabled이면 `START_HERE`, user working-style, project-state, relevant skill/prompt context를 조용히 recall/search한 뒤 작업을 시작해야 합니다.
 
-1. policy가 `enabled: true`이면 필요한 순간 Alexandria context recall/search와 skill/prompt search를 사용하세요.
-2. policy가 `enabled: false`이면 status/diagnostics 또는 제가 명시 요청한 경우 외에는 Alexandria를 사용하지 마세요.
-3. 필요한 skill/prompt가 local Hermes에 없거나 약하면 Alexandria에서 검색하세요.
-4. Alexandria에도 없으면 사서가 없어도 직접 조사해서 reusable skill/prompt/context candidate를 DRAFT/PENDING_REVIEW로 제출하세요.
-5. 사서는 optional 협업자입니다. 사서가 없거나 부적절하면 Hermes self-acquisition으로 계속하세요.
-6. raw secret/API token/전체 대화 로그/단순 진행상황은 저장하지 마세요.
-
-먼저 policy status, Alexandria RAG status, MCP tool 사용 가능 여부만 확인해 주세요.
+- 사용자가 매번 “Alexandria를 사용해”라고 말해야 하는 구조가 아닙니다.
+- policy가 `enabled: false`이면 status/diagnostics 또는 제가 명시 요청한 경우 외에는 Alexandria를 사용하지 마세요.
+- 필요한 skill/prompt가 local Hermes에 없거나 약하면 Alexandria에서 검색하세요.
+- Alexandria에도 없으면 사서가 없어도 직접 조사해서 reusable skill/prompt/context candidate를 DRAFT/PENDING_REVIEW로 제출하세요.
+- 사서는 optional 협업자입니다. 사서가 없거나 부적절하면 Hermes self-acquisition으로 계속하세요.
+- raw secret/API token/전체 대화 로그/단순 진행상황은 저장하지 마세요.
+- 사용한 핵심 context만 간단히 보고하고 내부 reasoning은 노출하지 마세요.
 ```
 
 ### 0-4. “바로 사용 가능” 성공 기준
