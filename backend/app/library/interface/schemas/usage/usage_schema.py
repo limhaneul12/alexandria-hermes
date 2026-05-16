@@ -9,12 +9,12 @@ from app.library.domain.types.usage_payload_types import (
     UsageFeedbackPayload,
     UsageRecordCommandPayload,
 )
-from app.library.interface.schemas._types import StrictRootSchema, StrictSchema
+from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONObject
 from pydantic import ConfigDict, field_validator
 
 
-class UsageRecordRequest(StrictSchema):
+class UsageRecordRequest(StrictSchemaModel):
     """Payload for recording usage event."""
 
     model_config = ConfigDict(
@@ -84,7 +84,7 @@ class UsageRecordRequest(StrictSchema):
         return payload
 
 
-class UsageRecordResponse(StrictSchema):
+class UsageRecordResponse(StrictSchemaModel):
     """Usage record response object."""
 
     model_config = ConfigDict(
@@ -114,11 +114,11 @@ class UsageRecordResponse(StrictSchema):
     success: bool
 
 
-class UsageRecordResponseList(StrictRootSchema[list[UsageRecordResponse]]):
+class UsageRecordResponseList(StrictRootSchemaModel[list[UsageRecordResponse]]):
     """Root response schema for usage record arrays."""
 
 
-class PopularItemResponse(StrictSchema):
+class PopularItemResponse(StrictSchemaModel):
     """Usage aggregate response."""
 
     model_config = ConfigDict(
@@ -133,11 +133,11 @@ class PopularItemResponse(StrictSchema):
     count: int
 
 
-class PopularItemResponseList(StrictRootSchema[list[PopularItemResponse]]):
+class PopularItemResponseList(StrictRootSchemaModel[list[PopularItemResponse]]):
     """Root response schema for popular item arrays."""
 
 
-class PopularByCategoryResponse(StrictSchema):
+class PopularByCategoryResponse(StrictSchemaModel):
     """Usage aggregate by category and type."""
 
     model_config = ConfigDict(
@@ -157,7 +157,9 @@ class PopularByCategoryResponse(StrictSchema):
     count: int
 
 
-class PopularByCategoryResponseList(StrictRootSchema[list[PopularByCategoryResponse]]):
+class PopularByCategoryResponseList(
+    StrictRootSchemaModel[list[PopularByCategoryResponse]]
+):
     """Root response schema for popular-by-category arrays."""
 
 

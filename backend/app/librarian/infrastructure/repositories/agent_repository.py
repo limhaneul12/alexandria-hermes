@@ -7,6 +7,7 @@ from typing import cast
 
 from app.librarian.domain.contracts.agent_contracts import AgentCreate, AgentUpdate
 from app.librarian.domain.entities.read_models import AgentProfile
+from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
 from app.librarian.domain.repositories.agent_repository import IAgentRepository
 from app.librarian.infrastructure.models.agent_models import AgentProfileORM
 from app.shared.exceptions import NotFoundError
@@ -28,7 +29,7 @@ def _to_read_model(row: AgentProfileORM) -> AgentProfile:
         librarian_role_prompt=row.librarian_role_prompt,
         created_at=row.created_at,
         updated_at=row.updated_at,
-        librarian_role=row.librarian_role,
+        librarian_role=LibrarianProfileRole(row.librarian_role),
         librarian_specialties=list(row.librarian_specialties or []),
         librarian_routing_priority=row.librarian_routing_priority,
         librarian_enabled=row.librarian_enabled,

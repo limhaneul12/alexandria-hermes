@@ -14,7 +14,7 @@ from app.library.domain.repositories.item_repository import IItemRepository
 from app.main import app
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
-from tests.library.interface.provider_overrides import override_library_provider
+from tests.shared.provider_overrides import override_library_provider
 
 
 class FakeItemRepository(IItemRepository):

@@ -10,7 +10,7 @@ from app.library.domain.event_enum.item_enums import (
     ItemType,
     SourceType,
 )
-from app.library.interface.schemas._types import StrictRootSchema, StrictSchema
+from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
 from pydantic import ConfigDict, Field, field_validator
 
@@ -55,7 +55,7 @@ def _created_by_type(value: object) -> CreatedByType:
     raise ValueError("created_by_type must be a valid creator type")
 
 
-class ItemCreateRequest(StrictSchema):
+class ItemCreateRequest(StrictSchemaModel):
     """Payload to create a generic library item."""
 
     model_config = ConfigDict(
@@ -147,7 +147,7 @@ class ItemCreateRequest(StrictSchema):
         return _created_by_type(value)
 
 
-class ItemUpdateRequest(StrictSchema):
+class ItemUpdateRequest(StrictSchemaModel):
     """Patch payload for generic item metadata or details."""
 
     model_config = ConfigDict(
@@ -188,7 +188,7 @@ class ItemUpdateRequest(StrictSchema):
         return _item_status(value)
 
 
-class ItemResponse(StrictSchema):
+class ItemResponse(StrictSchemaModel):
     """Canonical response schema for all library items."""
 
     model_config = ConfigDict(
@@ -294,11 +294,11 @@ class ItemResponse(StrictSchema):
         return self.model_dump(mode="json")
 
 
-class ItemResponseList(StrictRootSchema[list[ItemResponse]]):
+class ItemResponseList(StrictRootSchemaModel[list[ItemResponse]]):
     """Root response schema for item response arrays."""
 
 
-class ClassificationResponse(StrictSchema):
+class ClassificationResponse(StrictSchemaModel):
     """Classification result for text categorization."""
 
     model_config = ConfigDict(

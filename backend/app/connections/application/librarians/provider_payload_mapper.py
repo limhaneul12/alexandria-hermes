@@ -7,6 +7,7 @@ from app.connections.domain.event_enum.provider_enums import AuthType, ProviderT
 from app.connections.domain.types.librarian_provider_payload_types import (
     LibrarianProviderPayload,
 )
+from app.shared.exceptions import UnsupportedProviderError
 
 
 def build_provider_payload(model: LibrarianProvider) -> LibrarianProviderPayload:
@@ -18,11 +19,17 @@ def build_provider_payload(model: LibrarianProvider) -> LibrarianProviderPayload
     Returns:
         API payload without secret values.
     """
+    if not isinstance(model.provider_type, ProviderType) or not isinstance(
+        model.auth_type, AuthType
+    ):
+        raise UnsupportedProviderError(
+            f"Provider type {model.provider_type} is unsupported"
+        )
     provider_payload: LibrarianProviderPayload = {
         "id": model.id,
         "name": model.name,
-        "provider_type": ProviderType(model.provider_type),
-        "auth_type": AuthType(model.auth_type),
+        "provider_type": model.provider_type,
+        "auth_type": model.auth_type,
         "enabled": model.enabled,
         "config": dict(model.config),
         "created_at": model.created_at,

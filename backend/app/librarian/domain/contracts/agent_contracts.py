@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
 from app.librarian.domain.types.agent_payload_types import (
     AgentCreateRecord,
+    AgentUpdateRecord,
     AgentUpdateValues,
 )
 
@@ -23,7 +25,7 @@ class AgentCreate:
     preferred_librarian_model: str | None
     max_librarian_agents: int
     librarian_role_prompt: str | None
-    librarian_role: str
+    librarian_role: LibrarianProfileRole
     librarian_specialties: list[str]
     librarian_routing_priority: int
     librarian_enabled: bool
@@ -45,7 +47,7 @@ class AgentCreate:
             preferred_librarian_model=self.preferred_librarian_model,
             max_librarian_agents=self.max_librarian_agents,
             librarian_role_prompt=self.librarian_role_prompt,
-            librarian_role=self.librarian_role,
+            librarian_role=self.librarian_role.value,
             librarian_specialties=self.librarian_specialties,
             librarian_routing_priority=self.librarian_routing_priority,
             librarian_enabled=self.librarian_enabled,
@@ -61,11 +63,41 @@ class AgentUpdate:
 
     values: AgentUpdateValues
 
-    def to_record(self) -> AgentUpdateValues:
+    def to_record(self) -> AgentUpdateRecord:
         """Return persistence fields for patching.
 
         Returns:
-            AgentUpdateValues: Persistence values for agent patching.
+            AgentUpdateRecord: Persistence values for agent patching.
         """
-        record: AgentUpdateValues = self.values.copy()
+        record: AgentUpdateRecord = {}
+        if "name" in self.values:
+            record["name"] = self.values["name"]
+        if "provider" in self.values:
+            record["provider"] = self.values["provider"]
+        if "description" in self.values:
+            record["description"] = self.values["description"]
+        if "capabilities" in self.values:
+            record["capabilities"] = self.values["capabilities"]
+        if "preferred_librarian_provider" in self.values:
+            record["preferred_librarian_provider"] = self.values[
+                "preferred_librarian_provider"
+            ]
+        if "preferred_librarian_model" in self.values:
+            record["preferred_librarian_model"] = self.values[
+                "preferred_librarian_model"
+            ]
+        if "max_librarian_agents" in self.values:
+            record["max_librarian_agents"] = self.values["max_librarian_agents"]
+        if "librarian_role_prompt" in self.values:
+            record["librarian_role_prompt"] = self.values["librarian_role_prompt"]
+        if "librarian_role" in self.values:
+            record["librarian_role"] = self.values["librarian_role"].value
+        if "librarian_specialties" in self.values:
+            record["librarian_specialties"] = self.values["librarian_specialties"]
+        if "librarian_routing_priority" in self.values:
+            record["librarian_routing_priority"] = self.values[
+                "librarian_routing_priority"
+            ]
+        if "librarian_enabled" in self.values:
+            record["librarian_enabled"] = self.values["librarian_enabled"]
         return record

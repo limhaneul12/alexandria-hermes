@@ -23,7 +23,15 @@ class AgentProfile:
     librarian_role_prompt: str | None
     created_at: datetime
     updated_at: datetime
-    librarian_role: str = LibrarianProfileRole.DEFAULT_SEARCH.value
+    librarian_role: LibrarianProfileRole = LibrarianProfileRole.DEFAULT_SEARCH
     librarian_specialties: list[str] | None = None
     librarian_routing_priority: int = 100
     librarian_enabled: bool = True
+
+    def __post_init__(self) -> None:
+        """Normalize persisted enum values at the read-model boundary."""
+        object.__setattr__(
+            self,
+            "librarian_role",
+            LibrarianProfileRole(self.librarian_role),
+        )

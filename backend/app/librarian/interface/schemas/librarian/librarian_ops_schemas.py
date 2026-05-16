@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from app.library.domain.event_enum.item_enums import ItemType
-from app.library.interface.schemas._types import StrictSchema
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from pydantic import ConfigDict, Field, field_validator
 
 
-class RecommendRequest(StrictSchema):
+class RecommendRequest(StrictSchemaModel):
     """Input to recommendation endpoint."""
 
     model_config = ConfigDict(
@@ -36,7 +36,7 @@ class RecommendRequest(StrictSchema):
         return ItemType(value)
 
 
-class ClassifyRequest(StrictSchema):
+class ClassifyRequest(StrictSchemaModel):
     """Input to classifier endpoint."""
 
     model_config = ConfigDict(
@@ -48,7 +48,7 @@ class ClassifyRequest(StrictSchema):
     text: str = Field(min_length=1)
 
 
-class CreateCandidateRequest(StrictSchema):
+class CreateCandidateRequest(StrictSchemaModel):
     """Input to create skill candidate endpoint."""
 
     model_config = ConfigDict(

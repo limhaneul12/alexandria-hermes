@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
 import secrets
 from dataclasses import dataclass
+from typing import Literal
 
-from app.platform.config.app_config import AppConfig
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 _TOKEN_PREFIX = "enc:v1"
@@ -38,6 +39,15 @@ def _derive_key(raw_key: str) -> bytes:
 
 
 @dataclass(frozen=True, slots=True)
+class SecretCipherSettings:
+    """Primitive settings needed to build the provider secret cipher."""
+
+    app_name: str = "alexandria-hermes"
+    app_env: Literal["local", "stage", "prod"] = "local"
+    secret_encryption_key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SecretCipher:
     """Encrypt and decrypt provider secrets before persistence.
 
@@ -50,29 +60,45 @@ class SecretCipher:
     allow_legacy_plaintext: bool = True
 
     @classmethod
-    def from_app_config(cls, config: AppConfig | None = None) -> SecretCipher:
-        """Build a cipher from service config.
+    def from_settings(cls, settings: SecretCipherSettings) -> SecretCipher:
+        """Build a cipher from primitive service settings.
 
         Local development gets a stable development key so tests and smoke runs work
         without extra setup. Stage/prod fail closed if SERVICE_SECRET_ENCRYPTION_KEY is
         missing.
 
         Args:
-            config [AppConfig | None]: Value supplied to from_app_config.
+            settings: Primitive cipher settings.
 
         Returns:
-            SecretCipher: Value produced by from_app_config.
+            SecretCipher: Configured cipher.
         """
-        app_config = AppConfig() if config is None else config
-        configured_key = app_config.secret_encryption_key
+        configured_key = settings.secret_encryption_key
         if configured_key:
             return cls(key=_derive_key(configured_key))
-        if app_config.app_env == "local":
-            local_seed = f"{app_config.app_name}:{_LOCAL_DEV_KEY_SEED}"
+        if settings.app_env == "local":
+            local_seed = f"{settings.app_name}:{_LOCAL_DEV_KEY_SEED}"
             return cls(key=_derive_key(local_seed))
         raise RuntimeError(
             "SERVICE_SECRET_ENCRYPTION_KEY is required outside local env"
         )
+
+    @classmethod
+    def from_environment(cls) -> SecretCipher:
+        """Build a cipher from SERVICE_* environment variables.
+
+        Returns:
+            SecretCipher: Configured cipher.
+        """
+        env_value = os.environ.get("SERVICE_APP_ENV", "local")
+        if env_value not in {"local", "stage", "prod"}:
+            env_value = "local"
+        settings = SecretCipherSettings(
+            app_name=os.environ.get("SERVICE_APP_NAME", "alexandria-hermes"),
+            app_env=env_value,
+            secret_encryption_key=os.environ.get("SERVICE_SECRET_ENCRYPTION_KEY"),
+        )
+        return cls.from_settings(settings)
 
     def encrypt(self, value: str) -> str:
         """Encrypt one secret string for database storage.

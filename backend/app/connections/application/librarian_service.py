@@ -212,13 +212,14 @@ class LibrarianService:
 
         api_key = payload.get("api_key")
         oauth_access_token = payload.get("oauth_access_token")
-        try:
-            current_provider_type = ProviderType(row.provider_type)
-            current_auth_type = AuthType(row.auth_type)
-        except ValueError as exc:
+        if not isinstance(row.provider_type, ProviderType) or not isinstance(
+            row.auth_type, AuthType
+        ):
             raise UnsupportedProviderError(
                 f"Provider type {row.provider_type} is unsupported"
-            ) from exc
+            )
+        current_provider_type = row.provider_type
+        current_auth_type = row.auth_type
         provider_type = payload.get("provider_type", current_provider_type)
         auth_type = payload.get("auth_type", current_auth_type)
         ensure_provider_auth_type_is_supported(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
 from typing_extensions import TypedDict
 
 
@@ -18,7 +19,7 @@ class AgentCreatePayload(TypedDict, closed=True):
     preferred_librarian_model: str | None
     max_librarian_agents: int
     librarian_role_prompt: str | None
-    librarian_role: str
+    librarian_role: LibrarianProfileRole
     librarian_specialties: list[str]
     librarian_routing_priority: int
     librarian_enabled: bool
@@ -37,7 +38,7 @@ class AgentUpdatePayload(TypedDict, total=False, closed=True):
     preferred_librarian_model: str | None
     max_librarian_agents: int
     librarian_role_prompt: str | None
-    librarian_role: str
+    librarian_role: LibrarianProfileRole
     librarian_specialties: list[str]
     librarian_routing_priority: int
     librarian_enabled: bool
@@ -73,10 +74,24 @@ class AgentUpdateValues(TypedDict, total=False, closed=True):
     preferred_librarian_model: str | None
     max_librarian_agents: int
     librarian_role_prompt: str | None
-    librarian_role: str
+    librarian_role: LibrarianProfileRole
     librarian_specialties: list[str]
     librarian_routing_priority: int
     librarian_enabled: bool
 
 
-type AgentUpdateRecord = AgentUpdateValues
+class AgentUpdateRecord(TypedDict, total=False, closed=True):
+    """Persistence patch values for an agent profile."""
+
+    name: str
+    provider: str
+    description: str | None
+    capabilities: list[str]
+    preferred_librarian_provider: str | None
+    preferred_librarian_model: str | None
+    max_librarian_agents: int
+    librarian_role_prompt: str | None
+    librarian_role: str
+    librarian_specialties: list[str]
+    librarian_routing_priority: int
+    librarian_enabled: bool

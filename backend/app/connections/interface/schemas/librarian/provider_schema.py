@@ -8,7 +8,7 @@ from app.connections.domain.event_enum.provider_enums import AuthType, ProviderT
 from app.connections.domain.types.librarian_provider_payload_types import (
     LibrarianProviderPatchPayload,
 )
-from app.library.interface.schemas._types import StrictRootSchema, StrictSchema
+from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONObject
 from pydantic import ConfigDict, Field, field_validator
 
@@ -33,7 +33,7 @@ def _auth_type(value: object) -> AuthType:
     raise ValueError("auth_type must be a valid auth type")
 
 
-class LibrarianProviderCreateRequest(StrictSchema):
+class LibrarianProviderCreateRequest(StrictSchemaModel):
     """Payload for creating a provider configuration."""
 
     model_config = ConfigDict(
@@ -97,7 +97,7 @@ class LibrarianProviderCreateRequest(StrictSchema):
         return _auth_type(value)
 
 
-class LibrarianProviderPatchRequest(StrictSchema):
+class LibrarianProviderPatchRequest(StrictSchemaModel):
     """Payload for updating provider configuration."""
 
     model_config = ConfigDict(
@@ -183,7 +183,7 @@ class LibrarianProviderPatchRequest(StrictSchema):
         return _auth_type(value)
 
 
-class LibrarianProviderResponse(StrictSchema):
+class LibrarianProviderResponse(StrictSchemaModel):
     """Provider response model with timestamps."""
 
     model_config = ConfigDict(
@@ -241,11 +241,13 @@ class LibrarianProviderResponse(StrictSchema):
         return _auth_type(value)
 
 
-class LibrarianProviderResponseList(StrictRootSchema[list[LibrarianProviderResponse]]):
+class LibrarianProviderResponseList(
+    StrictRootSchemaModel[list[LibrarianProviderResponse]]
+):
     """Root response schema for librarian provider response arrays."""
 
 
-class LibrarianProviderTestRequest(StrictSchema):
+class LibrarianProviderTestRequest(StrictSchemaModel):
     """Payload for connection test."""
 
     model_config = ConfigDict(
@@ -257,7 +259,7 @@ class LibrarianProviderTestRequest(StrictSchema):
     test_query: str = "ping"
 
 
-class LibrarianProviderTestResponse(StrictSchema):
+class LibrarianProviderTestResponse(StrictSchemaModel):
     """Provider test response."""
 
     model_config = ConfigDict(

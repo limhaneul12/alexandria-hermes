@@ -11,11 +11,11 @@ from app.librarian.domain.event_enum.collaboration_enums import (
     LibrarianDelegateStatus,
     LibrarianDelegationStatus,
 )
-from app.library.interface.schemas._types import StrictSchema
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from pydantic import ConfigDict, Field
 
 
-class AskLibrarianRequest(StrictSchema):
+class AskLibrarianRequest(StrictSchemaModel):
     """Request for Hermes missing-capability collaboration guidance."""
 
     model_config = ConfigDict(
@@ -72,7 +72,7 @@ class AskLibrarianRequest(StrictSchema):
         return command
 
 
-class LibrarianDelegateResponse(StrictSchema):
+class LibrarianDelegateResponse(StrictSchemaModel):
     """Response item for one synchronous librarian delegate lane."""
 
     profile_id: str
@@ -83,7 +83,7 @@ class LibrarianDelegateResponse(StrictSchema):
     matched_specialties: list[str]
 
 
-class AskLibrarianResponse(StrictSchema):
+class AskLibrarianResponse(StrictSchemaModel):
     """Response describing Hermes self-acquisition or delegation guidance."""
 
     model_config = ConfigDict(
@@ -132,7 +132,7 @@ class AskLibrarianResponse(StrictSchema):
     delegates: list[LibrarianDelegateResponse]
 
 
-class LibrarianJobStatusResponse(StrictSchema):
+class LibrarianJobStatusResponse(StrictSchemaModel):
     """Response for a Hermes librarian job status lookup."""
 
     model_config = ConfigDict(

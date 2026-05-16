@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from app.connections.infrastructure.repositories.librarian_repository import (
-    ProviderSecretRepository,
-    SqlAlchemyLibrarianProviderRepository,
+from app.connections.domain.repositories.librarian_repository import (
+    ILibrarianProviderRepository,
+    IProviderSecretRepository,
 )
 from app.librarian.application.agent_service import AgentService
 from app.librarian.application.hermes_collaboration_service import (
@@ -22,14 +22,10 @@ class LibrarianContainer(containers.DeclarativeContainer):
 
     db_session = providers.Dependency(instance_of=AsyncSession)
     agent_repo = providers.Factory(SqlAlchemyAgentRepository, session=db_session)
-    librarian_provider_repo = providers.Factory(
-        SqlAlchemyLibrarianProviderRepository,
-        session=db_session,
+    librarian_provider_repo = providers.Dependency(
+        instance_of=ILibrarianProviderRepository
     )
-    provider_secret_repo = providers.Factory(
-        ProviderSecretRepository,
-        session=db_session,
-    )
+    provider_secret_repo = providers.Dependency(instance_of=IProviderSecretRepository)
     agent_service = providers.Factory(
         AgentService,
         repository=agent_repo,

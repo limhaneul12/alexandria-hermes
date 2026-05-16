@@ -14,6 +14,7 @@ def handle_mcp_serve(command: McpServeCommand) -> int:
     Returns:
         Process-style exit code from the MCP server runner.
     """
+    # lazy import justified: MCP server dependencies load only for the mcp serve command.
     from app.mcp_server.server_runtime import main as mcp_main
 
     exit_code = mcp_main(["--transport", command.transport.value])

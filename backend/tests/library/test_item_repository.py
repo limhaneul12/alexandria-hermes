@@ -24,7 +24,7 @@ from app.library.infrastructure.repositories.item_repository import (
 from app.library.infrastructure.repositories.items.fts import build_item_fts_query
 from app.main import app
 from app.shared.exceptions import NotFoundError
-from tests.library.interface.provider_overrides import override_library_provider
+from tests.shared.provider_overrides import override_library_provider
 from app.shared.infrastructure.database import Database
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient

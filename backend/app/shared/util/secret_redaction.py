@@ -9,6 +9,7 @@ HIGH_RISK_SECRET_PATTERNS = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"(?im)^\s*\.env\b.*"),
 )
+BLOCKED_SECRET_PLACEHOLDER = "[BLOCKED_SECRET_CONTENT]"
 TOKEN_ASSIGNMENT_PATTERN = re.compile(
     r"(?i)\b(api[_-]?key|token|secret|password)\s*[:=]\s*([\"']?)[A-Za-z0-9_./+=\-]{12,}\2"
 )
@@ -38,8 +39,8 @@ def redact_secret_text(content: str) -> SecretRedactionResult:
     if blocked:
         return SecretRedactionResult(
             blocked=True,
-            redacted_content=content,
-            redaction_count=0,
+            redacted_content=BLOCKED_SECRET_PLACEHOLDER,
+            redaction_count=1,
             warnings=["high-risk secret content cannot be saved raw"],
         )
 

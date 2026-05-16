@@ -8,8 +8,8 @@ from app.archive.domain.contracts.minio_import_contracts import (
     MinioImportResult,
 )
 from app.library.domain.event_enum.item_enums import ItemType
-from app.library.interface.schemas._types import StrictRootSchema, StrictSchema
 from app.library.interface.schemas.item.item_schema import ItemResponse
+from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
 from pydantic import ConfigDict, Field, field_validator
 
@@ -80,7 +80,9 @@ class MinioArchiveItemResponse(ItemResponse):
         return response
 
 
-class MinioArchiveItemResponseList(StrictRootSchema[list[MinioArchiveItemResponse]]):
+class MinioArchiveItemResponseList(
+    StrictRootSchemaModel[list[MinioArchiveItemResponse]]
+):
     """Root response schema for MINIO archive item arrays."""
 
     @classmethod
@@ -103,7 +105,7 @@ class MinioArchiveItemResponseList(StrictRootSchema[list[MinioArchiveItemRespons
         return validation
 
 
-class MinioImportCandidateResponse(StrictSchema):
+class MinioImportCandidateResponse(StrictSchemaModel):
     """Response schema for one external archive import candidate."""
 
     id: str
@@ -166,7 +168,7 @@ class MinioImportCandidateResponse(StrictSchema):
 
 
 class MinioImportCandidateResponseList(
-    StrictRootSchema[list[MinioImportCandidateResponse]]
+    StrictRootSchemaModel[list[MinioImportCandidateResponse]]
 ):
     """Root response schema for import candidate arrays."""
 
@@ -190,13 +192,13 @@ class MinioImportCandidateResponseList(
         return validation
 
 
-class MinioImportRequest(StrictSchema):
+class MinioImportRequest(StrictSchemaModel):
     """Request to import linked external archive objects."""
 
     limit: int = Field(default=48, ge=1, le=1000)
 
 
-class MinioImportResultResponse(StrictSchema):
+class MinioImportResultResponse(StrictSchemaModel):
     """Response after importing external archive candidates."""
 
     imported_count: int

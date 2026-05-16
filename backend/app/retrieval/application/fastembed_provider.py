@@ -94,6 +94,7 @@ class FastEmbedEmbeddingProvider(EmbeddingProvider):
 
     def _embedding_model(self) -> TextEmbedding:
         if self._model is None:
+            # lazy import justified: optional FastEmbed dependency loads only when embeddings are requested.
             from fastembed import TextEmbedding
 
             if self._cache_dir is None:

@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
-from app.library.interface.schemas._types import StrictRootSchema, StrictSchema
+from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 
-class AgentCreateRequest(StrictSchema):
+class AgentCreateRequest(StrictSchemaModel):
     """Payload for registering an agent profile."""
 
     model_config = ConfigDict(
@@ -67,7 +67,7 @@ class AgentCreateRequest(StrictSchema):
         raise ValueError("librarian_role must be a valid profile role")
 
 
-class AgentPatchRequest(StrictSchema):
+class AgentPatchRequest(StrictSchemaModel):
     """Payload for updating fields on an existing agent."""
 
     model_config = ConfigDict(
@@ -155,7 +155,7 @@ class AgentPatchRequest(StrictSchema):
         return self
 
 
-class AgentResponse(StrictSchema):
+class AgentResponse(StrictSchemaModel):
     """Agent profile response model."""
 
     model_config = ConfigDict(
@@ -236,5 +236,5 @@ class AgentResponse(StrictSchema):
         raise ValueError("librarian_specialties must be a list of strings")
 
 
-class AgentResponseList(StrictRootSchema[list[AgentResponse]]):
+class AgentResponseList(StrictRootSchemaModel[list[AgentResponse]]):
     """Root response schema for agent response arrays."""

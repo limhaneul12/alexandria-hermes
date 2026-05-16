@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.library.domain.event_enum.item_enums import ItemStatus
-from app.library.interface.schemas._types import StrictSchema
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
 from pydantic import ConfigDict, Field, field_validator
 
@@ -18,7 +18,7 @@ def _item_status(value: object) -> ItemStatus:
     raise ValueError("status must be a valid item status")
 
 
-class WorkflowCreateRequest(StrictSchema):
+class WorkflowCreateRequest(StrictSchemaModel):
     """Payload for workflow registration."""
 
     model_config = ConfigDict(
@@ -68,7 +68,7 @@ class WorkflowCreateRequest(StrictSchema):
         return _item_status(value)
 
 
-class WorkflowPatchRequest(StrictSchema):
+class WorkflowPatchRequest(StrictSchemaModel):
     """Patch payload for workflow updates."""
 
     model_config = ConfigDict(
@@ -115,7 +115,7 @@ class WorkflowPatchRequest(StrictSchema):
         return _item_status(value)
 
 
-class WorkflowResponse(StrictSchema):
+class WorkflowResponse(StrictSchemaModel):
     """Workflow response payload."""
 
     model_config = ConfigDict(

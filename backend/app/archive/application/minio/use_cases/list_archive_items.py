@@ -10,6 +10,7 @@ from app.archive.application.minio.minio_archive_mapper import (
 )
 from app.archive.domain.contracts.minio_archive_contracts import MinioArchiveItem
 from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.event_enum.provider_enums import ProviderType
 from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
@@ -23,7 +24,7 @@ from app.shared.types.types_convert_utils import bool_value, string_value
 from minio.error import S3Error
 from urllib3.exceptions import HTTPError
 
-MINIO_PROVIDER_TYPE = "MINIO"
+MINIO_PROVIDER_TYPE = ProviderType.MINIO
 
 
 class ListMinioArchiveItemsUseCase:

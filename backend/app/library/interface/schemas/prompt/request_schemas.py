@@ -13,7 +13,7 @@ from app.library.domain.event_enum.prompt_enums import (
     PromptKind,
     PromptTaskType,
 )
-from app.library.interface.schemas._types import StrictSchema
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 
@@ -26,7 +26,7 @@ def _enum_value(value: object, enum_type: type) -> object:
     raise ValueError("invalid enum value")
 
 
-class PromptVariableRequest(StrictSchema):
+class PromptVariableRequest(StrictSchemaModel):
     """Template variable accepted by prompt create/update endpoints."""
 
     name: str = Field(min_length=1)
@@ -37,7 +37,7 @@ class PromptVariableRequest(StrictSchema):
     input_type: str = "text"
 
 
-class PromptCreateRequest(StrictSchema):
+class PromptCreateRequest(StrictSchemaModel):
     """Payload for direct or actor-submitted prompt creation."""
 
     model_config = ConfigDict(
@@ -134,7 +134,7 @@ class PromptCreateRequest(StrictSchema):
         return self
 
 
-class PromptPatchRequest(StrictSchema):
+class PromptPatchRequest(StrictSchemaModel):
     """Patch payload for editing an existing prompt."""
 
     title: str | None = None

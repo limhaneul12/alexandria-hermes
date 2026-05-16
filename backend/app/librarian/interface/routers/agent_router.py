@@ -61,7 +61,7 @@ def _create_payload(request: AgentCreateRequest) -> AgentCreatePayload:
         preferred_librarian_model=request.preferred_librarian_model,
         max_librarian_agents=request.max_librarian_agents,
         librarian_role_prompt=request.librarian_role_prompt,
-        librarian_role=request.librarian_role.value,
+        librarian_role=request.librarian_role,
         librarian_specialties=request.librarian_specialties,
         librarian_routing_priority=request.librarian_routing_priority,
         librarian_enabled=request.librarian_enabled,
@@ -98,7 +98,7 @@ def _patch_payload(request: AgentPatchRequest) -> AgentUpdatePayload:
     if "librarian_role_prompt" in fields:
         payload["librarian_role_prompt"] = request.librarian_role_prompt
     if "librarian_role" in fields and request.librarian_role is not None:
-        payload["librarian_role"] = request.librarian_role.value
+        payload["librarian_role"] = request.librarian_role
     if "librarian_specialties" in fields and request.librarian_specialties is not None:
         payload["librarian_specialties"] = request.librarian_specialties
     if (

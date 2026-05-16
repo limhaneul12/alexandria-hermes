@@ -24,6 +24,7 @@ def probe_sqlite_vec() -> SqliteVecStatus:
         Health status for sqlite-vec extension loading.
     """
     try:
+        # lazy import justified: optional sqlite-vec extension is probed only for RAG health.
         import sqlite_vec
     except Exception as exc:
         return SqliteVecStatus(

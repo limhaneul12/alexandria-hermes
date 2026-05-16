@@ -8,11 +8,11 @@ from app.connections.domain.event_enum.provider_enums import (
     OAuthConnectionStatus,
     OAuthPollStatus,
 )
-from app.library.interface.schemas._types import StrictSchema
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from pydantic import ConfigDict
 
 
-class LibrarianOAuthStartResponse(StrictSchema):
+class LibrarianOAuthStartResponse(StrictSchemaModel):
     """Response returned after starting a device OAuth flow."""
 
     model_config = ConfigDict(
@@ -42,7 +42,7 @@ class LibrarianOAuthStartResponse(StrictSchema):
     interval_seconds: int
 
 
-class LibrarianOAuthStatusResponse(StrictSchema):
+class LibrarianOAuthStatusResponse(StrictSchemaModel):
     """OAuth connection status response without credential material."""
 
     model_config = ConfigDict(

@@ -9,6 +9,7 @@ from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderUpdate,
 )
 from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
 from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository as IProviderSecretRepositoryPort,
@@ -28,8 +29,8 @@ def _to_read_model(row: LibrarianProviderORM) -> LibrarianProvider:
     return LibrarianProvider(
         id=row.id,
         name=row.name,
-        provider_type=row.provider_type,
-        auth_type=row.auth_type,
+        provider_type=ProviderType(row.provider_type),
+        auth_type=AuthType(row.auth_type),
         enabled=row.enabled,
         config=row.config,
         created_at=row.created_at,
@@ -51,7 +52,7 @@ class SqlAlchemyLibrarianProviderRepository(ILibrarianProviderRepository):
         """
         self._session = session
         self._secret_cipher = (
-            SecretCipher.from_app_config() if secret_cipher is None else secret_cipher
+            SecretCipher.from_environment() if secret_cipher is None else secret_cipher
         )
 
     async def create(self, payload: LibrarianProviderCreate) -> LibrarianProvider:
@@ -153,7 +154,7 @@ class ProviderSecretRepository(IProviderSecretRepositoryPort):
         """
         self._session = session
         self._secret_cipher = (
-            SecretCipher.from_app_config() if secret_cipher is None else secret_cipher
+            SecretCipher.from_environment() if secret_cipher is None else secret_cipher
         )
 
     async def resolve(self, provider_id: str, key_name: str) -> str | None:

@@ -203,13 +203,14 @@ class LibrarianOAuthService:
         if row is None:
             raise NotFoundError(f"Provider not found: {provider_id}")
 
-        try:
-            provider_type = ProviderType(row.provider_type)
-            auth_type = AuthType(row.auth_type)
-        except ValueError as exc:
+        if not isinstance(row.provider_type, ProviderType) or not isinstance(
+            row.auth_type, AuthType
+        ):
             raise UnsupportedProviderError(
                 f"Provider type {row.provider_type} does not support OAuth lifecycle"
-            ) from exc
+            )
+        provider_type = row.provider_type
+        auth_type = row.auth_type
         if (
             provider_type is not ProviderType.OPENAI_CODEX
             or auth_type is not AuthType.OAUTH

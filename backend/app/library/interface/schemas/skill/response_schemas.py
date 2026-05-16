@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from app.library.interface.schemas._types import StrictSchema
 from app.library.interface.schemas.skill.examples import SKILL_RESPONSE_EXAMPLE
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
 from pydantic import ConfigDict
 
 
-class SkillResponse(StrictSchema):
+class SkillResponse(StrictSchemaModel):
     """Skill payload with normalized type fields."""
 
     model_config = ConfigDict(json_schema_extra={"examples": [SKILL_RESPONSE_EXAMPLE]})

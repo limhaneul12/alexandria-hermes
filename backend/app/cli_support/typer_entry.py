@@ -14,6 +14,7 @@ from app.cli_support.contracts.runtime_contracts import (
     CliRuntime,
     CommandContext,
 )
+from app.cli_support.handlers.library import handle_health
 from app.cli_support.routing.url_paths import normalized_base_url
 from app.cli_support.typer_commands.collaboration import librarian_app, usage_app
 from app.cli_support.typer_commands.context import context_app
@@ -26,6 +27,7 @@ from app.cli_support.typer_commands.library import (
 )
 from app.cli_support.typer_commands.library_prompts import prompts_app
 from app.cli_support.typer_commands.mcp import mcp_app
+from app.cli_support.typer_commands.typer_runtime import run_context
 from app.mcp_server.mcp_protocol_enums import McpLaunchArgument
 from app.shared.exceptions.cli_exceptions import CliRuntimeStateError
 
@@ -109,9 +111,6 @@ def health(ctx: typer.Context) -> None:
     Returns:
         None.
     """
-    from app.cli_support.handlers.library import handle_health
-    from app.cli_support.typer_commands.typer_runtime import run_context
-
     run_context(ctx, handle_health)
 
 

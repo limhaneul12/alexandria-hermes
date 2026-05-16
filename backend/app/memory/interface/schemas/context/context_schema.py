@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.library.interface.schemas._types import StrictRootSchema, StrictSchema
 from app.memory.domain.event_enum.context_enums import (
     ContextContentFormat,
     ContextImportance,
@@ -28,11 +27,12 @@ from app.memory.interface.schemas.context.context_enum_parsing import (
     parse_source_type_value,
     parse_storage_status_value,
 )
+from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONObject
 from pydantic import ConfigDict, Field, field_validator
 
 
-class ContextLintRequest(StrictSchema):
+class ContextLintRequest(StrictSchemaModel):
     """Payload for linting context content before persistence."""
 
     model_config = ConfigDict(
@@ -97,7 +97,7 @@ class ContextLintRequest(StrictSchema):
         return parse_scope_value(value)
 
 
-class ContextLintResponse(StrictSchema):
+class ContextLintResponse(StrictSchemaModel):
     """Machine-readable lint result."""
 
     ok: bool
@@ -167,7 +167,7 @@ class ContextCaptureRequest(ContextSaveRequest):
     """Payload for capture-semantics context saving."""
 
 
-class ContextPrepareCompactRequest(StrictSchema):
+class ContextPrepareCompactRequest(StrictSchemaModel):
     """Payload for generating and saving a compact context."""
 
     project: str | None = None
@@ -200,7 +200,7 @@ class ContextPrepareCompactRequest(StrictSchema):
         return parse_scope_value(value)
 
 
-class ContextResponse(StrictSchema):
+class ContextResponse(StrictSchemaModel):
     """Stored context response."""
 
     id: str
@@ -321,14 +321,14 @@ class ContextResponse(StrictSchema):
         return parse_storage_status_value(value)
 
 
-class ContextListResponse(StrictSchema):
+class ContextListResponse(StrictSchemaModel):
     """Paginated context list response."""
 
     items: list[ContextResponse]
     total: int
 
 
-class ContextChunkResponse(StrictSchema):
+class ContextChunkResponse(StrictSchemaModel):
     """Stored context chunk response."""
 
     id: str
@@ -342,11 +342,11 @@ class ContextChunkResponse(StrictSchema):
     created_at: datetime
 
 
-class ContextChunkResponseList(StrictRootSchema[list[ContextChunkResponse]]):
+class ContextChunkResponseList(StrictRootSchemaModel[list[ContextChunkResponse]]):
     """Root response schema for context chunks."""
 
 
-class ContextSearchRequest(StrictSchema):
+class ContextSearchRequest(StrictSchemaModel):
     """Payload for RAG context search."""
 
     query: str = Field(min_length=1)
@@ -407,7 +407,7 @@ class ContextSearchRequest(StrictSchema):
         return [parse_scope_value(item) for item in value]
 
 
-class ContextSearchMatchResponse(StrictSchema):
+class ContextSearchMatchResponse(StrictSchemaModel):
     """One retrieved context chunk with scores."""
 
     context: ContextResponse
@@ -418,7 +418,7 @@ class ContextSearchMatchResponse(StrictSchema):
     why_retrieved: str
 
 
-class ContextPackResponse(StrictSchema):
+class ContextPackResponse(StrictSchemaModel):
     """RAG context pack response."""
 
     query: str
@@ -444,7 +444,7 @@ class ContextPackResponse(StrictSchema):
         return parse_rag_strategy_value(value)
 
 
-class RagStatusResponse(StrictSchema):
+class RagStatusResponse(StrictSchemaModel):
     """Context RAG health response."""
 
     fts: RagHealthState

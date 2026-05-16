@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.library.domain.event_enum.item_enums import ItemStatus
-from app.library.interface.schemas._types import StrictSchema
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
 from pydantic import ConfigDict, Field, field_validator
 
@@ -18,7 +18,7 @@ def _item_status(value: object) -> ItemStatus:
     raise ValueError("status must be a valid item status")
 
 
-class KnowledgeCreateRequest(StrictSchema):
+class KnowledgeCreateRequest(StrictSchemaModel):
     """Payload for adding reference-style knowledge."""
 
     model_config = ConfigDict(
@@ -68,7 +68,7 @@ class KnowledgeCreateRequest(StrictSchema):
         return _item_status(value)
 
 
-class KnowledgePatchRequest(StrictSchema):
+class KnowledgePatchRequest(StrictSchemaModel):
     """Patch payload for knowledge updates."""
 
     model_config = ConfigDict(
@@ -113,7 +113,7 @@ class KnowledgePatchRequest(StrictSchema):
         return _item_status(value)
 
 
-class KnowledgeResponse(StrictSchema):
+class KnowledgeResponse(StrictSchemaModel):
     """Knowledge response payload."""
 
     model_config = ConfigDict(

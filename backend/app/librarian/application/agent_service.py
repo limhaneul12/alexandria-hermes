@@ -36,18 +36,22 @@ MAX_LIBRARIAN_AGENTS_LIMIT = 6
 DEFAULT_ROUTING_PRIORITY = 100
 
 
-def _profile_role_value(value: JSONValue | None) -> str:
+def _profile_role_value(
+    value: JSONValue | LibrarianProfileRole | None,
+) -> LibrarianProfileRole:
     """Normalize profile role from public input.
 
     Args:
         value: Interface payload value to narrow.
 
     Returns:
-        str: Valid librarian profile role value.
+        LibrarianProfileRole: Valid librarian profile role.
     """
+    if isinstance(value, LibrarianProfileRole):
+        return value
     if isinstance(value, str):
-        return LibrarianProfileRole(value).value
-    return LibrarianProfileRole.DEFAULT_SEARCH.value
+        return LibrarianProfileRole(value)
+    return LibrarianProfileRole.DEFAULT_SEARCH
 
 
 def _routing_priority_value(value: JSONValue | None) -> int:

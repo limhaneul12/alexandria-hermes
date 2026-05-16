@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.library.domain.entities.read_models import Category
 from app.main import app
-from tests.library.interface.provider_overrides import override_library_provider
+from tests.shared.provider_overrides import override_library_provider
 
 _CREATED_AT = datetime(2026, 5, 12, 10, 0, tzinfo=UTC)
 

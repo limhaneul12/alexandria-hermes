@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.library.domain.event_enum.item_enums import ItemStatus
 from app.library.domain.event_enum.skill_enums import RiskLevel
-from app.library.interface.schemas._types import StrictSchema
 from app.library.interface.schemas.skill.enum_parsing import item_status, risk_level
 from app.library.interface.schemas.skill.examples import (
     AGENT_SUBMIT_SKILL_EXAMPLE,
@@ -12,11 +11,12 @@ from app.library.interface.schemas.skill.examples import (
     SKILL_CREATE_EXAMPLE,
     SKILL_PATCH_EXAMPLE,
 )
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
 from pydantic import ConfigDict, Field, field_validator
 
 
-class SkillCreateRequest(StrictSchema):
+class SkillCreateRequest(StrictSchemaModel):
     """Payload for direct skill creation."""
 
     model_config = ConfigDict(json_schema_extra={"examples": [SKILL_CREATE_EXAMPLE]})
@@ -67,7 +67,7 @@ class SkillCreateRequest(StrictSchema):
         return parsed_status
 
 
-class AgentSubmitSkillRequest(StrictSchema):
+class AgentSubmitSkillRequest(StrictSchemaModel):
     """Payload from agent-generated or manual structured candidate."""
 
     model_config = ConfigDict(
@@ -123,7 +123,7 @@ class AgentSubmitSkillRequest(StrictSchema):
         return parsed_status
 
 
-class SkillPatchRequest(StrictSchema):
+class SkillPatchRequest(StrictSchemaModel):
     """Patch payload for editing an existing skill."""
 
     model_config = ConfigDict(json_schema_extra={"examples": [SKILL_PATCH_EXAMPLE]})
@@ -179,7 +179,7 @@ class SkillPatchRequest(StrictSchema):
         return parsed_status
 
 
-class LibrarianSkillRequest(StrictSchema):
+class LibrarianSkillRequest(StrictSchemaModel):
     """Payload to generate candidate through librarian provider."""
 
     model_config = ConfigDict(json_schema_extra={"examples": [LIBRARIAN_SKILL_EXAMPLE]})

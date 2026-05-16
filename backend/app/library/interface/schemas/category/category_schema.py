@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.library.domain.entities.read_models import Category
-from app.library.interface.schemas._types import StrictRootSchema, StrictSchema
+from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from pydantic import ConfigDict, Field
 
 
-class CategoryCreateRequest(StrictSchema):
+class CategoryCreateRequest(StrictSchemaModel):
     """Payload for creating a category node."""
 
     model_config = ConfigDict(
@@ -20,7 +20,7 @@ class CategoryCreateRequest(StrictSchema):
     parent_id: str | None = None
 
 
-class CategoryUpdateRequest(StrictSchema):
+class CategoryUpdateRequest(StrictSchemaModel):
     """Payload for category rename."""
 
     model_config = ConfigDict(json_schema_extra={"examples": [{"name": "FastAPI"}]})
@@ -28,7 +28,7 @@ class CategoryUpdateRequest(StrictSchema):
     name: str = Field(min_length=1)
 
 
-class CategoryMoveRequest(StrictSchema):
+class CategoryMoveRequest(StrictSchemaModel):
     """Payload for move and reorder operations."""
 
     model_config = ConfigDict(
@@ -46,7 +46,7 @@ class CategoryMoveRequest(StrictSchema):
     position: int = Field(ge=0)
 
 
-class CategoryResponse(StrictSchema):
+class CategoryResponse(StrictSchemaModel):
     """Category API response."""
 
     model_config = ConfigDict(
@@ -73,11 +73,11 @@ class CategoryResponse(StrictSchema):
     updated_at: datetime
 
 
-class CategoryResponseList(StrictRootSchema[list[CategoryResponse]]):
+class CategoryResponseList(StrictRootSchemaModel[list[CategoryResponse]]):
     """Root response schema for category response arrays."""
 
 
-class CategoryTreeNode(StrictSchema):
+class CategoryTreeNode(StrictSchemaModel):
     """Tree-shaped category response model."""
 
     model_config = ConfigDict(
@@ -133,7 +133,7 @@ class CategoryTreeNode(StrictSchema):
         )
 
 
-class CategoryTreeResponse(StrictRootSchema[list[CategoryTreeNode]]):
+class CategoryTreeResponse(StrictRootSchemaModel[list[CategoryTreeNode]]):
     """Root response schema for category tree arrays."""
 
 

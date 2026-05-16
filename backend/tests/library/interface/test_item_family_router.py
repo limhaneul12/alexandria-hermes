@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from tests.library.interface.provider_overrides import override_library_provider
+from tests.shared.provider_overrides import override_library_provider
 from app.main import app
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient

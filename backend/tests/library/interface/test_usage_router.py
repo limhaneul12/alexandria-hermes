@@ -9,7 +9,7 @@ from app.library.domain.contracts.usage_contracts import UsageCreate
 from app.library.domain.entities.read_models import UsageHistory
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.library.domain.repositories.usage_repository import IUsageRepository
-from tests.library.interface.provider_overrides import override_library_provider
+from tests.shared.provider_overrides import override_library_provider
 from app.main import app
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient

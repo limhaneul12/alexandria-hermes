@@ -6,7 +6,14 @@ import ast
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
-ROUTERS_DIR = BACKEND_ROOT / "app" / "library" / "interface" / "routers"
+APP_ROOT = BACKEND_ROOT / "app"
+ROUTERS_DIRS = tuple(
+    sorted(
+        path / "interface" / "routers"
+        for path in APP_ROOT.iterdir()
+        if (path / "interface" / "routers").is_dir()
+    )
+)
 
 ROUTER_METHODS = {"get", "post", "patch", "put", "delete"}
 
@@ -14,8 +21,8 @@ ROUTER_METHODS = {"get", "post", "patch", "put", "delete"}
 def _router_files() -> list[Path]:
     return sorted(
         path
-        for path in ROUTERS_DIR.rglob("*_router.py")
-        if path.name != "minio_archive_router.py"
+        for routers_dir in ROUTERS_DIRS
+        for path in routers_dir.rglob("*_router.py")
     )
 
 
@@ -64,7 +71,7 @@ def _contains_provide(node: ast.AST) -> bool:
     return any(_contains_provide(child) for child in ast.iter_child_nodes(node))
 
 
-def test_library_route_handlers_use_dependency_injector_provide() -> None:
+def test_backend_route_handlers_use_dependency_injector_provide() -> None:
     offenders: list[str] = []
     for path in _router_files():
         for node in _route_functions(path):
@@ -78,7 +85,7 @@ def test_library_route_handlers_use_dependency_injector_provide() -> None:
     assert offenders == []
 
 
-def test_library_route_handlers_are_injected() -> None:
+def test_backend_route_handlers_are_injected() -> None:
     offenders: list[str] = []
     for path in _router_files():
         offenders.extend(
@@ -90,13 +97,11 @@ def test_library_route_handlers_are_injected() -> None:
     assert offenders == []
 
 
-def test_library_routers_import_dependency_helpers_from_interface_dependencies() -> (
-    None
-):
+def test_backend_routers_do_not_import_dependency_helper_modules() -> None:
     offenders: list[str] = []
     for path in _router_files():
         source = path.read_text()
         if "app.library.interface.routers.dependencies" in source:
-            offenders.append(path.name)
+            offenders.append(str(path.relative_to(APP_ROOT)))
 
     assert offenders == []

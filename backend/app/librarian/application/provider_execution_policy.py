@@ -100,12 +100,11 @@ async def _resolve_secret(
 def _provider_shape(
     provider: LibrarianProvider,
 ) -> tuple[ProviderType, AuthType] | None:
-    try:
-        provider_type = ProviderType(provider.provider_type)
-        auth_type = AuthType(provider.auth_type)
-    except ValueError:
+    if not isinstance(provider.provider_type, ProviderType) or not isinstance(
+        provider.auth_type, AuthType
+    ):
         return None
-    return provider_type, auth_type
+    return provider.provider_type, provider.auth_type
 
 
 def _parse_datetime(value: str | None) -> datetime | None:

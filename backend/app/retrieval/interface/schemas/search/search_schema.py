@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from app.library.domain.event_enum.item_enums import ItemType
-from app.library.interface.schemas._types import StrictSchema
+from app.shared.schemas.common_schemas import StrictSchemaModel
 from pydantic import ConfigDict
 
 
-class SearchQueryRequest(StrictSchema):
+class SearchQueryRequest(StrictSchemaModel):
     """Shared search query model for item routes."""
 
     model_config = ConfigDict(
@@ -18,7 +18,7 @@ class SearchQueryRequest(StrictSchema):
     limit: int | None = None
 
 
-class SearchResponseItem(StrictSchema):
+class SearchResponseItem(StrictSchemaModel):
     """Search result payload for list responses."""
 
     model_config = ConfigDict(
@@ -42,7 +42,7 @@ class SearchResponseItem(StrictSchema):
     category_id: str | None
 
 
-class SearchResponse(StrictSchema):
+class SearchResponse(StrictSchemaModel):
     """Search response container."""
 
     model_config = ConfigDict(

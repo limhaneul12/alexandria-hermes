@@ -5,11 +5,18 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from app.shared.guardrails import check_broad_types, check_getattr_usage
+from app.shared.guardrails import (
+    check_broad_types,
+    check_getattr_usage,
+    check_lazy_import_usage,
+)
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 APP_ROOT = BACKEND_ROOT / "app"
 LIBRARY_INTERFACE = APP_ROOT / "library" / "interface"
+BOUNDED_INTERFACE_ROOTS = tuple(
+    sorted(path for path in APP_ROOT.glob("*/interface") if path.is_dir())
+)
 SHARED_EXCEPTIONS = APP_ROOT / "shared" / "exceptions"
 
 
@@ -119,7 +126,19 @@ def _direct_model_validate_returns(node: ast.AsyncFunctionDef) -> list[ast.Retur
 
 
 def _router_files() -> list[Path]:
-    return sorted((LIBRARY_INTERFACE / "routers").rglob("*_router.py"))
+    return sorted(
+        router
+        for interface_root in BOUNDED_INTERFACE_ROOTS
+        for router in (interface_root / "routers").rglob("*_router.py")
+    )
+
+
+def _schema_roots() -> list[Path]:
+    return sorted(
+        interface_root / "schemas"
+        for interface_root in BOUNDED_INTERFACE_ROOTS
+        if (interface_root / "schemas").exists()
+    )
 
 
 def _root_python_modules(path: Path) -> list[Path]:
@@ -237,6 +256,10 @@ def test_backend_app_does_not_use_dynamic_attribute_access_or_writes() -> None:
     check_getattr_usage.ensure_clean(BACKEND_ROOT)
 
 
+def test_backend_app_does_not_use_unjustified_lazy_imports() -> None:
+    check_lazy_import_usage.ensure_clean(BACKEND_ROOT)
+
+
 def test_library_interface_router_folders_are_only_for_multi_module_concepts() -> None:
     routers_root = LIBRARY_INTERFACE / "routers"
     offenders = sorted(
@@ -250,9 +273,11 @@ def test_library_interface_router_folders_are_only_for_multi_module_concepts() -
     assert offenders == []
 
 
-def test_library_interface_schema_modules_are_split_by_concept_folder() -> None:
+def test_interface_schema_modules_are_split_by_concept_folder() -> None:
     offenders = [
-        path.name for path in _root_python_modules(LIBRARY_INTERFACE / "schemas")
+        str(path.relative_to(APP_ROOT))
+        for schemas_root in _schema_roots()
+        for path in _root_python_modules(schemas_root)
     ]
 
     assert offenders == []
@@ -265,10 +290,10 @@ def test_skill_schema_contracts_do_not_use_reexport_packages() -> None:
     assert not (schemas_root / "skill" / "__init__.py").exists()
 
 
-def test_library_interface_schema_folders_do_not_use_init_files() -> None:
-    schemas_root = LIBRARY_INTERFACE / "schemas"
+def test_interface_schema_folders_do_not_use_init_files() -> None:
     offenders = sorted(
-        str(path.relative_to(schemas_root))
+        str(path.relative_to(APP_ROOT))
+        for schemas_root in _schema_roots()
         for path in schemas_root.rglob("__init__.py")
     )
 
@@ -291,6 +316,70 @@ def test_library_orm_model_files_use_feature_models_suffix() -> None:
         path.name
         for path in models_dir.glob("*.py")
         if path.name != "__init__.py" and not path.name.endswith("_models.py")
+    )
+
+    assert offenders == []
+
+
+def test_library_interface_has_no_stale_shared_schema_base_module() -> None:
+    assert not (LIBRARY_INTERFACE / "schemas" / "_types.py").exists()
+
+
+def test_library_has_no_stale_split_context_modules() -> None:
+    stale_patterns = (
+        "*context*",
+        "*librarian*",
+        "*agent*",
+        "*minio*",
+    )
+    ignored_parts = {"__pycache__"}
+    offenders = sorted(
+        str(path.relative_to(APP_ROOT / "library"))
+        for pattern in stale_patterns
+        for path in (APP_ROOT / "library").rglob(pattern)
+        if path.is_file() and ignored_parts.isdisjoint(path.parts)
+    )
+
+    assert offenders == []
+
+
+def test_backend_tree_has_no_local_duplicate_copy_artifacts() -> None:
+    offenders = sorted(
+        str(path.relative_to(BACKEND_ROOT))
+        for path in BACKEND_ROOT.rglob("* 2*")
+        if ".venv" not in path.parts
+    )
+
+    assert offenders == []
+
+
+def test_shared_layer_does_not_import_platform_layer() -> None:
+    shared_root = APP_ROOT / "shared"
+    offenders = sorted(
+        str(path.relative_to(APP_ROOT))
+        for path in _python_files(shared_root)
+        if any(module.startswith("app.platform") for module in _module_imports(path))
+    )
+
+    assert offenders == []
+
+
+def test_split_context_tests_do_not_live_under_library_suite() -> None:
+    stale_markers = (
+        "context",
+        "minio",
+        "librarian",
+        "agent",
+        "provider_connection",
+        "openai_codex",
+        "chunker",
+        "embedding",
+    )
+    library_tests = BACKEND_ROOT / "tests" / "library"
+    offenders = sorted(
+        str(path.relative_to(BACKEND_ROOT / "tests"))
+        for path in library_tests.rglob("test_*.py")
+        if any(marker in path.name for marker in stale_markers)
     )
 
     assert offenders == []

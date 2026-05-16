@@ -9,37 +9,38 @@ from pathlib import Path
 
 import anyio
 import pytest
-from app.librarian.domain.contracts.agent_contracts import AgentCreate, AgentUpdate
-from app.library.domain.contracts.item_contracts import ItemCreate
 from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
     LibrarianProviderUpdate,
 )
+from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
+from app.connections.infrastructure.models.librarian_provider_models import (
+    ProviderSecretORM,
+)
+from app.connections.infrastructure.repositories.librarian_repository import (
+    ProviderSecretRepository,
+    SqlAlchemyLibrarianProviderRepository,
+)
+from app.librarian.domain.contracts.agent_contracts import AgentCreate, AgentUpdate
+from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
+from app.librarian.infrastructure.repositories.agent_repository import (
+    SqlAlchemyAgentRepository,
+)
+from app.library.domain.contracts.item_contracts import ItemCreate
+from app.library.domain.entities.read_models import Category
 from app.library.domain.event_enum.item_enums import (
     CreatedByType,
     ItemStatus,
     ItemType,
     SourceType,
 )
-from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
 from app.library.domain.event_enum.usage_enums import SelectionSource
-from app.library.domain.entities.read_models import Category
-from app.connections.infrastructure.models.librarian_provider_models import (
-    ProviderSecretORM,
-)
-from app.librarian.infrastructure.repositories.agent_repository import (
-    SqlAlchemyAgentRepository,
-)
 from app.library.infrastructure.repositories.categories.hierarchy import descendants_of
 from app.library.infrastructure.repositories.category_repository import (
     SqlAlchemyCategoryRepository,
 )
 from app.library.infrastructure.repositories.item_repository import (
     SqlAlchemyItemRepository,
-)
-from app.connections.infrastructure.repositories.librarian_repository import (
-    ProviderSecretRepository,
-    SqlAlchemyLibrarianProviderRepository,
 )
 from app.library.infrastructure.repositories.usage_repository import (
     SqlAlchemyUsageRepository,
@@ -74,7 +75,7 @@ def _agent_payload(name: str = "codex") -> AgentCreate:
         preferred_librarian_model="gpt-5.5",
         max_librarian_agents=3,
         librarian_role_prompt="Act as a codebase librarian.",
-        librarian_role="SPECIALIST",
+        librarian_role=LibrarianProfileRole.SPECIALIST,
         librarian_specialties=["code"],
         librarian_routing_priority=20,
         librarian_enabled=True,
@@ -203,7 +204,7 @@ def test_agent_repository_persists_updates_and_reports_missing_deletes(
                         "preferred_librarian_model": "gpt-5.4",
                         "max_librarian_agents": 2,
                         "librarian_role_prompt": "Review plans before execution.",
-                        "librarian_role": "QUALITY_REVIEWER",
+                        "librarian_role": LibrarianProfileRole.QUALITY_REVIEWER,
                         "librarian_specialties": ["code", "review"],
                         "librarian_routing_priority": 5,
                         "librarian_enabled": False,
@@ -217,7 +218,7 @@ def test_agent_repository_persists_updates_and_reports_missing_deletes(
             assert updated.preferred_librarian_model == "gpt-5.4"
             assert updated.max_librarian_agents == 2
             assert updated.librarian_role_prompt == "Review plans before execution."
-            assert updated.librarian_role == "QUALITY_REVIEWER"
+            assert updated.librarian_role is LibrarianProfileRole.QUALITY_REVIEWER
             assert updated.librarian_specialties == ["code", "review"]
             assert updated.librarian_routing_priority == 5
             assert updated.librarian_enabled is False

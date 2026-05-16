@@ -85,9 +85,13 @@ class ApplicationContainer(containers.DeclarativeContainer):
     librarian = providers.Container(
         LibrarianContainer,
         db_session=db_session,
+        librarian_provider_repo=connections.librarian_provider_repo,
+        provider_secret_repo=connections.provider_secret_repo,
     )
     archive = providers.Container(
         ArchiveContainer,
         db_session=db_session,
         item_service=library.item_service,
+        librarian_provider_repo=connections.librarian_provider_repo,
+        provider_secret_repo=connections.provider_secret_repo,
     )
