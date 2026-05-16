@@ -12,12 +12,15 @@ from app.memory.application.context_lint import (
 )
 from app.memory.domain.contracts.context_contracts import (
     ContextChunkCreate,
+    ContextChunkEmbeddingUpdate,
     ContextCreate,
 )
 from app.memory.domain.entities.context_read_models import (
     ContextChunkRecord,
     ContextPack,
     ContextRecord,
+    ContextReindexResult,
+    ContextSearchMatch,
     RagDependencyHealth,
 )
 from app.memory.domain.event_enum.context_enums import (
@@ -34,10 +37,12 @@ from app.memory.domain.repositories.context_repository import IContextRepository
 from app.memory.domain.types.context_payload_types import ContextMetadataPayload
 from app.retrieval.application.chunker import chunk_markdown
 from app.retrieval.application.context_pack import build_context_pack
+from app.retrieval.application.context_ranking import merge_hybrid_matches
 from app.retrieval.application.embedding_provider import (
     EmbeddingProvider,
 )
 from app.retrieval.application.rag_health import build_rag_dependency_health
+from app.retrieval.application.vector_serialization import vector_to_sqlite_json
 from app.shared.exceptions import NotFoundError, ValidationError
 from app.shared.types.types_convert_utils import now_utc
 
@@ -190,6 +195,12 @@ class ContextService:
         normalized_summary = lint_result.normalized["summary"]
         if normalized_summary == "":
             normalized_summary = title
+        markdown_chunks = list(
+            chunk_markdown(title=title, content=lint_result.redacted_content)
+        )
+        embedding_fields = self._chunk_embedding_fields(
+            [chunk.content for chunk in markdown_chunks]
+        )
         chunks = [
             ContextChunkCreate(
                 chunk_index=chunk.chunk_index,
@@ -198,11 +209,16 @@ class ContextService:
                 token_count=chunk.token_count,
                 content_hash=chunk.content_hash,
                 chunk_metadata=chunk.metadata,
+                embedding=embedding,
+                embedding_model=embedding_model,
+                embedding_dimensions=embedding_dimensions,
                 created_at=now,
             )
-            for chunk in chunk_markdown(
-                title=title, content=lint_result.redacted_content
-            )
+            for chunk, (
+                embedding,
+                embedding_model,
+                embedding_dimensions,
+            ) in zip(markdown_chunks, embedding_fields, strict=True)
         ]
         safe_tags = lint_result.normalized["tags"]
 
@@ -464,17 +480,58 @@ class ContextService:
                 "VECTOR_ONLY requested but vector dependencies are degraded; "
                 "using FTS_ONLY."
             )
-        matches = await self._repository.search_fts(
-            query=query,
-            limit=limit,
-            project=project,
-            kind=kind,
-            include_scopes=include_scopes,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-        )
+        if effective is RagStrategy.FTS_ONLY:
+            matches = await self._repository.search_fts(
+                query=query,
+                limit=limit,
+                project=project,
+                kind=kind,
+                include_scopes=include_scopes,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+            )
+        elif effective is RagStrategy.VECTOR_ONLY:
+            matches = await self._search_vector(
+                query=query,
+                limit=limit,
+                project=project,
+                kind=kind,
+                include_scopes=include_scopes,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+            )
+        else:
+            fts_matches = await self._repository.search_fts(
+                query=query,
+                limit=limit,
+                project=project,
+                kind=kind,
+                include_scopes=include_scopes,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            vector_matches = await self._search_vector(
+                query=query,
+                limit=limit,
+                project=project,
+                kind=kind,
+                include_scopes=include_scopes,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            matches = merge_hybrid_matches(
+                fts_matches=fts_matches,
+                vector_matches=vector_matches,
+                limit=limit,
+            )
         recall_scopes = include_scopes or [ContextScope.PROJECT, ContextScope.GLOBAL]
         context_pack = ContextPack(
             query=query,
@@ -486,6 +543,132 @@ class ContextService:
             context_pack=build_context_pack(query=query, matches=matches),
         )
         return context_pack
+
+    async def reindex_embeddings(self, limit: int = 100) -> ContextReindexResult:
+        """Backfill embeddings for stored context chunks.
+
+        Args:
+            limit: Maximum chunks to reindex in this batch.
+
+        Returns:
+            Context reindex result.
+        """
+        if limit < 1:
+            raise ValidationError("limit must be at least 1")
+        provider = self._embedding_provider
+        health = self.rag_health()
+        warnings = list(health.warnings)
+        if (
+            provider is None
+            or health.vector is not RagHealthState.HEALTHY
+            or health.embedding is not RagHealthState.HEALTHY
+        ):
+            warnings.append("Vector dependencies are not healthy; reindex skipped.")
+            return ContextReindexResult(
+                scanned=0,
+                updated=0,
+                skipped=0,
+                warnings=warnings,
+            )
+
+        chunks = await self._repository.chunks_missing_embeddings(
+            model_name=provider.model_name,
+            dimensions=provider.dimensions,
+            limit=limit,
+        )
+        embeddings = provider.embed_documents([chunk.content for chunk in chunks])
+        if len(embeddings) != len(chunks):
+            raise ValidationError(
+                "Embedding provider returned an unexpected vector count"
+            )
+
+        updates: list[ContextChunkEmbeddingUpdate] = []
+        for chunk, embedding in zip(chunks, embeddings, strict=True):
+            if len(embedding) != provider.dimensions:
+                raise ValidationError(
+                    "Embedding provider returned an unexpected dimension"
+                )
+            try:
+                serialized = vector_to_sqlite_json(embedding)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            updates.append(
+                ContextChunkEmbeddingUpdate(
+                    chunk_id=chunk.id,
+                    embedding=serialized,
+                    embedding_model=provider.model_name,
+                    embedding_dimensions=provider.dimensions,
+                )
+            )
+        updated = await self._repository.update_chunk_embeddings(updates)
+        result = ContextReindexResult(
+            scanned=len(chunks),
+            updated=updated,
+            skipped=len(chunks) - updated,
+            warnings=warnings,
+        )
+        return result
+
+    def _chunk_embedding_fields(
+        self,
+        chunk_contents: list[str],
+    ) -> list[tuple[str | None, str | None, int | None]]:
+        if not self._vector_retrieval_enabled or self._embedding_provider is None:
+            return [(None, None, None) for _ in chunk_contents]
+
+        provider = self._embedding_provider
+        embeddings = provider.embed_documents(chunk_contents)
+        if len(embeddings) != len(chunk_contents):
+            raise ValidationError(
+                "Embedding provider returned an unexpected vector count"
+            )
+
+        fields: list[tuple[str | None, str | None, int | None]] = []
+        for embedding in embeddings:
+            if len(embedding) != provider.dimensions:
+                raise ValidationError(
+                    "Embedding provider returned an unexpected dimension"
+                )
+            try:
+                serialized = vector_to_sqlite_json(embedding)
+            except ValueError as exc:
+                raise ValidationError(str(exc)) from exc
+            fields.append((serialized, provider.model_name, provider.dimensions))
+        return fields
+
+    async def _search_vector(
+        self,
+        *,
+        query: str,
+        limit: int,
+        project: str | None,
+        kind: ContextKind | None,
+        include_scopes: list[ContextScope] | None,
+        workspace_id: str | None,
+        agent_id: str | None,
+        user_id: str | None,
+        session_id: str | None,
+    ) -> list[ContextSearchMatch]:
+        provider = self._embedding_provider
+        if provider is None:
+            return []
+        query_embedding = provider.embed_query(query)
+        if len(query_embedding) != provider.dimensions:
+            raise ValidationError("Embedding provider returned an unexpected dimension")
+        matches = await self._repository.search_vector(
+            query_embedding=query_embedding,
+            model_name=provider.model_name,
+            dimensions=provider.dimensions,
+            limit=limit,
+            project=project,
+            kind=kind,
+            include_scopes=include_scopes,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        return matches
 
 
 def _extract_restore_prompt(content: str) -> str | None:

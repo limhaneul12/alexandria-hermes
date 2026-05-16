@@ -94,6 +94,16 @@ class RagDependencyHealth:
 
 
 @dataclass(frozen=True, slots=True)
+class ContextReindexResult:
+    """Result for a context embedding reindex operation."""
+
+    scanned: int
+    updated: int
+    skipped: int
+    warnings: list[str]
+
+
+@dataclass(frozen=True, slots=True)
 class ContextPack:
     """Agent-facing RAG context pack."""
 

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from app.memory.domain.contracts.context_contracts import (
     ContextChunkCreate,
+    ContextChunkEmbeddingUpdate,
     ContextCreate,
 )
 from app.memory.domain.entities.context_read_models import (
@@ -15,17 +16,25 @@ from app.memory.domain.entities.context_read_models import (
 )
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.domain.repositories.context_repository import IContextRepository
-from app.memory.infrastructure.models.context_models import (
-    ContextChunkORM,
-    ContextORM,
+from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
+from app.memory.infrastructure.repositories.contexts.embedding_reindex import (
+    chunks_missing_embeddings,
+    update_chunk_embeddings,
 )
-from app.memory.infrastructure.repositories.contexts.fts import (
-    CONTEXT_CHUNK_FTS_SQL,
-    build_context_fts_query,
+from app.memory.infrastructure.repositories.contexts.fts import CONTEXT_CHUNK_FTS_SQL
+from app.memory.infrastructure.repositories.contexts.fts_search import (
+    search_context_fts,
+)
+from app.memory.infrastructure.repositories.contexts.fts_sync import (
+    remove_context_fts,
+    upsert_chunk_fts,
 )
 from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
+)
+from app.memory.infrastructure.repositories.contexts.vector_search import (
+    search_context_vectors,
 )
 from app.shared.exceptions import NotFoundError
 from sqlalchemy import Select, func, select, text
@@ -106,6 +115,9 @@ class SqlAlchemyContextRepository(IContextRepository):
                 content=chunk.content,
                 token_count=chunk.token_count,
                 content_hash=chunk.content_hash,
+                embedding=chunk.embedding,
+                embedding_model=chunk.embedding_model,
+                embedding_dimensions=chunk.embedding_dimensions,
                 chunk_metadata=chunk.chunk_metadata,
                 created_at=chunk.created_at,
             )
@@ -114,7 +126,11 @@ class SqlAlchemyContextRepository(IContextRepository):
         self._session.add_all(chunk_rows)
         await self._session.flush()
         for chunk_row in chunk_rows:
-            await self._upsert_chunk_fts(model, chunk_row)
+            await upsert_chunk_fts(
+                session=self._session,
+                context=model,
+                chunk=chunk_row,
+            )
         context = map_context_row(model)
         return context
 
@@ -220,7 +236,7 @@ class SqlAlchemyContextRepository(IContextRepository):
         model.archived_at = archived_at
         model.updated_at = archived_at
         await self._session.flush()
-        await self._remove_fts_for_context(context_id)
+        await remove_context_fts(session=self._session, context_id=context_id)
         context = map_context_row(model)
         return context
 
@@ -270,8 +286,9 @@ class SqlAlchemyContextRepository(IContextRepository):
             Ranked context matches.
         """
         await self.ensure_search_tables()
-        fts_query = build_context_fts_query(
-            query,
+        matches = await search_context_fts(
+            session=self._session,
+            query=query,
             limit=limit,
             project=project,
             kind=kind,
@@ -281,41 +298,99 @@ class SqlAlchemyContextRepository(IContextRepository):
             user_id=user_id,
             session_id=session_id,
         )
-        if fts_query is None:
-            return []
-        rows = await self._session.execute(text(fts_query.sql), fts_query.parameters)
-        ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
-        if not ranked:
-            return []
-        chunk_ids = [chunk_id for chunk_id, _, _ in ranked]
-        chunk_rows = await self._session.execute(
-            select(ContextChunkORM).where(ContextChunkORM.id.in_(chunk_ids))
-        )
-        chunks_by_id = {row.id: row for row in chunk_rows.scalars().all()}
-        context_ids = [context_id for _, context_id, _ in ranked]
-        context_rows = await self._session.execute(
-            select(ContextORM).where(ContextORM.id.in_(context_ids))
-        )
-        contexts_by_id = {row.id: row for row in context_rows.scalars().all()}
-
-        matches: list[ContextSearchMatch] = []
-        for chunk_id, context_id, rank in ranked:
-            chunk_row = chunks_by_id.get(chunk_id)
-            context_row = contexts_by_id.get(context_id)
-            if chunk_row is None or context_row is None or context_row.is_archived:
-                continue
-            fts_score = 1.0 / (1.0 + abs(rank))
-            matches.append(
-                ContextSearchMatch(
-                    context=map_context_row(context_row),
-                    chunk=map_chunk_row(chunk_row),
-                    score=fts_score,
-                    fts_score=fts_score,
-                    vector_score=None,
-                    why_retrieved="Matched context chunk text with SQLite FTS5.",
-                )
-            )
         return matches
+
+    async def search_vector(
+        self,
+        *,
+        query_embedding: list[float],
+        model_name: str,
+        dimensions: int,
+        limit: int,
+        project: str | None = None,
+        kind: ContextKind | None = None,
+        include_scopes: list[ContextScope] | None = None,
+        workspace_id: str | None = None,
+        agent_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[ContextSearchMatch]:
+        """Search context chunks by sqlite-vec cosine distance.
+
+        Args:
+            query_embedding: Query embedding vector.
+            model_name: Embedding model that produced the query vector.
+            dimensions: Expected embedding dimensions.
+            limit: Maximum returned matches.
+            project: Optional project filter.
+            kind: Optional context kind filter.
+            include_scopes: Optional scope filters.
+            workspace_id: Optional workspace filter.
+            agent_id: Optional agent filter.
+            user_id: Optional user filter.
+            session_id: Optional session filter.
+
+        Returns:
+            Ranked vector matches.
+        """
+        matches = await search_context_vectors(
+            session=self._session,
+            query_embedding=query_embedding,
+            model_name=model_name,
+            dimensions=dimensions,
+            limit=limit,
+            project=project,
+            kind=kind,
+            include_scopes=include_scopes,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        return matches
+
+    async def chunks_missing_embeddings(
+        self,
+        *,
+        model_name: str,
+        dimensions: int,
+        limit: int,
+    ) -> list[ContextChunkRecord]:
+        """Return chunks missing embeddings for the current model.
+
+        Args:
+            model_name: Current embedding model name.
+            dimensions: Current embedding dimensions.
+            limit: Maximum chunks to scan.
+
+        Returns:
+            Chunks requiring embedding backfill.
+        """
+        chunks = await chunks_missing_embeddings(
+            session=self._session,
+            model_name=model_name,
+            dimensions=dimensions,
+            limit=limit,
+        )
+        return chunks
+
+    async def update_chunk_embeddings(
+        self,
+        updates: list[ContextChunkEmbeddingUpdate],
+    ) -> int:
+        """Persist context chunk embedding updates.
+
+        Args:
+            updates: Embedding updates keyed by chunk identifier.
+
+        Returns:
+            Number of chunks updated.
+        """
+        updated = await update_chunk_embeddings(
+            session=self._session,
+            updates=updates,
+        )
+        return updated
 
     def _filtered_statement(
         self,
@@ -366,77 +441,3 @@ class SqlAlchemyContextRepository(IContextRepository):
         if model is None:
             raise NotFoundError(f"Context not found: {context_id}")
         return model
-
-    async def _upsert_chunk_fts(
-        self,
-        context: ContextORM,
-        chunk: ContextChunkORM,
-    ) -> None:
-        await self._session.execute(
-            text("DELETE FROM context_chunk_fts WHERE chunk_id = :chunk_id"),
-            {"chunk_id": chunk.id},
-        )
-        await self._session.execute(
-            text(
-                """
-                INSERT INTO context_chunk_fts(
-                    chunk_id,
-                    context_id,
-                    title,
-                    summary,
-                    content,
-                    kind,
-                    project,
-                    source_agent,
-                    tags,
-                    scope,
-                    workspace_id,
-                    agent_id,
-                    user_id,
-                    session_id,
-                    heading
-                )
-                VALUES (
-                    :chunk_id,
-                    :context_id,
-                    :title,
-                    :summary,
-                    :content,
-                    :kind,
-                    :project,
-                    :source_agent,
-                    :tags,
-                    :scope,
-                    :workspace_id,
-                    :agent_id,
-                    :user_id,
-                    :session_id,
-                    :heading
-                )
-                """
-            ),
-            {
-                "chunk_id": chunk.id,
-                "context_id": context.id,
-                "title": context.title,
-                "summary": context.summary,
-                "content": chunk.content,
-                "kind": context.kind,
-                "project": context.project or "",
-                "source_agent": context.source_agent,
-                "tags": " ".join(str(tag) for tag in context.tags),
-                "scope": context.scope,
-                "workspace_id": context.workspace_id or "",
-                "agent_id": context.agent_id or "",
-                "user_id": context.user_id or "",
-                "session_id": context.session_id or "",
-                "heading": chunk.heading or "",
-            },
-        )
-
-    async def _remove_fts_for_context(self, context_id: str) -> None:
-        await self.ensure_search_tables()
-        await self._session.execute(
-            text("DELETE FROM context_chunk_fts WHERE context_id = :context_id"),
-            {"context_id": context_id},
-        )

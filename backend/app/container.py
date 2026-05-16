@@ -77,6 +77,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
     memory = providers.Container(
         MemoryContainer,
         db_session=db_session,
+        app_config=app_config,
     )
     connections = providers.Container(
         ConnectionsContainer,

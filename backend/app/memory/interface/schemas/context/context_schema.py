@@ -482,3 +482,12 @@ class RagStatusResponse(StrictSchemaModel):
             Parsed default RAG strategy.
         """
         return parse_rag_strategy_value(value)
+
+
+class ContextReindexResponse(StrictSchemaModel):
+    """Context embedding reindex response."""
+
+    scanned: int
+    updated: int
+    skipped: int
+    warnings: list[str]

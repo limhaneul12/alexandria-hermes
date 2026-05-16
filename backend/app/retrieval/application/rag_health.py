@@ -44,9 +44,7 @@ def build_rag_dependency_health(
         [] if sqlite_vec.state is RagHealthState.HEALTHY else [sqlite_vec.message]
     )
     if not vector_retrieval_enabled:
-        warnings.append(
-            "Vector retrieval is not enabled in this MVP; using SQLite FTS5."
-        )
+        warnings.append("Vector retrieval is disabled by configuration.")
     if embedding_provider is None:
         warnings.append("Embedding provider not assigned; vector recall disabled.")
     health = RagDependencyHealth(

@@ -144,3 +144,12 @@ class RagHealthPayload(TypedDict, closed=True):
     model_name: str
     dimensions: int
     warnings: list[str]
+
+
+class ContextReindexPayload(TypedDict, closed=True):
+    """API payload for context embedding reindex results."""
+
+    scanned: int
+    updated: int
+    skipped: int
+    warnings: list[str]

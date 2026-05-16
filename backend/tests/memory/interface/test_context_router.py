@@ -93,6 +93,7 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
             access_response = client.post(f"/memory/contexts/{context_id}/access")
             archive_response = client.post(f"/memory/contexts/{context_id}/archive")
             rag_response = client.get("/memory/contexts/rag/status")
+            reindex_response = client.post("/memory/contexts/retrieval/reindex")
     finally:
         anyio.run(_close_context_service, database, session_context, session)
 
@@ -118,6 +119,8 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
     assert archive_response.json()["is_archived"] is True
     assert rag_response.status_code == 200
     assert rag_response.json()["fts"] == "HEALTHY"
+    assert reindex_response.status_code == 200
+    assert reindex_response.json()["updated"] == 0
 
 
 def test_context_api_lint_blocks_secret_without_echoing_content(tmp_path: Path) -> None:

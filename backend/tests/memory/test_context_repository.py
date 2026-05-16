@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,11 +13,13 @@ from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextSourceType,
     ContextStorageStatus,
+    RagHealthState,
     RagStrategy,
 )
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
+from app.retrieval.application.embedding_provider import EmbeddingProvider
 from app.shared.exceptions import NotFoundError, ValidationError
 from app.shared.infrastructure.database import Database
 
@@ -40,6 +42,35 @@ Continue implementing Alexandria context recall.
 
 {extra}
 """
+
+
+class KeywordEmbeddingProvider(EmbeddingProvider):
+    """Deterministic provider that maps test keywords to stable vectors."""
+
+    @property
+    def provider_name(self) -> str:
+        return "KEYWORD_TEST"
+
+    @property
+    def model_name(self) -> str:
+        return "keyword-test-model"
+
+    @property
+    def dimensions(self) -> int:
+        return 3
+
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        return [self._embed(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed(text)
+
+    def _embed(self, text: str) -> list[float]:
+        if "semantic-target" in text or "query-alias" in text:
+            return [1.0, 0.0, 0.0]
+        if "distractor" in text:
+            return [0.0, 1.0, 0.0]
+        return [0.0, 0.0, 1.0]
 
 
 @asynccontextmanager
@@ -230,6 +261,131 @@ sqlite-vec may not load in CI.
         assert pack.matches
         assert any("FTS_ONLY" in warning for warning in pack.warnings)
         assert any("FTS_ONLY" in warning for warning in vector_only_pack.warnings)
+
+    anyio.run(scenario)
+
+
+def test_context_vector_search_returns_semantic_match_when_enabled(
+    tmp_path: Path,
+) -> None:
+    """Vector retrieval should use stored embeddings when vector dependencies are healthy."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "rag-vector.db") as database,
+            database.session() as session,
+        ):
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                embedding_provider=KeywordEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            target = await service.save(
+                kind=ContextKind.RESEARCH,
+                title="Semantic target",
+                summary="Embedding-only context.",
+                content="""# Semantic target
+
+## Summary
+Embedding-only context.
+
+## Evidence
+semantic-target carries vector meaning only.
+""",
+            )
+            await service.save(
+                kind=ContextKind.RESEARCH,
+                title="Distractor",
+                summary="Different embedding.",
+                content="""# Distractor
+
+## Summary
+Different embedding.
+
+## Evidence
+distractor should rank behind the semantic target.
+""",
+            )
+            await session.commit()
+
+            health = service.rag_health()
+            vector_pack = await service.search(
+                query="query-alias",
+                strategy=RagStrategy.VECTOR_ONLY,
+                limit=1,
+            )
+            hybrid_pack = await service.search(
+                query="query-alias",
+                strategy=RagStrategy.HYBRID,
+                limit=1,
+            )
+
+        assert health.vector is RagHealthState.HEALTHY
+        assert health.embedding is RagHealthState.HEALTHY
+        assert health.default_strategy is RagStrategy.HYBRID
+        assert vector_pack.effective_strategy is RagStrategy.VECTOR_ONLY
+        assert hybrid_pack.effective_strategy is RagStrategy.HYBRID
+        assert [match.context.id for match in vector_pack.matches] == [target.id]
+        assert vector_pack.matches[0].fts_score is None
+        assert vector_pack.matches[0].vector_score is not None
+        assert vector_pack.matches[0].score == vector_pack.matches[0].vector_score
+        assert [match.context.id for match in hybrid_pack.matches] == [target.id]
+        assert hybrid_pack.matches[0].vector_score is not None
+
+    anyio.run(scenario)
+
+
+def test_context_reindex_backfills_existing_chunks_for_vector_search(
+    tmp_path: Path,
+) -> None:
+    """Reindex should make pre-vector contexts searchable by embedding."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "rag-reindex.db") as database,
+            database.session() as session,
+        ):
+            repository = SqlAlchemyContextRepository(session=session)
+            disabled_service = ContextService(repository=repository)
+            target = await disabled_service.save(
+                kind=ContextKind.RESEARCH,
+                title="Old semantic target",
+                summary="Saved before vector embedding existed.",
+                content="""# Old semantic target
+
+## Summary
+Saved before vector embedding existed.
+
+## Evidence
+semantic-target was stored without an embedding.
+""",
+            )
+            await session.commit()
+
+            vector_service = ContextService(
+                repository=repository,
+                embedding_provider=KeywordEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            before = await vector_service.search(
+                query="query-alias",
+                strategy=RagStrategy.VECTOR_ONLY,
+                limit=1,
+            )
+            result = await vector_service.reindex_embeddings(limit=10)
+            after = await vector_service.search(
+                query="query-alias",
+                strategy=RagStrategy.VECTOR_ONLY,
+                limit=1,
+            )
+
+        assert before.matches == []
+        assert result.scanned >= 1
+        assert result.updated >= 1
+        assert result.skipped == 0
+        assert result.warnings == []
+        assert [match.context.id for match in after.matches] == [target.id]
+        assert after.matches[0].vector_score is not None
 
     anyio.run(scenario)
 

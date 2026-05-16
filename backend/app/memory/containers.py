@@ -6,6 +6,8 @@ from app.memory.application.context_service import ContextService
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
+from app.platform.config.app_config import AppConfig
+from app.retrieval.application.embedding_factory import create_embedding_provider
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,5 +16,19 @@ class MemoryContainer(containers.DeclarativeContainer):
     """Container for scoped memory/context-vault components."""
 
     db_session = providers.Dependency(instance_of=AsyncSession)
+    app_config = providers.Dependency(instance_of=AppConfig)
+    embedding_provider = providers.Factory(
+        create_embedding_provider,
+        vector_enabled=app_config.provided.rag_vector_enabled,
+        provider_name=app_config.provided.rag_embedding_provider,
+        model_name=app_config.provided.rag_embedding_model,
+        dimensions=app_config.provided.rag_embedding_dimensions,
+        cache_dir=app_config.provided.rag_embedding_cache_dir,
+    )
     context_repo = providers.Factory(SqlAlchemyContextRepository, session=db_session)
-    context_service = providers.Factory(ContextService, repository=context_repo)
+    context_service = providers.Factory(
+        ContextService,
+        repository=context_repo,
+        embedding_provider=embedding_provider,
+        vector_retrieval_enabled=app_config.provided.rag_vector_enabled,
+    )

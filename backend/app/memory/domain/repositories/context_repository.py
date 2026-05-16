@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 from app.memory.domain.contracts.context_contracts import (
     ContextChunkCreate,
+    ContextChunkEmbeddingUpdate,
     ContextCreate,
 )
 from app.memory.domain.entities.context_read_models import (
@@ -146,4 +147,72 @@ class IContextRepository(ABC):
 
         Returns:
             Ranked context matches.
+        """
+
+    @abstractmethod
+    async def search_vector(
+        self,
+        *,
+        query_embedding: list[float],
+        model_name: str,
+        dimensions: int,
+        limit: int,
+        project: str | None = None,
+        kind: ContextKind | None = None,
+        include_scopes: list[ContextScope] | None = None,
+        workspace_id: str | None = None,
+        agent_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[ContextSearchMatch]:
+        """Search context chunks with stored embeddings.
+
+        Args:
+            query_embedding: Query embedding vector.
+            model_name: Embedding model that produced the query vector.
+            dimensions: Expected embedding dimensions.
+            limit: Maximum returned matches.
+            project: Optional project filter.
+            kind: Optional context kind filter.
+            include_scopes: Optional recall scope filter.
+            workspace_id: Optional workspace filter.
+            agent_id: Optional agent filter.
+            user_id: Optional user filter.
+            session_id: Optional session filter.
+
+        Returns:
+            Ranked vector matches.
+        """
+
+    @abstractmethod
+    async def chunks_missing_embeddings(
+        self,
+        *,
+        model_name: str,
+        dimensions: int,
+        limit: int,
+    ) -> list[ContextChunkRecord]:
+        """Return chunks that need embedding backfill.
+
+        Args:
+            model_name: Current embedding model name.
+            dimensions: Current embedding dimensions.
+            limit: Maximum chunks to scan.
+
+        Returns:
+            Chunks missing current embedding metadata.
+        """
+
+    @abstractmethod
+    async def update_chunk_embeddings(
+        self,
+        updates: list[ContextChunkEmbeddingUpdate],
+    ) -> int:
+        """Persist context chunk embedding updates.
+
+        Args:
+            updates: Embedding updates keyed by chunk identifier.
+
+        Returns:
+            Number of chunks updated.
         """

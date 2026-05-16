@@ -11,6 +11,7 @@ from app.memory.interface.schemas.context.context_mapping import (
     health_payload,
     lint_payload,
     pack_payload,
+    reindex_payload,
 )
 from app.memory.interface.schemas.context.context_metadata_mapping import (
     metadata_payload,
@@ -23,6 +24,7 @@ from app.memory.interface.schemas.context.context_schema import (
     ContextListResponse,
     ContextPackResponse,
     ContextPrepareCompactRequest,
+    ContextReindexResponse,
     ContextResponse,
     ContextSaveRequest,
     ContextSearchRequest,
@@ -335,6 +337,35 @@ async def rag_status(
         RAG health response.
     """
     response = RagStatusResponse.model_validate(health_payload(service.rag_health()))
+    return response
+
+
+@router.post(
+    "/retrieval/reindex",
+    response_model=ContextReindexResponse,
+    status_code=status.HTTP_200_OK,
+    description="Backfill embeddings for existing Context Vault chunks.",
+    summary="Reindex context embeddings",
+)
+@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def reindex_context_embeddings(
+    limit: int = Query(default=100, ge=1, le=1000),
+    service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
+) -> ContextReindexResponse:
+    """Backfill embeddings for stored contexts.
+
+    Args:
+        limit: Maximum chunks to reindex in this batch.
+        service: Context application service.
+
+    Returns:
+        Reindex result response.
+    """
+    result = await service.reindex_embeddings(limit=limit)
+    response = ContextReindexResponse.model_validate(reindex_payload(result))
     return response
 
 

@@ -456,15 +456,15 @@ Hermes upstream은 Codex OAuth를 provider 기본값으로 처리한다. Alexand
 
 절차:
 
-1. repo root `.env`에 아래 값이 있는지 확인한다.
+1. repo root `.env`에는 operator key만 있으면 된다. Codex OAuth public
+   metadata는 Hermes처럼 backend 코드 기본값으로 제공된다.
 
    ```bash
    SERVICE_OPERATOR_API_KEY=<generate-a-local-operator-key>
-   SERVICE_CODEX_OAUTH_ISSUER=https://auth.openai.com
-   SERVICE_CODEX_OAUTH_CLIENT_ID=app_EMoamEEZ73f0CkXaXp7hrann
-   SERVICE_CODEX_OAUTH_DEVICE_EXPIRES_IN_SECONDS=900
-   SERVICE_CODEX_OAUTH_MIN_POLL_INTERVAL_SECONDS=3
    ```
+
+   특별한 배포에서만 `SERVICE_CODEX_OAUTH_*`를 local override로 설정한다.
+   access token / refresh token은 `.env`에 두지 않는다.
 
 2. backend와 frontend를 실행한다.
 3. 브라우저에서 `http://localhost:3000/settings/librarians`를 연다.
@@ -559,7 +559,20 @@ hermes gateway restart
 
 ### RAG status가 vector disabled / embedding degraded로 보임
 
-아래 상태는 MVP 기준 실패가 아니다.
+현재 기본 설정은 local FastEmbed + sqlite-vec vector retrieval을 켠다. 정상 상태는
+아래처럼 `HYBRID`가 기본 전략으로 보여야 한다.
+
+```json
+{
+  "fts": "HEALTHY",
+  "vector": "HEALTHY",
+  "embedding": "HEALTHY",
+  "default_strategy": "HYBRID"
+}
+```
+
+아래 상태가 보이면 vector 설정이 꺼졌거나 embedding provider가 주입되지 않은
+것이다.
 
 ```json
 {
@@ -570,8 +583,12 @@ hermes gateway restart
 }
 ```
 
-이는 SQLite FTS 검색은 정상이고 vector recall만 비활성화된 상태다.
-이 경우 `strategy: FTS_ONLY`로 smoke test를 진행한다.
+이 경우 SQLite FTS 검색은 정상이고 vector recall만 비활성화된 상태다.
+`SERVICE_RAG_VECTOR_ENABLED=true`,
+`SERVICE_RAG_EMBEDDING_PROVIDER=fastembed`,
+`SERVICE_RAG_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+설정을 확인한 뒤 backend를 재시작한다. 기존 DB는 `uv run alembic upgrade head`
+로 embedding 컬럼 migration을 적용해야 한다.
 
 ### self-acquisition 제출은 됐지만 harness가 `NEEDS_REVIEW`
 

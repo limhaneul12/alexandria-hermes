@@ -10,7 +10,6 @@ from app.cli_support.contracts.command_contracts import (
     ContextMemoryMapCommand,
     ContextRecallCommand,
     ContextSaveCommand,
-    NoArgsCommand,
 )
 from app.cli_support.contracts.request_mappers import (
     content_or_file,
@@ -287,23 +286,19 @@ def _curation_candidates(payload: JSONValue) -> list[JSONValue]:
 
 
 def handle_context_reindex(
-    command: NoArgsCommand,
     context: CommandContext,
+    client: CliBackendApiClient,
 ) -> int:
     """Run the context reindex CLI command.
 
     Args:
-        command: Typed CLI command contract for the operation.
         context: CLI runtime context with output settings.
+        client: Backend API client used for HTTP requests.
 
     Returns:
         Process-style exit code.
     """
-    result = UnsupportedContextOperationResult(
-        status=LocalContextCommandStatus.NOT_AVAILABLE,
-        reason="Context FTS rows are synchronized on save/archive in this MVP.",
-    )
-    payload = schema_payload(result, exclude_none=True)
+    payload = client.post("/memory/contexts/retrieval/reindex", {})
     print_context_payload(payload, context)
     return 0
 

@@ -820,6 +820,35 @@ def test_cli_context_save_defaults_to_agent_source_type(tmp_path) -> None:
     assert request_body["source_type"] == "AGENT"
 
 
+def test_cli_context_reindex_calls_backend_embedding_reindex() -> None:
+    """Context reindex should call the backend embedding backfill endpoint."""
+    calls: list[RecordedCall] = []
+
+    def fake_transport(
+        method: str,
+        url: str,
+        body: bytes | None,
+        headers: HttpHeaders,
+        timeout: float,
+    ) -> tuple[int, bytes]:
+        calls.append((method, url, body, headers, timeout))
+        return 200, json.dumps({"scanned": 2, "updated": 2, "skipped": 0}).encode()
+
+    stdout = io.StringIO()
+
+    exit_code = run(
+        ["--json", "context", "reindex"],
+        transport=fake_transport,
+        stdout=stdout,
+    )
+
+    assert exit_code == 0
+    assert calls[0][0] == "POST"
+    assert calls[0][1] == "http://localhost:8000/memory/contexts/retrieval/reindex"
+    assert json.loads(calls[0][2] or b"{}") == {}
+    assert json.loads(stdout.getvalue())["updated"] == 2
+
+
 def test_cli_reports_rag_status_and_context_chunks_as_json() -> None:
     """RAG status and chunk inspection remain machine-readable for agents."""
     calls: list[RecordedCall] = []

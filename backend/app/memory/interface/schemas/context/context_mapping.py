@@ -7,6 +7,7 @@ from app.memory.domain.entities.context_read_models import (
     ContextChunkRecord,
     ContextPack,
     ContextRecord,
+    ContextReindexResult,
     ContextSearchMatch,
     RagDependencyHealth,
 )
@@ -15,6 +16,7 @@ from app.memory.domain.types.context_payload_types import (
     ContextLintPayload,
     ContextPackPayload,
     ContextPayload,
+    ContextReindexPayload,
     ContextSearchMatchPayload,
     RagHealthPayload,
 )
@@ -169,4 +171,22 @@ def health_payload(health: RagDependencyHealth) -> RagHealthPayload:
         "dimensions": health.dimensions,
         "warnings": health.warnings,
     }
+    return payload
+
+
+def reindex_payload(result: ContextReindexResult) -> ContextReindexPayload:
+    """Return an API payload for context embedding reindex results.
+
+    Args:
+        result: Reindex result read model.
+
+    Returns:
+        Typed response payload for reindex results.
+    """
+    payload = ContextReindexPayload(
+        scanned=result.scanned,
+        updated=result.updated,
+        skipped=result.skipped,
+        warnings=result.warnings,
+    )
     return payload

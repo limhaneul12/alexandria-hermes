@@ -12,7 +12,6 @@ from app.cli_support.contracts.command_contracts import (
     ContextMetadataCommand,
     ContextRecallCommand,
     ContextSaveCommand,
-    NoArgsCommand,
 )
 from app.cli_support.handlers.context import (
     handle_context_chunks,
@@ -488,7 +487,7 @@ def context_embed(ctx: typer.Context, context_id: str) -> None:
 
 @context_app.command("reindex")
 def context_reindex(ctx: typer.Context) -> None:
-    """Report context reindex support.
+    """Backfill context chunk embeddings.
 
     Args:
         ctx: Typer context.
@@ -496,7 +495,7 @@ def context_reindex(ctx: typer.Context) -> None:
     Returns:
         None.
     """
-    run_local(ctx, NoArgsCommand(), handle_context_reindex)
+    run_context(ctx, handle_context_reindex)
 
 
 @context_app.command("doctor-rag")

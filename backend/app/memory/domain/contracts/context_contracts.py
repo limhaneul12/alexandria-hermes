@@ -56,4 +56,17 @@ class ContextChunkCreate:
     token_count: int
     content_hash: str
     chunk_metadata: ContextMetadataPayload
+    embedding: str | None
+    embedding_model: str | None
+    embedding_dimensions: int | None
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ContextChunkEmbeddingUpdate:
+    """Fields required to update one context chunk embedding."""
+
+    chunk_id: str
+    embedding: str
+    embedding_model: str
+    embedding_dimensions: int

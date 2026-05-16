@@ -340,15 +340,14 @@ Common local values:
 SERVICE_APP_ENV=local
 SERVICE_APP_NAME=alexandria-hermes
 SERVICE_OPERATOR_API_KEY=<generate-a-local-operator-key>
-SERVICE_CODEX_OAUTH_ISSUER=https://auth.openai.com
-SERVICE_CODEX_OAUTH_CLIENT_ID=app_EMoamEEZ73f0CkXaXp7hrann
-SERVICE_CODEX_OAUTH_DEVICE_EXPIRES_IN_SECONDS=900
-SERVICE_CODEX_OAUTH_MIN_POLL_INTERVAL_SECONDS=3
 ```
 
-Provider credentials should stay in local environment/config paths only. Do not commit secrets.
-Codex OAuth protocol paths and grant types are intentionally code-locked; only
-issuer, public client id, and timing knobs are configured through `.env`.
+Codex OAuth follows Hermes Agent's default model: public OpenAI Codex OAuth
+metadata is code-owned by the backend, and `.env` is only for local secrets or
+explicit operator overrides. Access tokens and refresh tokens are stored only in
+backend provider secrets, never in browser state or public config examples.
+If an operator must override the Hermes-compatible defaults for a deployment,
+set the `SERVICE_CODEX_OAUTH_*` variables locally without committing them.
 Sensitive provider/settings routes require `X-Alexandria-Operator-Key`; the
 Next.js server proxy forwards it from `ALEXANDRIA_OPERATOR_API_KEY`, and
 `docker-compose.yml` maps that value from `SERVICE_OPERATOR_API_KEY`.
