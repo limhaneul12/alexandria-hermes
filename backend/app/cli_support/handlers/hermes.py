@@ -10,6 +10,7 @@ from app.cli_support.contracts.command_contracts import (
     HermesDoctorCommand,
     HermesInstallCommand,
     HermesOnboardCommand,
+    HermesPolicyCommand,
     HermesScanCommand,
     HermesSyncCommand,
 )
@@ -26,6 +27,7 @@ from app.cli_support.hermes.integration_files import (
     build_mcp_configuration,
     install_hermes_bundle,
 )
+from app.cli_support.hermes.policy_files import read_policy, write_policy
 from app.cli_support.presentation.output_renderers import print_hermes_payload
 from app.cli_support.schemas.hermes_integration_schemas import (
     HermesConfigurationResult,
@@ -226,6 +228,11 @@ def handle_hermes_doctor(
                 if (home / "alexandria-hermes" / "mcp-config.json").exists()
                 else "FAIL"
             ),
+            "policy_file": (
+                "OK"
+                if (home / "alexandria-hermes" / "policy.yaml").exists()
+                else "FAIL"
+            ),
             "hermes_native_mcp_servers_alexandria": "CHECK_MANUALLY",
             "hermes_mcp_test_alexandria": "CHECK_MANUALLY",
             "tool_discovery_count": "CHECK_MANUALLY",
@@ -242,6 +249,7 @@ def handle_hermes_doctor(
             home / "skills" / "alexandria-hermes" / "alexandria-library" / "SKILL.md"
         ).exists(),
         mcp_config_installed=(home / "alexandria-hermes" / "mcp-config.json").exists(),
+        policy_installed=(home / "alexandria-hermes" / "policy.yaml").exists(),
         config_path=str(hermes_config_path()),
         mcp_config=build_mcp_configuration(
             hermes_home=home,
@@ -251,6 +259,31 @@ def handle_hermes_doctor(
         deep=command.deep,
         checks=checks,
         restart_needed=restart_needed,
+    )
+    payload = schema_payload(result, by_alias=True)
+    print_hermes_payload(payload, context)
+    return 0
+
+
+def handle_hermes_policy(
+    command: HermesPolicyCommand,
+    context: CommandContext,
+) -> int:
+    """Read or update the Hermes Alexandria usage policy.
+
+    Args:
+        command: CLI command contract with optional enabled state.
+        context: Runtime context containing output streams.
+
+    Returns:
+        Process-style exit code.
+    """
+    resolved = resolve_hermes_home(command.hermes_home, require_source=False)
+    validate_hermes_home(resolved.path)
+    result = (
+        read_policy(resolved.path)
+        if command.enabled is None
+        else write_policy(resolved.path, enabled=command.enabled)
     )
     payload = schema_payload(result, by_alias=True)
     print_hermes_payload(payload, context)

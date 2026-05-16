@@ -9,6 +9,7 @@ from app.cli_support.contracts.command_contracts import (
     HermesDoctorCommand,
     HermesInstallCommand,
     HermesOnboardCommand,
+    HermesPolicyCommand,
     HermesScanCommand,
     HermesSyncCommand,
 )
@@ -19,12 +20,14 @@ from app.cli_support.handlers.hermes import (
     handle_hermes_install_mcp,
     handle_hermes_install_prompts,
     handle_hermes_onboard,
+    handle_hermes_policy,
     handle_hermes_scan,
     handle_hermes_sync,
 )
 from app.cli_support.typer_commands.typer_runtime import run_local
 
 hermes_app = typer.Typer(help="Install Alexandria-Hermes assets into Hermes")
+policy_app = typer.Typer(help="Manage Hermes Alexandria usage policy")
 
 
 def _bundle_command(
@@ -315,6 +318,72 @@ def hermes_doctor(
         ),
         handle_hermes_doctor,
     )
+
+
+@policy_app.command("status")
+def hermes_policy_status(
+    ctx: typer.Context,
+    hermes_home: str | None = typer.Option(None, "--hermes-home"),
+) -> None:
+    """Show whether Hermes should use Alexandria-Hermes.
+
+    Args:
+        ctx: Typer context.
+        hermes_home: Optional Hermes home path.
+
+    Returns:
+        None.
+    """
+    run_local(
+        ctx,
+        HermesPolicyCommand(hermes_home=hermes_home, enabled=None),
+        handle_hermes_policy,
+    )
+
+
+@policy_app.command("enable")
+def hermes_policy_enable(
+    ctx: typer.Context,
+    hermes_home: str | None = typer.Option(None, "--hermes-home"),
+) -> None:
+    """Enable Hermes Alexandria-Hermes usage.
+
+    Args:
+        ctx: Typer context.
+        hermes_home: Optional Hermes home path.
+
+    Returns:
+        None.
+    """
+    run_local(
+        ctx,
+        HermesPolicyCommand(hermes_home=hermes_home, enabled=True),
+        handle_hermes_policy,
+    )
+
+
+@policy_app.command("disable")
+def hermes_policy_disable(
+    ctx: typer.Context,
+    hermes_home: str | None = typer.Option(None, "--hermes-home"),
+) -> None:
+    """Disable Hermes Alexandria-Hermes usage.
+
+    Args:
+        ctx: Typer context.
+        hermes_home: Optional Hermes home path.
+
+    Returns:
+        None.
+    """
+    run_local(
+        ctx,
+        HermesPolicyCommand(hermes_home=hermes_home, enabled=False),
+        handle_hermes_policy,
+    )
+
+
+hermes_app.add_typer(policy_app, name="policy")
 
 
 @hermes_app.command("scan")

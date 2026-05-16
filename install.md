@@ -4,19 +4,49 @@
 
 이 문서는 Hermes에게 그대로 전달할 수 있는 Alexandria-Hermes 설치/적용 프롬프트다.
 목표는 Hermes runtime이 Alexandria-Hermes를 **CLI와 native MCP tool**로 사용할 수 있게 만들고,
-사서(librarian) 없이 self-acquisition 흐름을 검증하는 것이다.
+처음 설치한 사용자도 Hermes가 기본적으로 Alexandria를 활용하되 원하면 명확히 끌 수 있게 하는 것이다.
 
 핵심 주의점:
 
+- `alexandria-hermes hermes onboard`는 `~/.hermes/alexandria-hermes/policy.yaml`을 함께 설치한다.
+  이 policy contract의 기본값은 `enabled: true`다.
+- 사용자가 원치 않으면 `alexandria-hermes hermes policy disable`로 끄고,
+  다시 쓰려면 `alexandria-hermes hermes policy enable`로 켠다.
+- 사서(librarian)는 협업/품질 보조자이지 필수 실행 경로가 아니다. 사서가 없어도 Hermes는
+  local skill → Alexandria search/recall → Hermes self-acquisition → candidate 제출 흐름을 직접 수행할 수 있어야 한다.
 - `alexandria-hermes hermes onboard --install-mcp`가 만드는
   `~/.hermes/alexandria-hermes/mcp-config.json`은 **설치 산출물/snippet**이다.
 - Hermes Agent가 실제로 MCP 서버를 자동 발견하려면 `~/.hermes/config.yaml`의
   `mcp_servers.alexandria`에 merge되어 있어야 한다.
 - MCP tool discovery는 Hermes/Gateway 시작 시점에 일어난다. 설정 후에는 새 세션 또는 Gateway 재시작이 필요하다.
-- 이번 테스트에서는 `alexandria_ask_librarian`, librarian OAuth/job 계열 tool을 호출하지 않는다.
+- 테스트나 사용자가 금지한 상황에서는 `alexandria_ask_librarian`, librarian OAuth/job 계열 tool을 호출하지 않는다.
 - ChatGPT/Codex OAuth provider가 필요하면 endpoint/client id를 수동 입력하지 않는다. Alexandria UI의 Settings → Librarians → `ChatGPT / Codex OAuth 시작`이 Hermes-compatible 기본값으로 browser authorization을 시작한다.
-- repo root `.env`에는 Codex OAuth runtime 설정이 있어야 한다. protocol path/grant type은 코드에 고정하고, `.env`에는 issuer/client id/timing만 둔다.
+- repo root `.env`에는 operator key만 있으면 된다. Codex OAuth public metadata는 Hermes처럼 backend 코드 기본값으로 제공되고, `SERVICE_CODEX_OAUTH_*`는 특수 배포 override 용도다.
 - provider/settings API는 operator key가 필요하다. Docker Compose는 repo root `.env`의 `SERVICE_OPERATOR_API_KEY`를 backend와 frontend server proxy에 전달한다.
+
+---
+
+## 사용법 가이드북
+
+기능별 사용 예제는 아래 가이드북에 분리했다.
+
+```text
+docs/usage_guidebook/
+```
+
+파일 규칙은 다음과 같다.
+
+```text
+docs/usage_guidebook/<기능폴더>/<기능>_guide_<number>.md
+```
+
+현재 포함된 가이드:
+
+- [Install/Onboard](docs/usage_guidebook/install_onboard/install_onboard_guide_01.md)
+- [Hermes Policy ON/OFF](docs/usage_guidebook/hermes_policy/hermes_policy_guide_01.md)
+- [MCP Runtime](docs/usage_guidebook/mcp_runtime/mcp_runtime_guide_01.md)
+- [Self-Acquisition](docs/usage_guidebook/self_acquisition/self_acquisition_guide_01.md)
+- [Librarian Collaboration](docs/usage_guidebook/librarian_collaboration/librarian_collaboration_guide_01.md)
 
 ---
 
@@ -35,6 +65,73 @@ Alexandria-Hermes를 Hermes가 제대로 쓰려면 **세 가지가 모두 필요
 
 `~/.hermes/alexandria-hermes/mcp-config.json`만 생성되면 아직 끝난 것이 아니다.
 이 파일은 snippet이고, 실제 runtime tool 노출은 `~/.hermes/config.yaml`의 `mcp_servers`가 담당한다.
+
+### 0-1-a. `policy.yaml` contract
+
+`alexandria-hermes hermes onboard`는 아래 위치에 usage policy를 설치한다.
+
+```text
+~/.hermes/alexandria-hermes/policy.yaml
+```
+
+기본 contract는 **ON**이다.
+
+```yaml
+enabled: true
+mode: autonomous
+
+read:
+  search_library: true
+  recall_context: true
+  get_skill: true
+  get_prompt: true
+
+write:
+  auto_capture_context: true
+  auto_submit_skill_candidates: true
+  auto_capture_prompt_candidates: true
+  default_state: DRAFT
+  allow_active_without_review: false
+
+self_acquisition:
+  enabled: true
+  hermes_can_research_directly: true
+  self_acquisition_enabled: true
+
+librarian:
+  enabled: true
+  optional: true
+  hermes_self_acquisition_fallback: true
+  delegate_when_busy: true
+  delegate_when_self_acquisition_cost_high: true
+  require_explicit_user_request_for_librarian: false
+
+safety:
+  secret_lint_required: true
+  reject_raw_secrets: true
+  redact_before_store: true
+  store_full_conversation: false
+  store_temporary_todos: false
+
+user_interruption:
+  ask_before_routine_curation: false
+  report_saved_assets_in_final_summary: true
+```
+
+해석 규칙:
+
+- `enabled: true`면 Hermes는 필요한 순간 Alexandria를 기본 사용한다.
+- `enabled: false`면 Hermes는 status/diagnostics 또는 사용자의 명시 요청 외에는 Alexandria tool/CLI를 사용하지 않는다.
+- 사서는 optional이다. 사서 provider/profile이 없거나 쓰기 부적절해도 Hermes는 직접 조사하고 skill/prompt/context candidate를 DRAFT/PENDING_REVIEW로 제출할 수 있어야 한다.
+- 전체 off는 CLI policy로 관리하고, “이번 작업에서만 쓰지 마” 같은 지시는 현재 세션/task 한정 instruction으로 처리한다.
+
+CLI toggle:
+
+```bash
+alexandria-hermes --json hermes policy status --hermes-home "$HERMES_HOME"
+alexandria-hermes --json hermes policy disable --hermes-home "$HERMES_HOME"
+alexandria-hermes --json hermes policy enable --hermes-home "$HERMES_HOME"
+```
 
 ### 0-2. 처음 설치 직후 실행할 명령
 
@@ -83,23 +180,23 @@ hermes mcp test alexandria
 
 설정 후에는 Hermes CLI/Gateway/Discord 세션을 새로 시작한다. MCP tool discovery는 세션 시작 시점에 일어난다.
 
-### 0-3. 처음 사용자에게 권장하는 첫 대화 프롬프트
+### 0-3. 선택 사항: 설치 후 확인 프롬프트
 
-설치와 재시작이 끝난 뒤 Hermes에게 아래처럼 말하면 된다.
+설치와 재시작이 끝나면 policy 기본값이 ON이라 Hermes는 별도 주문 없이도 Alexandria를 사용할 수 있어야 한다.
+아래 프롬프트는 필수 설정이 아니라 확인용이다.
 
 ```text
 Alexandria-Hermes가 설치되어 있습니다.
-처음 작업을 시작하기 전에 다음 운영 규칙을 적용하세요.
+`~/.hermes/alexandria-hermes/policy.yaml`을 usage policy로 취급하세요.
 
-1. 개발/분석/문서 작업을 시작할 때 이전 결정·버그·handoff가 필요해 보이면 Alexandria context recall/search를 먼저 확인하세요.
-2. 필요한 skill/prompt가 있으면 local Hermes skill을 먼저 보고, 부족하면 Alexandria에서 검색하세요.
-3. 없으면 직접 조사해서 reusable skill candidate를 만들고 Alexandria에 제출하세요.
-4. 작업 중 “이건 저장할 만하다” 싶은 결정, 버그 원인, 워크플로, 프롬프트는 Alexandria context/prompt asset으로 저장하거나 저장을 제안하세요.
-5. raw secret/API token/전체 대화 로그/단순 진행상황은 저장하지 마세요.
-6. librarian tool은 제가 명시적으로 요청할 때만 사용하세요.
+1. policy가 `enabled: true`이면 필요한 순간 Alexandria context recall/search와 skill/prompt search를 사용하세요.
+2. policy가 `enabled: false`이면 status/diagnostics 또는 제가 명시 요청한 경우 외에는 Alexandria를 사용하지 마세요.
+3. 필요한 skill/prompt가 local Hermes에 없거나 약하면 Alexandria에서 검색하세요.
+4. Alexandria에도 없으면 사서가 없어도 직접 조사해서 reusable skill/prompt/context candidate를 DRAFT/PENDING_REVIEW로 제출하세요.
+5. 사서는 optional 협업자입니다. 사서가 없거나 부적절하면 Hermes self-acquisition으로 계속하세요.
+6. raw secret/API token/전체 대화 로그/단순 진행상황은 저장하지 마세요.
 
-가능하면 `~/.hermes/alexandria-hermes/prompts/alexandria-operating-loop.md`의 운영 루프를 기준으로 행동하세요.
-먼저 Alexandria RAG status와 MCP tool 사용 가능 여부만 확인해 주세요.
+먼저 policy status, Alexandria RAG status, MCP tool 사용 가능 여부만 확인해 주세요.
 ```
 
 ### 0-4. “바로 사용 가능” 성공 기준
@@ -107,7 +204,8 @@ Alexandria-Hermes가 설치되어 있습니다.
 처음 설치가 제대로 끝나면 아래가 모두 성립해야 한다.
 
 - `alexandria-hermes --json health`가 `{"status":"ok"}`를 반환한다.
-- `alexandria-hermes hermes doctor ...`에서 `skill_installed`, `mcp_config_installed`가 true다.
+- `alexandria-hermes hermes doctor ...`에서 `skill_installed`, `mcp_config_installed`, `policy_installed`가 true다.
+- `alexandria-hermes hermes policy status ...`가 `enabled: true`를 반환한다.
 - `hermes mcp test alexandria`가 `Connected`와 tools discovered를 보여준다.
 - 새 Hermes 세션에서 `mcp_alexandria_alexandria_search`, `mcp_alexandria_alexandria_recall_context`, `mcp_alexandria_alexandria_submit_skill_candidate` 같은 tool이 보인다.
 - `~/.hermes/alexandria-hermes/prompts/alexandria-operating-loop.md`가 존재한다.
@@ -126,10 +224,12 @@ Alexandria-Hermes가 설치되어 있습니다.
 - Hermes home에 Alexandria-Hermes prompt/skill/MCP snippet을 설치한다.
 - Hermes native MCP config에 Alexandria MCP 서버를 등록한다.
 - Hermes가 다음 세션부터 Alexandria MCP tools를 직접 사용할 수 있게 만든다.
-- 사서는 사용하지 않는다. librarian/provider delegation은 이번 테스트에서 금지한다.
+- `~/.hermes/alexandria-hermes/policy.yaml`을 default ON usage contract로 설치하고 CLI on/off가 동작하는지 확인한다.
+- 사서는 optional이다. provider/profile이 없거나 이번 작업에서 불필요하면 Hermes self-acquisition으로 계속 가능해야 한다.
 
 금지/주의:
-- 사용자가 명시하지 않는 한 `alexandria_ask_librarian`, `alexandria_librarian_*` tool을 호출하지 않는다.
+- 사용자가 명시적으로 금지하거나 policy가 `enabled: false`이면 Alexandria search/recall/write/librarian tool을 호출하지 않는다.
+- 사서가 필수라고 가정하지 않는다. librarian/provider delegation은 품질 보조/위임 경로일 뿐이다.
 - npm supply-chain hold가 걸린 환경에서는 `npm install`, `npm uninstall`, `npx`를 실행하지 않는다.
 - 기존 `~/.hermes/config.yaml`을 수정하기 전에는 timestamp backup을 만든다.
 - repo의 unrelated 변경사항을 건드리지 않는다.
@@ -196,6 +296,7 @@ hermes mcp list || true
 
 planned files에 최소한 아래가 있어야 한다.
 
+- `alexandria-hermes/policy.yaml`
 - `skills/alexandria-hermes/alexandria-library/SKILL.md`
 - `alexandria-hermes/alexandria-rules.md`
 - `alexandria-hermes/prompts/use-alexandria-library.md`
@@ -218,6 +319,22 @@ Dry-run이 괜찮으면 실제 적용한다.
 ```
 
 기존 파일 때문에 skipped가 나오면, 내용을 확인한 뒤 필요할 때만 overwrite한다.
+특히 `policy.yaml`이 skipped되면 기존 사용자 on/off 선택을 보존했다는 뜻이다.
+
+정책 상태를 확인한다.
+
+```bash
+"$ALEXANDRIA_CLI" --json hermes policy status --hermes-home "$HERMES_HOME"
+```
+
+끄거나 다시 켜야 하면 아래를 사용한다.
+
+```bash
+"$ALEXANDRIA_CLI" --json hermes policy disable --hermes-home "$HERMES_HOME"
+"$ALEXANDRIA_CLI" --json hermes policy enable --hermes-home "$HERMES_HOME"
+```
+
+필요하면 overwrite로 다시 적용한다. overwrite는 기존 policy 선택도 덮어쓰므로 주의한다.
 
 ```bash
 "$ALEXANDRIA_CLI" --json hermes onboard \
@@ -245,6 +362,7 @@ Dry-run이 괜찮으면 실제 적용한다.
 - `alexandria_dir`
 - `skill_installed`
 - `mcp_config_installed`
+- `policy_installed`
 
 생성된 MCP snippet도 확인한다.
 
@@ -364,13 +482,17 @@ hermes gateway restart
 
 운영 정책:
 
+0. 먼저 `~/.hermes/alexandria-hermes/policy.yaml`을 usage contract로 취급한다.
+   - `enabled: true`: 필요한 순간 Alexandria를 기본 사용한다.
+   - `enabled: false`: status/diagnostics 또는 명시 요청 외에는 Alexandria를 사용하지 않는다.
+   - 전체 on/off는 `alexandria-hermes hermes policy enable|disable`로 관리한다.
 1. local/built-in skill을 먼저 확인한다.
 2. 없거나 부족하면 Alexandria에서 `alexandria_search` 또는 `alexandria_recall_context`를 사용한다.
 3. 적절한 항목이 없으면 Hermes가 직접 조사해 reusable skill candidate를 작성한다.
 4. `alexandria_submit_skill_candidate`로 candidate를 제출한다.
 5. evidence URL과 source summary를 반드시 포함한다.
 6. candidate id와 harness status를 보고한다.
-7. 사용자가 명시적으로 요청하지 않는 한 librarian delegation은 하지 않는다.
+7. librarian은 optional 협업자다. 구성되어 있고 비용/품질상 유리하면 협업할 수 있지만, 없어도 Hermes self-acquisition을 중단하지 않는다.
 
 10단계. 최종 보고 형식
 
@@ -382,6 +504,7 @@ hermes gateway restart
 - dry-run planned files:
 - written/skipped files:
 - doctor 결과:
+- policy status:
 - MCP snippet 위치:
 - Hermes native MCP 등록 방식:
 - `hermes mcp test alexandria` 결과:
@@ -433,11 +556,13 @@ pytest fixture cleanup strategy
 Hermes가 정상적으로 설치/적용되면 다음이 가능해야 한다.
 
 1. Hermes가 Alexandria-Hermes MCP server를 인식한다.
-2. `hermes mcp test alexandria`가 연결과 tool discovery를 통과한다.
-3. 새 Hermes 세션에서 Alexandria MCP tools가 `mcp_alexandria_*` 형태로 노출된다.
-4. Hermes가 사서 없이 `alexandria_search` / `alexandria_recall_context`를 사용할 수 있다.
-5. Hermes가 직접 조사한 skill candidate를 `alexandria_submit_skill_candidate`로 제출할 수 있다.
-6. 제출된 candidate details에 아래 정보가 저장된다.
+2. `~/.hermes/alexandria-hermes/policy.yaml`이 존재하고 기본값은 `enabled: true`다.
+3. `alexandria-hermes hermes policy enable|disable|status`로 사람이 Hermes 사용 여부를 전역 on/off 할 수 있다.
+4. `hermes mcp test alexandria`가 연결과 tool discovery를 통과한다.
+5. 새 Hermes 세션에서 Alexandria MCP tools가 `mcp_alexandria_*` 형태로 노출된다.
+6. Hermes가 사서 없이 `alexandria_search` / `alexandria_recall_context`를 사용할 수 있다.
+7. Hermes가 직접 조사한 skill candidate를 `alexandria_submit_skill_candidate`로 제출할 수 있다.
+8. 제출된 candidate details에 아래 정보가 저장된다.
    - `acquisition_method: SELF_ACQUISITION`
    - `evidence_urls`
    - `source_summary`

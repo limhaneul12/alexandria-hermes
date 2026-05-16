@@ -18,6 +18,10 @@ from app.cli_support.hermes.home_resolution import (
     resolve_hermes_home,
     validate_hermes_home,
 )
+from app.cli_support.hermes.policy_files import (
+    POLICY_RELATIVE_PATH,
+    default_policy_yaml,
+)
 from app.cli_support.schemas.hermes_integration_schemas import (
     HermesBundleInstallationResult,
     McpConfiguration,
@@ -149,7 +153,12 @@ def hermes_install_files(
     Returns:
         Planned files to write under the Hermes home directory.
     """
-    files: list[HermesInstallFile] = []
+    files: list[HermesInstallFile] = [
+        HermesInstallFile(
+            relative_path=POLICY_RELATIVE_PATH,
+            content=default_policy_yaml(enabled=True),
+        )
+    ]
     if include_prompts:
         files.extend(hermes_prompt_files())
     if include_mcp:
@@ -188,6 +197,9 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
         "save-context.md": "# Save Context\n\nSave important project memory when a decision, bug root cause, reusable workflow, or handoff appears.\n",
         "use-alexandria-library.md": (
             "# Use Alexandria-Hermes Library\n\n"
+            "0. Read `~/.hermes/alexandria-hermes/policy.yaml`. If "
+            "`enabled: false`, do not use Alexandria except for status/diagnostics "
+            "or an explicit user request.\n"
             "1. Check local Hermes skills first.\n"
             "2. If none fit, call `alexandria_search` for Alexandria-Hermes "
             "skills and prompts.\n"
@@ -224,8 +236,14 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
             relative_path="skills/alexandria-hermes/alexandria-library/SKILL.md",
             content=(
                 "# Alexandria-Hermes Library\n\n"
-                "Use Alexandria-Hermes as a fallback library for skills, prompts, "
-                "Context Vault recall, and skill acquisition requests.\n"
+                "Use Alexandria-Hermes as a default-on but user-controlled "
+                "fallback library for skills, prompts, Context Vault recall, "
+                "and skill acquisition requests. Respect "
+                "`~/.hermes/alexandria-hermes/policy.yaml`: if `enabled: false`, "
+                "do not use Alexandria tools except for status/diagnostics or an "
+                "explicit user request. Librarian collaboration is optional; when no "
+                "librarian is configured or appropriate, Hermes should continue with "
+                "direct self-acquisition and submit draft candidates itself.\n"
             ),
         ),
         HermesInstallFile(
@@ -240,6 +258,9 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
             relative_path="alexandria-hermes/alexandria-rules.md",
             content=(
                 "# Alexandria Rules\n\n"
+                "Respect `~/.hermes/alexandria-hermes/policy.yaml` before using "
+                "Alexandria. The default contract is `enabled: true`; users can "
+                "disable it with `alexandria-hermes hermes policy disable`. "
                 "Prefer local Hermes assets, then Alexandria search, then Hermes "
                 "self-acquisition. If no librarian is available, self-acquisition "
                 "is the default: research, keep evidence URLs, submit a candidate, "
@@ -321,15 +342,17 @@ Use this prompt when Hermes is developing software, continuing a project, notici
 
 ## Core model
 
-Alexandria-Hermes is Hermes's library layer for:
+Alexandria-Hermes is Hermes's default-on but user-controlled library layer for:
 
 - long-term project memory through Context Vault;
 - reusable skills and prompt assets;
 - skill/prompt discovery before recreating work;
 - self-acquisition when a missing reusable capability is found;
-- optional librarian collaboration when the user explicitly asks or review quality needs escalation.
+- optional librarian collaboration when configured and useful; if no librarian is available, Hermes continues by self-acquisition.
 
-Default policy: **local Hermes first, Alexandria second, Hermes self-acquisition third, librarian only by explicit request or clear escalation need.**
+Policy file: `~/.hermes/alexandria-hermes/policy.yaml` is the usage contract installed by onboarding. Treat a missing policy as default ON. If it says `enabled: false`, do not call Alexandria search/recall/write/librarian tools except for status/diagnostics or an explicit user request. Current session instructions such as “이번 작업에서는 Alexandria 쓰지 마” override the global policy only for that session/task.
+
+Default policy: **local Hermes first, Alexandria second, Hermes self-acquisition third, librarian collaboration only when configured and materially useful.**
 
 ## Start-of-task recall
 
@@ -471,7 +494,7 @@ Before final response, decide whether to use Alexandria:
 
 - Did I need prior memory? If yes, recall/retrieval/search and mention key context ids when useful.
 - Did I use a skill/prompt/context? If yes, record usage when available.
-- Did I discover a reusable workflow, prompt, decision, or bug root cause? If yes, save or offer to save.
+- Did I discover a reusable workflow, prompt, decision, or bug root cause? If yes, submit a safe draft/candidate automatically when policy allows it.
 - Did I create a candidate? If yes, report id, status, evidence, and UI location.
 - Did I avoid raw secrets and unnecessary full-chat storage?
 

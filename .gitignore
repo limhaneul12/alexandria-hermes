@@ -253,3 +253,5 @@ docs/*
 !docs/project_remaining_work/**
 !docs/assets/
 !docs/assets/**
+!docs/usage_guidebook/
+!docs/usage_guidebook/**

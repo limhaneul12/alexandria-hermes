@@ -480,6 +480,14 @@ class HermesDoctorCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class HermesPolicyCommand:
+    """Parameters for Hermes Alexandria usage policy commands."""
+
+    hermes_home: str | None
+    enabled: bool | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class HermesScanCommand:
     """Parameters for scanning Hermes Alexandria files."""
 

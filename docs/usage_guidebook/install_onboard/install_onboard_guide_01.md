@@ -1,0 +1,59 @@
+# Install/Onboard Guide 01 — 처음 설치 후 Hermes에 Alexandria 붙이기
+
+## 목적
+
+처음 사용하는 사람이 Alexandria-Hermes를 설치한 뒤 Hermes가 자연스럽게 사용할 수 있게 만든다.
+
+## 전제
+
+- Alexandria-Hermes backend가 실행 가능하다.
+- `alexandria-hermes` CLI가 PATH에 있다.
+- Hermes Agent가 설치되어 있다.
+- operator key가 필요한 기능은 실제 secret을 문서에 남기지 않는다.
+
+## 빠른 흐름
+
+```bash
+export ALEXANDRIA_API_URL="${ALEXANDRIA_API_URL:-http://localhost:8000}"
+export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+export ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-${SERVICE_OPERATOR_API_KEY:-}}"
+export ALEXANDRIA_API_TOKEN="${ALEXANDRIA_API_TOKEN:-$ALEXANDRIA_OPERATOR_API_KEY}"
+
+alexandria-hermes --base-url "$ALEXANDRIA_API_URL" --json health
+
+alexandria-hermes --json hermes onboard   --hermes-home "$HERMES_HOME"   --api-url "$ALEXANDRIA_API_URL"   --api-token "${ALEXANDRIA_API_TOKEN:-}"   --install-prompts   --install-mcp
+```
+
+## 확인
+
+```bash
+alexandria-hermes --json hermes doctor   --hermes-home "$HERMES_HOME"   --api-url "$ALEXANDRIA_API_URL"   --api-token "${ALEXANDRIA_API_TOKEN:-}"
+
+alexandria-hermes --json hermes policy status --hermes-home "$HERMES_HOME"
+```
+
+성공 기준:
+
+- `skill_installed: true`
+- `mcp_config_installed: true`
+- `policy_installed: true`
+- policy `enabled: true`
+
+## Hermes MCP runtime 등록
+
+`~/.hermes/alexandria-hermes/mcp-config.json`은 snippet이다. 실제 Hermes tool discovery는 `~/.hermes/config.yaml`의 `mcp_servers` 등록을 봐야 한다.
+
+```bash
+ALEXANDRIA_CLI="$(command -v alexandria-hermes)"
+hermes mcp add alexandria   --command "$ALEXANDRIA_CLI"   --args mcp serve   --env ALEXANDRIA_API_URL="$ALEXANDRIA_API_URL"   --env ALEXANDRIA_API_TOKEN="${ALEXANDRIA_API_TOKEN:-}"   --env ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-}"   --env HERMES_HOME="$HERMES_HOME"
+
+hermes mcp test alexandria
+```
+
+설정 후 Hermes CLI/Gateway/Discord 세션을 재시작한다.
+
+## 흔한 오해
+
+- `mcp-config.json`만 있으면 Hermes가 tool을 자동 발견한다고 생각하면 안 된다.
+- operator key는 OAuth token이 아니다. protected librarian/settings route에는 operator header가 필요하다.
+- 사서가 없어도 설치는 성공할 수 있다. Hermes self-acquisition이 fallback이다.

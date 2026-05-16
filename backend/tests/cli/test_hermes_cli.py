@@ -1047,8 +1047,167 @@ def test_hermes_onboard_dry_run_plans_prompts_skill_and_mcp_config(tmp_path) -> 
         "mcp",
         "serve",
     ]
+    assert "alexandria-hermes/policy.yaml" in payload["planned_files"]
     assert "alexandria-hermes/prompts/capture-context.md" in payload["planned_files"]
     assert not (hermes_home / "alexandria-hermes").exists()
+
+
+def test_hermes_install_writes_default_enabled_policy_contract(tmp_path) -> None:
+    """Hermes install should write a default-on policy contract."""
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir()
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "hermes",
+            "install",
+            "--hermes-home",
+            str(hermes_home),
+            "--api-url",
+            "http://backend:8000",
+            "--apply",
+        ],
+        stdout=stdout,
+    )
+
+    policy = (hermes_home / "alexandria-hermes" / "policy.yaml").read_text(
+        encoding="utf-8"
+    )
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert "alexandria-hermes/policy.yaml" in payload["written"]
+    assert "enabled: true" in policy
+    assert "mode: autonomous" in policy
+    assert "self_acquisition_enabled: true" in policy
+    assert "optional: true" in policy
+    assert "hermes_self_acquisition_fallback: true" in policy
+
+
+def test_hermes_policy_cli_toggles_usage_contract(tmp_path) -> None:
+    """Hermes policy enable/disable should let users turn Alexandria usage on/off."""
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir()
+    disable_stdout = io.StringIO()
+    status_stdout = io.StringIO()
+    enable_stdout = io.StringIO()
+
+    disable_exit = run(
+        [
+            "--json",
+            "hermes",
+            "policy",
+            "disable",
+            "--hermes-home",
+            str(hermes_home),
+        ],
+        stdout=disable_stdout,
+    )
+    status_exit = run(
+        [
+            "--json",
+            "hermes",
+            "policy",
+            "status",
+            "--hermes-home",
+            str(hermes_home),
+        ],
+        stdout=status_stdout,
+    )
+    enable_exit = run(
+        [
+            "--json",
+            "hermes",
+            "policy",
+            "enable",
+            "--hermes-home",
+            str(hermes_home),
+        ],
+        stdout=enable_stdout,
+    )
+
+    disabled_payload = json.loads(disable_stdout.getvalue())
+    status_payload = json.loads(status_stdout.getvalue())
+    enabled_payload = json.loads(enable_stdout.getvalue())
+    policy_path = hermes_home / "alexandria-hermes" / "policy.yaml"
+    assert disable_exit == 0
+    assert status_exit == 0
+    assert enable_exit == 0
+    assert disabled_payload["enabled"] is False
+    assert status_payload["enabled"] is False
+    assert enabled_payload["enabled"] is True
+    assert disabled_payload["policy_path"] == str(policy_path)
+    assert "enabled: true" in policy_path.read_text(encoding="utf-8")
+
+
+def test_hermes_policy_toggle_preserves_custom_contract_settings(tmp_path) -> None:
+    """Policy enable/disable should not reset nested user privacy settings."""
+    hermes_home = tmp_path / "hermes"
+    policy_path = hermes_home / "alexandria-hermes" / "policy.yaml"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        """# Custom Alexandria policy.
+enabled: true
+mode: autonomous
+
+write:
+  auto_capture_context: false
+  auto_submit_skill_candidates: false
+
+self_acquisition:
+  enabled: true
+  self_acquisition_enabled: false
+
+librarian:
+  enabled: false
+  optional: false
+  hermes_self_acquisition_fallback: false
+""",
+        encoding="utf-8",
+    )
+    disable_stdout = io.StringIO()
+    enable_stdout = io.StringIO()
+
+    disable_exit = run(
+        [
+            "--json",
+            "hermes",
+            "policy",
+            "disable",
+            "--hermes-home",
+            str(hermes_home),
+        ],
+        stdout=disable_stdout,
+    )
+    enable_exit = run(
+        [
+            "--json",
+            "hermes",
+            "policy",
+            "enable",
+            "--hermes-home",
+            str(hermes_home),
+        ],
+        stdout=enable_stdout,
+    )
+
+    disabled_payload = json.loads(disable_stdout.getvalue())
+    enabled_payload = json.loads(enable_stdout.getvalue())
+    policy = policy_path.read_text(encoding="utf-8")
+    assert disable_exit == 0
+    assert enable_exit == 0
+    assert disabled_payload["enabled"] is False
+    assert disabled_payload["librarian_enabled"] is False
+    assert disabled_payload["librarian_optional"] is False
+    assert disabled_payload["self_acquisition_enabled"] is False
+    assert disabled_payload["autonomous_curation_enabled"] is False
+    assert enabled_payload["enabled"] is True
+    assert enabled_payload["librarian_enabled"] is False
+    assert "enabled: true" in policy
+    assert "auto_capture_context: false" in policy
+    assert "self_acquisition_enabled: false" in policy
+    assert "hermes_self_acquisition_fallback: false" in policy
 
 
 def test_hermes_install_apply_restart_hint_prints_first_prompt(tmp_path) -> None:

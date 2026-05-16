@@ -1,0 +1,58 @@
+# Alexandria-Hermes Usage Guidebook
+
+이 폴더는 처음 사용하는 사람이 Alexandria-Hermes를 Hermes와 함께 사용하는 방법을 기능별로 익히기 위한 가이드북이다.
+
+## 폴더/파일 규칙
+
+각 기능은 자기 폴더를 가진다.
+
+```text
+docs/usage_guidebook/<feature_folder>/<feature>_guide_<number>.md
+```
+
+예:
+
+```text
+docs/usage_guidebook/hermes_policy/hermes_policy_guide_01.md
+docs/usage_guidebook/install_onboard/install_onboard_guide_01.md
+```
+
+규칙:
+
+- `<feature_folder>`는 기능 이름을 snake_case로 쓴다.
+- `<feature>`는 폴더명과 맞춘다.
+- `<number>`는 `01`, `02`처럼 두 자리 번호로 증가시킨다.
+- 한 파일은 하나의 실제 사용 시나리오를 다룬다.
+- secret/API key/token 값은 예제에 실제 값으로 쓰지 않는다. 필요하면 `<operator-key>` 또는 `[REDACTED]`를 사용한다.
+
+## 현재 가이드
+
+| 기능 | 가이드 | 목적 |
+| --- | --- | --- |
+| install_onboard | [install_onboard_guide_01.md](install_onboard/install_onboard_guide_01.md) | 처음 설치자가 Hermes에 Alexandria를 붙이는 기본 흐름 |
+| hermes_policy | [hermes_policy_guide_01.md](hermes_policy/hermes_policy_guide_01.md) | default ON policy와 CLI on/off 사용법 |
+| mcp_runtime | [mcp_runtime_guide_01.md](mcp_runtime/mcp_runtime_guide_01.md) | MCP snippet과 Hermes runtime 등록 차이 |
+| self_acquisition | [self_acquisition_guide_01.md](self_acquisition/self_acquisition_guide_01.md) | 사서 없이 Hermes가 직접 조사/후보 제출하는 흐름 |
+| librarian_collaboration | [librarian_collaboration_guide_01.md](librarian_collaboration/librarian_collaboration_guide_01.md) | 사서를 optional 협업자로 쓰는 흐름 |
+
+## 핵심 운영 모델
+
+```text
+local Hermes skill/prompt/context
+→ Alexandria search/recall
+→ Hermes self-acquisition
+→ optional librarian collaboration
+→ draft/review queue
+```
+
+기본값은 Alexandria 사용 ON이다. 끄려면:
+
+```bash
+alexandria-hermes hermes policy disable
+```
+
+다시 켜려면:
+
+```bash
+alexandria-hermes hermes policy enable
+```

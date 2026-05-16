@@ -50,6 +50,21 @@ class HermesBundleInstallationResult(StrictSchemaModel):
     first_prompt: str | None = None
 
 
+class HermesPolicyResult(StrictSchemaModel):
+    """CLI result for the Hermes Alexandria usage policy."""
+
+    hermes_home: str
+    policy_path: str
+    exists: bool
+    enabled: bool
+    mode: str
+    self_acquisition_enabled: bool
+    librarian_enabled: bool
+    librarian_optional: bool
+    hermes_self_acquisition_fallback: bool
+    autonomous_curation_enabled: bool
+
+
 class HermesConfigurationResult(StrictSchemaModel):
     """CLI result for writing Hermes local configuration."""
 
@@ -78,6 +93,7 @@ class HermesDoctorResult(StrictSchemaModel):
     alexandria_dir: bool
     skill_installed: bool
     mcp_config_installed: bool
+    policy_installed: bool
     config_path: str
     mcp_config: McpConfiguration
     deep: bool = False
