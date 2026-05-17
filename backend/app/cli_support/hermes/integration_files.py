@@ -197,17 +197,21 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
         "save-context.md": "# Save Context\n\nSave important project memory when a decision, bug root cause, reusable workflow, or handoff appears.\n",
         "use-alexandria-library.md": (
             "# Use Alexandria-Hermes Library\n\n"
-            "Treat Alexandria-Hermes as a quiet default recall layer, not as "
-            "a feature the user must explicitly invoke.\n\n"
+            "Treat Alexandria-Hermes as Hermes's durable library/long-term "
+            "memory layer, not as a replacement for current context or local "
+            "Hermes memory. Use local-first, Alexandria-when-needed.\n\n"
             "0. Read `~/.hermes/alexandria-hermes/policy.yaml`. If "
             "`enabled: false`, do not use Alexandria except for status/diagnostics "
             "or an explicit user request.\n"
-            "1. At the beginning of substantial tasks, silently recall "
-            "`START_HERE`, user working-style, project-state, and relevant "
-            "operating-pack context without asking the user first.\n"
-            "2. Check local Hermes skills first.\n"
-            "3. If local context is missing or weak, call `alexandria_search` "
-            "for Alexandria-Hermes skills and prompts.\n"
+            "1. First use current conversation, Hermes local memory, loaded "
+            "skills, and local/built-in skills. If those are sufficient, work "
+            "without calling Alexandria.\n"
+            "2. Use Alexandria when local/current context is missing, stale, "
+            "or weak; when the user continues previous work; when START_HERE, "
+            "project-state, decisions, handoffs, bug root causes, prompts, or "
+            "skills may matter; or when durable/shared context should be saved.\n"
+            "3. If local skill/prompt coverage is insufficient, call "
+            "`alexandria_search` for Alexandria-Hermes skills and prompts.\n"
             "4. Use matching items and call `alexandria_record_usage`.\n"
             "5. If no matching item exists, follow `request-skill-acquisition.md`.\n"
         ),
@@ -242,27 +246,36 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
             content=(
                 "---\n"
                 "name: alexandria-library\n"
-                "description: Use at the beginning of substantial tasks as a quiet default recall layer for Alexandria-Hermes START_HERE, project memory, skills, prompts, and self-acquisition.\n"
+                "description: Use when current/local Hermes context, memory, skills, or prompts are insufficient; when continuing prior work; or when durable project memory, START_HERE, decisions, handoffs, bug root causes, skills, prompts, Context Vault recall, or self-acquisition may be needed. Follow local-first, Alexandria-when-needed.\n"
                 "version: 1.0.0\n"
                 "author: Hermes Agent\n"
                 "license: MIT\n"
                 "---\n\n"
                 "# Alexandria-Hermes Library\n\n"
-                "Use at the beginning of substantial tasks. Treat "
-                "Alexandria-Hermes as a quiet default recall layer, not as "
-                "a separate product feature the user must mention. Respect "
+                "Use local-first, Alexandria-when-needed. Treat "
+                "Alexandria-Hermes as Hermes's durable library, long-term "
+                "memory, and capability archive, not as a replacement for the "
+                "current conversation, local Hermes memory, or local skills. Respect "
                 "`~/.hermes/alexandria-hermes/policy.yaml`: if `enabled: false`, "
                 "do not use Alexandria tools except for status/diagnostics or an "
                 "explicit user request.\n\n"
-                "## Default startup behavior\n\n"
-                "- For a new or unfamiliar agent, first search Alexandria for "
-                "`START_HERE`, user working-style, project-state, and operating-pack "
-                "context before asking the user to restate background.\n"
-                "- Prefer local Hermes assets, then Alexandria recall/search, then "
-                "Hermes self-acquisition.\n"
-                "- Librarian collaboration is optional; when no librarian is configured "
-                "or appropriate, continue with direct self-acquisition and submit "
-                "draft candidates.\n"
+                "## Default operating behavior\n\n"
+                "- First use the current conversation, Hermes local memory, loaded "
+                "skills, and local/built-in skills. If those are sufficient, proceed "
+                "without Alexandria.\n"
+                "- Use Alexandria when local/current context is missing, stale, or "
+                "weak; when continuing prior work; when START_HERE, project-state, "
+                "decisions, handoffs, bug root causes, prompts, or skills may matter; "
+                "or when durable/shared context should be saved.\n"
+                "- For a new or unfamiliar agent, search Alexandria for `START_HERE` "
+                "before asking the user to restate known project background only when "
+                "local/current context does not already answer the question.\n"
+                "- Prefer local Hermes assets, then Alexandria recall/search when "
+                "needed, then Hermes self-acquisition.\n"
+                "- Librarian collaboration is optional and should require an explicit "
+                "user request unless a separate policy says otherwise; when no "
+                "librarian is configured or appropriate, continue with direct "
+                "self-acquisition and submit draft candidates.\n"
                 "- Keep this recall quiet: mention only the relevant context actually "
                 "used, and avoid exposing internal reasoning.\n"
             ),
@@ -280,15 +293,19 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
             content=(
                 "# Alexandria Rules\n\n"
                 "Respect `~/.hermes/alexandria-hermes/policy.yaml` before using "
-                "Alexandria. The default contract is `enabled: true`; users can "
-                "disable it with `alexandria-hermes hermes policy disable`. "
-                "Treat Alexandria as a quiet default recall layer for START_HERE, "
-                "user working-style, project-state, and operating-pack context. "
-                "Prefer local Hermes assets, then Alexandria search, then Hermes "
-                "self-acquisition. If no librarian is available, self-acquisition "
-                "is the default: research, keep evidence URLs, submit a candidate, "
-                "and let Alexandria mark the harness status. Use librarian research "
-                "only when direct research is blocked or review-heavy.\n"
+                "Alexandria. The default contract is `enabled: true`, "
+                "`mode: local_first_library_when_needed`; users can disable it with "
+                "`alexandria-hermes hermes policy disable`. Use local/current "
+                "conversation, Hermes memory, and local skills first. Use Alexandria "
+                "when local context is insufficient, prior project memory may matter, "
+                "or durable/shared context should be saved. Treat START_HERE as the "
+                "library entrance for unfamiliar agents, not a mandatory first call "
+                "for every task. Prefer local Hermes assets, then Alexandria when "
+                "needed, then Hermes self-acquisition. If no librarian is available, "
+                "self-acquisition is the default: research, keep evidence URLs, submit "
+                "a candidate, and let Alexandria mark the harness status. Use "
+                "librarian research only when the user explicitly asks or direct "
+                "research is blocked/review-heavy.\n"
             ),
         ),
         HermesInstallFile(
@@ -346,12 +363,14 @@ def first_conversation_prompt() -> str:
     """
     return (
         "Alexandria-Hermes가 설치되어 있습니다. 새 Hermes/agent는 "
-        "사용자가 다시 설명하지 않아도 자동으로 ~/.hermes/alexandria-hermes/"
-        "policy.yaml을 확인하고, policy가 enabled이면 START_HERE, "
-        "user working-style, project-state, relevant skill/prompt context를 "
-        "조용히 recall/search한 뒤 작업을 시작해야 합니다. "
-        "사용자에게 Alexandria 사용 여부를 매번 묻지 말고, 사용한 핵심 "
-        "context만 간단히 보고하세요."
+        "먼저 로컬/현재 컨텍스트, Hermes local memory, loaded/local skills를 "
+        "확인합니다. 그것으로 충분하면 Alexandria를 호출하지 않고 바로 "
+        "작업합니다. 로컬 정보가 부족하거나 이전 작업을 이어가거나 "
+        "durable/shared project memory가 필요하면 ~/.hermes/alexandria-hermes/"
+        "policy.yaml을 확인하고, enabled일 때 START_HERE, project-state, "
+        "decision/handoff/bug-root-cause, relevant skill/prompt context를 "
+        "recall/search한 뒤 작업합니다. 사용자에게 Alexandria 사용 여부를 "
+        "매번 묻지 말고, 사용한 핵심 context만 간단히 보고하세요."
     )
 
 
@@ -363,7 +382,7 @@ def alexandria_operating_loop_prompt() -> str:
     """
     return """# Alexandria-Hermes Operating Loop for Hermes
 
-Use this prompt when Hermes is developing software, continuing a project, noticing reusable knowledge, or deciding that a skill/prompt/context is worth preserving in Alexandria-Hermes. This prompt is also the first-run awareness contract for unfamiliar agents: Alexandria should be recognized as a quiet default recall layer, not as something the user must explicitly request each time.
+Use this prompt when Hermes is developing software, continuing a project, noticing reusable knowledge, or deciding that a skill/prompt/context is worth preserving in Alexandria-Hermes. This prompt is the first-run awareness contract for unfamiliar agents: Alexandria should be recognized as Hermes's durable library/long-term-memory/capability archive used when local/current context is insufficient or durable shared context should be saved.
 
 ## Core model
 
@@ -375,13 +394,15 @@ Alexandria-Hermes is Hermes's default-on but user-controlled library layer for:
 - self-acquisition when a missing reusable capability is found;
 - optional librarian collaboration when configured and useful; if no librarian is available, Hermes continues by self-acquisition.
 
-Policy file: `~/.hermes/alexandria-hermes/policy.yaml` is the usage contract installed by onboarding. Treat a missing policy as default ON. If it says `enabled: false`, do not call Alexandria search/recall/write/librarian tools except for status/diagnostics or an explicit user request. Current session instructions such as “이번 작업에서는 Alexandria 쓰지 마” override the global policy only for that session/task.
+Policy file: `~/.hermes/alexandria-hermes/policy.yaml` is the usage contract installed by onboarding. Treat a missing policy as default ON with local/current context first. If it says `enabled: false`, do not call Alexandria search/recall/write/librarian tools except for status/diagnostics or an explicit user request. Current session instructions such as “이번 작업에서는 Alexandria 쓰지 마” override the global policy only for that session/task.
 
-Default policy: **local Hermes first, Alexandria second, Hermes self-acquisition third, librarian collaboration only when configured and materially useful.**
+Default policy: **local/current context first, Alexandria when needed, Hermes self-acquisition when the library lacks a sufficient reusable capability, librarian collaboration only on explicit request or a separate stricter policy.**
 
 ## Start-of-task recall
 
-Before substantial work, quietly call Alexandria recall/retrieval/search when policy allows it, without asking the user first. Start with narrow bootstrap queries such as `START_HERE`, the user's working-style card, the current project-state card, and relevant operating packs; then search specific skills/prompts if the task needs them.
+Do not call Alexandria just because a task starts. First use the current conversation, loaded instructions, Hermes local memory, and local/built-in skills. If that local/current context is sufficient, proceed without Alexandria.
+
+When policy allows it, quietly call Alexandria recall/retrieval/search only when local/current context is missing, stale, weak, or not shareable enough for the task. Use narrow bootstrap queries such as `START_HERE`, the user's working-style card, the current project-state card, and relevant operating packs when an unfamiliar agent is entering a project or when the task signals prior context.
 
 Call Alexandria especially when any trigger applies:
 
@@ -504,7 +525,7 @@ If the Alexandria prompt library API/CLI is available, also register it as a pro
 
 ## Librarian collaboration
 
-Librarian is a quality booster, not a prerequisite.
+Librarian is a quality booster, not a prerequisite. Default Hermes onboarding requires an explicit user request before librarian delegation.
 
 Use librarian only when:
 

@@ -127,11 +127,12 @@ export function AskLibrarianWidget() {
     if (!trimmedPrompt || isSubmitting) return;
     setIsSubmitting(true);
     setError(null);
+    setResponse(null);
     try {
       const result = await askLibrarian({
         prompt: trimmedPrompt,
         agentName: "Alexandria UI",
-        delegateToLibrarian: false,
+        delegateToLibrarian: true,
         taskSummary: trimmedPrompt,
       });
       setResponse(result);

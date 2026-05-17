@@ -11,7 +11,9 @@
     "lint": "eslint . --max-warnings=0",
     "security:npm-supply-chain": "node scripts/check-npm-supply-chain.mjs",
     "test:ui-contract": "node scripts/check-product-ui-contract.mjs",
-    "test:agent-route-payload": "node scripts/check-agent-route-payload.mjs"
+    "test:agent-route-payload": "node scripts/check-agent-route-payload.mjs",
+    "test:library-category-filter": "node scripts/check-library-category-filter.mjs",
+    "test:ask-librarian-widget": "node scripts/check-ask-librarian-widget.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

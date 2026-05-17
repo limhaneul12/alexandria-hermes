@@ -7,7 +7,7 @@ from pathlib import Path
 from app.cli_support.schemas.hermes_integration_schemas import HermesPolicyResult
 
 POLICY_RELATIVE_PATH = "alexandria-hermes/policy.yaml"
-DEFAULT_POLICY_MODE = "autonomous"
+DEFAULT_POLICY_MODE = "local_first_library_when_needed"
 
 
 def policy_path(hermes_home: Path) -> Path:
@@ -34,9 +34,10 @@ def default_policy_yaml(enabled: bool = True) -> str:
     enabled_text = "true" if enabled else "false"
     return f"""# Alexandria-Hermes usage policy for Hermes.
 # This file is installed by `alexandria-hermes hermes onboard`.
-# Default is ON: Hermes may use Alexandria automatically unless a user disables it.
+# Default is ON and local-first: Hermes should use local/current context first,
+# then Alexandria when local memory, skills, prompts, or project context are insufficient.
 enabled: {enabled_text}
-mode: autonomous
+mode: local_first_library_when_needed
 
 read:
   search_library: true
@@ -60,9 +61,9 @@ librarian:
   enabled: true
   optional: true
   hermes_self_acquisition_fallback: true
-  delegate_when_busy: true
-  delegate_when_self_acquisition_cost_high: true
-  require_explicit_user_request_for_librarian: false
+  delegate_when_busy: false
+  delegate_when_self_acquisition_cost_high: false
+  require_explicit_user_request_for_librarian: true
 
 safety:
   secret_lint_required: true

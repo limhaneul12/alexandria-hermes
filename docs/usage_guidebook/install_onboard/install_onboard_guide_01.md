@@ -2,7 +2,7 @@
 
 ## 목적
 
-처음 사용하는 사람이 Alexandria-Hermes를 설치한 뒤 Hermes가 자연스럽게 사용할 수 있게 만든다.
+처음 사용하는 사람이 Alexandria-Hermes를 설치한 뒤 Hermes가 로컬/현재 컨텍스트를 먼저 쓰고, 부족할 때 Alexandria를 자연스럽게 사용할 수 있게 만든다.
 
 ## 전제
 
@@ -38,6 +38,17 @@ alexandria-hermes --json hermes policy status --hermes-home "$HERMES_HOME"
 - `mcp_config_installed: true`
 - `policy_installed: true`
 - policy `enabled: true`
+- policy `mode: local_first_library_when_needed`
+
+## Runtime 사용 계약
+
+설치 성공은 “OAuth 연결”이나 “MCP discovery”에서 끝나지 않는다. Hermes가 실제 작업에 들어갈 때 아래 계약을 따라야 한다.
+
+1. 현재 대화, Hermes local memory, loaded/local/built-in skill을 먼저 사용한다.
+2. 충분하면 Alexandria를 호출하지 않는다.
+3. 부족하거나 이전 작업을 이어가거나 durable/shared context가 필요하면 Alexandria search/recall을 사용한다.
+4. START_HERE는 unfamiliar agent가 로컬 맥락이 부족할 때 보는 도서관 입구다.
+5. librarian은 optional이며 기본적으로 사용자의 명시 요청이 있을 때만 사용한다.
 
 ## Hermes MCP runtime 등록
 
@@ -57,3 +68,4 @@ hermes mcp test alexandria
 - `mcp-config.json`만 있으면 Hermes가 tool을 자동 발견한다고 생각하면 안 된다.
 - operator key는 OAuth token이 아니다. protected librarian/settings route에는 operator header가 필요하다.
 - 사서가 없어도 설치는 성공할 수 있다. Hermes self-acquisition이 fallback이다.
+- Alexandria는 local memory 대체물이 아니다. local-first, Alexandria-when-needed가 기본 계약이다.

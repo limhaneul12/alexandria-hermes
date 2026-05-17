@@ -1,3 +1,4 @@
+import { collectCategoryTreeIds } from "@/lib/backend/archive-category-filter";
 import { BackendRequestError, backendFetch } from "@/lib/backend/client";
 import { isItemType } from "@/types/library";
 import type {
@@ -460,6 +461,10 @@ export async function loadLibraryFromBackend(searchParams: URLSearchParams): Pro
     ? Array.from(categoriesById.values()).find((category) => categorySlug(category) === categorySlugParam)
     : undefined;
 
+  const selectedCategoryIds = selectedCategory
+    ? collectCategoryTreeIds(categories, selectedCategory.id)
+    : new Set<string>();
+
   const filtered = items.filter((item) => {
     const matchesText =
       !q ||
@@ -467,7 +472,9 @@ export async function loadLibraryFromBackend(searchParams: URLSearchParams): Pro
         .join(" ")
         .toLowerCase()
         .includes(q);
-    const matchesCategory = !categorySlugParam || item.category_id === selectedCategory?.id;
+    const matchesCategory =
+      !categorySlugParam ||
+      (item.category_id !== null && selectedCategoryIds.has(item.category_id));
     const matchesTag = !tag || item.tags.includes(tag);
     const matchesType = !type || item.item_type === type;
     return matchesText && matchesCategory && matchesTag && matchesType;

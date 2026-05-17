@@ -1053,8 +1053,8 @@ def test_hermes_onboard_dry_run_plans_prompts_skill_and_mcp_config(tmp_path) -> 
     assert not (hermes_home / "alexandria-hermes").exists()
 
 
-def test_hermes_install_writes_self_identifying_default_recall_skill(tmp_path) -> None:
-    """Installed skill should make new agents notice Alexandria without user coaching."""
+def test_hermes_install_writes_local_first_library_when_needed_skill(tmp_path) -> None:
+    """Installed skill should route agents local-first, then Alexandria when useful."""
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir()
     stdout = io.StringIO()
@@ -1083,21 +1083,26 @@ def test_hermes_install_writes_self_identifying_default_recall_skill(tmp_path) -
     assert exit_code == 0
     assert "skills/alexandria-hermes/alexandria-library/SKILL.md" in payload["written"]
     assert skill.startswith("---\nname: alexandria-library")
-    assert "Use at the beginning of substantial tasks" in skill
-    assert "quiet default recall layer" in skill
+    assert "local-first" in skill
+    assert "Alexandria-when-needed" in skill
     assert "START_HERE" in skill
     assert "START_HERE" in operating_loop
-    assert "without asking the user first" in operating_loop
+    assert "local/current context first" in operating_loop
+    assert "Do not call Alexandria just because a task starts" in operating_loop
 
 
-def test_hermes_first_prompt_describes_automatic_awareness_not_user_coaching() -> None:
-    """First-use guidance should not make users manually teach agents to recall."""
+def test_hermes_first_prompt_describes_local_first_onboarding_not_user_coaching() -> (
+    None
+):
+    """First-use guidance should teach agents when to use Alexandria without making users repeat context."""
     prompt = first_conversation_prompt()
 
-    assert "자동으로" in prompt
+    assert "로컬/현재 컨텍스트" in prompt
+    assert "부족하거나" in prompt
     assert "START_HERE" in prompt
     assert "먼저 RAG status" not in prompt
     assert "확인해 주세요" not in prompt
+    assert "매번 Alexandria부터" not in prompt
 
 
 def test_hermes_install_writes_default_enabled_policy_contract(tmp_path) -> None:
@@ -1127,10 +1132,11 @@ def test_hermes_install_writes_default_enabled_policy_contract(tmp_path) -> None
     assert exit_code == 0
     assert "alexandria-hermes/policy.yaml" in payload["written"]
     assert "enabled: true" in policy
-    assert "mode: autonomous" in policy
+    assert "mode: local_first_library_when_needed" in policy
     assert "self_acquisition_enabled: true" in policy
     assert "optional: true" in policy
     assert "hermes_self_acquisition_fallback: true" in policy
+    assert "require_explicit_user_request_for_librarian: true" in policy
 
 
 def test_hermes_policy_cli_toggles_usage_contract(tmp_path) -> None:
@@ -1197,7 +1203,7 @@ def test_hermes_policy_toggle_preserves_custom_contract_settings(tmp_path) -> No
     policy_path.write_text(
         """# Custom Alexandria policy.
 enabled: true
-mode: autonomous
+mode: custom_existing_mode
 
 write:
   auto_capture_context: false
@@ -1253,6 +1259,7 @@ librarian:
     assert enabled_payload["enabled"] is True
     assert enabled_payload["librarian_enabled"] is False
     assert "enabled: true" in policy
+    assert "mode: custom_existing_mode" in policy
     assert "auto_capture_context: false" in policy
     assert "self_acquisition_enabled: false" in policy
     assert "hermes_self_acquisition_fallback: false" in policy
@@ -1433,11 +1440,11 @@ def test_hermes_install_prompts_includes_self_acquisition_loop(tmp_path) -> None
         hermes_home / "alexandria-hermes" / "prompts" / "alexandria-operating-loop.md"
     ).read_text(encoding="utf-8")
     assert exit_code == 0
-    assert "Alexandria search, then Hermes self-acquisition" in rules
+    assert "Alexandria when needed, then Hermes self-acquisition" in rules
     assert "alexandria_search" in request_skill
     assert "alexandria_submit_skill_candidate" in submit_skill
     assert "--evidence-url" in submit_skill
-    assert "local Hermes first, Alexandria second" in operating_loop
+    assert "local/current context first" in operating_loop
     assert "Prompt preservation policy" in operating_loop
 
 

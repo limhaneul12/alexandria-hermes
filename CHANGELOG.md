@@ -17,13 +17,13 @@ This project uses human-readable release notes grouped by date until versioned r
 - Added explicit self-acquisition fallback semantics: librarian collaboration is optional, and Hermes can still research and submit draft candidates directly when no librarian is configured.
 - Added `policy_installed` to Hermes doctor output.
 - Added a usage guidebook under `docs/usage_guidebook/` with feature-folder examples.
-- Added regression coverage requiring installed Hermes assets to self-identify as a quiet default recall layer with `START_HERE` bootstrap guidance for unfamiliar agents.
+- Added regression coverage requiring installed Hermes assets to self-identify as local-first / Alexandria-when-needed, with `START_HERE` bootstrap guidance only when local context is insufficient for unfamiliar agents.
 
 ### Changed
 
 - Updated `install.md` to document the policy contract, CLI on/off flow, guidebook links, and first-user expectations.
 - Updated generated Hermes skill/prompt assets so they respect `policy.yaml` and describe librarian collaboration as optional.
-- Updated generated Hermes skill/prompt assets to make Alexandria an automatic awareness/default recall layer rather than a feature the user must manually invoke.
+- Updated generated Hermes skill/prompt assets to make Alexandria a durable library/long-term-memory layer that is used after current/local context proves insufficient, rather than a feature the user must manually invoke or a tool called before every task.
 - Updated Hermes onboarding output so `policy.yaml` is part of installed/planned artifacts.
 
 ### Verified

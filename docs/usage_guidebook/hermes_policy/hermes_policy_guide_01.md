@@ -10,11 +10,11 @@
 ~/.hermes/alexandria-hermes/policy.yaml
 ```
 
-기본값은 ON이다.
+기본값은 ON이다. 단, ON의 의미는 “항상 Alexandria부터 호출”이 아니라 **local-first / Alexandria-when-needed**다.
 
 ```yaml
 enabled: true
-mode: autonomous
+mode: local_first_library_when_needed
 ```
 
 ## 상태 확인
@@ -28,12 +28,22 @@ alexandria-hermes --json hermes policy status --hermes-home "$HOME/.hermes"
 ```json
 {
   "enabled": true,
-  "mode": "autonomous",
+  "mode": "local_first_library_when_needed",
   "self_acquisition_enabled": true,
   "librarian_optional": true,
   "hermes_self_acquisition_fallback": true
 }
 ```
+
+## Runtime 해석
+
+`enabled: true`일 때 Hermes가 해야 할 일:
+
+1. 현재 대화, local memory, loaded/local/built-in skill을 먼저 확인한다.
+2. 그 정보가 충분하면 Alexandria를 쓰지 않는다.
+3. 로컬 정보가 부족하거나 이전 작업/결정/핸드오프/버그 원인/장기기억이 필요하면 Alexandria search/recall을 사용한다.
+4. 중요한 decision, handoff, bug root cause, reusable workflow는 Alexandria에 저장한다.
+5. librarian delegation은 optional이며 기본적으로 명시 요청이 있을 때만 사용한다.
 
 ## 끄기
 
