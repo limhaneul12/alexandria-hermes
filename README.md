@@ -1,6 +1,6 @@
 # ALEXANDRIA-HERMES
 
-> Library-style archive and Context Vault for humans, AI agents, and optional librarian agents.
+> Local-first archive, Context Vault, and recall layer for humans, AI agents, and optional librarian agents.
 
 <p align="center">
   <img src="./docs/assets/alexandria-hermes-cover.png" alt="ALEXANDRIA-HERMES archive cover" width="100%" />
@@ -14,10 +14,10 @@
   <a href="https://www.sqlalchemy.org/"><img alt="SQLAlchemy" src="https://img.shields.io/badge/SQLAlchemy-2.0.49-D71F00"></a>
   <a href="https://modelcontextprotocol.io/"><img alt="MCP" src="https://img.shields.io/badge/MCP-1.27.1-5B5BD6"></a>
   <a href="https://typer.tiangolo.com/"><img alt="Typer" src="https://img.shields.io/badge/Typer-0.25.1-009688"></a>
-  <a href="https://www.python-httpx.org/"><img alt="HTTPX" src="https://img.shields.io/badge/HTTPX-0.28.1-0A7EA4"></a>
   <a href="https://nextjs.org/"><img alt="Next.js" src="https://img.shields.io/badge/Next.js-15.5.18-black?logo=nextdotjs"></a>
   <a href="https://react.dev/"><img alt="React" src="https://img.shields.io/badge/React-19.2.6-149ECA?logo=react&logoColor=white"></a>
-  <img alt="Backend tests" src="https://img.shields.io/badge/backend_tests-191%20passed-brightgreen">
+  <img alt="Backend tests" src="https://img.shields.io/badge/backend_tests-324%20passed-brightgreen">
+  <img alt="Guardrails" src="https://img.shields.io/badge/guardrails-33%20passed-brightgreen">
   <img alt="Typecheck" src="https://img.shields.io/badge/pyrefly-0%20errors-brightgreen">
 </p>
 
@@ -25,67 +25,65 @@
 
 ## What is Alexandria-Hermes?
 
-ALEXANDRIA-HERMES is a digital archive and context memory layer for reusable AI-agent resources.
+Alexandria-Hermes is a **no-login, single-operator, local-first** archive for reusable AI-agent material.
 
-The product goal is simple: manage **skills**, **prompts**, and **agent working context** like a library so humans, agents, and optional librarian agents can find, register, classify, recall, and reuse them later.
+It manages skills, prompts, captured context, memory compacts, librarian briefs, and retrieval metadata so humans and agents can register, classify, search, recall, and reuse work later.
 
-Hermes is not the library itself. Hermes, humans, and other agents can all use the platform:
+Hermes is one client of the archive, not the archive itself:
 
-- humans can directly create folders, skills, prompts, and captured context entries
-- agents can register, retrieve, and recall reusable resources through HTTP, CLI, or MCP
-- an optional librarian agent can help classify, recommend, and import resources
-- MINIO can hold original files while Hermes stores searchable metadata and placement
-- Context Vault can preserve handoffs, compact summaries, and RAG-ready chunks for later recall
+- humans use the web UI or CLI to browse, create, import, and review records
+- agents use HTTP, CLI, or MCP to search library/context material and submit reusable candidates
+- optional librarian providers can classify, summarize, and delegate when explicitly configured
+- MINIO can hold original external files while Alexandria stores searchable metadata and placement
+- Context Vault preserves handoffs, decisions, compact summaries, chunks, and access history for later recall
 
-The current implementation focuses on:
+Current implementation focus:
 
-- skill and prompt archive management
-- folder/category organization and usage history
-- Context Vault linting, saving, chunking, recall, archive, and RAG health checks
-- hybrid Context Pack retrieval with FTS plus optional vector/embedding support
-- capture-review, context-vault, context-detail, and RAG-inspector UI surfaces
-- optional OpenAI API-key and ChatGPT/Codex OAuth librarian provider registration
+- skill, prompt, and folder/category library management
+- thin candidate search across title, summaries, tags, details, and content
+- Context Vault linting, save/read, chunking, recall, access tracking, archive, and RAG health checks
+- durable Memory Compact storage, current/history lookup, CLI/MCP exposure, and UI pages
+- librarian brief compilation, librarian chat bridge, provider settings, and OpenAI/Codex provider flows
 - optional MINIO scan/import for existing external archives
-- native Typer CLI access for humans and agents
-- MCP server access for agent/tool clients
-- typed FastAPI/Pydantic contracts backed by SQLite, SQLAlchemy, and Alembic
-- a Next.js document-style library UI
+- Typer CLI and MCP server access for agent/tool clients
+- typed FastAPI/Pydantic contracts backed by SQLite, SQLAlchemy Core/ORM, and Alembic
+- Next.js document-style UI for dashboard, library, context, memory compacts, librarian chat, and settings
 
-For the canonical Hermes behavior contract — local skill first, Alexandria fallback, Context Vault recall, missing-skill acquisition, and librarian collaboration — see [`docs/project_subject/`](./docs/project_subject/).
+Current documentation entry points:
 
-The cover art represents the long-term archive direction: skills and prompts are the shelves, Context Vault is the agent memory layer, and MCP is the tool-facing access path.
+- [`install.md`](./install.md) — local install, operator key, Hermes onboarding, and MCP registration
+- [`docs/usage_guidebook/`](./docs/usage_guidebook/) — feature-level operator guides
+- [`docs/librarian_memory_search_development/00_ultragoal_prompt.md`](./docs/librarian_memory_search_development/00_ultragoal_prompt.md) — current memory/librarian/search development scope
 
 ---
 
 ## Current Status
 
-This repository is an active MVP, not a finished product.
+This repository is an active MVP. It is intended for localhost or otherwise access-controlled single-operator use by default.
 
 Working surfaces include:
 
-- FastAPI backend with archive, category, provider, prompt, skill, MINIO, Context Vault, RAG, and MCP surfaces
-- SQLite-backed local development storage with Alembic migrations
-- Next.js frontend for dashboard, explore/library, details, settings, providers, imports, Context Vault, capture review, and RAG inspection
+- FastAPI backend modules for archive, connections/providers, librarian, library, memory, retrieval, MCP, and platform runtime
+- SQLite-backed local storage with Alembic migrations under `backend/migrations/`
+- Next.js frontend pages for dashboard, library browsing/creation/detail, Context Vault, Memory Compacts, librarian chat, settings, providers, capture review, and RAG inspection
 - native Typer CLI command tree:
-  - `alexandria-hermes`
-  - `alex-hermes`
-  - `health`, `folders`, `library`, `skills`, `prompts`, `minio`, `context`, `hermes`, `mcp`
-- HTTP client paths built on `httpx`
-- backend quality gate with `191` passing tests and `pyrefly` clean
+  - `health`, `folders`, `library`, `skills`, `prompts`, `minio`, `context`, `memory-compacts`, `hermes`, `librarian`, `usage`, `mcp`
+- MCP server tooling over the same backend contracts
+- SQL injection hardening on search paths through ORM/Core statements, bound parameters, and constrained FTS query normalization
+- backend architecture guardrails for module boundaries, route mappings, app `__init__.py` usage, and rule compliance
 
-Planned/expanding areas:
+Known boundaries:
 
-- richer librarian classification
-- deeper prompt and context linting policies
-- broader MCP resource/tool coverage
-- stronger import review workflows
-- real deployment/auth hardening
+- No user-account login/session system is implemented. Sensitive control-plane routes use one operator key.
+- Public or team deployment needs an external access boundary first: VPN, reverse proxy auth, firewall allowlist, SSH tunnel, or equivalent.
+- Live provider/OAuth delegation requires configured credentials and is not exercised by the default offline test suite.
+- The npm supply-chain hold is active. Do **not** run `npm install`, `npm uninstall`, `npm ci`, or `npx` unless the hold is explicitly lifted. Prefer the committed lockfile and offline guard scripts.
 
 ---
 
 ## Validation Snapshot
 
-Latest local validation run:
+Latest local validation for the current implementation:
 
 ```bash
 cd backend
@@ -95,11 +93,11 @@ make ci
 Result:
 
 ```text
-ruff format --check: 244 files already formatted
+ruff format --check: 346 files already formatted
 ruff check: All checks passed
 pyrefly check: 0 errors
-shared guardrails: 25 passed
-backend tests: 191 passed
+shared guardrails: 33 passed
+backend tests: 324 passed
 ```
 
 Frontend validation:
@@ -107,22 +105,11 @@ Frontend validation:
 ```bash
 cd frontend
 npm run security:npm-supply-chain
-npm run test:ui-contract
 npm run lint
 npm run build
 ```
 
-Latest compose smoke QA covered:
-
-- backend health, archive, usage, provider, Context Vault, RAG status, lint/save/get/chunks/search/access/archive endpoints
-- frontend API proxies for Context Vault and RAG
-- frontend pages: dashboard, library, settings, agents, contexts, RAG inspector, capture review, context detail
-- compose log scan for traceback, unhandled errors, and 500-level failures
-
-Notes:
-
-- `coverage.py` is not wired into the repo yet, so the README reports the current pytest suite result rather than a percentage badge.
-- NPM supply-chain hold is active in this repo. Do **not** run `npm install`, `npm uninstall`, or `npx` unless the hold is explicitly lifted.
+Additional frontend contract checks are available as npm scripts, including `test:ui-contract`, `test:librarian-chat`, `test:library-ui-navigation`, and `test:content-viewer`.
 
 ---
 
@@ -130,12 +117,24 @@ Notes:
 
 ### Backend
 
+The backend requires a local operator key even for development because provider/settings/librarian control-plane routes are protected.
+
 ```bash
+export SERVICE_OPERATOR_API_KEY="$(python3 - <<'PY'
+import secrets
+print(secrets.token_urlsafe(32))
+PY
+)"
+
 cd backend
 uv sync
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+Default local database:
+
+- `backend/data/alexandria_hermes.db`
 
 Health checks:
 
@@ -147,6 +146,8 @@ Health checks:
 Use the existing lockfile/dependencies. Do not install new packages during the npm hold.
 
 ```bash
+export ALEXANDRIA_OPERATOR_API_KEY="$SERVICE_OPERATOR_API_KEY"
+
 cd frontend
 npm run security:npm-supply-chain
 npm run dev
@@ -156,12 +157,17 @@ Frontend runs at:
 
 - `http://localhost:3000`
 
-`npm run dev` and `npm run start` bind the Next.js server to `127.0.0.1` for
-local single-operator safety. Container runs use `npm run dev:container` so the
-service binds only inside Docker while Compose still publishes host ports on
-`127.0.0.1`.
+`npm run dev` and `npm run start` bind the Next.js server to `127.0.0.1` for local single-operator safety. Container runs use `npm run dev:container`/`npm run start:container` so the service binds only inside Docker while Compose publishes host ports on `127.0.0.1`.
 
 ### Full Stack
+
+Create a repo-root `.env` with the operator key:
+
+```bash
+SERVICE_OPERATOR_API_KEY=<generate-a-local-operator-key>
+```
+
+Then run:
 
 ```bash
 docker compose up --build
@@ -172,19 +178,17 @@ This starts:
 - backend: `http://localhost:8000`
 - frontend: `http://localhost:3000`
 
-Compose runs the backend/frontend containers on `0.0.0.0` inside the Docker
-network, but host port publishing is restricted to `127.0.0.1` in
-`docker-compose.yml`.
+Compose runs backend/frontend containers on `0.0.0.0` inside the Docker network, but host port publishing is restricted to `127.0.0.1` in `docker-compose.yml`.
 
-During the active npm supply-chain hold, avoid rebuilding the frontend image unless the hold is explicitly lifted, because the frontend Dockerfile runs `npm ci`. If images already exist, use `docker compose up --no-build` for local smoke QA.
+During the active npm supply-chain hold, avoid rebuilding the frontend image unless the hold is explicitly lifted because the frontend Dockerfile runs `npm ci`. If images already exist, use `docker compose up --no-build` for local smoke QA.
 
 ---
 
 ## CLI
 
-The CLI is a native Typer command tree over the backend HTTP API. It does not bypass backend permissions, validation, duplicate handling, Context Vault rules, or MINIO safety rules.
+The CLI is a Typer command tree over the backend HTTP API. It does not bypass backend permissions, validation, duplicate handling, Context Vault rules, provider safety checks, or MINIO safety rules.
 
-Install once for normal shell usage:
+Install shell links once:
 
 ```bash
 cd backend
@@ -193,32 +197,31 @@ cd ..
 ./scripts/install-cli.sh
 ```
 
-Then use it without `uv run`:
+For control-plane commands, export the same operator key used by the backend:
+
+```bash
+export HERMES_API_URL=http://localhost:8000
+export ALEXANDRIA_OPERATOR_API_KEY="$SERVICE_OPERATOR_API_KEY"
+```
+
+Examples:
 
 ```bash
 alexandria-hermes health
 alexandria-hermes folders list --tree
-alexandria-hermes folders create --name Backend
-alexandria-hermes folders delete <folder-id>
 alexandria-hermes library list --type SKILL --folder-id <folder-id>
 alexandria-hermes library search "dependency injection"
-alexandria-hermes skills list --limit 20
-alexandria-hermes skills get <skill-id> --json
-alexandria-hermes skills delete <skill-id>
-alexandria-hermes skills create \
-  --title "FastAPI Dependency Injection" \
-  --purpose "Teach agents dependency patterns" \
-  --content-file ./skill.md \
-  --tag fastapi \
-  --tool pytest \
-  --active
+alexandria-hermes --json skills get <skill-id>
+alexandria-hermes prompts list --limit 20
 alexandria-hermes context lint ./handoff.md --kind HANDOFF --title "Sprint handoff"
 alexandria-hermes context save --content-file ./handoff.md --kind HANDOFF --title "Sprint handoff"
 alexandria-hermes context recall "dependency injection" --strategy HYBRID
 alexandria-hermes context doctor-rag
+alexandria-hermes --json memory-compacts current
+alexandria-hermes memory-compacts list --limit 10
+alexandria-hermes --json librarian ask "Find reusable FastAPI dependency-injection context"
+alexandria-hermes --json minio scan --limit 24
 alexandria-hermes mcp serve
-alexandria-hermes minio scan --limit 24 --json
-alexandria-hermes minio import --limit 48
 ```
 
 Short alias:
@@ -227,12 +230,19 @@ Short alias:
 alex-hermes health
 ```
 
-Hermes integration install/apply flow:
+Repo-local execution without installing shell links:
+
+```bash
+./bin/alexandria-hermes health
+```
+
+Hermes onboarding/apply flow:
 
 ```bash
 alexandria-hermes --json hermes onboard \
   --hermes-home ~/.hermes \
   --api-url http://localhost:8000 \
+  --operator-api-key "$ALEXANDRIA_OPERATOR_API_KEY" \
   --install-prompts \
   --install-mcp \
   --dry-run
@@ -240,26 +250,16 @@ alexandria-hermes --json hermes onboard \
 alexandria-hermes --json hermes onboard \
   --hermes-home ~/.hermes \
   --api-url http://localhost:8000 \
+  --operator-api-key "$ALEXANDRIA_OPERATOR_API_KEY" \
   --install-prompts \
   --install-mcp
 ```
 
-This installs the Alexandria-Hermes skill/prompt guidance and writes an MCP
-config snippet under the Hermes home. For the full install/apply and
-no-librarian self-acquisition flow, see
-[`install.md`](./install.md).
-
-Configuration:
-
-- default API URL: `http://localhost:8000`
-- override with env: `HERMES_API_URL=http://localhost:8000`
-- override per command: `--base-url http://localhost:8000`
-- use `--json` for agent automation
-- without installation, repo-local execution is available via `./bin/alexandria-hermes ...`
+This installs Alexandria-Hermes Hermes guidance, policy files, and an MCP config snippet under the Hermes home. Full installation details are in [`install.md`](./install.md).
 
 ---
 
-## Context Vault and RAG
+## Context, Memory Compacts, and RAG
 
 Context Vault stores agent working context as first-class library material.
 
@@ -270,45 +270,47 @@ Supported behaviors:
 - save handoffs, notes, decisions, compact summaries, and project context
 - chunk saved context for retrieval
 - recall a Context Pack by query and strategy
+- track access events for context use
+- prepare and browse durable Memory Compact artifacts
 - inspect RAG dependency health
 - archive entries without hard deletion
 
 Primary surfaces:
 
-- Backend routes under `/library/contexts`
-- Frontend pages `/contexts`, `/contexts/{contextId}`, `/capture-review`, `/rag-inspector`
-- CLI commands under `alexandria-hermes context ...`
+- backend routes under `/library/contexts` and `/library/compacts`
+- frontend pages `/contexts`, `/contexts/{contextId}`, `/memory-compacts`, `/memory-compacts/{compactId}`, `/capture-review`, `/rag-inspector`
+- CLI commands under `alexandria-hermes context ...` and `alexandria-hermes memory-compacts ...`
 - MCP server via `alexandria-hermes mcp serve`
 
 ---
 
 ## OpenAI, MINIO, and MCP
 
-### OpenAI
+### OpenAI / Codex providers
 
-Alexandria-Hermes separates official API usage from ChatGPT/Codex-style OAuth.
+Alexandria-Hermes separates official OpenAI API-key usage from ChatGPT/Codex-style OAuth.
 
-Current position:
+Supported provider paths:
 
-- supported: `OPENAI` provider with official OpenAI API key
-- supported: `OPENAI_CODEX` provider with one-click ChatGPT/Codex OAuth device authorization
-- behavior: the settings UI uses server-side Hermes-compatible OAuth defaults, opens the browser authorization page, stores token material only in backend provider secrets, and polls status without putting tokens in browser state
-- remaining: using the stored Codex OAuth token for full librarian execution is the next adapter-integration slice; the OAuth lifecycle itself is productized
+- `OPENAI` provider with an official OpenAI API key
+- `OPENAI_CODEX` provider with ChatGPT/Codex OAuth device authorization
+
+Provider secrets are stored only in backend provider-secret storage. Browser state and public config examples do not contain access tokens or refresh tokens. Live provider calls require configured credentials and an operator key.
 
 ### MINIO
 
-MINIO is optional. It is intended for teams that already keep skills/prompts as files in object storage.
+MINIO is optional. It is intended for teams that already keep skills, prompts, or source files in object storage.
 
 Recommended model:
 
 - MINIO keeps originals
-- Hermes DB stores searchable metadata, classification, folder placement, and object location
-- users can scan candidates before importing
-- imports should be reviewable and idempotent
+- Alexandria DB stores searchable metadata, classification, folder placement, and object location
+- users scan candidates before importing
+- imports remain reviewable and idempotent
 
 ### MCP
 
-The MCP server exposes Alexandria-Hermes to MCP-capable agents and tool clients. It should be treated as an agent-facing access path over the same backend contracts, not as a separate business-logic implementation.
+The MCP server exposes Alexandria-Hermes to MCP-capable agents and tool clients. It is an agent-facing access path over the same backend contracts, not a separate business-logic implementation.
 
 ---
 
@@ -333,6 +335,9 @@ cd frontend
 npm run security:npm-supply-chain
 npm run lint
 npm run test:ui-contract
+npm run test:librarian-chat
+npm run test:library-ui-navigation
+npm run test:content-viewer
 npm run build
 npm run dev
 ```
@@ -341,25 +346,45 @@ npm run dev
 
 ## Configuration
 
-Backend config is environment-based.
+Alexandria-Hermes is configured by environment variables. There is no user-login token; use the single operator key only for sensitive control-plane operations.
 
-Common local values:
+### Backend service variables
 
-```bash
-SERVICE_APP_ENV=local
-SERVICE_APP_NAME=alexandria-hermes
-SERVICE_OPERATOR_API_KEY=<generate-a-local-operator-key>
-```
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `SERVICE_OPERATOR_API_KEY` | yes | none | Single local operator key for sensitive settings/provider/OAuth/librarian control-plane routes. Minimum length: 32. |
+| `SERVICE_APP_ENV` | no | `local` | Runtime environment: `local`, `stage`, or `prod`. |
+| `SERVICE_APP_NAME` | no | `alexandria-hermes` | Service name used in logs/runtime metadata. |
+| `SERVICE_APP_LOG_LEVEL` | no | `INFO` | Python log level. |
+| `SERVICE_SECRET_ENCRYPTION_KEY` | stage/prod | local dev key fallback | Provider-secret encryption key. Required outside `local`. |
+| `DATABASE_URL` | no | `sqlite+aiosqlite:///./data/alexandria_hermes.db` | Async SQLAlchemy database URL. |
+| `SERVICE_RAG_VECTOR_ENABLED` | no | `true` | Enables vector retrieval for context RAG. |
+| `SERVICE_RAG_EMBEDDING_PROVIDER` | no | `fastembed` | Local embedding provider. |
+| `SERVICE_RAG_EMBEDDING_MODEL` | no | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Embedding model. |
+| `SERVICE_RAG_EMBEDDING_DIMENSIONS` | no | `384` | Expected vector dimensions. |
+| `SERVICE_RAG_EMBEDDING_CACHE_DIR` | no | none | Optional FastEmbed cache directory. |
 
-Codex OAuth follows Hermes Agent's default model: public OpenAI Codex OAuth
-metadata is code-owned by the backend, and `.env` is only for local secrets or
-explicit operator overrides. Access tokens and refresh tokens are stored only in
-backend provider secrets, never in browser state or public config examples.
-If an operator must override the Hermes-compatible defaults for a deployment,
-set the `SERVICE_CODEX_OAUTH_*` variables locally without committing them.
-Sensitive provider/settings routes require `x-operator-api-key`; the
-Next.js server proxy forwards it from `ALEXANDRIA_OPERATOR_API_KEY`, and
-`docker-compose.yml` maps that value from `SERVICE_OPERATOR_API_KEY`.
+Codex OAuth defaults are code-owned by the backend. Only set `SERVICE_CODEX_OAUTH_*` variables for an intentional deployment override; do not commit them.
+
+### Frontend and server proxy variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `ALEXANDRIA_OPERATOR_API_KEY` | for control-plane UI actions | Next.js server proxy forwards this as `x-operator-api-key`. Docker Compose maps it from `SERVICE_OPERATOR_API_KEY`. |
+
+The frontend development and production scripts bind to `127.0.0.1` by default. Container scripts bind to `0.0.0.0` inside Docker only.
+
+### CLI / Hermes / MCP variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `HERMES_API_URL` | `http://localhost:8000` | CLI global backend URL. Can also be set per command with `--base-url`. |
+| `ALEXANDRIA_API_URL` | `http://localhost:8000` | Hermes/MCP backend URL written into integration config. |
+| `ALEXANDRIA_OPERATOR_API_KEY` | empty | Operator key used by CLI/MCP/Hermes for sensitive operations. |
+| `ALEXANDRIA_API_TIMEOUT_SECONDS` | `30` | MCP/backend client timeout. |
+| `HERMES_HOME` | `~/.hermes` | Hermes integration home used by onboarding commands. |
+
+Sensitive provider/settings routes require the `x-operator-api-key` header. Data-plane read/search operations can be used locally without provider credentials, but provider settings, OAuth, and librarian delegation require the operator key.
 
 ---
 
@@ -368,12 +393,13 @@ Next.js server proxy forwards it from `ALEXANDRIA_OPERATOR_API_KEY`, and
 > Knowledge should not only be stored.  
 > It should remain findable, reusable, attributable, and usable by agents at the right moment.
 
-ALEXANDRIA-HERMES aims to become an operational archive where:
+Alexandria-Hermes aims to become an operational archive where:
 
 - skills are reusable capabilities
 - prompts are reusable instruction artifacts
 - folders behave like shelves
 - context entries preserve what agents learned and decided
-- usage history and RAG recall help retrieval
+- memory compacts preserve durable summaries of larger workstreams
+- usage history and RAG recall improve retrieval
 - librarian agents are optional helpers, not hard dependencies
 - humans and agents can both participate

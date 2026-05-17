@@ -41,6 +41,9 @@ This project uses human-readable release notes grouped by date until versioned r
   use explicit import surfaces instead of stale package re-exports.
 - Updated README, install, Docker, and usage-guide docs for no-login,
   single-operator, localhost-first operation with `ALEXANDRIA_OPERATOR_API_KEY`.
+- Removed stale README legacy references and expanded the Configuration section
+  around the current backend, frontend proxy, CLI, Hermes, and MCP environment
+  contracts.
 - Updated `install.md` to document the policy contract, CLI on/off flow, guidebook links, and first-user expectations.
 - Updated generated Hermes skill/prompt assets so they respect `policy.yaml` and describe librarian collaboration as optional.
 - Updated generated Hermes skill/prompt assets to make Alexandria a durable library/long-term-memory layer that is used after current/local context proves insufficient, rather than a feature the user must manually invoke or a tool called before every task.
@@ -63,11 +66,6 @@ This project uses human-readable release notes grouped by date until versioned r
 - `npm run lint`
 - `npm run build`
 - `git diff --check`
-- `uv run pytest tests/cli/test_hermes_cli.py -q -k 'hermes_onboard_dry_run_plans_prompts_skill_and_mcp_config or hermes_install_writes_default_enabled_policy_contract or hermes_policy_cli_toggles_usage_contract or hermes_install_apply_restart_hint_prints_first_prompt or hermes_doctor_deep_reports_readiness_checks or hermes_install_prompts_includes_self_acquisition_loop'`
-- `uv run ruff check ...`
-- `uv run pyrefly check ...`
-- `make ci` → `279 passed`
-- CLI smoke for `hermes policy status`, `disable`, and `enable`
 
 ## 2026-05-16
 
