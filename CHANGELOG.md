@@ -41,9 +41,8 @@ This project uses human-readable release notes grouped by date until versioned r
   use explicit import surfaces instead of stale package re-exports.
 - Updated README, install, Docker, and usage-guide docs for no-login,
   single-operator, localhost-first operation with `ALEXANDRIA_OPERATOR_API_KEY`.
-- Removed stale README legacy references and expanded the Configuration section
-  around the current backend, frontend proxy, CLI, Hermes, and MCP environment
-  contracts.
+- Removed stale README legacy references, deleted the standalone Validation and
+  Configuration sections, and kept only current Quick Start operator-key guidance.
 - Updated `install.md` to document the policy contract, CLI on/off flow, guidebook links, and first-user expectations.
 - Updated generated Hermes skill/prompt assets so they respect `policy.yaml` and describe librarian collaboration as optional.
 - Updated generated Hermes skill/prompt assets to make Alexandria a durable library/long-term-memory layer that is used after current/local context proves insufficient, rather than a feature the user must manually invoke or a tool called before every task.

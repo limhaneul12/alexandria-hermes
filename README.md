@@ -53,7 +53,6 @@ Current documentation entry points:
 
 - [`install.md`](./install.md) — local install, operator key, Hermes onboarding, and MCP registration
 - [`docs/usage_guidebook/`](./docs/usage_guidebook/) — feature-level operator guides
-- [`docs/librarian_memory_search_development/00_ultragoal_prompt.md`](./docs/librarian_memory_search_development/00_ultragoal_prompt.md) — current memory/librarian/search development scope
 
 ---
 
@@ -81,51 +80,19 @@ Known boundaries:
 
 ---
 
-## Validation Snapshot
-
-Latest local validation for the current implementation:
-
-```bash
-cd backend
-make ci
-```
-
-Result:
-
-```text
-ruff format --check: 346 files already formatted
-ruff check: All checks passed
-pyrefly check: 0 errors
-shared guardrails: 33 passed
-backend tests: 324 passed
-```
-
-Frontend validation:
-
-```bash
-cd frontend
-npm run security:npm-supply-chain
-npm run lint
-npm run build
-```
-
-Additional frontend contract checks are available as npm scripts, including `test:ui-contract`, `test:librarian-chat`, `test:library-ui-navigation`, and `test:content-viewer`.
-
----
-
 ## Quick Start
 
 ### Backend
 
-The backend requires a local operator key even for development because provider/settings/librarian control-plane routes are protected.
+Create a repo-root `.env` with the local operator key if it does not already exist:
 
 ```bash
-export SERVICE_OPERATOR_API_KEY="$(python3 - <<'PY'
-import secrets
-print(secrets.token_urlsafe(32))
-PY
-)"
+SERVICE_OPERATOR_API_KEY=replace-with-32-plus-character-local-operator-key
+```
 
+The backend reads this through `AppConfig`; sensitive provider/settings/librarian routes compare requests against it.
+
+```bash
 cd backend
 uv sync
 uv run alembic upgrade head
@@ -146,11 +113,9 @@ Health checks:
 Use the existing lockfile/dependencies. Do not install new packages during the npm hold.
 
 ```bash
-export ALEXANDRIA_OPERATOR_API_KEY="$SERVICE_OPERATOR_API_KEY"
-
 cd frontend
 npm run security:npm-supply-chain
-npm run dev
+ALEXANDRIA_OPERATOR_API_KEY="replace-with-same-local-operator-key" npm run dev
 ```
 
 Frontend runs at:
@@ -161,13 +126,7 @@ Frontend runs at:
 
 ### Full Stack
 
-Create a repo-root `.env` with the operator key:
-
-```bash
-SERVICE_OPERATOR_API_KEY=<generate-a-local-operator-key>
-```
-
-Then run:
+Use the same repo-root `.env`, then run:
 
 ```bash
 docker compose up --build
@@ -201,7 +160,7 @@ For control-plane commands, export the same operator key used by the backend:
 
 ```bash
 export HERMES_API_URL=http://localhost:8000
-export ALEXANDRIA_OPERATOR_API_KEY="$SERVICE_OPERATOR_API_KEY"
+export ALEXANDRIA_OPERATOR_API_KEY="replace-with-same-local-operator-key"
 ```
 
 Examples:
@@ -341,50 +300,6 @@ npm run test:content-viewer
 npm run build
 npm run dev
 ```
-
----
-
-## Configuration
-
-Alexandria-Hermes is configured by environment variables. There is no user-login token; use the single operator key only for sensitive control-plane operations.
-
-### Backend service variables
-
-| Variable | Required | Default | Purpose |
-| --- | --- | --- | --- |
-| `SERVICE_OPERATOR_API_KEY` | yes | none | Single local operator key for sensitive settings/provider/OAuth/librarian control-plane routes. Minimum length: 32. |
-| `SERVICE_APP_ENV` | no | `local` | Runtime environment: `local`, `stage`, or `prod`. |
-| `SERVICE_APP_NAME` | no | `alexandria-hermes` | Service name used in logs/runtime metadata. |
-| `SERVICE_APP_LOG_LEVEL` | no | `INFO` | Python log level. |
-| `SERVICE_SECRET_ENCRYPTION_KEY` | stage/prod | local dev key fallback | Provider-secret encryption key. Required outside `local`. |
-| `DATABASE_URL` | no | `sqlite+aiosqlite:///./data/alexandria_hermes.db` | Async SQLAlchemy database URL. |
-| `SERVICE_RAG_VECTOR_ENABLED` | no | `true` | Enables vector retrieval for context RAG. |
-| `SERVICE_RAG_EMBEDDING_PROVIDER` | no | `fastembed` | Local embedding provider. |
-| `SERVICE_RAG_EMBEDDING_MODEL` | no | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Embedding model. |
-| `SERVICE_RAG_EMBEDDING_DIMENSIONS` | no | `384` | Expected vector dimensions. |
-| `SERVICE_RAG_EMBEDDING_CACHE_DIR` | no | none | Optional FastEmbed cache directory. |
-
-Codex OAuth defaults are code-owned by the backend. Only set `SERVICE_CODEX_OAUTH_*` variables for an intentional deployment override; do not commit them.
-
-### Frontend and server proxy variables
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `ALEXANDRIA_OPERATOR_API_KEY` | for control-plane UI actions | Next.js server proxy forwards this as `x-operator-api-key`. Docker Compose maps it from `SERVICE_OPERATOR_API_KEY`. |
-
-The frontend development and production scripts bind to `127.0.0.1` by default. Container scripts bind to `0.0.0.0` inside Docker only.
-
-### CLI / Hermes / MCP variables
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `HERMES_API_URL` | `http://localhost:8000` | CLI global backend URL. Can also be set per command with `--base-url`. |
-| `ALEXANDRIA_API_URL` | `http://localhost:8000` | Hermes/MCP backend URL written into integration config. |
-| `ALEXANDRIA_OPERATOR_API_KEY` | empty | Operator key used by CLI/MCP/Hermes for sensitive operations. |
-| `ALEXANDRIA_API_TIMEOUT_SECONDS` | `30` | MCP/backend client timeout. |
-| `HERMES_HOME` | `~/.hermes` | Hermes integration home used by onboarding commands. |
-
-Sensitive provider/settings routes require the `x-operator-api-key` header. Data-plane read/search operations can be used locally without provider credentials, but provider settings, OAuth, and librarian delegation require the operator key.
 
 ---
 
