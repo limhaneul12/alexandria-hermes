@@ -87,7 +87,11 @@ class UsageService:
                 agent_name=payload["agent_name"],
                 librarian_provider=payload["librarian_provider"],
                 query=payload["query"],
-                selection_source=payload["selection_source"],
+                selection_source=enum_value(
+                    payload["selection_source"],
+                    SelectionSource,
+                    "selection_source",
+                ),
                 used_at=payload["used_at"],
                 success=payload["success"],
                 feedback=_usage_feedback_payload(payload["feedback"]),

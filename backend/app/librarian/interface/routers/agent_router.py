@@ -17,7 +17,7 @@ from app.librarian.interface.schemas.agent.agent_schema import (
 )
 from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
-from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
+from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
 from app.shared.types.types_convert_utils import now_utc
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -118,7 +118,7 @@ def _patch_payload(request: AgentPatchRequest) -> AgentUpdatePayload:
     description="Library API operation.",
     summary="Create agent",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def create_agent(
     request: AgentCreateRequest,
@@ -146,7 +146,7 @@ async def create_agent(
     status_code=status.HTTP_200_OK,
     summary="List agents",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def list_agents(
     service: AgentService = Depends(
@@ -173,7 +173,7 @@ async def list_agents(
     status_code=status.HTTP_200_OK,
     summary="Get agent",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def get_agent(
     agent_id: str,
@@ -205,7 +205,7 @@ async def get_agent(
     status_code=status.HTTP_200_OK,
     summary="Patch agent",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def patch_agent(
     agent_id: str,
@@ -234,7 +234,7 @@ async def patch_agent(
     description="Library API operation.",
     summary="Delete agent",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def delete_agent(
     agent_id: str,

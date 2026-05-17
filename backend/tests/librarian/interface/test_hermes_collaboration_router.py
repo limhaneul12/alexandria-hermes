@@ -18,11 +18,22 @@ from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )
+from app.librarian.application.delegate_execution import (
+    LibrarianDelegateExecutor,
+    LibrarianExecutionPlan,
+)
 from app.librarian.application.hermes_collaboration_service import (
     HermesCollaborationService,
 )
 from app.librarian.domain.contracts.agent_contracts import AgentCreate, AgentUpdate
+from app.librarian.domain.contracts.hermes_collaboration_contracts import (
+    HermesLibrarianAskCommand,
+    LibrarianDelegateResult,
+)
 from app.librarian.domain.entities.read_models import AgentProfile
+from app.librarian.domain.event_enum.collaboration_enums import (
+    LibrarianDelegateStatus,
+)
 from app.librarian.domain.repositories.agent_repository import IAgentRepository
 from app.main import app
 from app.shared.types.extra_types import JSONObject
@@ -116,6 +127,36 @@ class CollaborationSecretRepository(IProviderSecretRepository):
         raise NotImplementedError
 
 
+class SkippingDelegateExecutor(LibrarianDelegateExecutor):
+    """Fake executor that simulates provider execution failure."""
+
+    async def execute(
+        self,
+        *,
+        command: HermesLibrarianAskCommand,
+        plan: LibrarianExecutionPlan,
+        fallback: LibrarianDelegateResult,
+    ) -> LibrarianDelegateResult:
+        """Return a skipped delegate without raising across the boundary.
+
+        Args:
+            command: Ask-librarian command under execution.
+            plan: Resolved delegate execution plan.
+            fallback: Deterministic delegate metadata.
+
+        Returns:
+            LibrarianDelegateResult: Skipped delegate failure evidence.
+        """
+        return LibrarianDelegateResult(
+            profile_id=fallback.profile_id,
+            provider_id=fallback.provider_id,
+            status=LibrarianDelegateStatus.SKIPPED,
+            delegate_type=fallback.delegate_type,
+            summary=f"Provider execution failed for: {command.prompt}",
+            matched_specialties=fallback.matched_specialties,
+        )
+
+
 def _provider(
     provider_id: str = "00000000-0000-4000-8000-000000000701",
     *,
@@ -166,6 +207,7 @@ def _service(
     providers: list[LibrarianProvider],
     profiles: list[AgentProfile] | None = None,
     secrets: dict[tuple[str, str], str] | None = None,
+    delegate_executor: LibrarianDelegateExecutor | None = None,
 ) -> HermesCollaborationService:
     """Create collaboration service with deterministic clock."""
     return HermesCollaborationService(
@@ -173,6 +215,7 @@ def _service(
         agent_repo=CollaborationAgentRepository([] if profiles is None else profiles),
         secret_repo=CollaborationSecretRepository(secrets),
         now_provider=lambda: FIXED_NOW,
+        delegate_executor=delegate_executor,
     )
 
 
@@ -302,6 +345,50 @@ def test_ask_librarian_delegates_when_provider_is_available() -> None:
             }
         ],
     }
+
+
+def test_ask_librarian_reports_guidance_when_provider_delegate_is_skipped() -> None:
+    """POST /librarians/ask should not mark skipped delegates as completed."""
+    profile = _profile()
+    service = _service(
+        [_provider()],
+        [profile],
+        _oauth_execution_secrets(),
+        delegate_executor=SkippingDelegateExecutor(),
+    )
+
+    with (
+        override_library_provider("hermes_collaboration_service", service),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.post(
+            "/librarians/ask",
+            json={
+                "prompt": "Need an MCP usage-recording skill",
+                "delegate_to_librarian": True,
+                "librarian_profile_id": profile.id,
+            },
+        )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["status"] == "GUIDANCE_ONLY"
+    assert body["decision"] == "SUGGEST_HERMES_RESEARCH"
+    assert body["recommendation"] == (
+        "사서 delegate를 완료하지 못했습니다. delegates 응답의 SKIPPED 항목과 "
+        "summary를 확인하고 Hermes 직접 조사 또는 인증/제공자 설정을 점검하세요."
+    )
+    assert body["route_preview"][-1] == "No delegated librarians completed"
+    assert body["delegates"] == [
+        {
+            "profile_id": profile.id,
+            "provider_id": "00000000-0000-4000-8000-000000000701",
+            "status": "SKIPPED",
+            "delegate_type": "LIBRARY_SEARCH",
+            "summary": "Provider execution failed for: Need an MCP usage-recording skill",
+            "matched_specialties": [],
+        }
+    ]
 
 
 def test_ask_librarian_routes_by_specialty_and_adds_quality_reviewer() -> None:

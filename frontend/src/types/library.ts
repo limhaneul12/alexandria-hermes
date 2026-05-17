@@ -14,6 +14,7 @@ export type SelectionSource =
   | "MANUAL_BROWSE"
   | "SEARCH"
   | "DIRECT_LINK"
+  | "UI_VIEW"
   | "CONTEXT_RECALL"
   | "SELF_ACQUISITION"
   | "LIBRARIAN_DELEGATION";
@@ -150,6 +151,29 @@ export type LibraryItemCardDTO = {
 
 export type SkillCardDTO = LibraryItemCardDTO;
 
+export type LibrarySearchHitDTO = {
+  id: string;
+  itemType: ItemType;
+  title: string;
+  summary: string | null;
+  tags: string[];
+  status: ItemStatus;
+  categoryId: string | null;
+  score: number;
+  whyMatched: string[];
+  highlights: string[];
+  detailsPreview: Record<string, unknown>;
+  contentCharCount: number;
+  updatedAt: string;
+};
+
+export type LibrarySearchDTO = {
+  items: LibrarySearchHitDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type LibraryItemDetailDTO = LibraryItemCardDTO & {
   skillAcquisition: SkillAcquisitionMetadataDTO | null;
   usageHistory: Array<{
@@ -163,6 +187,19 @@ export type LibraryItemDetailDTO = LibraryItemCardDTO & {
 };
 
 export type SkillDetailDTO = LibraryItemDetailDTO;
+
+export type LibraryUsageRecordCreateDTO = {
+  itemId: string;
+  itemType: ItemType;
+  agentName: string;
+  selectionSource: SelectionSource;
+  success: boolean;
+  query?: string | null;
+  librarianProvider?: string | null;
+  feedback?: Record<string, unknown> | string | null;
+};
+
+export type LibraryUsageRecordDTO = LibraryItemDetailDTO["usageHistory"][number];
 
 export type DashboardDTO = {
   stats: Array<{ label: string; value: number; hint: string }>;
@@ -361,6 +398,19 @@ export type LibrarianAskRequestDTO = {
   librarianRolePrompt?: string | null;
   maxLibrarianAgents?: number | null;
   routingSpecialties?: string[];
+  sourceRefs?: LibrarianSourceRefDTO[];
+  contextCompact?: {
+    markdownBody: string;
+    sourceRefs: LibrarianSourceRefDTO[];
+  } | null;
+};
+
+export type LibrarianSourceRefDTO = {
+  sourceType: "CONTEXT" | "MEMORY_COMPACT" | "LIBRARY_ITEM" | "SKILL" | "PROMPT" | "KNOWLEDGE";
+  sourceId: string;
+  title: string;
+  detailPath: string;
+  preview: string | null;
 };
 
 export type LibrarianDelegateDTO = {
@@ -391,6 +441,34 @@ export type LibrarianAskResponseDTO = {
   qualityReviewAdded: boolean;
   routingReason: string;
   delegates: LibrarianDelegateDTO[];
+};
+
+export type LibrarianChatMode = "DIRECT_SEARCH" | "DELEGATE" | "SEARCH_AND_DELEGATE";
+export type LibrarianChatTarget = "SKILL" | "PROMPT" | "CONTEXT" | "MEMORY_COMPACT";
+
+export type LibrarianChatRequestDTO = {
+  prompt: string;
+  mode: LibrarianChatMode;
+  targets: LibrarianChatTarget[];
+  limit: number;
+};
+
+export type LibrarianDirectHitDTO = {
+  id: string;
+  sourceType: LibrarianSourceRefDTO["sourceType"];
+  title: string;
+  preview: string;
+  detailPath: string;
+  score: number;
+};
+
+export type LibrarianChatResponseDTO = {
+  answer: string;
+  directHits: LibrarianDirectHitDTO[];
+  delegatedJobId: string | null;
+  sourceRefs: LibrarianSourceRefDTO[];
+  executionSummary: string[];
+  askResponse: LibrarianAskResponseDTO | null;
 };
 
 export type ContextKind =
@@ -449,6 +527,26 @@ export type ContextDTO = {
   archivedAt: string | null;
   accessCount: number;
   isArchived: boolean;
+};
+
+export type ContextAccessActorType = "UI" | "AGENT" | "LIBRARIAN" | "SYSTEM";
+export type ContextAccessMethod = "DETAIL_VIEW" | "RECALL" | "RAG_SEARCH" | "MCP_TOOL";
+
+export type ContextAccessEventDTO = {
+  id: string;
+  contextId: string;
+  accessedAt: string;
+  actorName: string;
+  actorType: ContextAccessActorType;
+  accessMethod: ContextAccessMethod;
+  sourceSurface: string | null;
+};
+
+export type ContextAccessEventCreateDTO = {
+  actorName: string;
+  actorType: ContextAccessActorType;
+  accessMethod: ContextAccessMethod;
+  sourceSurface: string | null;
 };
 
 export type ContextChunkDTO = {
@@ -542,4 +640,40 @@ export type ContextPrepareCompactDTO = {
   keyDecisions: string[];
   nextActions: string[];
   risks: string[];
+};
+
+export type MemoryCompactStatus = "DRAFT" | "CURRENT" | "SUPERSEDED" | "ARCHIVED";
+
+export const MEMORY_COMPACT_STATUSES = [
+  "CURRENT",
+  "SUPERSEDED",
+  "ARCHIVED",
+  "DRAFT",
+] as const satisfies readonly MemoryCompactStatus[];
+
+export type MemoryCompactSourceRefDTO = {
+  id: string;
+  compactId: string;
+  sourceType: string;
+  sourceId: string;
+  title: string;
+  detailPath: string;
+};
+
+export type MemoryCompactDTO = {
+  id: string;
+  project: string | null;
+  coveredFrom: string;
+  coveredTo: string;
+  markdownBody: string;
+  status: MemoryCompactStatus;
+  sourceRefs: MemoryCompactSourceRefDTO[];
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type MemoryCompactListDTO = {
+  items: MemoryCompactDTO[];
+  total: number;
 };

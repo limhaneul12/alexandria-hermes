@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
+from app.library.domain.entities.item_search_hit import ItemSearchCandidate
+from app.library.domain.entities.item_search_query import ItemSearchQuery
 from app.library.domain.entities.read_models import LibraryItem
 from app.library.domain.event_enum.item_enums import ItemType
 
@@ -114,4 +116,18 @@ class IItemRepository(ABC):
 
         Returns:
             Matching ORM rows.
+        """
+
+    @abstractmethod
+    async def search_candidates(
+        self,
+        options: ItemSearchQuery,
+    ) -> tuple[list[ItemSearchCandidate], int]:
+        """Search items and return candidate projections without full content.
+
+        Args:
+            options: Normalized candidate search options.
+
+        Returns:
+            Tuple of matching candidate rows and total count before pagination.
         """

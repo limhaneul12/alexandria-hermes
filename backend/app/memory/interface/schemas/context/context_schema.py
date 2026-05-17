@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.memory.domain.event_enum.context_enums import (
+    ContextAccessActorType,
+    ContextAccessMethod,
     ContextContentFormat,
     ContextImportance,
     ContextKind,
@@ -344,6 +346,105 @@ class ContextChunkResponse(StrictSchemaModel):
 
 class ContextChunkResponseList(StrictRootSchemaModel[list[ContextChunkResponse]]):
     """Root response schema for context chunks."""
+
+
+class ContextAccessEventRequest(StrictSchemaModel):
+    """Payload for recording one Context Vault access event."""
+
+    actor_name: str = Field(default="Alexandria UI", min_length=1)
+    actor_type: ContextAccessActorType = ContextAccessActorType.UI
+    access_method: ContextAccessMethod = ContextAccessMethod.DETAIL_VIEW
+    source_surface: str | None = "context-detail"
+
+    @field_validator("actor_type", mode="before")
+    @classmethod
+    # Broad type justified: Pydantic before validators receive raw boundary input.
+    def parse_actor_type(cls, value: object) -> ContextAccessActorType:
+        """Parse JSON access actor type values.
+
+        Args:
+            value: Raw boundary value.
+
+        Returns:
+            Parsed actor type.
+        """
+        if isinstance(value, ContextAccessActorType):
+            return value
+        if isinstance(value, str):
+            return ContextAccessActorType(value)
+        raise ValueError("actor_type is required")
+
+    @field_validator("access_method", mode="before")
+    @classmethod
+    # Broad type justified: Pydantic before validators receive raw boundary input.
+    def parse_access_method(cls, value: object) -> ContextAccessMethod:
+        """Parse JSON access method values.
+
+        Args:
+            value: Raw boundary value.
+
+        Returns:
+            Parsed access method.
+        """
+        if isinstance(value, ContextAccessMethod):
+            return value
+        if isinstance(value, str):
+            return ContextAccessMethod(value)
+        raise ValueError("access_method is required")
+
+
+class ContextAccessEventResponse(StrictSchemaModel):
+    """Stored context access event response."""
+
+    id: str
+    context_id: str
+    accessed_at: datetime
+    actor_name: str
+    actor_type: ContextAccessActorType
+    access_method: ContextAccessMethod
+    source_surface: str | None
+
+    @field_validator("actor_type", mode="before")
+    @classmethod
+    # Broad type justified: Pydantic before validators receive raw boundary input.
+    def parse_actor_type(cls, value: object) -> ContextAccessActorType:
+        """Parse JSON access actor type values.
+
+        Args:
+            value: Raw boundary value.
+
+        Returns:
+            Parsed actor type.
+        """
+        if isinstance(value, ContextAccessActorType):
+            return value
+        if isinstance(value, str):
+            return ContextAccessActorType(value)
+        raise ValueError("actor_type is required")
+
+    @field_validator("access_method", mode="before")
+    @classmethod
+    # Broad type justified: Pydantic before validators receive raw boundary input.
+    def parse_access_method(cls, value: object) -> ContextAccessMethod:
+        """Parse JSON access method values.
+
+        Args:
+            value: Raw boundary value.
+
+        Returns:
+            Parsed access method.
+        """
+        if isinstance(value, ContextAccessMethod):
+            return value
+        if isinstance(value, str):
+            return ContextAccessMethod(value)
+        raise ValueError("access_method is required")
+
+
+class ContextAccessEventResponseList(
+    StrictRootSchemaModel[list[ContextAccessEventResponse]]
+):
+    """Root response schema for context access event arrays."""
 
 
 class ContextSearchRequest(StrictSchemaModel):

@@ -83,6 +83,8 @@ def prompts_search(
     query: str,
     limit: int = typer.Option(20, "--limit"),
     offset: int = typer.Option(0, "--offset"),
+    kind: PromptKind | None = typer.Option(None, "--kind"),
+    tag: list[str] | None = typer.Option(None, "--tag"),
 ) -> None:
     """Search prompt records by text.
 
@@ -91,13 +93,21 @@ def prompts_search(
         query: Search text.
         limit: Maximum result count.
         offset: Result offset.
+        kind: Optional prompt kind filter.
+        tag: Repeatable tag filter.
 
     Returns:
         None.
     """
     run_client(
         ctx,
-        PromptsSearchCommand(query=query, limit=limit, offset=offset),
+        PromptsSearchCommand(
+            query=query,
+            limit=limit,
+            offset=offset,
+            kind=kind,
+            tag=values(tag),
+        ),
         handle_prompts_search,
     )
 

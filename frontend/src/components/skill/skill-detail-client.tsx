@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, BookOpen, CheckCircle2, Clipboard, ExternalLink, History, ScrollText, ShieldCheck, Table2, Trash2, XCircle } from "lucide-react";
 
+import { RecentActivityList } from "@/components/activity/recent-activity-list";
+import { ContentViewer } from "@/components/content/content-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { deleteLibraryItem, fetchLibraryItemDetail } from "@/lib/api";
+import { deleteLibraryItem, fetchLibraryItemDetail, recordLibraryUsage } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { useLibraryStore } from "@/store/library-store";
@@ -75,7 +77,7 @@ function PromptBody({ data }: { data: LibraryItemDetailDTO }) {
       <Card id="overview" className="scroll-mt-24">
         <CardHeader><CardTitle className="flex items-center gap-2"><ScrollText className="h-5 w-5" /> Prompt Body</CardTitle></CardHeader>
         <CardContent>
-          <pre className="max-h-[520px] overflow-auto rounded-xl border border-[#d8d3c7] bg-white/60 p-4 text-sm leading-7 text-[#36322d]"><code>{data.content}</code></pre>
+          <ContentViewer content={data.content} />
         </CardContent>
       </Card>
       <Card id="variables" className="scroll-mt-24">
@@ -169,6 +171,7 @@ export function SkillDetailClient({ skillId }: { skillId: string }) {
   const language = useLibraryStore((state) => state.language);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const viewRecordedRef = useRef(false);
   const { data, isLoading, isError } = useQuery({
     queryKey: ["library-item", skillId],
     queryFn: () => fetchLibraryItemDetail(skillId),
@@ -183,12 +186,28 @@ export function SkillDetailClient({ skillId }: { skillId: string }) {
     },
   });
 
+  useEffect(() => {
+    if (!data || viewRecordedRef.current || data.id.startsWith("minio:")) return;
+    viewRecordedRef.current = true;
+    void recordLibraryUsage({
+      itemId: data.id,
+      itemType: data.type,
+      agentName: "Alexandria UI",
+      selectionSource: "UI_VIEW",
+      success: true,
+      query: null,
+      librarianProvider: null,
+      feedback: { source_surface: "library-detail" },
+    })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["library-item", skillId] }))
+      .catch(() => undefined);
+  }, [data, queryClient, skillId]);
+
   if (isLoading) return <div className="rounded-2xl border border-[#d8d3c7] p-10 text-[#514c44]">{t(language, "preparingSkillDetail")}</div>;
   if (isError || !data) return <div className="rounded-2xl border border-[#d8d3c7] p-10 text-[#514c44]">{t(language, "skillNotFound")}</div>;
 
   const item = data;
   const isPrompt = item.type === "PROMPT";
-  const overview = item.content.replace(/```[\s\S]*?```/g, "").trim();
 
   function handleDelete() {
     if (deleteMutation.isPending) return;
@@ -239,11 +258,11 @@ export function SkillDetailClient({ skillId }: { skillId: string }) {
             {isPrompt ? <PromptBody data={data} /> : (
               <>
                 {item.skillAcquisition ? <SelfAcquisitionCard metadata={item.skillAcquisition} /> : null}
-                <Card id="usage-guide" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><Table2 className="h-5 w-5" /> {t(language, "usageGuide")}</CardTitle></CardHeader><CardContent>{overview ? <p className="whitespace-pre-line leading-8 text-[#36322d]">{overview}</p> : <EmptySection message={t(language, "usageGuideEmpty")} />}</CardContent></Card>
+                <Card id="usage-guide" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><Table2 className="h-5 w-5" /> {t(language, "usageGuide")}</CardTitle></CardHeader><CardContent>{item.content.trim() ? <ContentViewer content={item.content} /> : <EmptySection message={t(language, "usageGuideEmpty")} />}</CardContent></Card>
               </>
             )}
 
-            <Card id="history" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><History className="h-5 w-5" /> {t(language, "recentUsageHistory")}</CardTitle></CardHeader><CardContent>{item.usageHistory.length === 0 ? <EmptySection message={t(language, "usageHistoryEmpty")} /> : <div className="overflow-hidden rounded-xl border border-[#d8d3c7]"><table className="w-full text-left text-sm"><thead className="bg-white/[0.03] text-[#6f6a60]"><tr><th className="p-3">{t(language, "usedAt")}</th><th className="p-3">{t(language, "agent")}</th><th className="p-3">{t(language, "accessMethod")}</th></tr></thead><tbody className="divide-y divide-[#d8d3c7]">{item.usageHistory.map((usage) => <tr key={usage.id}><td className="p-3 text-[#514c44]">{formatDate(usage.accessedAt)}</td><td className="p-3 text-[#111111]">{usage.agentName}</td><td className="p-3 text-[#514c44]">{usage.accessMethod}</td></tr>)}</tbody></table></div>}</CardContent></Card>
+            <Card id="history" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><History className="h-5 w-5" /> {t(language, "recentUsageHistory")}</CardTitle></CardHeader><CardContent><RecentActivityList items={item.usageHistory.slice(0, 5).map((usage) => ({ id: usage.id, occurredAt: usage.accessedAt, actorName: usage.agentName, method: usage.accessMethod, sourceSurface: null }))} /></CardContent></Card>
           </div>
 
           <aside className="space-y-5">

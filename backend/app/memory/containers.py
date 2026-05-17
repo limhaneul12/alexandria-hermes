@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from app.memory.application.context_service import ContextService
+from app.memory.application.memory_compact_service import MemoryCompactService
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
+)
+from app.memory.infrastructure.repositories.memory_compact_repository import (
+    SqlAlchemyMemoryCompactRepository,
 )
 from app.platform.config.app_config import AppConfig
 from app.retrieval.application.embedding_factory import create_embedding_provider
@@ -26,9 +30,17 @@ class MemoryContainer(containers.DeclarativeContainer):
         cache_dir=app_config.provided.rag_embedding_cache_dir,
     )
     context_repo = providers.Factory(SqlAlchemyContextRepository, session=db_session)
+    memory_compact_repo = providers.Factory(
+        SqlAlchemyMemoryCompactRepository,
+        session=db_session,
+    )
     context_service = providers.Factory(
         ContextService,
         repository=context_repo,
         embedding_provider=embedding_provider,
         vector_retrieval_enabled=app_config.provided.rag_vector_enabled,
+    )
+    memory_compact_service = providers.Factory(
+        MemoryCompactService,
+        repository=memory_compact_repo,
     )

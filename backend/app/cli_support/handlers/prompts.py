@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import urllib.parse
 from difflib import unified_diff
 
 from app.cli_support.contracts.command_contracts import (
@@ -106,10 +107,17 @@ def handle_prompts_search(
     """
     limit = bounded_limit(command.limit, default=20)
     offset = max(0, int(command.offset))
-    query = quote_path(command.query)
-    payload = client.get(
-        f"/library/items?limit={limit}&offset={offset}&item_type=PROMPT&q={query}"
-    )
+    params: list[tuple[str, str]] = [
+        ("q", command.query),
+        ("limit", str(min(limit, 100))),
+        ("offset", str(offset)),
+        ("item_type", "PROMPT"),
+        ("content_mode", "candidate"),
+    ]
+    if command.kind is not None:
+        params.append(("prompt_kind", command.kind.value))
+    params.extend(("tags_any", tag) for tag in command.tag)
+    payload = client.get(f"/library/search?{urllib.parse.urlencode(params)}")
     rows = json_list(payload)
     if context.json_output:
         print_json(rows, context.stdout)

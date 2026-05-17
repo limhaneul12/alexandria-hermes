@@ -6,9 +6,12 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const helperPath = new URL("../src/lib/backend/archive-category-filter.ts", import.meta.url);
+const archivePath = new URL("../src/lib/backend/archive.ts", import.meta.url);
 assert.equal(existsSync(helperPath), true, "archive category filter helper must exist");
+assert.equal(existsSync(archivePath), true, "archive backend adapter must exist");
 
 const source = readFileSync(helperPath, "utf8");
+const archiveSource = readFileSync(archivePath, "utf8");
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ESNext,
@@ -68,6 +71,32 @@ assert.deepEqual(
   [...mod.collectCategoryTreeIds(categories, "missing")],
   [],
   "unknown category ids should produce an empty filter set",
+);
+
+assert.match(
+  archiveSource,
+  /params\.append\("item_types", "SKILL"\)/,
+  "library backend adapter must default candidate search to visible skill rows",
+);
+assert.match(
+  archiveSource,
+  /params\.append\("item_types", "PROMPT"\)/,
+  "library backend adapter must default candidate search to visible prompt rows",
+);
+assert.match(
+  archiveSource,
+  /params\.set\("category_id", selectedCategory\.id\)/,
+  "category filtering must be sent to backend before candidate pagination",
+);
+assert.match(
+  archiveSource,
+  /params\.set\("include_descendant_categories", "true"\)/,
+  "category filtering must include descendant categories before pagination",
+);
+assert.match(
+  archiveSource,
+  /function isVisibleSearchHit/,
+  "candidate card mapping must guard against non-visible backend item types",
 );
 
 console.log("library category descendant filter contract ok");

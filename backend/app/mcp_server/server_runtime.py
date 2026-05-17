@@ -5,6 +5,10 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
+from app.library.domain.event_enum.item_enums import ItemType
+from app.library.domain.event_enum.prompt_enums import PromptKind
+from app.library.domain.event_enum.search_enums import SearchContentMode
+from app.library.domain.event_enum.skill_enums import RiskLevel
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
@@ -13,6 +17,9 @@ from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextScope,
     RagStrategy,
+)
+from app.memory.domain.event_enum.memory_compact_enums import (
+    MemoryCompactStatus,
 )
 from app.shared.types.extra_types import JSONValue
 from mcp.server.fastmcp import FastMCP
@@ -107,6 +114,93 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             Backend prompt response.
         """
         return await backend_tool_gateway.alexandria_get_prompt(api_client, item_id)
+
+    @server.tool(name="alexandria_search_library")
+    async def _tool_search_library(
+        query: str,
+        item_types: list[ItemType] | None = None,
+        tags: list[str] | None = None,
+        limit: int = backend_tool_gateway.DEFAULT_LIBRARY_SEARCH_LIMIT,
+        offset: int = 0,
+        content_mode: SearchContentMode = SearchContentMode.CANDIDATE,
+    ) -> JSONValue:
+        """Search library candidates first; get selected items for full content.
+
+        Args:
+            query: Search query.
+            item_types: Optional item type filters.
+            tags: Optional tag filters.
+            limit: Maximum candidate count.
+            offset: Candidate offset.
+            content_mode: Broad search content mode.
+
+        Returns:
+            Backend candidate search response without full content.
+        """
+        return await backend_tool_gateway.alexandria_search_library(
+            api_client,
+            query,
+            item_types,
+            tags,
+            limit,
+            offset,
+            content_mode,
+        )
+
+    @server.tool(name="alexandria_search_skills")
+    async def _tool_search_skills(
+        query: str,
+        required_tools: list[str] | None = None,
+        risk_level: RiskLevel | None = None,
+        tags: list[str] | None = None,
+        limit: int = backend_tool_gateway.DEFAULT_LIBRARY_SEARCH_LIMIT,
+    ) -> JSONValue:
+        """Search skill candidates first; call alexandria_get_skill for content.
+
+        Args:
+            query: Search query.
+            required_tools: Optional required tool filters.
+            risk_level: Optional skill risk filter.
+            tags: Optional tag filters.
+            limit: Maximum candidate count.
+
+        Returns:
+            Backend skill candidate response without full content.
+        """
+        return await backend_tool_gateway.alexandria_search_skills(
+            api_client,
+            query,
+            required_tools,
+            risk_level,
+            tags,
+            limit,
+        )
+
+    @server.tool(name="alexandria_search_prompts")
+    async def _tool_search_prompts(
+        query: str,
+        prompt_kind: PromptKind | None = None,
+        tags: list[str] | None = None,
+        limit: int = backend_tool_gateway.DEFAULT_LIBRARY_SEARCH_LIMIT,
+    ) -> JSONValue:
+        """Search prompt candidates first; call alexandria_get_prompt for body.
+
+        Args:
+            query: Search query.
+            prompt_kind: Optional prompt kind filter.
+            tags: Optional tag filters.
+            limit: Maximum candidate count.
+
+        Returns:
+            Backend prompt candidate response without full content.
+        """
+        return await backend_tool_gateway.alexandria_search_prompts(
+            api_client,
+            query,
+            prompt_kind,
+            tags,
+            limit,
+        )
 
     @server.tool(name="alexandria_recall_context")
     async def _tool_recall_context(
@@ -220,6 +314,46 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             user_id,
             session_id,
             source_agent,
+        )
+
+    @server.tool(name="alexandria_list_memory_compact_artifacts")
+    async def _tool_list_memory_compact_artifacts(
+        project: str | None = None,
+        status: MemoryCompactStatus | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> JSONValue:
+        """List durable Memory Compact artifacts."""
+        return await backend_tool_gateway.alexandria_list_memory_compact_artifacts(
+            api_client, project, status, limit, offset
+        )
+
+    @server.tool(name="alexandria_list_memory_compacts")
+    async def _tool_list_memory_compacts(
+        project: str | None = None,
+        status: MemoryCompactStatus | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> JSONValue:
+        """Deprecated compatibility alias for listing Memory Compact artifacts."""
+        return await backend_tool_gateway.alexandria_list_memory_compacts(
+            api_client, project, status, limit, offset
+        )
+
+    @server.tool(name="alexandria_get_current_memory_compact")
+    async def _tool_get_current_memory_compact(
+        project: str | None = None,
+    ) -> JSONValue:
+        """Read the current Memory Compact for a project."""
+        return await backend_tool_gateway.alexandria_get_current_memory_compact(
+            api_client, project
+        )
+
+    @server.tool(name="alexandria_get_memory_compact")
+    async def _tool_get_memory_compact(compact_id: str) -> JSONValue:
+        """Read one selected Memory Compact by id."""
+        return await backend_tool_gateway.alexandria_get_memory_compact(
+            api_client, compact_id
         )
 
     @server.tool(name="alexandria_prepare_compact")
@@ -371,6 +505,28 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             librarian_role_prompt,
             max_librarian_agents,
             routing_specialties,
+        )
+
+    @server.tool(name="alexandria_librarian_brief_preview")
+    async def _tool_librarian_brief_preview(
+        prompt: str,
+        project: str | None = None,
+        max_input_chars: int = 12_000,
+        max_source_refs: int = 20,
+    ) -> JSONValue:
+        """Compile a budgeted compact/source-ref packet before librarian synthesis.
+
+        Args:
+            prompt: Librarian request text.
+            project: Optional project scope.
+            max_input_chars: Maximum packet size.
+            max_source_refs: Maximum lazy-load source refs.
+
+        Returns:
+            Backend librarian brief preview response.
+        """
+        return await backend_tool_gateway.alexandria_librarian_brief_preview(
+            api_client, prompt, project, max_input_chars, max_source_refs
         )
 
     @server.tool(name="alexandria_librarian_route_preview")

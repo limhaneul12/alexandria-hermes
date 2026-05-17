@@ -114,6 +114,18 @@ def _valid_create_provider_payload() -> dict[str, JSONValue]:
     }
 
 
+def _librarian_service(
+    provider_repo: FakeLibrarianProviderRepository,
+    secret_repo: FakeProviderSecretRepository,
+) -> LibrarianService:
+    """Build the provider service with explicit infrastructure boundary fakes."""
+    return LibrarianService(
+        provider_repo=provider_repo,
+        secret_repo=secret_repo,
+        client_factory=LibrarianClientFactory(),
+    )
+
+
 def _post_create_provider(
     payload: dict[str, JSONValue],
 ) -> tuple[int, dict[str, object]]:
@@ -122,7 +134,7 @@ def _post_create_provider(
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -142,7 +154,7 @@ def test_create_librarian_provider_accepts_json_enum_values_and_redacts_secret()
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -236,7 +248,7 @@ def test_create_openai_codex_oauth_provider_accepts_pending_device_flow_without_
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -279,7 +291,7 @@ def test_patch_librarian_provider_rejects_oauth_switch_without_token() -> None:
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -306,7 +318,7 @@ def test_patch_librarian_provider_stores_oauth_token_without_exposing_secret() -
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -356,7 +368,7 @@ def test_patch_librarian_provider_switches_identity_and_purges_old_secret() -> N
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -412,7 +424,7 @@ def test_patch_openai_codex_oauth_rejects_endpoint_change_with_tokens() -> None:
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     original_config = {
         "device_authorization_url": (
@@ -476,7 +488,7 @@ def test_patch_librarian_provider_rejects_credentials_in_config_without_leak() -
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -504,7 +516,7 @@ def test_test_librarian_provider_reports_disabled_before_secret_checks() -> None
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -570,7 +582,7 @@ def test_test_librarian_provider_returns_not_found_without_internal_detail() -> 
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),
@@ -593,7 +605,7 @@ def test_delete_librarian_provider_removes_known_provider_secrets() -> None:
     secret_repo = FakeProviderSecretRepository()
 
     def override_librarian_service() -> LibrarianService:
-        return LibrarianService(provider_repo=provider_repo, secret_repo=secret_repo)
+        return _librarian_service(provider_repo, secret_repo)
 
     with (
         override_library_provider("librarian_service", override_librarian_service()),

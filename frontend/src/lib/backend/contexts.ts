@@ -2,6 +2,10 @@ import { backendFetch } from "@/lib/backend/client";
 import type {
   ContextChunkDTO,
   ContextDTO,
+  ContextAccessEventCreateDTO,
+  ContextAccessEventDTO,
+  ContextAccessActorType,
+  ContextAccessMethod,
   ContextKind,
   ContextLintRequestDTO,
   ContextLintResultDTO,
@@ -52,6 +56,16 @@ type BackendContextChunk = {
   content_hash: string;
   metadata: Record<string, unknown>;
   created_at: string;
+};
+
+type BackendContextAccessEvent = {
+  id: string;
+  context_id: string;
+  accessed_at: string;
+  actor_name: string;
+  actor_type: ContextAccessActorType;
+  access_method: ContextAccessMethod;
+  source_surface: string | null;
 };
 
 type BackendContextList = {
@@ -137,6 +151,18 @@ function toContextChunkDTO(chunk: BackendContextChunk): ContextChunkDTO {
     contentHash: chunk.content_hash,
     metadata: chunk.metadata,
     createdAt: chunk.created_at,
+  };
+}
+
+function toContextAccessEventDTO(event: BackendContextAccessEvent): ContextAccessEventDTO {
+  return {
+    id: event.id,
+    contextId: event.context_id,
+    accessedAt: event.accessed_at,
+    actorName: event.actor_name,
+    actorType: event.actor_type,
+    accessMethod: event.access_method,
+    sourceSurface: event.source_surface,
   };
 }
 
@@ -310,6 +336,37 @@ export async function accessContextInBackend(contextId: string): Promise<Context
     method: "POST",
   });
   return toContextDTO(context);
+}
+
+export async function recordContextAccessEventInBackend(
+  contextId: string,
+  payload: ContextAccessEventCreateDTO,
+): Promise<ContextAccessEventDTO> {
+  const event = await backendFetch<BackendContextAccessEvent>(
+    `/memory/contexts/${encodeURIComponent(contextId)}/access-events`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actor_name: payload.actorName,
+        actor_type: payload.actorType,
+        access_method: payload.accessMethod,
+        source_surface: payload.sourceSurface,
+      }),
+    },
+  );
+  return toContextAccessEventDTO(event);
+}
+
+export async function loadContextAccessEventsFromBackend(
+  contextId: string,
+  limit = 5,
+): Promise<ContextAccessEventDTO[]> {
+  const boundedLimit = Math.min(Math.max(limit, 1), 5);
+  const events = await backendFetch<BackendContextAccessEvent[]>(
+    `/memory/contexts/${encodeURIComponent(contextId)}/access-events?limit=${boundedLimit}`,
+  );
+  return events.map(toContextAccessEventDTO);
 }
 
 export async function loadRagStatusFromBackend(): Promise<RagStatusDTO> {

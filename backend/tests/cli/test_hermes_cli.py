@@ -475,20 +475,78 @@ def test_cli_lists_library_items_with_ui_filters() -> None:
 def test_cli_searches_library_items() -> None:
     """The CLI exposes the UI search path for shell and agent use."""
     transport, calls = _transport(
-        [{"id": "knowledge-1", "item_type": "KNOWLEDGE", "title": "Indexing"}]
+        {
+            "items": [
+                {"id": "knowledge-1", "item_type": "KNOWLEDGE", "title": "Indexing"}
+            ],
+            "total": 1,
+            "limit": 10,
+            "offset": 0,
+        }
     )
     stdout = io.StringIO()
 
     exit_code = run(
-        ["library", "search", "postgres index"],
+        [
+            "library",
+            "search",
+            "postgres index",
+            "--type",
+            "KNOWLEDGE",
+            "--limit",
+            "10",
+        ],
         transport=transport,
         stdout=stdout,
     )
 
     assert exit_code == 0
     assert calls[0][0] == "GET"
-    assert calls[0][1] == "http://localhost:8000/retrieval/search?q=postgres+index"
+    assert calls[0][1] == (
+        "http://localhost:8000/library/search?q=postgres+index&limit=10&offset=0"
+        "&content_mode=candidate&item_type=KNOWLEDGE"
+    )
     assert "knowledge-1" in stdout.getvalue()
+
+
+def test_cli_searches_skill_candidates_with_filters() -> None:
+    """Skill search should use candidate search and selected full-load remains separate."""
+    transport, calls = _transport(
+        {
+            "items": [{"id": "skill-1", "item_type": "SKILL", "title": "pytest"}],
+            "total": 1,
+            "limit": 10,
+            "offset": 0,
+        }
+    )
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "skills",
+            "search",
+            "pytest fixtures",
+            "--tool",
+            "pytest",
+            "--risk-level",
+            "LOW",
+            "--tag",
+            "testing",
+            "--limit",
+            "10",
+        ],
+        transport=transport,
+        stdout=stdout,
+    )
+
+    assert exit_code == 0
+    assert calls[0][0] == "GET"
+    assert calls[0][1] == (
+        "http://localhost:8000/library/search?q=pytest+fixtures&item_type=SKILL"
+        "&limit=10&offset=0&content_mode=candidate&required_tools=pytest"
+        "&tags_any=testing&risk_level=LOW"
+    )
+    assert "skill-1" in stdout.getvalue()
 
 
 def test_repo_cli_shim_runs_help_without_uv_run() -> None:
@@ -507,7 +565,8 @@ def test_repo_cli_shim_runs_help_without_uv_run() -> None:
 
     assert result.returncode == 0
     assert all(
-        command in result.stdout for command in ("list", "get", "create", "delete")
+        command in result.stdout
+        for command in ("list", "search", "get", "create", "delete")
     )
 
 
@@ -618,6 +677,21 @@ def test_prompt_cli_search_version_deprecate_and_diff() -> None:
             return 200, json.dumps(
                 [{"id": "prompt-1", "item_type": "PROMPT", "title": "FastAPI"}]
             ).encode()
+        if "/library/search" in url:
+            return 200, json.dumps(
+                {
+                    "items": [
+                        {
+                            "id": "prompt-1",
+                            "item_type": "PROMPT",
+                            "title": "FastAPI",
+                        }
+                    ],
+                    "total": 1,
+                    "limit": 3,
+                    "offset": 0,
+                }
+            ).encode()
         if method == "PATCH":
             return 200, json.dumps({"id": url.rsplit("/", 1)[-1]}).encode()
         content = "old\n" if url.endswith("prompt-old") else "new\n"
@@ -628,7 +702,18 @@ def test_prompt_cli_search_version_deprecate_and_diff() -> None:
     stdout = io.StringIO()
 
     search_exit = run(
-        ["--json", "prompts", "search", "FastAPI tests", "--limit", "3"],
+        [
+            "--json",
+            "prompts",
+            "search",
+            "FastAPI tests",
+            "--kind",
+            "DEVELOPER",
+            "--tag",
+            "code-review",
+            "--limit",
+            "3",
+        ],
         transport=fake_transport,
         stdout=stdout,
     )
@@ -671,8 +756,9 @@ def test_prompt_cli_search_version_deprecate_and_diff() -> None:
     assert diff_exit == 0
     assert calls[0][0] == "GET"
     assert calls[0][1] == (
-        "http://localhost:8000/library/items?limit=3&offset=0"
-        "&item_type=PROMPT&q=FastAPI%20tests"
+        "http://localhost:8000/library/search?q=FastAPI+tests&limit=3&offset=0"
+        "&item_type=PROMPT&content_mode=candidate&prompt_kind=DEVELOPER"
+        "&tags_any=code-review"
     )
     assert calls[1][0] == "PATCH"
     assert version_body == {"version": "1.1.0"}
@@ -1323,8 +1409,8 @@ def test_hermes_doctor_deep_reports_readiness_checks(tmp_path) -> None:
     assert payload["restart_needed"] is True
 
 
-def test_hermes_json_output_redacts_mcp_api_token(tmp_path) -> None:
-    """Hermes JSON output should never echo API tokens from flags or env."""
+def test_hermes_json_output_redacts_mcp_operator_key(tmp_path) -> None:
+    """Hermes JSON output should never echo operator keys from flags or env."""
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir()
     stdout = io.StringIO()
@@ -1338,7 +1424,7 @@ def test_hermes_json_output_redacts_mcp_api_token(tmp_path) -> None:
             str(hermes_home),
             "--api-url",
             "http://backend:8000",
-            "--api-token",
+            "--operator-api-key",
             "secret-token",
             "--dry-run",
         ],
@@ -1350,15 +1436,17 @@ def test_hermes_json_output_redacts_mcp_api_token(tmp_path) -> None:
     assert exit_code == 0
     assert "secret-token" not in output
     assert (
-        payload["mcp_config"]["mcpServers"]["alexandria"]["env"]["ALEXANDRIA_API_TOKEN"]
+        payload["mcp_config"]["mcpServers"]["alexandria"]["env"][
+            "ALEXANDRIA_OPERATOR_API_KEY"
+        ]
         == "<REDACTED>"
     )
 
 
 def test_hermes_install_mcp_uses_api_env_defaults(monkeypatch, tmp_path) -> None:
-    """Hermes install-mcp preserves API URL and token environment defaults."""
+    """Hermes install-mcp preserves API URL and operator-key environment defaults."""
     monkeypatch.setenv("ALEXANDRIA_API_URL", "http://env-backend:8000")
-    monkeypatch.setenv("ALEXANDRIA_API_TOKEN", "env-secret-token")
+    monkeypatch.setenv("ALEXANDRIA_OPERATOR_API_KEY", "env-secret-token")
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir()
     stdout = io.StringIO()
@@ -1380,7 +1468,7 @@ def test_hermes_install_mcp_uses_api_env_defaults(monkeypatch, tmp_path) -> None
     env = payload["mcp_config"]["mcpServers"]["alexandria"]["env"]
     assert exit_code == 0
     assert env["ALEXANDRIA_API_URL"] == "http://env-backend:8000"
-    assert env["ALEXANDRIA_API_TOKEN"] == "<REDACTED>"
+    assert env["ALEXANDRIA_OPERATOR_API_KEY"] == "<REDACTED>"
     assert "env-secret-token" not in output
 
 
@@ -1555,6 +1643,119 @@ def test_cli_asks_librarian_for_delegated_work_as_json() -> None:
     assert json.loads(stdout.getvalue())["job_id"] == "librarian-job-abc123"
 
 
+def test_cli_previews_librarian_brief_packet() -> None:
+    """Librarian brief-preview CLI should call the compact packet endpoint."""
+    transport, calls = _transport({"packet_markdown": "# Packet"})
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "librarian",
+            "brief-preview",
+            "Need OAuth evidence",
+            "--project",
+            "alexandria-hermes",
+            "--max-input-chars",
+            "3000",
+            "--max-source-refs",
+            "4",
+        ],
+        transport=transport,
+        stdout=stdout,
+    )
+
+    request_body = json.loads((calls[0][2] or b"{}").decode())
+    assert exit_code == 0
+    assert calls[0][0] == "POST"
+    assert calls[0][1] == "http://localhost:8000/librarians/brief-preview"
+    assert request_body == {
+        "prompt": "Need OAuth evidence",
+        "budget": {"max_input_chars": 3000, "max_source_refs": 4},
+        "project": "alexandria-hermes",
+    }
+    assert json.loads(stdout.getvalue())["packet_markdown"] == "# Packet"
+
+
+def test_cli_lists_memory_compacts_with_project_and_status_filters() -> None:
+    """Memory Compact list should use first-class compact endpoints."""
+    transport, calls = _transport(
+        {
+            "items": [
+                {
+                    "id": "compact-1",
+                    "status": "CURRENT",
+                    "project": "alexandria-hermes",
+                    "covered_to": "2026-05-17T00:00:00Z",
+                }
+            ],
+            "total": 1,
+        }
+    )
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "memory-compacts",
+            "list",
+            "--project",
+            "alexandria-hermes",
+            "--status",
+            "CURRENT",
+            "--limit",
+            "3",
+            "--offset",
+            "2",
+        ],
+        transport=transport,
+        stdout=stdout,
+    )
+
+    assert exit_code == 0
+    assert calls[0][0] == "GET"
+    assert (
+        calls[0][1]
+        == "http://localhost:8000/memory/compacts?limit=3&offset=2&project=alexandria-hermes&status=CURRENT"
+    )
+    assert "compact-1\tCURRENT\talexandria-hermes" in stdout.getvalue()
+
+
+def test_cli_reads_current_and_selected_memory_compacts() -> None:
+    """Memory Compact current/get commands should lazy-load selected artifacts."""
+    transport, calls = _transport(
+        {
+            "id": "compact/1",
+            "status": "CURRENT",
+            "project": "alexandria-hermes",
+        }
+    )
+    current_stdout = io.StringIO()
+    get_stdout = io.StringIO()
+
+    current_exit = run(
+        ["memory-compacts", "current", "--project", "alexandria-hermes"],
+        transport=transport,
+        stdout=current_stdout,
+    )
+    get_exit = run(
+        ["--json", "memory-compacts", "get", "compact/1"],
+        transport=transport,
+        stdout=get_stdout,
+    )
+
+    assert current_exit == 0
+    assert get_exit == 0
+    assert calls[0][0] == "GET"
+    assert (
+        calls[0][1]
+        == "http://localhost:8000/memory/compacts/current?project=alexandria-hermes"
+    )
+    assert calls[1][0] == "GET"
+    assert calls[1][1] == "http://localhost:8000/memory/compacts/compact%2F1"
+    assert "CURRENT compact/1 alexandria-hermes" in current_stdout.getvalue()
+    assert json.loads(get_stdout.getvalue())["id"] == "compact/1"
+
+
 def test_cli_previews_librarian_route_without_delegation() -> None:
     """Librarian route-preview should not queue delegated work."""
     transport, calls = _transport(
@@ -1622,7 +1823,14 @@ def test_cli_starts_librarian_oauth_with_user_instructions_without_token_fields(
     stdout = io.StringIO()
 
     exit_code = run(
-        ["--json", "librarian", "oauth-start", "provider/1"],
+        [
+            "--json",
+            "--operator-api-key",
+            TEST_OPERATOR_API_KEY,
+            "librarian",
+            "oauth-start",
+            "provider/1",
+        ],
         transport=transport,
         stdout=stdout,
     )
@@ -1634,7 +1842,7 @@ def test_cli_starts_librarian_oauth_with_user_instructions_without_token_fields(
         calls[0][1]
         == "http://localhost:8000/settings/connections/provider%2F1/oauth/start"
     )
-    assert calls[0][3]["X-Alexandria-Operator-Key"] == TEST_OPERATOR_API_KEY
+    assert calls[0][3]["x-operator-api-key"] == TEST_OPERATOR_API_KEY
     assert "oauth_access_token" not in printed
     assert "device_code" not in printed
     assert json.loads(printed) == {
@@ -1763,6 +1971,7 @@ def test_cli_creates_codex_oauth_provider_with_safe_payload() -> None:
     assert body["auth_type"] == "OAUTH"
     assert "api_key" not in body
     assert "device_authorization_url" in body["config"]
+    assert "client_id" not in body["config"]
 
 
 def test_cli_connects_codex_oauth_after_creating_provider_without_token_leak() -> None:
@@ -1810,6 +2019,8 @@ def test_cli_connects_codex_oauth_after_creating_provider_without_token_leak() -
         ("POST", "http://localhost:8000/settings/connections"),
         ("POST", "http://localhost:8000/settings/connections/provider-1/oauth/start"),
     ]
+    provider_body = json.loads((calls[0][2] or b"{}").decode())
+    assert "client_id" not in provider_body["config"]
     assert "secret-token" not in printed
     assert json.loads(printed)["oauth"]["user_code"] == "USER-CODE"
 

@@ -10,7 +10,7 @@ from app.connections.interface.schemas.librarian.oauth_schema import (
 from app.container import ApplicationContainer
 from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
-from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
+from app.shared.exceptions.route_exceptions import CONNECTIONS_ROUTE_EXCEPTION_MAPPING
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, status
 
@@ -28,7 +28,7 @@ router = APIRouter(
     description="Library API operation.",
     summary="Start librarian OAuth device flow",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def start_librarian_provider_oauth(
     provider_id: str,
@@ -57,7 +57,7 @@ async def start_librarian_provider_oauth(
     description="Library API operation.",
     summary="Poll librarian OAuth device flow",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def poll_librarian_provider_oauth(
     provider_id: str,
@@ -86,7 +86,7 @@ async def poll_librarian_provider_oauth(
     description="Library API operation.",
     summary="Refresh librarian OAuth token when needed",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def refresh_librarian_provider_oauth(
     provider_id: str,
@@ -115,7 +115,7 @@ async def refresh_librarian_provider_oauth(
     description="Library API operation.",
     summary="Read librarian OAuth status",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def get_librarian_provider_oauth_status(
     provider_id: str,

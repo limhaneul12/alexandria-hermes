@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.memory.domain.event_enum.context_enums import (
+    ContextAccessActorType,
+    ContextAccessMethod,
     ContextContentFormat,
     ContextImportance,
     ContextKind,
@@ -70,3 +72,15 @@ class ContextChunkEmbeddingUpdate:
     embedding: str
     embedding_model: str
     embedding_dimensions: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ContextAccessCreate:
+    """Fields required to persist one context access event."""
+
+    context_id: str
+    accessed_at: datetime
+    actor_name: str
+    actor_type: ContextAccessActorType
+    access_method: ContextAccessMethod
+    source_surface: str | None

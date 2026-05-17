@@ -21,6 +21,9 @@ from app.memory.domain.event_enum.context_enums import (
     ContextSourceType,
     RagStrategy,
 )
+from app.memory.domain.event_enum.memory_compact_enums import (
+    MemoryCompactStatus,
+)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -32,6 +35,18 @@ class NoArgsCommand:
 class SkillsListCommand:
     """Parameters for listing skills."""
 
+    limit: int
+    offset: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SkillsSearchCommand:
+    """Parameters for searching skill candidates."""
+
+    query: str
+    tool: list[str]
+    risk_level: RiskLevel | None
+    tag: list[str]
     limit: int
     offset: int
 
@@ -118,6 +133,8 @@ class PromptsSearchCommand:
     query: str
     limit: int
     offset: int
+    kind: PromptKind | None
+    tag: list[str]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -190,6 +207,10 @@ class LibrarySearchCommand:
     """Parameters for searching library items."""
 
     query: str
+    limit: int
+    offset: int
+    item_type: ItemType | None
+    content_mode: str
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -206,6 +227,16 @@ class UsageRecordCliCommand:
     project: str | None
     task_summary: str | None
     feedback: str | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianBriefPreviewCommand:
+    """Parameters for compiling a librarian brief preview."""
+
+    prompt: str
+    project: str | None
+    max_input_chars: int
+    max_source_refs: int
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -394,6 +425,23 @@ class ContextIdCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class MemoryCompactListCommand:
+    """Parameters for listing durable Memory Compact artifacts."""
+
+    project: str | None
+    status: MemoryCompactStatus | None
+    limit: int
+    offset: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MemoryCompactIdCommand:
+    """Parameters for commands targeting one Memory Compact."""
+
+    compact_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ContextCompactCommand:
     """Parameters for preparing a compact handoff context."""
 
@@ -437,7 +485,7 @@ class HermesBundleCommand:
 
     hermes_home: str | None
     api_url: str | None
-    api_token: str
+    operator_api_key: str | None
     dry_run: bool
     overwrite: bool
     apply: bool
@@ -451,7 +499,7 @@ class HermesConfigureCommand:
 
     hermes_home: str | None
     api_url: str | None
-    api_token: str
+    operator_api_key: str | None
     dry_run: bool
 
 
@@ -474,7 +522,7 @@ class HermesDoctorCommand:
 
     hermes_home: str | None
     api_url: str | None
-    api_token: str
+    operator_api_key: str | None
     require_home: bool
     deep: bool
 

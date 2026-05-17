@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import os
 import secrets
 from dataclasses import dataclass
 from typing import Literal
@@ -82,23 +81,6 @@ class SecretCipher:
         raise RuntimeError(
             "SERVICE_SECRET_ENCRYPTION_KEY is required outside local env"
         )
-
-    @classmethod
-    def from_environment(cls) -> SecretCipher:
-        """Build a cipher from SERVICE_* environment variables.
-
-        Returns:
-            SecretCipher: Configured cipher.
-        """
-        env_value = os.environ.get("SERVICE_APP_ENV", "local")
-        if env_value not in {"local", "stage", "prod"}:
-            env_value = "local"
-        settings = SecretCipherSettings(
-            app_name=os.environ.get("SERVICE_APP_NAME", "alexandria-hermes"),
-            app_env=env_value,
-            secret_encryption_key=os.environ.get("SERVICE_SECRET_ENCRYPTION_KEY"),
-        )
-        return cls.from_settings(settings)
 
     def encrypt(self, value: str) -> str:
         """Encrypt one secret string for database storage.

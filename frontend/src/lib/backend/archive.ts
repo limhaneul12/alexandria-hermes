@@ -1,4 +1,3 @@
-import { collectCategoryTreeIds } from "@/lib/backend/archive-category-filter";
 import { BackendRequestError, backendFetch } from "@/lib/backend/client";
 import { isItemType } from "@/types/library";
 import type {
@@ -13,6 +12,8 @@ import type {
   ItemType,
   LibraryDTO,
   SelectionSource,
+  LibraryUsageRecordCreateDTO,
+  LibraryUsageRecordDTO,
   LibraryItemCardDTO,
   LibraryItemDetailDTO,
   PromptContentFormat,
@@ -64,6 +65,29 @@ type BackendUsage = {
   selection_source: SelectionSource;
   used_at: string;
   success: boolean;
+};
+
+type BackendSearchHit = {
+  id: string;
+  item_type: ItemType;
+  title: string;
+  summary: string | null;
+  tags: string[];
+  status: ItemStatus;
+  category_id: string | null;
+  score: number;
+  why_matched: string[];
+  highlights: string[];
+  details_preview: Record<string, unknown>;
+  content_char_count: number;
+  updated_at: string;
+};
+
+type BackendSearchResponse = {
+  items: BackendSearchHit[];
+  total: number;
+  limit: number;
+  offset: number;
 };
 
 type BackendPopular = {
@@ -251,6 +275,34 @@ function toSkillCard(
   };
 }
 
+function candidateToCard(
+  item: BackendSearchHit,
+  categoriesById: Map<string, BackendCategory>,
+  usageCounts: Map<string, number>,
+  recentUsage: Map<string, string>,
+): LibraryItemCardDTO {
+  const category = item.category_id ? categoriesById.get(item.category_id) : undefined;
+  const visibleType = item.item_type === "PROMPT" ? "PROMPT" : "SKILL";
+  return {
+    id: item.id,
+    title: item.title,
+    slug: item.id,
+    description: item.summary ?? "No summary recorded yet.",
+    content: "",
+    type: visibleType,
+    version: typeof item.details_preview.version === "string" ? item.details_preview.version : "1.0.0",
+    author: "Alexandria",
+    category: category
+      ? { id: category.id, name: category.name, slug: categorySlug(category) }
+      : { id: null, name: "Uncategorized", slug: "uncategorized" },
+    tags: item.tags,
+    updatedAt: item.updated_at,
+    lastAccessedAt: recentUsage.get(item.id) ?? null,
+    usageCount: usageCounts.get(item.id) ?? 0,
+    prompt: visibleType === "PROMPT" ? toPromptMetadata(item.details_preview) : null,
+  };
+}
+
 function toCategoryDTO(category: BackendCategory & { created_at?: string; updated_at?: string }): CategoryDTO {
   return {
     id: category.id,
@@ -288,6 +340,15 @@ function toExternalArchiveImportResultDTO(
     importedCount: result.imported_count,
     skippedCount: result.skipped_count,
     itemIds: result.item_ids,
+  };
+}
+
+function toUsageRecordDTO(usage: BackendUsage): LibraryUsageRecordDTO {
+  return {
+    id: usage.id,
+    accessedAt: usage.used_at,
+    agentName: usage.agent_name,
+    accessMethod: usage.selection_source,
   };
 }
 
@@ -396,6 +457,26 @@ export async function createPromptInBackend(payload: PromptCreateDTO): Promise<P
   );
 }
 
+export async function recordLibraryUsageInBackend(
+  payload: LibraryUsageRecordCreateDTO,
+): Promise<LibraryUsageRecordDTO> {
+  const usage = await backendFetch<BackendUsage>("/library/usage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      item_id: payload.itemId,
+      item_type: payload.itemType,
+      agent_name: payload.agentName,
+      librarian_provider: payload.librarianProvider ?? null,
+      query: payload.query ?? null,
+      selection_source: payload.selectionSource,
+      success: payload.success,
+      feedback: payload.feedback ?? null,
+    }),
+  });
+  return toUsageRecordDTO(usage);
+}
+
 function extractCodeExamples(content: string) {
   const matches = [...content.matchAll(/```(\w+)?\n([\s\S]*?)```/g)];
   if (matches.length === 0) {
@@ -448,37 +529,72 @@ async function loadArchiveContext() {
   return { items, categories, categoriesById, usageCounts, recentUsage, recent };
 }
 
-export async function loadLibraryFromBackend(searchParams: URLSearchParams): Promise<LibraryDTO> {
-  const { items, categories, categoriesById, usageCounts, recentUsage } = await loadArchiveContext();
-  const q = searchParams.get("q")?.trim().toLowerCase() ?? "";
+function searchParamValues(searchParams: URLSearchParams, key: string): string[] {
+  const value = searchParams.get(key);
+  return value ? [value] : [];
+}
+
+async function loadLibraryCandidateContext(searchParams: URLSearchParams) {
+  const [categories, popular, recent] = await Promise.all([
+    backendFetch<BackendCategory[]>("/library/categories/tree"),
+    backendFetch<BackendPopular[]>("/library/usage/popular?limit=100"),
+    backendFetch<BackendUsage[]>("/library/usage/recent?limit=200"),
+  ]);
+  const categoriesById = buildCategoryLookup(categories);
+  const q = searchParams.get("q")?.trim() ?? "";
   const categorySlugParam = searchParams.get("category");
-  const tag = searchParams.get("tag");
   const typeParam = searchParams.get("type");
   const type = typeParam && isItemType(typeParam) ? typeParam : null;
-  const sort = searchParams.get("sort") ?? "recent";
   const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 48), 1), 60);
+  const backendLimit = Math.max(limit, 100);
   const selectedCategory = categorySlugParam
     ? Array.from(categoriesById.values()).find((category) => categorySlug(category) === categorySlugParam)
     : undefined;
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (type) {
+    params.set("item_type", type);
+  } else {
+    params.append("item_types", "SKILL");
+    params.append("item_types", "PROMPT");
+  }
+  if (selectedCategory) {
+    params.set("category_id", selectedCategory.id);
+    params.set("include_descendant_categories", "true");
+  }
+  for (const tagValue of searchParamValues(searchParams, "tag")) {
+    params.append("tags_any", tagValue);
+  }
+  params.set("limit", String(Math.min(backendLimit, 100)));
+  params.set("offset", "0");
+  params.set("content_mode", "candidate");
+  const response = await backendFetch<BackendSearchResponse>(`/library/search?${params.toString()}`);
+  const usageCounts = new Map(popular.map((entry) => [entry.item_id, entry.count]));
+  const recentUsage = new Map(recent.map((entry) => [entry.item_id, entry.used_at]));
+  return {
+    items: response.items,
+    total: response.total,
+    categories,
+    categoriesById,
+    usageCounts,
+    recentUsage,
+    limit,
+  };
+}
 
-  const selectedCategoryIds = selectedCategory
-    ? collectCategoryTreeIds(categories, selectedCategory.id)
-    : new Set<string>();
-
-  const filtered = items.filter((item) => {
-    const matchesText =
-      !q ||
-      [item.title, item.summary ?? "", item.content, item.tags.join(" ")]
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
-    const matchesCategory =
-      !categorySlugParam ||
-      (item.category_id !== null && selectedCategoryIds.has(item.category_id));
-    const matchesTag = !tag || item.tags.includes(tag);
-    const matchesType = !type || item.item_type === type;
-    return matchesText && matchesCategory && matchesTag && matchesType;
-  });
+export async function loadLibraryFromBackend(searchParams: URLSearchParams): Promise<LibraryDTO> {
+  const {
+    items,
+    total,
+    categories,
+    categoriesById,
+    usageCounts,
+    recentUsage,
+    limit,
+  } = await loadLibraryCandidateContext(searchParams);
+  const categorySlugParam = searchParams.get("category");
+  const sort = searchParams.get("sort") ?? "recent";
+  const filtered = items.filter(isVisibleSearchHit);
 
   filtered.sort((left, right) => {
     if (sort === "title") return left.title.localeCompare(right.title);
@@ -496,11 +612,15 @@ export async function loadLibraryFromBackend(searchParams: URLSearchParams): Pro
   return {
     items: filtered
       .slice(0, limit)
-      .map((item) => toSkillCard(item, categoriesById, usageCounts, recentUsage)),
+      .map((item) => candidateToCard(item, categoriesById, usageCounts, recentUsage)),
     categories: buildCategoryNodes(categories, itemCounts),
     tags: Array.from(new Set(items.flatMap((item) => item.tags))).sort(),
-    total: filtered.length,
+    total: categorySlugParam ? filtered.length : total,
   };
+}
+
+function isVisibleSearchHit(item: BackendSearchHit): boolean {
+  return item.item_type === "SKILL" || item.item_type === "PROMPT";
 }
 
 export async function loadExternalArchiveCandidatesFromBackend(

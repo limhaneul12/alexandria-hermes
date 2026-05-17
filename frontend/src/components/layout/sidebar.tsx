@@ -2,95 +2,105 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Archive,
   BookOpen,
   Bot,
-  Clock3,
   ClipboardCheck,
-  FolderTree,
+  Code2,
   Gauge,
   Home,
   Library,
   PlusSquare,
-  Search,
-  Settings,
-  Sparkles,
-  Star,
   ScrollText,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 
-import { t, type TranslationKey } from "@/lib/i18n";
+import { t, type Language, type TranslationKey } from "@/lib/i18n";
 import { useLibraryStore } from "@/store/library-store";
 
-type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active?: "exact" | "library" | "type-skill" | "type-prompt" | "settings" | "librarians" | "contexts" | "rag" | "capture" };
-type NavSection = { titleKey: TranslationKey | "libraryStatic"; items: NavItem[] };
+type ActiveTarget =
+  | "dashboard"
+  | "library"
+  | "skills"
+  | "prompts"
+  | "new-skill"
+  | "new-prompt"
+  | "librarian-chat"
+  | "librarians"
+  | "settings"
+  | "contexts"
+  | "memory-compacts"
+  | "rag"
+  | "capture";
+
+type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active: ActiveTarget };
+type NavSection = { titleKey: TranslationKey | "libraryStatic" | "memoryStatic"; items: NavItem[] };
 
 const sections: NavSection[] = [
   {
     titleKey: "libraryStatic",
     items: [
-      { labelKey: "home", href: "/dashboard", icon: Home, active: "exact" },
-      { labelKey: "explore", href: "/library", icon: Search, active: "library" },
-      { labelKey: "categories", href: "/library#categories", icon: FolderTree },
-      { labelKey: "recent", href: "/library?sort=recent", icon: Clock3 },
-      { labelKey: "favorites", href: "/library?sort=popular", icon: Star },
-    ],
-  },
-  {
-    titleKey: "mySpace",
-    items: [
+      { labelKey: "home", href: "/dashboard", icon: Home, active: "dashboard" },
       { labelKey: "myLibrary", href: "/library", icon: Library, active: "library" },
-      { labelKey: "mySkills", href: "/library?type=SKILL", icon: BookOpen, active: "type-skill" },
-      { labelKey: "myPrompts", href: "/library?type=PROMPT", icon: Archive, active: "type-prompt" },
+      { labelKey: "mySkills", href: "/library/skills", icon: Code2, active: "skills" },
+      { labelKey: "myPrompts", href: "/library/prompts", icon: Archive, active: "prompts" },
+      { labelKey: "createSkill", href: "/library/skills/new", icon: PlusSquare, active: "new-skill" },
+      { labelKey: "createPrompt", href: "/library/prompts/new", icon: PlusSquare, active: "new-prompt" },
     ],
   },
   {
-    titleKey: "createSection",
+    titleKey: "memoryStatic",
     items: [
-      { labelKey: "createSkill", href: "/library?create=skill", icon: PlusSquare },
-      { labelKey: "createPrompt", href: "/library?create=prompt", icon: PlusSquare },
+      { labelKey: "contextVault", href: "/contexts", icon: ScrollText, active: "contexts" },
+      { labelKey: "memoryCompacts", href: "/memory-compacts", icon: BookOpen, active: "memory-compacts" },
+      { labelKey: "ragInspector", href: "/rag-inspector", icon: Gauge, active: "rag" },
+      { labelKey: "captureReview", href: "/capture-review", icon: ClipboardCheck, active: "capture" },
     ],
   },
   {
     titleKey: "aiLibrarian",
     items: [
-      { labelKey: "librarian", href: "/settings/librarians", icon: Bot, active: "librarians" },
-      { labelKey: "contextVault", href: "/contexts", icon: ScrollText, active: "contexts" },
-      { labelKey: "ragInspector", href: "/rag-inspector", icon: Gauge, active: "rag" },
-      { labelKey: "captureReview", href: "/capture-review", icon: ClipboardCheck, active: "capture" },
-      { labelKey: "recommendations", href: "/dashboard#archive-philosophy", icon: Sparkles },
+      { labelKey: "librarianChat", href: "/librarian/chat", icon: Bot, active: "librarian-chat" },
+      { labelKey: "librarianSettings", href: "/settings/librarians", icon: Settings, active: "librarians" },
     ],
   },
   {
     titleKey: "settings",
     items: [
       { labelKey: "settings", href: "/settings", icon: Settings, active: "settings" },
-      { labelKey: "userGuide", href: "/dashboard", icon: BookOpen, active: "exact" },
+      { labelKey: "userGuide", href: "/dashboard", icon: BookOpen, active: "dashboard" },
     ],
   },
 ];
 
-function isActive(pathname: string, params: URLSearchParams, active?: string) {
-  if (!active) return false;
-  if (active === "exact") return pathname === "/dashboard" || pathname === "/";
+function sectionTitle(language: Language, key: NavSection["titleKey"]) {
+  if (key === "libraryStatic") return t(language, "library");
+  if (key === "memoryStatic") return "장기기억";
+  return t(language, key);
+}
+
+function isActive(pathname: string, active: ActiveTarget) {
+  if (active === "dashboard") return pathname === "/dashboard" || pathname === "/";
+  if (active === "library") return pathname === "/library" || /^\/library\/[^/]+$/.test(pathname);
+  if (active === "skills") return pathname === "/library/skills";
+  if (active === "prompts") return pathname === "/library/prompts";
+  if (active === "new-skill") return pathname === "/library/skills/new";
+  if (active === "new-prompt") return pathname === "/library/prompts/new";
+  if (active === "librarian-chat") return pathname === "/librarian/chat";
   if (active === "settings") return pathname === "/settings";
   if (active === "librarians") return pathname === "/settings/librarians";
   if (active === "contexts") return pathname.startsWith("/contexts");
+  if (active === "memory-compacts") return pathname.startsWith("/memory-compacts");
   if (active === "rag") return pathname === "/rag-inspector";
   if (active === "capture") return pathname === "/capture-review";
-  if (!pathname.startsWith("/library")) return false;
-  if (active === "type-skill") return params.get("type") === "SKILL";
-  if (active === "type-prompt") return params.get("type") === "PROMPT";
-  if (active === "library") return !params.get("type") && !params.get("create");
   return false;
 }
 
 export function Sidebar() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const language = useLibraryStore((state) => state.language);
   const collapsed = useLibraryStore((state) => state.sidebarCollapsed);
   return (
@@ -109,31 +119,21 @@ export function Sidebar() {
           <section key={section.titleKey} className="border-b border-white/10 pb-4 last:border-b-0">
             {!collapsed ? (
               <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white/66">
-                {section.titleKey === "libraryStatic" ? t(language, "library") : t(language, section.titleKey)}
+                {sectionTitle(language, section.titleKey)}
               </p>
             ) : null}
             <div className="space-y-1">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const active = isActive(pathname, searchParams, item.active);
+                const active = isActive(pathname, item.active);
                 const label = t(language, item.labelKey);
                 const className = `group flex h-8 items-center gap-3 border-l text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${collapsed ? "justify-center px-0" : "pl-3 pr-2"} ${
                   active ? "border-white bg-transparent text-white" : "border-transparent text-white/70 hover:border-white/30 hover:bg-transparent hover:text-white"
                 }`;
-                const content = (
-                  <>
+                return (
+                  <Link key={`${section.titleKey}-${item.labelKey}`} href={item.href} title={collapsed ? label : undefined} className={className}>
                     <Icon className="h-4 w-4" aria-hidden="true" />
                     {!collapsed ? label : null}
-                  </>
-                );
-                return (
-                  <Link
-                    key={`${section.titleKey}-${item.labelKey}`}
-                    href={item.href}
-                    title={collapsed ? label : undefined}
-                    className={className}
-                  >
-                    {content}
                   </Link>
                 );
               })}

@@ -48,6 +48,18 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
                 "PRAGMA table_info(context_chunks)"
             ).fetchall()
         }
+        memory_compact_columns = {
+            row[1]: row[2]
+            for row in connection.execute(
+                "PRAGMA table_info(memory_compacts)"
+            ).fetchall()
+        }
+        memory_compact_indexes = {
+            row[1]: row[2]
+            for row in connection.execute(
+                "PRAGMA index_list(memory_compacts)"
+            ).fetchall()
+        }
         fts_definition = connection.execute(
             "SELECT sql FROM sqlite_master WHERE name = 'item_search_fts'"
         ).fetchone()[0]
@@ -75,6 +87,10 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
     assert context_columns["id"] == "VARCHAR(36)"
     assert context_columns["kind"] == "VARCHAR(32)"
     assert chunk_columns["context_id"] == "VARCHAR(36)"
+    assert memory_compact_columns["id"] == "VARCHAR(36)"
+    assert memory_compact_columns["status"] == "VARCHAR(24)"
+    assert memory_compact_indexes["uq_memory_compacts_current_project"] == 1
+    assert memory_compact_indexes["uq_memory_compacts_current_default_project"] == 1
     assert "item_id UNINDEXED" in fts_definition
     assert "chunk_id UNINDEXED" in context_fts_definition
     assert speculative_tables == set()

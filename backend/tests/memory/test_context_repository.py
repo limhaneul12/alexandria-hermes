@@ -10,6 +10,8 @@ import anyio
 import pytest
 from app.memory.application.context_service import ContextService
 from app.memory.domain.event_enum.context_enums import (
+    ContextAccessActorType,
+    ContextAccessMethod,
     ContextKind,
     ContextSourceType,
     ContextStorageStatus,
@@ -110,7 +112,23 @@ def test_context_repository_saves_searches_accesses_and_archives_contexts(
             listed, total = await service.list_contexts(project="alexandria-hermes")
             chunks = await service.chunks(saved.id)
             pack = await service.search(query="local searchable memory", limit=3)
-            accessed = await service.access(saved.id)
+            accessed = await service.access(
+                saved.id,
+                actor_name="Alexandria UI",
+                actor_type=ContextAccessActorType.UI,
+                access_method=ContextAccessMethod.DETAIL_VIEW,
+                source_surface="context-detail",
+            )
+            await anyio.sleep(0.001)
+            await service.access(
+                saved.id,
+                actor_name="Hermes",
+                actor_type=ContextAccessActorType.AGENT,
+                access_method=ContextAccessMethod.RECALL,
+                source_surface="memory-recall",
+            )
+            after_second_access = await service.get(saved.id)
+            recent_events = await service.access_events(saved.id, limit=5)
             archived = await service.archive(saved.id)
             await session.commit()
             after_archive = await service.search(
@@ -125,6 +143,13 @@ def test_context_repository_saves_searches_accesses_and_archives_contexts(
         assert "Alexandria Context Pack" in pack.context_pack
         assert accessed.access_count == 1
         assert accessed.last_accessed_at is not None
+        assert after_second_access.access_count == 2
+        assert [event.actor_name for event in recent_events] == [
+            "Hermes",
+            "Alexandria UI",
+        ]
+        assert recent_events[0].access_method is ContextAccessMethod.RECALL
+        assert recent_events[1].source_surface == "context-detail"
         assert archived.is_archived is True
         assert after_archive.matches == []
 
@@ -325,12 +350,166 @@ distractor should rank behind the semantic target.
         assert health.default_strategy is RagStrategy.HYBRID
         assert vector_pack.effective_strategy is RagStrategy.VECTOR_ONLY
         assert hybrid_pack.effective_strategy is RagStrategy.HYBRID
-        assert [match.context.id for match in vector_pack.matches] == [target.id]
+        matched_context_ids = {match.context.id for match in vector_pack.matches}
+        assert matched_context_ids == {target.id}
         assert vector_pack.matches[0].fts_score is None
         assert vector_pack.matches[0].vector_score is not None
         assert vector_pack.matches[0].score == vector_pack.matches[0].vector_score
         assert [match.context.id for match in hybrid_pack.matches] == [target.id]
         assert hybrid_pack.matches[0].vector_score is not None
+
+    anyio.run(scenario)
+
+
+def test_context_vector_search_binds_filter_values_when_project_looks_like_sql(
+    tmp_path: Path,
+) -> None:
+    """Vector retrieval should treat SQL-looking filter values as data."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "rag-vector-injection.db") as database,
+            database.session() as session,
+        ):
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                embedding_provider=KeywordEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            sql_like_project = "alexandria' OR 1=1 --"
+            target = await service.save(
+                kind=ContextKind.RESEARCH,
+                title="Bound parameter target",
+                summary="semantic-target belongs to the SQL-looking project.",
+                content="""# Bound parameter target
+
+## Summary
+semantic-target belongs to the SQL-looking project.
+""",
+                project=sql_like_project,
+            )
+            await service.save(
+                kind=ContextKind.RESEARCH,
+                title="Other semantic target",
+                summary="semantic-target belongs to another project.",
+                content="""# Other semantic target
+
+## Summary
+semantic-target belongs to another project.
+""",
+                project="other-project",
+            )
+            await session.commit()
+
+            vector_pack = await service.search(
+                query="query-alias",
+                strategy=RagStrategy.VECTOR_ONLY,
+                project=sql_like_project,
+                limit=5,
+            )
+
+        matched_context_ids = {match.context.id for match in vector_pack.matches}
+        assert matched_context_ids == {target.id}
+
+    anyio.run(scenario)
+
+
+def test_context_fts_search_binds_filter_values_when_project_looks_like_sql(
+    tmp_path: Path,
+) -> None:
+    """FTS retrieval should treat SQL-looking filter values as data."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "rag-fts-injection.db") as database,
+            database.session() as session,
+        ):
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session)
+            )
+            sql_like_project = "alexandria' OR 1=1 --"
+            target = await service.save(
+                kind=ContextKind.RESEARCH,
+                title="FTS bound target",
+                summary="sharedmarker belongs to the SQL-looking project.",
+                content="""# FTS bound target
+
+## Summary
+sharedmarker belongs to the SQL-looking project.
+""",
+                project=sql_like_project,
+            )
+            await service.save(
+                kind=ContextKind.RESEARCH,
+                title="FTS other target",
+                summary="sharedmarker belongs to another project.",
+                content="""# FTS other target
+
+## Summary
+sharedmarker belongs to another project.
+""",
+                project="other-project",
+            )
+            await session.commit()
+
+            pack = await service.search(
+                query="sharedmarker",
+                strategy=RagStrategy.FTS_ONLY,
+                project=sql_like_project,
+                limit=5,
+            )
+
+        matched_context_ids = {match.context.id for match in pack.matches}
+        assert matched_context_ids == {target.id}
+
+    anyio.run(scenario)
+
+
+def test_context_fts_search_treats_operator_words_as_literal_terms(
+    tmp_path: Path,
+) -> None:
+    """FTS retrieval should not let reserved query words cause syntax errors."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "rag-fts-operators.db") as database,
+            database.session() as session,
+        ):
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session)
+            )
+            target = await service.save(
+                kind=ContextKind.RESEARCH,
+                title="FTS operator target",
+                summary="foo OR bar AND NOT secret should be literal terms.",
+                content="""# FTS operator target
+
+## Summary
+foo OR bar AND NOT secret should be literal terms.
+""",
+            )
+            await session.commit()
+
+            operator_pack = await service.search(
+                query="foo OR bar",
+                strategy=RagStrategy.FTS_ONLY,
+                limit=5,
+            )
+            not_pack = await service.search(
+                query="NOT secret",
+                strategy=RagStrategy.FTS_ONLY,
+                limit=5,
+            )
+            punctuation_pack = await service.search(
+                query="foo!!! OR??? bar",
+                strategy=RagStrategy.FTS_ONLY,
+                limit=5,
+            )
+
+        expected_ids = {target.id}
+        assert {match.context.id for match in operator_pack.matches} == expected_ids
+        assert {match.context.id for match in not_pack.matches} == expected_ids
+        assert {match.context.id for match in punctuation_pack.matches} == expected_ids
 
     anyio.run(scenario)
 
@@ -419,6 +598,42 @@ def test_context_list_filters_tags_by_exact_membership(tmp_path: Path) -> None:
             await session.commit()
 
             listed, total = await service.list_contexts(tag="api")
+
+        assert total == 1
+        assert [item.id for item in listed] == [exact.id]
+
+    anyio.run(scenario)
+
+
+def test_context_list_treats_sql_like_tag_filter_as_data(tmp_path: Path) -> None:
+    """Tag filtering should bind SQL-looking values instead of widening results."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "sql-like-tags.db") as database,
+            database.session() as session,
+        ):
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session)
+            )
+            sql_like_tag = "rag' OR 1=1 --"
+            exact = await service.save(
+                kind=ContextKind.HANDOFF,
+                title="SQL-looking tag handoff",
+                summary="SQL-looking tag should match exactly.",
+                content=_handoff_content("Injection-looking tag context."),
+                tags=[sql_like_tag],
+            )
+            await service.save(
+                kind=ContextKind.HANDOFF,
+                title="Plain tag handoff",
+                summary="Plain tag should not leak into SQL-looking filter.",
+                content=_handoff_content("Plain tag context."),
+                tags=["rag"],
+            )
+            await session.commit()
+
+            listed, total = await service.list_contexts(tag=sql_like_tag)
 
         assert total == 1
         assert [item.id for item in listed] == [exact.id]

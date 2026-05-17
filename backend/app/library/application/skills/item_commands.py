@@ -21,6 +21,7 @@ from app.library.domain.event_enum.item_enums import (
     SourceType,
 )
 from app.shared.exceptions import ValidationError
+from app.shared.types.types_convert_utils import enum_value
 
 
 def build_user_skill_create_command(
@@ -161,6 +162,7 @@ def _initial_skill_status(fields: SkillCreateFields) -> ItemStatus:
     status = fields.status
     if status is None:
         status = ItemStatus.ACTIVE if fields.activate else ItemStatus.DRAFT
+    status = enum_value(status, ItemStatus, "status")
     return status
 
 

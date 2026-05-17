@@ -15,7 +15,9 @@ class McpServerEnvironment(StrictSchemaModel):
     """Environment variables written into the Hermes MCP config."""
 
     alexandria_api_url: str = Field(serialization_alias="ALEXANDRIA_API_URL")
-    alexandria_api_token: str = Field(serialization_alias="ALEXANDRIA_API_TOKEN")
+    alexandria_operator_api_key: str = Field(
+        serialization_alias="ALEXANDRIA_OPERATOR_API_KEY"
+    )
     hermes_home: str = Field(serialization_alias="HERMES_HOME")
 
 

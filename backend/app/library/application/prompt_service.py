@@ -30,6 +30,7 @@ from app.library.domain.types.item_payload_types import (
 from app.library.domain.types.prompt_payload_types import PromptVariablePayload
 from app.shared.exceptions import ValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
+from app.shared.types.types_convert_utils import enum_value
 
 
 class PromptService:
@@ -97,6 +98,17 @@ class PromptService:
         Returns:
             Created item payload.
         """
+        content_format = enum_value(
+            content_format, PromptContentFormat, "content_format"
+        )
+        prompt_kind = enum_value(prompt_kind, PromptKind, "prompt_kind")
+        prompt_domain = enum_value(prompt_domain, PromptDomain, "prompt_domain")
+        prompt_task_type = enum_value(
+            prompt_task_type, PromptTaskType, "prompt_task_type"
+        )
+        created_by_type = enum_value(created_by_type, CreatedByType, "created_by_type")
+        source_type = enum_value(source_type, SourceType, "source_type")
+        status = enum_value(status, ItemStatus, "status")
         gate = run_library_quality_gate(
             item_type=ItemType.PROMPT,
             title=title,

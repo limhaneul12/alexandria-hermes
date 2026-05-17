@@ -9,12 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { archiveContext, fetchContexts } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { CONTEXT_KINDS, type ContextDTO, type ContextKind } from "@/types/library";
-
-const selectClassName =
-  "h-10 rounded-md border border-[#cfc8b8] bg-white/80 px-3 py-2 text-sm font-medium text-[#111111] outline-none focus-visible:border-[#111111] focus-visible:ring-2 focus-visible:ring-[#111111]/10";
 
 function preview(content: string) {
   return content.replace(/[#>*_`-]/g, "").split("\n").filter(Boolean).slice(0, 2).join(" ");
@@ -117,14 +115,17 @@ export function ContextVaultClient() {
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Filter className="h-5 w-5" aria-hidden="true" /> Context Filters</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-4">
-          <label className="space-y-2 text-sm font-semibold text-[#28241f]">
-            Kind
-            <select name="context-kind" value={kind} onChange={(event) => setKind(event.target.value as ContextKind | "ALL")} className={selectClassName}>
-              <option value="ALL">All Kinds</option>
-              {CONTEXT_KINDS.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
+        <CardContent className="grid gap-3 md:grid-cols-4 md:items-end">
+          <Select
+            name="context-kind"
+            label="Kind"
+            value={kind}
+            onChange={(value) => setKind(value as ContextKind | "ALL")}
+            options={[
+              { value: "ALL", label: "All Kinds" },
+              ...CONTEXT_KINDS.map((item) => ({ value: item, label: item })),
+            ]}
+          />
           <label className="space-y-2 text-sm font-semibold text-[#28241f]">
             Project
             <Input name="context-project" autoComplete="off" value={project} onChange={(event) => setProject(event.target.value)} placeholder="e.g. alexandria-hermes…" />

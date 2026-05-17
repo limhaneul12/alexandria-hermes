@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from app.connections.application.librarian_service import LibrarianService
 from app.container import ApplicationContainer
 from app.librarian.application.hermes_collaboration_service import (
     HermesCollaborationService,
+)
+from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
+from app.librarian.application.librarian_ops_service import LibrarianOpsService
+from app.librarian.domain.contracts.hermes_collaboration_contracts import (
+    HermesLibrarianAskCommand,
 )
 from app.librarian.interface.schemas.librarian.hermes_collaboration_schemas import (
     AskLibrarianRequest,
@@ -17,17 +21,17 @@ from app.librarian.interface.schemas.librarian.librarian_ops_schemas import (
     CreateCandidateRequest,
     RecommendRequest,
 )
-from app.library.application.item_service import ItemService
+from app.library.application.item_search_service import ItemSearchService
 from app.library.domain.event_enum.item_enums import ItemType
 from app.library.interface.schemas.item.item_schema import (
     ClassificationResponse,
     ItemResponse,
-    ItemResponseList,
 )
+from app.library.interface.schemas.item.item_search_schema import ItemSearchResponse
 from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
-from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
-from app.shared.types.types_convert_utils import now_utc
+from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
+from app.shared.types.types_convert_utils import enum_value
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, status
 
@@ -38,6 +42,32 @@ router = APIRouter(
 )
 
 
+def _ask_command(
+    request: AskLibrarianRequest,
+    compiler: KnowledgePacketCompiler,
+) -> HermesLibrarianAskCommand:
+    """Compile the request brief and build the application command.
+
+    Args:
+        request: Public ask-librarian request.
+        compiler: Application service that compiles the delegate brief.
+
+    Returns:
+        HermesLibrarianAskCommand: Application command for collaboration routing.
+    """
+    brief = compiler.compile(
+        prompt=request.prompt,
+        project=request.project,
+        budget_policy=request.budget.to_entity(),
+        context_compact=None
+        if request.context_compact is None
+        else request.context_compact.to_entity(),
+        source_refs=[source_ref.to_entity() for source_ref in request.source_refs],
+    )
+    command = request.to_command(librarian_brief=brief.packet_markdown)
+    return command
+
+
 @router.post(
     "/route-preview",
     response_model=AskLibrarianResponse,
@@ -45,12 +75,15 @@ router = APIRouter(
     status_code=status.HTTP_200_OK,
     summary="Preview librarian route",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def route_preview(
     request: AskLibrarianRequest,
     collaboration_service: HermesCollaborationService = Depends(
         Provide[ApplicationContainer.librarian.hermes_collaboration_service]
+    ),
+    compiler: KnowledgePacketCompiler = Depends(
+        Provide[ApplicationContainer.librarian.knowledge_packet_compiler]
     ),
 ) -> AskLibrarianResponse:
     """Preview the self-acquisition/librarian route for a Hermes prompt.
@@ -58,11 +91,15 @@ async def route_preview(
     Args:
         request: Ask-librarian request.
         collaboration_service: Collaboration service.
+        compiler: Knowledge packet compiler dependency.
 
     Returns:
         AskLibrarianResponse: Guidance with route_preview populated.
     """
-    command = request.model_copy(update={"delegate_to_librarian": False}).to_command()
+    command = _ask_command(
+        request.model_copy(update={"delegate_to_librarian": False}),
+        compiler,
+    )
     payload = await collaboration_service.ask_librarian(command)
     validation = AskLibrarianResponse.model_validate(payload)
     return validation
@@ -75,12 +112,15 @@ async def route_preview(
     status_code=status.HTTP_200_OK,
     summary="Ask librarian",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def ask_librarian(
     request: AskLibrarianRequest,
     collaboration_service: HermesCollaborationService = Depends(
         Provide[ApplicationContainer.librarian.hermes_collaboration_service]
+    ),
+    compiler: KnowledgePacketCompiler = Depends(
+        Provide[ApplicationContainer.librarian.knowledge_packet_compiler]
     ),
 ) -> AskLibrarianResponse:
     """Return Hermes self-acquisition or librarian delegation guidance.
@@ -88,11 +128,12 @@ async def ask_librarian(
     Args:
         request [AskLibrarianRequest]: Value supplied to ask_librarian.
         collaboration_service [HermesCollaborationService]: Value supplied to ask_librarian.
+        compiler: Knowledge packet compiler dependency.
 
     Returns:
         AskLibrarianResponse: Value produced by ask_librarian.
     """
-    payload = await collaboration_service.ask_librarian(request.to_command())
+    payload = await collaboration_service.ask_librarian(_ask_command(request, compiler))
     validation = AskLibrarianResponse.model_validate(payload)
     return validation
 
@@ -104,7 +145,7 @@ async def ask_librarian(
     status_code=status.HTTP_200_OK,
     summary="Librarian job status",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def librarian_job_status(
     job_id: str,
@@ -128,30 +169,34 @@ async def librarian_job_status(
 
 @router.post(
     "/recommend",
-    response_model=ItemResponseList,
-    description="Library API operation.",
+    response_model=ItemSearchResponse,
+    description="Recommend lightweight library candidates without full content.",
     status_code=status.HTTP_200_OK,
     summary="Recommend",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def recommend(
     request: RecommendRequest,
-    item_service: ItemService = Depends(
-        Provide[ApplicationContainer.library.item_service]
+    item_search_service: ItemSearchService = Depends(
+        Provide[ApplicationContainer.library.item_search_service]
     ),
-) -> ItemResponseList:
+) -> ItemSearchResponse:
     """Recommend items by query with simple keyword search fallback.
 
     Args:
         request [RecommendRequest]: Value supplied to recommend.
-        item_service [ItemService]: Value supplied to recommend.
+        item_search_service [ItemSearchService]: Value supplied to recommend.
 
     Returns:
-        ItemResponseList: Value produced by recommend.
+        ItemSearchResponse: Value produced by recommend.
     """
-    items = await item_service.search(query=request.query, item_type=request.item_type)
-    validation = ItemResponseList.model_validate(items[: request.limit])
+    payload = await item_search_service.search(
+        query=request.query,
+        item_type=enum_value(request.item_type, ItemType, "item_type"),
+        limit=request.limit,
+    )
+    validation = ItemSearchResponse.model_validate(payload)
     return validation
 
 
@@ -162,31 +207,26 @@ async def recommend(
     status_code=status.HTTP_200_OK,
     summary="Classify",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def classify(
     request: ClassifyRequest,
-    librarian_service: LibrarianService = Depends(
-        Provide[ApplicationContainer.connections.librarian_service]
+    librarian_ops_service: LibrarianOpsService = Depends(
+        Provide[ApplicationContainer.librarian.librarian_ops_service]
     ),
 ) -> ClassificationResponse:
     """Classify prompt into rough taxonomy categories.
 
     Args:
         request [ClassifyRequest]: Value supplied to classify.
-        librarian_service [LibrarianService]: Value supplied to classify.
+        librarian_ops_service: Librarian operation application service.
 
     Returns:
         ClassificationResponse: Value produced by classify.
     """
-    # Keep the route DI shape consistent while classification is still inline.
-    _ = librarian_service
-    lowered = request.text.lower()
-    if "workflow" in lowered:
-        return ClassificationResponse(label=ItemType.WORKFLOW, confidence=0.76)
-    if "api" in lowered or "agent" in lowered:
-        return ClassificationResponse(label=ItemType.SKILL, confidence=0.83)
-    return ClassificationResponse(label=ItemType.KNOWLEDGE, confidence=0.55)
+    payload = librarian_ops_service.classify(request.text)
+    validation = ClassificationResponse.model_validate(payload)
+    return validation
 
 
 @router.post(
@@ -196,52 +236,27 @@ async def classify(
     status_code=status.HTTP_200_OK,
     summary="Create skill candidate",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def create_skill_candidate(
     request: CreateCandidateRequest,
-    librarian_service: LibrarianService = Depends(
-        Provide[ApplicationContainer.connections.librarian_service]
+    librarian_ops_service: LibrarianOpsService = Depends(
+        Provide[ApplicationContainer.librarian.librarian_ops_service]
     ),
 ) -> ItemResponse:
     """Generate candidate payload and return draft candidate.
 
     Args:
         request [CreateCandidateRequest]: Value supplied to create_skill_candidate.
-        librarian_service [LibrarianService]: Value supplied to create_skill_candidate.
+        librarian_ops_service: Librarian operation application service.
 
     Returns:
         ItemResponse: Value produced by create_skill_candidate.
     """
-    candidate = librarian_service.generate_candidate_stub(
+    payload = librarian_ops_service.generate_skill_candidate(
         provider_id=request.provider_id,
         prompt=request.prompt,
+        category_id=request.category_id,
     )
-    # Keep API shape as draft skill candidate without persistence.
-    now = now_utc()
-    candidate_payload = candidate.to_candidate_payload()
-    result = {
-        "id": "draft-skill-candidate",
-        "item_type": "SKILL",
-        "title": candidate_payload["title"],
-        "summary": candidate_payload["summary"],
-        "content": candidate_payload["content"],
-        "category_id": request.category_id,
-        "tags": ["draft", "librarian"],
-        "details": {
-            "purpose": candidate_payload["purpose"],
-            "input_schema": candidate_payload["input_schema"],
-            "output_schema": candidate_payload["output_schema"],
-            "required_tools": candidate_payload["required_tools"],
-            "risk_level": candidate_payload["risk_level"],
-            "version": candidate_payload["version"],
-        },
-        "status": "DRAFT",
-        "source_type": "LIBRARIAN_CREATED",
-        "created_by_type": "LIBRARIAN",
-        "created_by_name": "librarian",
-        "created_at": now,
-        "updated_at": now,
-    }
-    validation = ItemResponse.model_validate(result)
+    validation = ItemResponse.model_validate(payload)
     return validation

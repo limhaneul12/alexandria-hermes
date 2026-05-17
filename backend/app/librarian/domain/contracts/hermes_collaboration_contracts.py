@@ -27,6 +27,7 @@ class HermesLibrarianAskCommand:
     librarian_role_prompt: str | None
     max_librarian_agents: int | None
     routing_specialties: list[str]
+    librarian_brief: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

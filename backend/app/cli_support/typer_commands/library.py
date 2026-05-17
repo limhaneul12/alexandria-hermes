@@ -14,6 +14,7 @@ from app.cli_support.contracts.command_contracts import (
     MinioCommand,
     SkillsCreateCommand,
     SkillsListCommand,
+    SkillsSearchCommand,
 )
 from app.cli_support.handlers.library import (
     handle_folders_create,
@@ -28,6 +29,7 @@ from app.cli_support.handlers.library import (
     handle_skills_delete,
     handle_skills_get,
     handle_skills_list,
+    handle_skills_search,
 )
 from app.cli_support.typer_commands.command_choices import (
     LibraryItemType,
@@ -58,6 +60,44 @@ def skills_list(
         None.
     """
     run_client(ctx, SkillsListCommand(limit=limit, offset=offset), handle_skills_list)
+
+
+@skills_app.command("search")
+def skills_search(
+    ctx: typer.Context,
+    query: str,
+    tool: list[str] | None = typer.Option(None, "--tool"),
+    risk_level: SkillRiskLevel | None = typer.Option(None, "--risk-level"),
+    tag: list[str] | None = typer.Option(None, "--tag"),
+    limit: int = typer.Option(20, "--limit"),
+    offset: int = typer.Option(0, "--offset"),
+) -> None:
+    """Search skill candidates without full content.
+
+    Args:
+        ctx: Typer context.
+        query: Search query.
+        tool: Repeatable required tool filter.
+        risk_level: Optional skill risk filter.
+        tag: Repeatable tag filter.
+        limit: Maximum result count.
+        offset: Result offset.
+
+    Returns:
+        None.
+    """
+    run_client(
+        ctx,
+        SkillsSearchCommand(
+            query=query,
+            tool=values(tool),
+            risk_level=risk_level,
+            tag=values(tag),
+            limit=limit,
+            offset=offset,
+        ),
+        handle_skills_search,
+    )
 
 
 @skills_app.command("get")
@@ -277,17 +317,38 @@ def library_list(
 
 
 @library_app.command("search")
-def library_search(ctx: typer.Context, query: str) -> None:
+def library_search(
+    ctx: typer.Context,
+    query: str,
+    item_type: LibraryItemType | None = typer.Option(None, "--type"),
+    limit: int = typer.Option(20, "--limit"),
+    offset: int = typer.Option(0, "--offset"),
+    content_mode: str = typer.Option("candidate", "--content-mode"),
+) -> None:
     """Search library items.
 
     Args:
         ctx: Typer context.
         query: Search query.
+        item_type: Optional item type filter.
+        limit: Maximum result count.
+        offset: Result offset.
+        content_mode: Candidate content mode.
 
     Returns:
         None.
     """
-    run_client(ctx, LibrarySearchCommand(query=query), handle_library_search)
+    run_client(
+        ctx,
+        LibrarySearchCommand(
+            query=query,
+            item_type=item_type,
+            limit=limit,
+            offset=offset,
+            content_mode=content_mode,
+        ),
+        handle_library_search,
+    )
 
 
 @minio_app.command("scan")

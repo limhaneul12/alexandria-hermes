@@ -120,6 +120,33 @@ def test_record_usage_persists_event_and_returns_created_record() -> None:
     }
 
 
+def test_record_usage_accepts_ui_view_events_for_detail_visits() -> None:
+    """Detail page visits should be recordable as explicit UI view events."""
+
+    def override_usage_service() -> UsageService:
+        return UsageService(usage_repo=FakeUsageRepository())
+
+    with override_library_provider("usage_service", override_usage_service()):
+        with TestClient(app) as client:
+            response = client.post(
+                "/library/usage",
+                json={
+                    "item_id": "00000000-0000-4000-8000-000000000010",
+                    "item_type": "SKILL",
+                    "agent_name": "Alexandria UI",
+                    "librarian_provider": None,
+                    "query": None,
+                    "selection_source": "UI_VIEW",
+                    "success": True,
+                    "feedback": {"source_surface": "skill-detail"},
+                },
+            )
+
+    assert response.status_code == 201
+    assert response.json()["selection_source"] == "UI_VIEW"
+    assert response.json()["agent_name"] == "Alexandria UI"
+
+
 def test_item_usage_returns_complete_usage_records_when_item_has_history() -> None:
     """Item usage history should include full usage record fields."""
 

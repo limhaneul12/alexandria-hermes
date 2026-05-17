@@ -16,7 +16,7 @@ from app.archive.interface.schemas.minio_archive.minio_archive_schema import (
 )
 from app.container import ApplicationContainer
 from app.shared.exceptions.exception_decorators import router_exception_status
-from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
+from app.shared.exceptions.route_exceptions import ARCHIVE_ROUTE_EXCEPTION_MAPPING
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/archive/minio", tags=["minio"])
     summary="List MINIO archive items",
     description="Return enabled MINIO provider objects as normalized library archive items.",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(ARCHIVE_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def list_minio_items(
     limit: int = Query(default=48, ge=1, le=1000),
@@ -59,7 +59,7 @@ async def list_minio_items(
     summary="Scan MINIO import candidates",
     description="Return external archive objects inferred as library import candidates.",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(ARCHIVE_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def scan_minio_import_candidates(
     limit: int = Query(default=48, ge=1, le=1000),
@@ -88,7 +88,7 @@ async def scan_minio_import_candidates(
     summary="Import MINIO archive candidates",
     description="Create DB catalog rows linked to external MINIO originals.",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(ARCHIVE_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def import_minio_items(
     request: MinioImportRequest,

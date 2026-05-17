@@ -11,6 +11,11 @@ from app.librarian.domain.event_enum.collaboration_enums import (
     LibrarianDelegateStatus,
     LibrarianDelegationStatus,
 )
+from app.librarian.interface.schemas.librarian.librarian_brief_schemas import (
+    BudgetPolicySchema,
+    ContextPackCompactSchema,
+    SourceRefSchema,
+)
 from app.shared.schemas.common_schemas import StrictSchemaModel
 from pydantic import ConfigDict, Field
 
@@ -49,9 +54,15 @@ class AskLibrarianRequest(StrictSchemaModel):
     librarian_role_prompt: str | None = Field(default=None, max_length=4096)
     max_librarian_agents: int | None = Field(default=None, ge=1, le=6)
     routing_specialties: list[str] = Field(default_factory=list)
+    budget: BudgetPolicySchema = Field(default_factory=BudgetPolicySchema)
+    context_compact: ContextPackCompactSchema | None = None
+    source_refs: list[SourceRefSchema] = Field(default_factory=list)
 
-    def to_command(self) -> HermesLibrarianAskCommand:
+    def to_command(self, *, librarian_brief: str | None) -> HermesLibrarianAskCommand:
         """Return an application command for the collaboration service.
+
+        Args:
+            librarian_brief: Precompiled delegate brief from the application layer.
 
         Returns:
             HermesLibrarianAskCommand: Internal command DTO.
@@ -68,6 +79,7 @@ class AskLibrarianRequest(StrictSchemaModel):
             librarian_role_prompt=self.librarian_role_prompt,
             max_librarian_agents=self.max_librarian_agents,
             routing_specialties=self.routing_specialties,
+            librarian_brief=librarian_brief,
         )
         return command
 

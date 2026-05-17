@@ -23,10 +23,15 @@ For this repository:
 - `<shared_root>` = `backend/app/shared`
 - `<rule_root>` = `backend/.agents/rule`
 - current active app areas:
+  - `archive`
   - `cli_support`
+  - `connections`
+  - `librarian`
   - `library`
+  - `memory`
   - `mcp_server`
   - `platform`
+  - `retrieval`
 
 ## Usage Rule
 

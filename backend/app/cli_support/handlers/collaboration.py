@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.cli_support.contracts.command_contracts import (
     LibrarianAskCommand,
+    LibrarianBriefPreviewCommand,
     LibrarianJobStatusCommand,
     LibrarianOAuthCommand,
     LibrarianProfileActionCommand,
@@ -33,12 +34,6 @@ from app.cli_support.transport.backend_api_client import CliBackendApiClient
 from app.shared.types.extra_types import JSONObject
 from app.shared.util.oauth_redaction import without_oauth_sensitive_fields
 
-_DEFAULT_OPENAI_CODEX_OAUTH_CONFIG: JSONObject = {
-    "device_authorization_url": "https://auth.openai.com/api/accounts/deviceauth/usercode",
-    "device_token_url": "https://auth.openai.com/api/accounts/deviceauth/token",
-    "client_id": "codex-cli",
-}
-
 
 def handle_usage_record(
     command: UsageRecordCliCommand,
@@ -61,6 +56,38 @@ def handle_usage_record(
     else:
         usage_id = text_field(payload, "id")
         print(f"recorded usage {usage_id}", file=context.stdout)
+    return 0
+
+
+def handle_librarian_brief_preview(
+    command: LibrarianBriefPreviewCommand,
+    context: CommandContext,
+    client: CliBackendApiClient,
+) -> int:
+    """Run the librarian brief-preview CLI command.
+
+    Args:
+        command: Typed CLI command contract for brief preview.
+        context: CLI runtime context with output settings.
+        client: Backend API client used for HTTP requests.
+
+    Returns:
+        Process-style exit code.
+    """
+    body: JSONObject = {
+        "prompt": command.prompt,
+        "budget": {
+            "max_input_chars": command.max_input_chars,
+            "max_source_refs": command.max_source_refs,
+        },
+    }
+    if command.project is not None:
+        body["project"] = command.project
+    payload = client.post("/librarians/brief-preview", body)
+    if context.json_output:
+        print_json(payload, context.stdout)
+    else:
+        print("librarian brief preview compiled", file=context.stdout)
     return 0
 
 

@@ -7,10 +7,11 @@ from app.archive.domain.contracts.minio_import_contracts import (
     MinioImportCandidate,
     MinioImportResult,
 )
-from app.library.domain.event_enum.item_enums import ItemType
+from app.library.domain.event_enum.item_enums import CreatedByType, ItemType
 from app.library.interface.schemas.item.item_schema import ItemResponse
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
+from app.shared.types.types_convert_utils import enum_value
 from pydantic import ConfigDict, Field, field_validator
 
 
@@ -71,7 +72,11 @@ class MinioArchiveItemResponse(ItemResponse):
             tags=archive_item.tags,
             status=archive_item.status,
             source_type=archive_item.source_type,
-            created_by_type=archive_item.created_by_type.value,
+            created_by_type=enum_value(
+                archive_item.created_by_type,
+                CreatedByType,
+                "created_by_type",
+            ).value,
             created_by_name=archive_item.created_by_name,
             details=archive_item.details,
             created_at=archive_item.created_at,

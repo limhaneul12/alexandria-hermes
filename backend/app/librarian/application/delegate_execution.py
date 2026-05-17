@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from app.connections.domain.entities.read_models import LibrarianProvider
@@ -44,6 +45,29 @@ class LibrarianExecutionPlan:
     matched_specialties: tuple[str, ...]
 
 
+class LibrarianDelegateExecutor(ABC):
+    """Boundary for provider-backed delegate execution."""
+
+    @abstractmethod
+    async def execute(
+        self,
+        *,
+        command: HermesLibrarianAskCommand,
+        plan: LibrarianExecutionPlan,
+        fallback: LibrarianDelegateResult,
+    ) -> LibrarianDelegateResult:
+        """Execute one delegate plan with an external provider.
+
+        Args:
+            command: Ask-librarian command that carries the prompt.
+            plan: Resolved provider/profile execution plan.
+            fallback: Safe deterministic delegate result for metadata and fallback.
+
+        Returns:
+            LibrarianDelegateResult: Provider-backed delegate result.
+        """
+
+
 def build_execution_plans(
     command: HermesLibrarianAskCommand,
     routing: LibrarianRoutingDecision,
@@ -82,12 +106,17 @@ def build_execution_plans(
 async def execute_delegates(
     plans: list[LibrarianExecutionPlan],
     max_librarian_agents: int | None,
+    *,
+    command: HermesLibrarianAskCommand | None = None,
+    executor: LibrarianDelegateExecutor | None = None,
 ) -> list[LibrarianDelegateResult]:
     """Execute delegate plans synchronously with bounded parallelism.
 
     Args:
         plans: Executable delegate plans.
         max_librarian_agents: Maximum concurrent delegate count.
+        command: Optional ask command required for provider-backed execution.
+        executor: Optional provider execution boundary.
 
     Returns:
         list[LibrarianDelegateResult]: Inline delegate results.
@@ -97,7 +126,14 @@ async def execute_delegates(
 
     async def execute_one(plan: LibrarianExecutionPlan) -> LibrarianDelegateResult:
         async with semaphore:
-            return _delegate_result(plan)
+            fallback = _delegate_result(plan)
+            if executor is None or command is None:
+                return fallback
+            return await executor.execute(
+                command=command,
+                plan=plan,
+                fallback=fallback,
+            )
 
     selected_plans = plans[:limit]
     return list(await asyncio.gather(*(execute_one(plan) for plan in selected_plans)))
@@ -135,6 +171,9 @@ def build_route_preview(
         return preview
     preview.append(f"Specialized librarian provider: {representative_plan.provider.id}")
     if delegated:
+        if executable_count <= 0:
+            preview.append("No delegated librarians completed")
+            return preview
         preview.append(f"Completed delegated librarians: {executable_count}")
     else:
         preview.append("Preview only; no librarian delegation queued")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.memory.application.context_lint import ContextLintResult
 from app.memory.domain.entities.context_read_models import (
+    ContextAccessEventRecord,
     ContextChunkRecord,
     ContextPack,
     ContextRecord,
@@ -12,6 +13,7 @@ from app.memory.domain.entities.context_read_models import (
     RagDependencyHealth,
 )
 from app.memory.domain.types.context_payload_types import (
+    ContextAccessEventPayload,
     ContextChunkPayload,
     ContextLintPayload,
     ContextPackPayload,
@@ -84,6 +86,29 @@ def chunk_payload(chunk: ContextChunkRecord) -> ContextChunkPayload:
         "content_hash": chunk.content_hash,
         "metadata": chunk.chunk_metadata,
         "created_at": chunk.created_at,
+    }
+    return payload
+
+
+def access_event_payload(
+    event: ContextAccessEventRecord,
+) -> ContextAccessEventPayload:
+    """Return an API payload for one context access event.
+
+    Args:
+        event: Stored access event read model.
+
+    Returns:
+        Typed response payload for the context access event API boundary.
+    """
+    payload: ContextAccessEventPayload = {
+        "id": event.id,
+        "context_id": event.context_id,
+        "accessed_at": event.accessed_at,
+        "actor_name": event.actor_name,
+        "actor_type": event.actor_type,
+        "access_method": event.access_method,
+        "source_surface": event.source_surface,
     }
     return payload
 

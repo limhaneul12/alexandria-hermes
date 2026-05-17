@@ -12,6 +12,7 @@ from app.connections.domain.repositories.librarian_repository import (
     IProviderSecretRepository,
 )
 from app.librarian.application.delegate_execution import (
+    LibrarianDelegateExecutor,
     LibrarianExecutionPlan,
     LibrarianProfileResolution,
     build_execution_plans,
@@ -37,6 +38,7 @@ from app.librarian.domain.contracts.hermes_collaboration_contracts import (
 )
 from app.librarian.domain.event_enum.collaboration_enums import (
     AcquisitionDecision,
+    LibrarianDelegateStatus,
     LibrarianDelegationStatus,
 )
 from app.librarian.domain.repositories.agent_repository import IAgentRepository
@@ -57,6 +59,10 @@ _DELEGATION_COMPLETED_MESSAGE = (
     "사서 delegate가 완료되었습니다. delegates 응답에서 profile별 결과와 "
     "matched_specialties를 확인하세요."
 )
+_DELEGATION_SKIPPED_MESSAGE = (
+    "사서 delegate를 완료하지 못했습니다. delegates 응답의 SKIPPED 항목과 "
+    "summary를 확인하고 Hermes 직접 조사 또는 인증/제공자 설정을 점검하세요."
+)
 
 
 class HermesCollaborationService:
@@ -68,6 +74,7 @@ class HermesCollaborationService:
         agent_repo: IAgentRepository,
         secret_repo: IProviderSecretRepository,
         now_provider: Callable[[], datetime] = now_utc,
+        delegate_executor: LibrarianDelegateExecutor | None = None,
     ) -> None:
         """Initialize collaboration service dependencies.
 
@@ -76,10 +83,12 @@ class HermesCollaborationService:
             agent_repo: Agent profile repository.
             secret_repo: Provider secret repository used for execution readiness.
             now_provider: Clock boundary for deterministic job ids.
+            delegate_executor: Optional provider-backed delegate executor.
         """
         self.provider_repo = provider_repo
         self.secret_repo = secret_repo
         self.now_provider = now_provider
+        self.delegate_executor = delegate_executor
         self.profile_router = LibrarianProfileRouter(agent_repo)
 
     async def ask_librarian(
@@ -113,12 +122,14 @@ class HermesCollaborationService:
             should_delegate,
             executable_plans,
             routing.max_librarian_agents,
+            command=command,
+            executor=self.delegate_executor,
         )
         route_preview = build_route_preview(
             representative_plan=representative_plan,
             routing=routing,
             delegated=should_delegate,
-            executable_count=len(executable_plans),
+            executable_count=_completed_delegate_count(delegates),
         )
         result = HermesLibrarianAskResult(
             job_id=job_id,
@@ -203,6 +214,9 @@ async def _delegate_decision(
     should_delegate: bool,
     executable_plans: list[LibrarianExecutionPlan],
     max_librarian_agents: int | None,
+    *,
+    command: HermesLibrarianAskCommand,
+    executor: LibrarianDelegateExecutor | None,
 ) -> tuple[
     list[LibrarianDelegateResult], LibrarianDelegationStatus, AcquisitionDecision, str
 ]:
@@ -211,12 +225,28 @@ async def _delegate_decision(
     decision = AcquisitionDecision.SUGGEST_HERMES_RESEARCH
     recommendation = _SELF_RESEARCH_RECOMMENDATION
     if should_delegate:
-        delegates = await execute_delegates(executable_plans, max_librarian_agents)
-        if delegates:
+        delegates = await execute_delegates(
+            executable_plans,
+            max_librarian_agents,
+            command=command,
+            executor=executor,
+        )
+        if _completed_delegate_count(delegates) > 0:
             status = LibrarianDelegationStatus.COMPLETED
             decision = AcquisitionDecision.DELEGATE_TO_LIBRARIAN
             recommendation = _DELEGATION_COMPLETED_MESSAGE
+        elif delegates:
+            recommendation = _DELEGATION_SKIPPED_MESSAGE
     return delegates, status, decision, recommendation
+
+
+def _completed_delegate_count(delegates: list[LibrarianDelegateResult]) -> int:
+    completed_count = sum(
+        1
+        for delegate in delegates
+        if delegate.status is LibrarianDelegateStatus.COMPLETED
+    )
+    return completed_count
 
 
 def _ask_payload(result: HermesLibrarianAskResult) -> HermesLibrarianAskPayload:

@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
+from sqlalchemy import Select, bindparam, func, select
+from sqlalchemy.sql.elements import ColumnElement
+
+type ContextVectorRow = tuple[str, str, float]
+type ContextVectorStatement = Select[ContextVectorRow]
+type ContextVectorParameter = str | int
 
 
 @dataclass(frozen=True, slots=True)
 class ContextVectorQuery:
-    """SQL text and bind parameters for a context vector query."""
+    """SQLAlchemy statement and bind parameters for a context vector query."""
 
-    sql: str
-    parameters: dict[str, str | int]
+    statement: ContextVectorStatement
+    parameters: dict[str, ContextVectorParameter]
 
 
 def build_context_vector_query(
@@ -47,47 +55,61 @@ def build_context_vector_query(
     Returns:
         ContextVectorQuery: SQL query contract.
     """
-    sql = (
-        "SELECT context_chunks.id AS chunk_id, contexts.id AS context_id, "
-        "vec_distance_cosine(context_chunks.embedding, :query_embedding) AS distance "
-        "FROM context_chunks "
-        "JOIN contexts ON contexts.id = context_chunks.context_id "
-        "WHERE context_chunks.embedding IS NOT NULL "
-        "AND context_chunks.embedding_model = :model_name "
-        "AND context_chunks.embedding_dimensions = :dimensions "
-        "AND contexts.is_archived = 0"
+    distance = cast(
+        ColumnElement[float],
+        func.vec_distance_cosine(
+            ContextChunkORM.embedding,
+            bindparam("query_embedding"),
+        ).label("distance"),
     )
-    parameters: dict[str, str | int] = {
+    parameters: dict[str, ContextVectorParameter] = {
         "query_embedding": query_embedding,
         "model_name": model_name,
         "dimensions": dimensions,
         "limit": limit,
     }
+
+    statement = (
+        select(
+            ContextChunkORM.id.label("chunk_id"),
+            ContextORM.id.label("context_id"),
+            distance,
+        )
+        .join(ContextORM, ContextORM.id == ContextChunkORM.context_id)
+        .where(
+            ContextChunkORM.embedding.is_not(None),
+            ContextChunkORM.embedding_model == bindparam("model_name"),
+            ContextChunkORM.embedding_dimensions == bindparam("dimensions"),
+            ContextORM.is_archived.is_(False),
+        )
+    )
     if project is not None:
-        sql += " AND contexts.project = :project"
+        statement = statement.where(ContextORM.project == bindparam("project"))
         parameters["project"] = project
     if kind is not None:
-        sql += " AND contexts.kind = :kind"
+        statement = statement.where(ContextORM.kind == bindparam("kind"))
         parameters["kind"] = kind.value
     if include_scopes:
-        scope_clauses: list[str] = []
-        for index, scope in enumerate(include_scopes):
-            parameter_name = f"scope_{index}"
-            scope_clauses.append(f"contexts.scope = :{parameter_name}")
-            parameters[parameter_name] = scope.value
-        sql += f" AND ({' OR '.join(scope_clauses)})"
+        scope_values = [scope.value for scope in include_scopes]
+        statement = statement.where(ContextORM.scope.in_(scope_values))
     if workspace_id is not None:
-        sql += " AND contexts.workspace_id = :workspace_id"
+        statement = statement.where(
+            ContextORM.workspace_id == bindparam("workspace_id")
+        )
         parameters["workspace_id"] = workspace_id
     if agent_id is not None:
-        sql += " AND contexts.agent_id = :agent_id"
+        statement = statement.where(ContextORM.agent_id == bindparam("agent_id"))
         parameters["agent_id"] = agent_id
     if user_id is not None:
-        sql += " AND contexts.user_id = :user_id"
+        statement = statement.where(ContextORM.user_id == bindparam("user_id"))
         parameters["user_id"] = user_id
     if session_id is not None:
-        sql += " AND contexts.session_id = :session_id"
+        statement = statement.where(ContextORM.session_id == bindparam("session_id"))
         parameters["session_id"] = session_id
-    sql += " ORDER BY distance ASC LIMIT :limit"
-    vector_query = ContextVectorQuery(sql=sql, parameters=parameters)
+
+    statement = statement.order_by(distance.asc()).limit(bindparam("limit"))
+    vector_query = ContextVectorQuery(
+        statement=cast(ContextVectorStatement, statement),
+        parameters=parameters,
+    )
     return vector_query

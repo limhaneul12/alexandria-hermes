@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.memory.domain.event_enum.context_enums import (
+    ContextAccessActorType,
+    ContextAccessMethod,
     ContextContentFormat,
     ContextImportance,
     ContextKind,
@@ -153,4 +155,40 @@ class ContextChunkORM(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+
+
+class ContextAccessEventORM(Base):
+    """Audit event for recent Context Vault views/recall accesses."""
+
+    __tablename__ = "context_access_events"
+
+    id: Mapped[str] = mapped_column(
+        String(ID_LENGTH), primary_key=True, default=new_uuid
+    )
+    context_id: Mapped[str] = mapped_column(
+        String(ID_LENGTH),
+        ForeignKey("contexts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    accessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    actor_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    access_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_surface: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "actor_type IN "
+            f"({_enum_values_sql(tuple(item.value for item in ContextAccessActorType))})",
+            name="ck_context_access_events_actor_type",
+        ),
+        CheckConstraint(
+            "access_method IN "
+            f"({_enum_values_sql(tuple(item.value for item in ContextAccessMethod))})",
+            name="ck_context_access_events_access_method",
+        ),
     )

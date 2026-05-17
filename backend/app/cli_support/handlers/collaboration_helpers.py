@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import cast
 
@@ -15,6 +14,7 @@ from app.cli_support.contracts.command_contracts import (
     UsageRecordCliCommand,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
+from app.cli_support.environment import cli_secret_value
 from app.cli_support.presentation.output_renderers import print_json, text_field
 from app.cli_support.routing.url_paths import quote_path
 from app.shared.types.extra_types import JSONObject, JSONValue
@@ -111,12 +111,12 @@ def provider_create_body(command: LibrarianProviderCreateCommand) -> JSONObject:
         "config": cast(JSONValue, command.config),
     }
     if command.api_key_env is not None:
-        api_key = os.environ.get(command.api_key_env)
+        api_key = cli_secret_value(command.api_key_env)
         if api_key:
             body["api_key"] = api_key
     if command.access_key_env is not None and command.secret_key_env is not None:
-        access_key = os.environ.get(command.access_key_env)
-        secret_key = os.environ.get(command.secret_key_env)
+        access_key = cli_secret_value(command.access_key_env)
+        secret_key = cli_secret_value(command.secret_key_env)
         if access_key and secret_key:
             body["api_key"] = f"{access_key}:{secret_key}"
     return body

@@ -3,32 +3,16 @@
 import type { ChangeEvent, FormEventHandler, ReactNode } from "react";
 import { AlertTriangle, FileText, FolderPlus, ScrollText } from "lucide-react";
 
+import { MarkdownContent } from "@/components/content/markdown-content";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { t } from "@/lib/i18n";
 import type { CategoryOption, PromptDraft, SkillDraft } from "@/lib/library/forms";
 import { useLibraryStore } from "@/store/library-store";
 import { PROMPT_CONTENT_FORMATS, PROMPT_DOMAINS, PROMPT_KINDS, PROMPT_TASK_TYPES } from "@/types/library";
 
 type CreateMode = "SKILL" | "PROMPT";
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function markdownPreview(value: string) {
-  return escapeHtml(value || "Preview will appear here.")
-    .replace(/^### (.*)$/gm, "<h4>$1</h4>")
-    .replace(/^## (.*)$/gm, "<h3>$1</h3>")
-    .replace(/^# (.*)$/gm, "<h2>$1</h2>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\n/g, "<br />");
-}
 
 function promptWarnings(draft: PromptDraft): string[] {
   const warnings: string[] = [];
@@ -61,20 +45,16 @@ export function CategorySelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-[#6f6a60]">
-      {label}
-      <select
-        name={name}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="archive-select mt-2"
-      >
-        <option value="">{emptyLabel}</option>
-        {options.map((category) => (
-          <option key={category.id} value={category.id}>{category.label}</option>
-        ))}
-      </select>
-    </label>
+    <Select
+      name={name}
+      label={label}
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "", label: emptyLabel },
+        ...options.map((category) => ({ value: category.id, label: category.label })),
+      ]}
+    />
   );
 }
 
@@ -201,7 +181,7 @@ function PromptFields({ draft, options, onDraftChange }: {
           <div className="rounded-xl border border-[#d8d3c7] bg-[#fbf8f0] p-4 text-sm text-[#36322d]">
             <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#111111]"><ScrollText className="h-4 w-4" aria-hidden="true" /> {t(language, "previewLint")}</p>
             {warnings.length > 0 ? <ul className="mb-4 space-y-1 text-xs text-[#8f5037]" aria-live="polite">{warnings.map((warning) => <li key={warning} className="flex gap-2"><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />{warning}</li>)}</ul> : <p className="mb-4 text-xs text-[#2f6b44]" aria-live="polite">{t(language, "noSyntaxWarnings")}</p>}
-            <div className="prose max-w-none text-[#36322d]" dangerouslySetInnerHTML={{ __html: markdownPreview(draft.content) }} />
+            <MarkdownContent content={draft.content || "Preview will appear here."} />
           </div>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
@@ -216,7 +196,12 @@ function PromptFields({ draft, options, onDraftChange }: {
 
 function SelectField({ label, value, values, onChange }: { label: string; value: string; values: readonly string[]; onChange: (value: string) => void }) {
   return (
-    <label className="block"><FieldLabel>{label}</FieldLabel><select value={value} onChange={(event) => onChange(event.target.value)} className="archive-select mt-2">{values.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+    <Select
+      label={label}
+      value={value}
+      onChange={onChange}
+      options={values.map((item) => ({ value: item, label: item }))}
+    />
   );
 }
 

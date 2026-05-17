@@ -33,7 +33,7 @@ Alexandria-Hermes onboarding 산출물과 Hermes runtime MCP 등록의 차이를
 
 ```bash
 ALEXANDRIA_CLI="$(command -v alexandria-hermes)"
-hermes mcp add alexandria   --command "$ALEXANDRIA_CLI"   --args mcp serve   --env ALEXANDRIA_API_URL="http://localhost:8000"   --env ALEXANDRIA_API_TOKEN="${ALEXANDRIA_API_TOKEN:-}"   --env ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-}"   --env HERMES_HOME="$HOME/.hermes"
+hermes mcp add alexandria   --command "$ALEXANDRIA_CLI"   --args mcp serve   --env ALEXANDRIA_API_URL="http://localhost:8000"   --env ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-}"   --env HERMES_HOME="$HOME/.hermes"
 ```
 
 ## 검증

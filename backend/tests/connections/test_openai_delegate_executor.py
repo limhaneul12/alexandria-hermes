@@ -1,0 +1,416 @@
+"""OpenAI/Codex provider-backed librarian delegate executor tests."""
+
+from __future__ import annotations
+
+import base64
+import json
+from datetime import UTC, datetime, timedelta
+from typing import cast
+
+import anyio
+import pytest
+from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.event_enum.provider_enums import (
+    AuthType,
+    ProviderSecretKey,
+    ProviderType,
+)
+from app.connections.domain.repositories.librarian_repository import (
+    IProviderSecretRepository,
+)
+from app.connections.infrastructure.librarians.openai_adapter import (
+    OpenAIClientBuilder,
+    OpenAIClientConfig,
+)
+from app.connections.infrastructure.librarians.openai_delegate_executor import (
+    OpenAIProviderDelegateExecutor,
+)
+from app.librarian.application.delegate_execution import (
+    LibrarianExecutionPlan,
+    LibrarianProfileResolution,
+)
+from app.librarian.domain.contracts.hermes_collaboration_contracts import (
+    HermesLibrarianAskCommand,
+    LibrarianDelegateResult,
+)
+from app.librarian.domain.event_enum.collaboration_enums import (
+    LibrarianDelegateKind,
+    LibrarianDelegateStatus,
+)
+from app.shared.types.extra_types import JSONValue
+from openai import OpenAIError
+from openai.types.responses import ResponseTextDeltaEvent
+
+
+class FakeSecretRepository:
+    """In-memory secret repository for executor tests."""
+
+    def __init__(self, values: dict[tuple[str, str], str]) -> None:
+        self.values = values
+
+    async def resolve(self, provider_id: str, key_name: str) -> str | None:
+        return self.values.get((provider_id, key_name))
+
+    async def set_secret(self, *, provider_id: str, key_name: str, value: str) -> None:
+        self.values[(provider_id, key_name)] = value
+
+    async def delete_for_provider(self, provider_id: str, key_name: str) -> None:
+        self.values.pop((provider_id, key_name), None)
+
+
+class FakeResponse:
+    """Minimal SDK response carrying output_text."""
+
+    def __init__(self, output_text: str) -> None:
+        self.output_text = output_text
+
+
+class FakeResponsesResource:
+    """Minimal SDK responses resource."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, JSONValue]] = []
+
+    def create(
+        self,
+        *,
+        model: str,
+        input: str | list[dict[str, JSONValue]],
+        instructions: str,
+        store: bool | None = None,
+        stream: bool = False,
+    ) -> FakeResponse | list[ResponseTextDeltaEvent]:
+        self.calls.append(
+            {
+                "model": model,
+                "input": input,
+                "instructions": instructions,
+                "store": store,
+                "stream": stream,
+            }
+        )
+        if stream:
+            return [
+                ResponseTextDeltaEvent(
+                    content_index=0,
+                    delta="Provider-backed ",
+                    item_id="item-1",
+                    logprobs=[],
+                    output_index=0,
+                    sequence_number=1,
+                    type="response.output_text.delta",
+                ),
+                ResponseTextDeltaEvent(
+                    content_index=0,
+                    delta="answer without secrets",
+                    item_id="item-1",
+                    logprobs=[],
+                    output_index=0,
+                    sequence_number=2,
+                    type="response.output_text.delta",
+                ),
+            ]
+        return FakeResponse("Provider-backed answer without secrets")
+
+
+class FakeOpenAIClient:
+    """Minimal SDK client with responses.create."""
+
+    def __init__(self) -> None:
+        self.responses = FakeResponsesResource()
+
+
+class FailingResponsesResource:
+    """SDK responses resource that fails at the provider boundary."""
+
+    def create(
+        self,
+        *,
+        model: str,
+        input: str | list[dict[str, JSONValue]],
+        instructions: str,
+        store: bool | None = None,
+        stream: bool = False,
+    ) -> FakeResponse | list[ResponseTextDeltaEvent]:
+        raise OpenAIError("provider unavailable")
+
+
+class FailingOpenAIClient:
+    """Minimal SDK client whose provider call fails."""
+
+    def __init__(self) -> None:
+        self.responses = FailingResponsesResource()
+
+
+class ContractBugResponsesResource:
+    """SDK responses resource that simulates an unexpected local bug."""
+
+    def create(
+        self,
+        *,
+        model: str,
+        input: str | list[dict[str, JSONValue]],
+        instructions: str,
+        store: bool | None = None,
+        stream: bool = False,
+    ) -> FakeResponse | list[ResponseTextDeltaEvent]:
+        raise ValueError("local contract bug")
+
+
+class ContractBugOpenAIClient:
+    """Minimal SDK client whose response adapter has a local bug."""
+
+    def __init__(self) -> None:
+        self.responses = ContractBugResponsesResource()
+
+
+def test_openai_api_key_executor_sends_prompt_to_responses_api() -> None:
+    async def scenario() -> None:
+        configs: list[OpenAIClientConfig] = []
+        client = FakeOpenAIClient()
+
+        def build_client(config: OpenAIClientConfig):
+            configs.append(config)
+            return client
+
+        secret_repo = FakeSecretRepository(
+            {
+                ("openai-main", ProviderSecretKey.API_KEY.value): "sk-secret-value",
+            }
+        )
+        executor = OpenAIProviderDelegateExecutor(
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+        result = await executor.execute(
+            command=_command("Summarize OAuth executor risk"),
+            plan=_plan(_provider("openai-main", ProviderType.OPENAI, AuthType.API_KEY)),
+            fallback=_fallback("openai-main"),
+        )
+
+        assert configs == [
+            OpenAIClientConfig(api_key="sk-secret-value"),
+        ]
+        assert len(client.responses.calls) == 1
+        call = client.responses.calls[0]
+        assert call["model"] == "gpt-5.5"
+        assert call["input"] == "Summarize OAuth executor risk"
+        assert call["store"] is None
+        assert call["stream"] is False
+        assert "Alexandria Librarian" in str(call["instructions"])
+        assert "Return concise implementation guidance." in str(call["instructions"])
+        assert result.summary == "Provider-backed answer without secrets"
+        assert "sk-secret-value" not in repr(result)
+
+    anyio.run(scenario)
+
+
+def test_openai_codex_executor_uses_oauth_token_and_codex_base_url() -> None:
+    async def scenario() -> None:
+        configs: list[OpenAIClientConfig] = []
+        client = FakeOpenAIClient()
+
+        def build_client(config: OpenAIClientConfig):
+            configs.append(config)
+            return client
+
+        secret_repo = FakeSecretRepository(
+            {
+                (
+                    "codex-main",
+                    ProviderSecretKey.OAUTH_ACCESS_TOKEN.value,
+                ): _fake_oauth_jwt(account_id="acct-test-123"),
+                (
+                    "codex-main",
+                    ProviderSecretKey.OAUTH_EXPIRES_AT.value,
+                ): (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            }
+        )
+        executor = OpenAIProviderDelegateExecutor(
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+        result = await executor.execute(
+            command=_command("Use Codex OAuth"),
+            plan=_plan(
+                _provider(
+                    "codex-main",
+                    ProviderType.OPENAI_CODEX,
+                    AuthType.OAUTH,
+                    model="gpt-5.5",
+                )
+            ),
+            fallback=_fallback("codex-main"),
+        )
+
+        assert len(configs) == 1
+        assert configs[0].api_key == _fake_oauth_jwt(account_id="acct-test-123")
+        assert configs[0].base_url == "https://chatgpt.com/backend-api/codex"
+        assert configs[0].default_headers == {
+            "User-Agent": "codex_cli_rs/0.0.0 (Alexandria Hermes)",
+            "originator": "codex_cli_rs",
+            "ChatGPT-Account-ID": "acct-test-123",
+        }
+        assert result.summary == "Provider-backed answer without secrets"
+        assert len(client.responses.calls) == 1
+        call = client.responses.calls[0]
+        assert call["model"] == "gpt-5.5"
+        assert call["input"] == [{"role": "user", "content": "Use Codex OAuth"}]
+        assert call["store"] is False
+        assert call["stream"] is True
+        assert "Alexandria Librarian" in str(call["instructions"])
+        assert "Return concise implementation guidance." in str(call["instructions"])
+        assert "acct-test-123" not in repr(result)
+
+    anyio.run(scenario)
+
+
+def test_openai_executor_returns_skipped_when_credentials_are_unavailable() -> None:
+    async def scenario() -> None:
+        executor = OpenAIProviderDelegateExecutor(
+            secret_repo=cast(IProviderSecretRepository, FakeSecretRepository({})),
+        )
+        result = await executor.execute(
+            command=_command("Summarize missing credentials"),
+            plan=_plan(_provider("openai-main", ProviderType.OPENAI, AuthType.API_KEY)),
+            fallback=_fallback("openai-main"),
+        )
+
+        assert result.status is LibrarianDelegateStatus.SKIPPED
+        assert result.summary == "Provider credentials unavailable"
+        assert result.provider_id == "openai-main"
+
+    anyio.run(scenario)
+
+
+def test_openai_executor_returns_skipped_when_provider_execution_fails() -> None:
+    async def scenario() -> None:
+        def build_client(config: OpenAIClientConfig):
+            return FailingOpenAIClient()
+
+        secret_repo = FakeSecretRepository(
+            {
+                ("openai-main", ProviderSecretKey.API_KEY.value): "sk-secret-value",
+            }
+        )
+        executor = OpenAIProviderDelegateExecutor(
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+        result = await executor.execute(
+            command=_command("Summarize provider failure"),
+            plan=_plan(_provider("openai-main", ProviderType.OPENAI, AuthType.API_KEY)),
+            fallback=_fallback("openai-main"),
+        )
+
+        assert result.status is LibrarianDelegateStatus.SKIPPED
+        assert result.summary == "Provider execution failed"
+        assert "sk-secret-value" not in repr(result)
+
+    anyio.run(scenario)
+
+
+def test_openai_executor_propagates_unexpected_local_contract_errors() -> None:
+    async def scenario() -> None:
+        def build_client(config: OpenAIClientConfig):
+            return ContractBugOpenAIClient()
+
+        secret_repo = FakeSecretRepository(
+            {
+                ("openai-main", ProviderSecretKey.API_KEY.value): "sk-secret-value",
+            }
+        )
+        executor = OpenAIProviderDelegateExecutor(
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+
+        with pytest.raises(ValueError, match="local contract bug"):
+            await executor.execute(
+                command=_command("Summarize provider failure"),
+                plan=_plan(
+                    _provider("openai-main", ProviderType.OPENAI, AuthType.API_KEY)
+                ),
+                fallback=_fallback("openai-main"),
+            )
+
+    anyio.run(scenario)
+
+
+def _fake_oauth_jwt(*, account_id: str) -> str:
+    header = _base64_url_json({"alg": "none"})
+    payload = _base64_url_json(
+        {
+            "https://api.openai.com/auth": {
+                "chatgpt_account_id": account_id,
+            },
+        }
+    )
+    return f"{header}.{payload}.signature"
+
+
+def _base64_url_json(value: dict[str, str | dict[str, str]]) -> str:
+    raw = json.dumps(value, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _command(prompt: str) -> HermesLibrarianAskCommand:
+    return HermesLibrarianAskCommand(
+        prompt=prompt,
+        agent_name="Hermes",
+        project="alexandria-hermes",
+        task_summary=None,
+        delegate_to_librarian=True,
+        provider_id=None,
+        librarian_profile_id=None,
+        librarian_model=None,
+        librarian_role_prompt=None,
+        max_librarian_agents=1,
+        routing_specialties=[],
+    )
+
+
+def _provider(
+    provider_id: str,
+    provider_type: ProviderType,
+    auth_type: AuthType,
+    *,
+    model: str | None = None,
+) -> LibrarianProvider:
+    config: dict[str, JSONValue] = {"model": model} if model is not None else {}
+    return LibrarianProvider(
+        id=provider_id,
+        name=provider_id,
+        provider_type=provider_type,
+        auth_type=auth_type,
+        enabled=True,
+        config=config,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+def _plan(provider: LibrarianProvider) -> LibrarianExecutionPlan:
+    return LibrarianExecutionPlan(
+        profile=None,
+        provider=provider,
+        resolution=LibrarianProfileResolution(
+            provider_id=provider.id,
+            librarian_profile_id=None,
+            librarian_model="gpt-5.5",
+            librarian_role_prompt="Return concise implementation guidance.",
+            max_librarian_agents=1,
+        ),
+        matched_specialties=("oauth",),
+    )
+
+
+def _fallback(provider_id: str) -> LibrarianDelegateResult:
+    return LibrarianDelegateResult(
+        profile_id="request-default",
+        provider_id=provider_id,
+        status=LibrarianDelegateStatus.COMPLETED,
+        delegate_type=LibrarianDelegateKind.LIBRARY_SEARCH,
+        summary="Fallback summary",
+        matched_specialties=["oauth"],
+    )

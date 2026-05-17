@@ -25,6 +25,8 @@ type AskCopy = {
   route: string;
   delegates: string;
   status: string;
+  job: string;
+  closePanel: string;
   error: string;
   quickPrompts: Array<{ label: string; prompt: string }>;
 };
@@ -33,7 +35,7 @@ function copyFor(language: Language): AskCopy {
   if (language === "ko") {
     return {
       title: "사서에게 묻기",
-      kicker: "Need help?",
+      kicker: "도움이 필요하신가요?",
       body: "스킬, 프롬프트, 맥락 회수, 후보 작성 경로를 바로 물어보세요.",
       promptLabel: "질문",
       placeholder: "예: OAuth 검토에 맞는 스킬을 찾아줘",
@@ -43,23 +45,25 @@ function copyFor(language: Language): AskCopy {
       route: "라우팅 미리보기",
       delegates: "사서 delegate",
       status: "상태",
+      job: "작업",
+      closePanel: "닫기",
       error: "사서에게 질문하지 못했습니다. 잠시 뒤 다시 시도하세요.",
       quickPrompts: [
         {
           label: "스킬 찾기",
-          prompt: "Find a skill for this task and explain why it fits.",
+          prompt: "이 작업에 맞는 스킬을 찾고 왜 적합한지 설명해줘.",
         },
         {
           label: "프롬프트 추천",
-          prompt: "Recommend a reusable prompt for this task.",
+          prompt: "이 작업에 재사용할 수 있는 프롬프트를 추천해줘.",
         },
         {
           label: "맥락 회수",
-          prompt: "Recall related project context before I start.",
+          prompt: "시작하기 전에 관련 프로젝트 맥락을 찾아줘.",
         },
         {
           label: "후보 초안",
-          prompt: "Draft a skill candidate that could be added to the library.",
+          prompt: "라이브러리에 추가할 수 있는 스킬 후보 초안을 작성해줘.",
         },
       ],
     };
@@ -76,6 +80,8 @@ function copyFor(language: Language): AskCopy {
     route: "Route preview",
     delegates: "Delegates",
     status: "Status",
+    job: "Job",
+    closePanel: "Close librarian question panel",
     error: "The librarian could not answer yet. Try again shortly.",
     quickPrompts: [
       {
@@ -162,7 +168,7 @@ export function AskLibrarianWidget() {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Close librarian question panel"
+              aria-label={copy.closePanel}
               onClick={() => setIsOpen(false)}
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -225,7 +231,7 @@ export function AskLibrarianWidget() {
                   </div>
                   <div className="rounded-lg border border-[#e2ddd2] bg-[#fbfaf6] p-3">
                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6f6a60]">
-                      Job
+                      {copy.job}
                     </p>
                     <p className="mt-1 truncate text-sm font-semibold text-[#111111]">
                       {response.jobId}

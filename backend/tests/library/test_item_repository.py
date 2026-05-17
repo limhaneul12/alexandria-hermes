@@ -10,6 +10,7 @@ from typing import Any
 
 import anyio
 import pytest
+from app.library.application.item_search_service import ItemSearchService
 from app.library.application.item_service import ItemService
 from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
 from app.library.domain.event_enum.item_enums import (
@@ -204,10 +205,15 @@ def test_search_endpoint_returns_success_when_query_contains_fts_special_charact
     database = anyio.run(seed_database)
     session_context = database.session()
     session = anyio.run(session_context.__aenter__)
-    item_service = ItemService(item_repo=SqlAlchemyItemRepository(session=session))
+    repository = SqlAlchemyItemRepository(session=session)
+    item_service = ItemService(item_repo=repository)
+    item_search_service = ItemSearchService(item_repo=repository)
 
     try:
-        with override_library_provider("item_service", item_service):
+        with (
+            override_library_provider("item_service", item_service),
+            override_library_provider("item_search_service", item_search_service),
+        ):
             with TestClient(app, raise_server_exceptions=False) as client:
                 quote_response = client.get("/retrieval/search", params={"q": '"'})
                 hyphen_response = client.get("/retrieval/search", params={"q": "-"})
@@ -216,9 +222,19 @@ def test_search_endpoint_returns_success_when_query_contains_fts_special_charact
         anyio.run(database.shutdown)
 
     assert quote_response.status_code == 200
-    assert quote_response.json() == []
+    assert quote_response.json() == {
+        "items": [],
+        "total": 0,
+        "limit": 20,
+        "offset": 0,
+    }
     assert hyphen_response.status_code == 200
-    assert hyphen_response.json() == []
+    assert hyphen_response.json() == {
+        "items": [],
+        "total": 0,
+        "limit": 20,
+        "offset": 0,
+    }
 
 
 def test_item_fts_builds_safe_prefix_query_from_user_text() -> None:
@@ -226,11 +242,10 @@ def test_item_fts_builds_safe_prefix_query_from_user_text() -> None:
     query = build_item_fts_query('deploy-check "now"', ItemType.SKILL)
 
     assert query is not None
-    assert query.sql == (
-        "SELECT item_id FROM item_search_fts WHERE item_search_fts MATCH :query"
-        " AND item_type = :item_type"
-    )
-    assert query.parameters == {"query": "deploy* check* now*", "item_type": "SKILL"}
+    assert query.parameters == {
+        "query": '"deploy"* "check"* "now"*',
+        "item_type": "SKILL",
+    }
 
 
 def test_item_fts_query_returns_none_when_query_has_no_tokens() -> None:

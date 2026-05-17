@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 from contextlib import redirect_stderr, redirect_stdout
 
@@ -27,6 +26,7 @@ from app.cli_support.typer_commands.library import (
 )
 from app.cli_support.typer_commands.library_prompts import prompts_app
 from app.cli_support.typer_commands.mcp import mcp_app
+from app.cli_support.typer_commands.memory_compact import memory_compact_app
 from app.cli_support.typer_commands.typer_runtime import run_context
 from app.mcp_server.mcp_protocol_enums import McpLaunchArgument
 from app.shared.exceptions.cli_exceptions import CliRuntimeStateError
@@ -43,6 +43,7 @@ typer_app.add_typer(folders_app, name="folders")
 typer_app.add_typer(library_app, name="library")
 typer_app.add_typer(minio_app, name="minio")
 typer_app.add_typer(context_app, name="context")
+typer_app.add_typer(memory_compact_app, name="memory-compacts")
 typer_app.add_typer(hermes_app, name="hermes")
 typer_app.add_typer(librarian_app, name="librarian")
 typer_app.add_typer(usage_app, name="usage")
@@ -89,11 +90,7 @@ def _configure(
     ctx.obj = CommandContext(
         base_url=normalized_base_url(base_url),
         json_output=json_output,
-        operator_api_key=(
-            operator_api_key
-            or os.environ.get("SERVICE_OPERATOR_API_KEY")
-            or os.environ.get("ALEXANDRIA_API_TOKEN")
-        ),
+        operator_api_key=operator_api_key,
         timeout=max(1.0, float(timeout)),
         stdout=runtime.stdout,
         stderr=runtime.stderr,

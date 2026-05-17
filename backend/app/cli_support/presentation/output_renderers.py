@@ -220,6 +220,11 @@ def json_list(payload: JSONValue) -> list[JSONObject]:
     Returns:
         List of JSON objects contained in the payload.
     """
+    if isinstance(payload, dict):
+        items = payload.get("items")
+        if not isinstance(items, list):
+            return []
+        return [item for item in items if isinstance(item, dict)]
     if not isinstance(payload, list):
         return []
     rows = [item for item in payload if isinstance(item, dict)]

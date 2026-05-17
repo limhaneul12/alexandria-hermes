@@ -6,11 +6,14 @@ import asyncio
 import os
 from logging.config import fileConfig
 
+import app.connections.infrastructure.models.librarian_provider_models as _librarian_provider_models  # noqa: F401
+import app.librarian.infrastructure.models.agent_models as _agent_models  # noqa: F401
+import app.library.infrastructure.models.category_models as _category_models  # noqa: F401
+import app.library.infrastructure.models.item_models as _item_models  # noqa: F401
+import app.library.infrastructure.models.usage_models as _usage_models  # noqa: F401
+import app.memory.infrastructure.models.context_models as _context_models  # noqa: F401
+import app.memory.infrastructure.models.memory_compact_models as _memory_compact_models  # noqa: F401
 from alembic import context
-from app.connections.infrastructure import models as _connection_models  # noqa: F401
-from app.librarian.infrastructure import models as _librarian_models  # noqa: F401
-from app.library.infrastructure import models as _library_models  # noqa: F401
-from app.memory.infrastructure import models as _memory_models  # noqa: F401
 from app.shared.infrastructure.database import Base
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection

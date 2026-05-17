@@ -15,8 +15,8 @@ from app.container import ApplicationContainer
 from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import (
+    CONNECTIONS_ROUTE_EXCEPTION_MAPPING,
     LIBRARY_PROVIDER_TEST_EXCEPTION_MAPPING,
-    LIBRARY_ROUTE_EXCEPTION_MAPPING,
 )
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -35,7 +35,7 @@ router = APIRouter(
     description="Library API operation.",
     summary="Create librarian provider",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def create_librarian_provider(
     request: LibrarianProviderCreateRequest,
@@ -72,7 +72,7 @@ async def create_librarian_provider(
     status_code=status.HTTP_200_OK,
     summary="List librarian providers",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def list_librarian_providers(
     service: LibrarianService = Depends(
@@ -99,7 +99,7 @@ async def list_librarian_providers(
     status_code=status.HTTP_200_OK,
     summary="Get librarian provider",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def get_librarian_provider(
     provider_id: str,
@@ -128,7 +128,7 @@ async def get_librarian_provider(
     status_code=status.HTTP_200_OK,
     summary="Patch librarian provider",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def patch_librarian_provider(
     provider_id: str,
@@ -167,7 +167,7 @@ async def patch_librarian_provider(
     description="Library API operation.",
     summary="Delete librarian provider",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def delete_librarian_provider(
     provider_id: str,

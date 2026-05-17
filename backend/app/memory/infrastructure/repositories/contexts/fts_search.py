@@ -10,7 +10,7 @@ from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
 )
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -57,7 +57,7 @@ async def search_context_fts(
     )
     if fts_query is None:
         return []
-    rows = await session.execute(text(fts_query.sql), fts_query.parameters)
+    rows = await session.execute(fts_query.statement, fts_query.parameters)
     ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
     if not ranked:
         return []

@@ -4,10 +4,27 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import cast
 
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from sqlalchemy import (
+    Select,
+    bindparam,
+    column,
+    delete,
+    func,
+    insert,
+    select,
+    table,
+    text,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.dml import Delete, Insert
+from sqlalchemy.sql.elements import ColumnElement
 
 FTS_TOKEN_PATTERN = re.compile(r"\w+")
+MAX_FTS_TOKEN_COUNT = 32
+MAX_FTS_TOKEN_LENGTH = 64
 
 CONTEXT_CHUNK_FTS_SQL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS context_chunk_fts USING fts5(
@@ -30,13 +47,116 @@ CREATE VIRTUAL TABLE IF NOT EXISTS context_chunk_fts USING fts5(
 );
 """
 
+CONTEXT_CHUNK_FTS_TABLE = table(
+    "context_chunk_fts",
+    column("chunk_id"),
+    column("context_id"),
+    column("title"),
+    column("summary"),
+    column("content"),
+    column("kind"),
+    column("project"),
+    column("scope"),
+    column("workspace_id"),
+    column("agent_id"),
+    column("user_id"),
+    column("session_id"),
+    column("source_agent"),
+    column("tags"),
+    column("heading"),
+)
+
+type ContextFtsRow = tuple[str, str, float]
+type ContextFtsStatement = Select[ContextFtsRow]
+type ContextFtsParameter = str | int | list[str]
+
 
 @dataclass(frozen=True, slots=True)
 class ContextFtsQuery:
-    """SQL text and bind parameters for a context FTS query."""
+    """SQLAlchemy statement and bind parameters for a context FTS query."""
 
-    sql: str
-    parameters: dict[str, str | int | None]
+    statement: ContextFtsStatement
+    parameters: dict[str, ContextFtsParameter]
+
+
+def normalize_fts_query(raw_query: str) -> str | None:
+    """Normalize untrusted text into a literal-token SQLite FTS5 query.
+
+    Args:
+        raw_query: User-provided search text.
+
+    Returns:
+        FTS5 query string with literal prefix tokens, or None when empty.
+    """
+    tokens = [
+        token[:MAX_FTS_TOKEN_LENGTH]
+        for token in FTS_TOKEN_PATTERN.findall(raw_query.strip())[:MAX_FTS_TOKEN_COUNT]
+    ]
+    if not tokens:
+        return None
+    normalized = " ".join(f'"{token}"*' for token in tokens)
+    return normalized
+
+
+async def ensure_context_chunk_fts_table(*, session: AsyncSession) -> None:
+    """Create the Context Vault FTS5 virtual table when needed.
+
+    Args:
+        session: Active async database session.
+
+    Returns:
+        None.
+    """
+    # SQLite FTS5 virtual-table DDL has no SQLAlchemy ORM equivalent. Keep this
+    # as a constant schema statement only; never concatenate user-provided data.
+    await session.execute(text(CONTEXT_CHUNK_FTS_SQL))
+
+
+def delete_chunk_fts_statement() -> Delete:
+    """Build a bound Core delete statement for one FTS chunk row.
+
+    Returns:
+        SQLAlchemy delete statement.
+    """
+    return delete(CONTEXT_CHUNK_FTS_TABLE).where(
+        CONTEXT_CHUNK_FTS_TABLE.c.chunk_id == bindparam("chunk_id")
+    )
+
+
+def delete_context_fts_statement() -> Delete:
+    """Build a bound Core delete statement for all FTS rows of a context.
+
+    Returns:
+        SQLAlchemy delete statement.
+    """
+    return delete(CONTEXT_CHUNK_FTS_TABLE).where(
+        CONTEXT_CHUNK_FTS_TABLE.c.context_id == bindparam("context_id")
+    )
+
+
+def insert_chunk_fts_statement() -> Insert:
+    """Build a Core insert statement for one FTS chunk row.
+
+    Returns:
+        SQLAlchemy insert statement.
+    """
+    return insert(CONTEXT_CHUNK_FTS_TABLE).values(
+        chunk_id=bindparam("chunk_id"),
+        context_id=bindparam("context_id"),
+        title=bindparam("title"),
+        summary=bindparam("summary"),
+        content=bindparam("content"),
+        kind=bindparam("kind"),
+        project=bindparam("project"),
+        source_agent=bindparam("source_agent"),
+        tags=bindparam("tags"),
+        scope=bindparam("scope"),
+        workspace_id=bindparam("workspace_id"),
+        agent_id=bindparam("agent_id"),
+        user_id=bindparam("user_id"),
+        session_id=bindparam("session_id"),
+        heading=bindparam("heading"),
+    )
 
 
 def build_context_fts_query(
@@ -67,41 +187,50 @@ def build_context_fts_query(
     Returns:
         SQL query contract when tokenization yields searchable terms.
     """
-    tokens = FTS_TOKEN_PATTERN.findall(query.strip())
-    if not tokens:
+    normalized = normalize_fts_query(query)
+    if normalized is None:
         return None
 
-    normalized = " ".join(f"{token}*" for token in tokens)
-    sql = (
-        "SELECT chunk_id, context_id, bm25(context_chunk_fts) AS rank "
-        "FROM context_chunk_fts WHERE context_chunk_fts MATCH :query"
+    fts_table = CONTEXT_CHUNK_FTS_TABLE
+    fts_match_target = fts_table.table_valued()
+    rank = cast(
+        ColumnElement[float],
+        func.bm25(fts_match_target).label("rank"),
     )
-    parameters: dict[str, str | int | None] = {"query": normalized, "limit": limit}
+    statement = select(
+        fts_table.c.chunk_id,
+        fts_table.c.context_id,
+        rank,
+    ).where(fts_match_target.op("MATCH")(bindparam("query")))
+    parameters: dict[str, ContextFtsParameter] = {"query": normalized, "limit": limit}
     if project is not None:
-        sql += " AND project = :project"
+        statement = statement.where(fts_table.c.project == bindparam("project"))
         parameters["project"] = project
     if kind is not None:
-        sql += " AND kind = :kind"
+        statement = statement.where(fts_table.c.kind == bindparam("kind"))
         parameters["kind"] = kind.value
     if include_scopes:
-        scope_clauses: list[str] = []
-        for index, scope in enumerate(include_scopes):
-            parameter_name = f"scope_{index}"
-            scope_clauses.append(f"scope = :{parameter_name}")
-            parameters[parameter_name] = scope.value
-        sql += f" AND ({' OR '.join(scope_clauses)})"
+        statement = statement.where(
+            fts_table.c.scope.in_(bindparam("scope_values", expanding=True))
+        )
+        parameters["scope_values"] = [scope.value for scope in include_scopes]
     if workspace_id is not None:
-        sql += " AND workspace_id = :workspace_id"
+        statement = statement.where(
+            fts_table.c.workspace_id == bindparam("workspace_id")
+        )
         parameters["workspace_id"] = workspace_id
     if agent_id is not None:
-        sql += " AND agent_id = :agent_id"
+        statement = statement.where(fts_table.c.agent_id == bindparam("agent_id"))
         parameters["agent_id"] = agent_id
     if user_id is not None:
-        sql += " AND user_id = :user_id"
+        statement = statement.where(fts_table.c.user_id == bindparam("user_id"))
         parameters["user_id"] = user_id
     if session_id is not None:
-        sql += " AND session_id = :session_id"
+        statement = statement.where(fts_table.c.session_id == bindparam("session_id"))
         parameters["session_id"] = session_id
-    sql += " ORDER BY rank LIMIT :limit"
-    fts_query = ContextFtsQuery(sql=sql, parameters=parameters)
+    statement = statement.order_by(rank.asc()).limit(bindparam("limit"))
+    fts_query = ContextFtsQuery(
+        statement=cast(ContextFtsStatement, statement),
+        parameters=parameters,
+    )
     return fts_query

@@ -11,11 +11,13 @@ from app.memory.application.context_lint import (
     lint_context,
 )
 from app.memory.domain.contracts.context_contracts import (
+    ContextAccessCreate,
     ContextChunkCreate,
     ContextChunkEmbeddingUpdate,
     ContextCreate,
 )
 from app.memory.domain.entities.context_read_models import (
+    ContextAccessEventRecord,
     ContextChunkRecord,
     ContextPack,
     ContextRecord,
@@ -24,6 +26,8 @@ from app.memory.domain.entities.context_read_models import (
     RagDependencyHealth,
 )
 from app.memory.domain.event_enum.context_enums import (
+    ContextAccessActorType,
+    ContextAccessMethod,
     ContextContentFormat,
     ContextImportance,
     ContextKind,
@@ -44,7 +48,7 @@ from app.retrieval.application.embedding_provider import (
 from app.retrieval.application.rag_health import build_rag_dependency_health
 from app.retrieval.application.vector_serialization import vector_to_sqlite_json
 from app.shared.exceptions import NotFoundError, ValidationError
-from app.shared.types.types_convert_utils import now_utc
+from app.shared.types.types_convert_utils import enum_value, now_utc
 
 
 class ContextService:
@@ -106,6 +110,9 @@ class ContextService:
         Returns:
             Context lint result with redaction and quality details.
         """
+        kind = enum_value(kind, ContextKind, "kind")
+        scope = enum_value(scope, ContextScope, "scope")
+        visibility = enum_value(visibility, ContextScope, "visibility")
         result = lint_context(
             ContextLintInput(
                 kind=kind,
@@ -169,6 +176,11 @@ class ContextService:
         Returns:
             Stored context read model.
         """
+        kind = enum_value(kind, ContextKind, "kind")
+        scope = enum_value(scope, ContextScope, "scope")
+        visibility = enum_value(visibility, ContextScope, "visibility")
+        source_type = enum_value(source_type, ContextSourceType, "source_type")
+        importance = enum_value(importance, ContextImportance, "importance")
         if tags is None:
             lint_tags: list[str] = []
         else:
@@ -365,6 +377,10 @@ class ContextService:
         Returns:
             Matching context rows and total count before pagination.
         """
+        if kind is not None:
+            kind = enum_value(kind, ContextKind, "kind")
+        if scope is not None:
+            scope = enum_value(scope, ContextScope, "scope")
         result = await self._repository.list_all(
             limit=limit,
             offset=offset,
@@ -406,17 +422,57 @@ class ContextService:
         context = await self._repository.archive(context_id)
         return context
 
-    async def access(self, context_id: str) -> ContextRecord:
+    async def access(
+        self,
+        context_id: str,
+        *,
+        actor_name: str = "Alexandria UI",
+        actor_type: ContextAccessActorType = ContextAccessActorType.UI,
+        access_method: ContextAccessMethod = ContextAccessMethod.DETAIL_VIEW,
+        source_surface: str | None = "context-detail",
+    ) -> ContextRecord:
         """Record an access event.
 
         Args:
             context_id: Context identifier.
+            actor_name: Actor label to store with the access event.
+            actor_type: Actor category.
+            access_method: Access method category.
+            source_surface: Optional UI/tool surface that caused access.
 
         Returns:
             Updated context read model.
         """
-        context = await self._repository.record_access(context_id)
+        actor_type = enum_value(actor_type, ContextAccessActorType, "actor_type")
+        access_method = enum_value(access_method, ContextAccessMethod, "access_method")
+        context = await self._repository.record_access(
+            ContextAccessCreate(
+                context_id=context_id,
+                accessed_at=now_utc(),
+                actor_name=actor_name,
+                actor_type=actor_type,
+                access_method=access_method,
+                source_surface=source_surface,
+            )
+        )
         return context
+
+    async def access_events(
+        self, context_id: str, limit: int = 5
+    ) -> list[ContextAccessEventRecord]:
+        """Return recent access events for one context.
+
+        Args:
+            context_id: Context identifier.
+            limit: Maximum events to return.
+
+        Returns:
+            Recent access events ordered newest first.
+        """
+        events = await self._repository.access_events(
+            context_id=context_id, limit=limit
+        )
+        return events
 
     def rag_health(self) -> RagDependencyHealth:
         """Return current RAG dependency health.
@@ -462,6 +518,14 @@ class ContextService:
         """
         if not query.strip():
             raise ValidationError("query is required")
+        strategy = enum_value(strategy, RagStrategy, "strategy")
+        if kind is not None:
+            kind = enum_value(kind, ContextKind, "kind")
+        if include_scopes is not None:
+            include_scopes = [
+                enum_value(scope, ContextScope, "include_scopes")
+                for scope in include_scopes
+            ]
         health = self.rag_health()
         effective = strategy
         warnings = list(health.warnings)

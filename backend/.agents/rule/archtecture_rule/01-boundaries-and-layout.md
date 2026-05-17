@@ -11,10 +11,15 @@ Keep the backend organized by bounded context, while avoiding both root-level sp
 - `<test_root>/` is the root test area.
 - Domain-specific code belongs in bounded-context folders.
 - Current active app areas are:
+  - `<backend_root>/archive/`
   - `<backend_root>/cli_support/`
+  - `<backend_root>/connections/`
+  - `<backend_root>/librarian/`
   - `<backend_root>/library/`
+  - `<backend_root>/memory/`
   - `<backend_root>/mcp_server/`
   - `<backend_root>/platform/`
+  - `<backend_root>/retrieval/`
 
 ## Root Rule
 

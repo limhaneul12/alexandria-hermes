@@ -6,6 +6,7 @@ from app.container import ApplicationContainer
 from app.memory.application.context_service import ContextService
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.interface.schemas.context.context_mapping import (
+    access_event_payload,
     chunk_payload,
     context_payload,
     health_payload,
@@ -17,6 +18,9 @@ from app.memory.interface.schemas.context.context_metadata_mapping import (
     metadata_payload,
 )
 from app.memory.interface.schemas.context.context_schema import (
+    ContextAccessEventRequest,
+    ContextAccessEventResponse,
+    ContextAccessEventResponseList,
     ContextCaptureRequest,
     ContextChunkResponseList,
     ContextLintRequest,
@@ -31,7 +35,7 @@ from app.memory.interface.schemas.context.context_schema import (
     RagStatusResponse,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
-from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
+from app.shared.exceptions.route_exceptions import CONTEXT_ROUTE_EXCEPTION_MAPPING
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
@@ -72,7 +76,7 @@ async def _save_context(
     description="Lint Context Vault content without saving it.",
     summary="Lint context",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def lint_context(
     request: ContextLintRequest,
@@ -115,7 +119,7 @@ async def lint_context(
     description="Save a Context Vault entry after linting/redaction.",
     summary="Create context",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def create_context(
     request: ContextSaveRequest,
@@ -143,7 +147,7 @@ async def create_context(
     description="List Context Vault entries.",
     summary="List contexts",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def list_contexts(
     kind: ContextKind | None = Query(default=None),
@@ -209,7 +213,7 @@ async def list_contexts(
     description="Search Context Vault and return a Context Pack.",
     summary="Search contexts",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def search_contexts(
     request: ContextSearchRequest,
@@ -249,7 +253,7 @@ async def search_contexts(
     description="Capture agent working context with Context Vault semantics.",
     summary="Capture context",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def capture_context(
     request: ContextCaptureRequest,
@@ -277,7 +281,7 @@ async def capture_context(
     description="Prepare and save a compact handoff context.",
     summary="Prepare compact",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def prepare_compact(
     request: ContextPrepareCompactRequest,
@@ -321,7 +325,7 @@ async def prepare_compact(
     description="Return Context RAG dependency health.",
     summary="Get context RAG status",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def rag_status(
     service: ContextService = Depends(
@@ -347,7 +351,7 @@ async def rag_status(
     description="Backfill embeddings for existing Context Vault chunks.",
     summary="Reindex context embeddings",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def reindex_context_embeddings(
     limit: int = Query(default=100, ge=1, le=1000),
@@ -376,7 +380,7 @@ async def reindex_context_embeddings(
     description="List stored chunks for one context.",
     summary="List context chunks",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def context_chunks(
     context_id: str,
@@ -400,6 +404,79 @@ async def context_chunks(
     return response
 
 
+@router.post(
+    "/{context_id}/access-events",
+    response_model=ContextAccessEventResponse,
+    status_code=status.HTTP_201_CREATED,
+    description="Record a detailed Context Vault access event.",
+    summary="Record context access event",
+)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def record_context_access_event(
+    context_id: str,
+    request: ContextAccessEventRequest,
+    service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
+) -> ContextAccessEventResponse:
+    """Record one detailed access event and return it.
+
+    Args:
+        context_id: Context identifier.
+        request: Access-event details.
+        service: Context application service.
+
+    Returns:
+        Created context access event response.
+    """
+    await service.access(
+        context_id,
+        actor_name=request.actor_name,
+        actor_type=request.actor_type,
+        access_method=request.access_method,
+        source_surface=request.source_surface,
+    )
+    events = await service.access_events(context_id, limit=1)
+    response = ContextAccessEventResponse.model_validate(
+        access_event_payload(events[0])
+    )
+    return response
+
+
+@router.get(
+    "/{context_id}/access-events",
+    response_model=ContextAccessEventResponseList,
+    status_code=status.HTTP_200_OK,
+    description="List recent Context Vault access events.",
+    summary="List context access events",
+)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def list_context_access_events(
+    context_id: str,
+    limit: int = Query(default=5, ge=1, le=5),
+    service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
+) -> ContextAccessEventResponseList:
+    """List recent access events for one context.
+
+    Args:
+        context_id: Context identifier.
+        limit: Maximum returned events.
+        service: Context application service.
+
+    Returns:
+        Recent context access event responses.
+    """
+    events = await service.access_events(context_id, limit=limit)
+    response = ContextAccessEventResponseList.model_validate(
+        [access_event_payload(event) for event in events]
+    )
+    return response
+
+
 @router.get(
     "/{context_id}",
     response_model=ContextResponse,
@@ -407,7 +484,7 @@ async def context_chunks(
     description="Read one Context Vault entry.",
     summary="Get context",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def get_context(
     context_id: str,
@@ -436,7 +513,7 @@ async def get_context(
     description="Record an access event for one context.",
     summary="Access context",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def access_context(
     context_id: str,
@@ -465,7 +542,7 @@ async def access_context(
     description="Archive one context; hard delete is intentionally unavailable.",
     summary="Archive context",
 )
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def archive_context(
     context_id: str,

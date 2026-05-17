@@ -14,6 +14,7 @@ from .common_exceptions import (
     RedisExceptionResult,
 )
 from .exception_decorators import router_exception_status
+from .librarian_exceptions import LibrarianDomainError, LibrarianValidationError
 from .library_exceptions import (
     CircularCategoryError,
     LibraryCategoryCycleError,
@@ -25,20 +26,42 @@ from .library_exceptions import (
     UnsupportedProviderError,
     ValidationError,
 )
+from .memory_compact_exceptions import (
+    MemoryCompactDomainError,
+    MemoryCompactNotFoundError,
+    MemoryCompactValidationError,
+)
 from .route_exceptions import (
+    ARCHIVE_ROUTE_EXCEPTION_MAPPING,
+    CONNECTIONS_ROUTE_EXCEPTION_MAPPING,
+    CONTEXT_ROUTE_EXCEPTION_MAPPING,
+    LIBRARIAN_ROUTE_EXCEPTION_MAPPING,
     LIBRARY_PROVIDER_TEST_EXCEPTION_MAPPING,
     LIBRARY_ROUTE_EXCEPTION_MAPPING,
+    MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING,
+    RETRIEVAL_ROUTE_EXCEPTION_MAPPING,
 )
 
 __all__ = [
+    "ARCHIVE_ROUTE_EXCEPTION_MAPPING",
+    "CONNECTIONS_ROUTE_EXCEPTION_MAPPING",
+    "CONTEXT_ROUTE_EXCEPTION_MAPPING",
+    "LIBRARIAN_ROUTE_EXCEPTION_MAPPING",
     "LIBRARY_PROVIDER_TEST_EXCEPTION_MAPPING",
     "LIBRARY_ROUTE_EXCEPTION_MAPPING",
+    "MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING",
+    "RETRIEVAL_ROUTE_EXCEPTION_MAPPING",
     "CircularCategoryError",
+    "LibrarianDomainError",
+    "LibrarianValidationError",
     "LibraryCategoryCycleError",
     "LibraryDomainError",
     "LibraryProviderUnsupportedError",
     "LibraryResourceNotFoundError",
     "LibraryValidationError",
+    "MemoryCompactDomainError",
+    "MemoryCompactNotFoundError",
+    "MemoryCompactValidationError",
     "NotFoundError",
     "RedisExceptionAction",
     "RedisExceptionArgValue",

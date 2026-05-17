@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from app.memory.domain.entities.context_read_models import (
+    ContextAccessEventRecord,
     ContextChunkRecord,
     ContextRecord,
 )
 from app.memory.domain.event_enum.context_enums import (
+    ContextAccessActorType,
+    ContextAccessMethod,
     ContextContentFormat,
     ContextImportance,
     ContextKind,
@@ -15,7 +18,11 @@ from app.memory.domain.event_enum.context_enums import (
     ContextStorageStatus,
 )
 from app.memory.domain.types.context_payload_types import ContextMetadataPayload
-from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
+from app.memory.infrastructure.models.context_models import (
+    ContextAccessEventORM,
+    ContextChunkORM,
+    ContextORM,
+)
 from app.shared.types.extra_types import JSONValue
 
 
@@ -97,3 +104,24 @@ def map_chunk_row(row: ContextChunkORM) -> ContextChunkRecord:
         created_at=row.created_at,
     )
     return chunk
+
+
+def map_access_event_row(row: ContextAccessEventORM) -> ContextAccessEventRecord:
+    """Map a context access event ORM row into a read model.
+
+    Args:
+        row: Context access event ORM row.
+
+    Returns:
+        Context access event read model.
+    """
+    event = ContextAccessEventRecord(
+        id=row.id,
+        context_id=row.context_id,
+        accessed_at=row.accessed_at,
+        actor_name=row.actor_name,
+        actor_type=ContextAccessActorType(row.actor_type),
+        access_method=ContextAccessMethod(row.access_method),
+        source_surface=row.source_surface,
+    )
+    return event

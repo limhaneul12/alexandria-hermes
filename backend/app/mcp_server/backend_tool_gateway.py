@@ -8,22 +8,36 @@ from urllib.parse import quote
 from app.librarian.interface.schemas.librarian.hermes_collaboration_schemas import (
     AskLibrarianRequest,
 )
+from app.librarian.interface.schemas.librarian.librarian_brief_schemas import (
+    BudgetPolicySchema,
+    LibrarianBriefPreviewRequest,
+)
 from app.librarian.interface.schemas.librarian.librarian_ops_schemas import (
     CreateCandidateRequest,
 )
-from app.library.domain.event_enum.item_enums import ItemStatus
+from app.library.domain.event_enum.item_enums import ItemStatus, ItemType
+from app.library.domain.event_enum.prompt_enums import PromptKind
+from app.library.domain.event_enum.search_enums import SearchContentMode
 from app.library.domain.event_enum.skill_enums import RiskLevel
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.library.interface.schemas.skill.request_schemas import AgentSubmitSkillRequest
 from app.library.interface.schemas.usage.usage_schema import UsageRecordRequest
 from app.mcp_server.backend_api_client import AlexandriaApiClient
 from app.mcp_server.mcp_protocol_enums import McpContextTag
+from app.mcp_server.tools.memory_compact_tools import (
+    alexandria_get_current_memory_compact as _alexandria_get_current_memory_compact,
+    alexandria_get_memory_compact as _alexandria_get_memory_compact,
+    alexandria_list_memory_compact_artifacts,
+)
 from app.memory.domain.event_enum.context_enums import (
     ContextImportance,
     ContextKind,
     ContextScope,
     ContextSourceType,
     RagStrategy,
+)
+from app.memory.domain.event_enum.memory_compact_enums import (
+    MemoryCompactStatus,
 )
 from app.memory.interface.schemas.context.context_schema import (
     ContextCaptureRequest,
@@ -42,6 +56,10 @@ DEFAULT_CAPTURE_SOURCE_TYPE = ContextSourceType.AGENT
 DEFAULT_CAPTURE_IMPORTANCE = ContextImportance.MEDIUM
 DEFAULT_SKILL_PROVIDER_ID = "hermes-self-acquisition"
 DEFAULT_CANDIDATE_AUTHOR = "Hermes"
+DEFAULT_LIBRARY_SEARCH_LIMIT = 20
+
+alexandria_get_current_memory_compact = _alexandria_get_current_memory_compact
+alexandria_get_memory_compact = _alexandria_get_memory_compact
 
 
 async def alexandria_search(
@@ -209,6 +227,35 @@ async def alexandria_capture_context(
     return response
 
 
+async def alexandria_list_memory_compacts(
+    client: AlexandriaApiClient,
+    project: str | None = None,
+    status: MemoryCompactStatus | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> JSONValue:
+    """Deprecated compatibility alias for listing Memory Compact artifacts.
+
+    Args:
+        client: Backend HTTP client.
+        project: Optional project filter.
+        status: Optional lifecycle status filter.
+        limit: Maximum number of rows to return.
+        offset: Number of rows to skip.
+
+    Returns:
+        Backend Memory Compact list response.
+    """
+    response = await alexandria_list_memory_compact_artifacts(
+        client=client,
+        project=project,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
+    return response
+
+
 async def alexandria_prepare_compact(
     client: AlexandriaApiClient,
     current_goal: str,
@@ -318,6 +365,110 @@ async def alexandria_get_prompt(client: AlexandriaApiClient, item_id: str) -> JS
         Prompt item response.
     """
     response = await client.get(f"/library/prompts/{_path_segment(item_id)}")
+    return response
+
+
+async def alexandria_search_library(
+    client: AlexandriaApiClient,
+    query: str,
+    item_types: list[ItemType] | None = None,
+    tags: list[str] | None = None,
+    limit: int = DEFAULT_LIBRARY_SEARCH_LIMIT,
+    offset: int = 0,
+    content_mode: SearchContentMode = SearchContentMode.CANDIDATE,
+) -> JSONValue:
+    """Search library items as candidates before selected full-load.
+
+    Args:
+        client: Backend HTTP client.
+        query: Search query.
+        item_types: Optional item type filters.
+        tags: Optional tag filters.
+        limit: Maximum candidates to return.
+        offset: Result offset.
+        content_mode: Broad search content mode; candidate is the safe default.
+
+    Returns:
+        Backend candidate search response.
+    """
+    params: JSONObject = {
+        "q": query,
+        "item_types": [] if item_types is None else [item.value for item in item_types],
+        "tags_any": _items_or_empty(tags),
+        "limit": _bounded_library_search_limit(limit),
+        "offset": max(int(offset), 0),
+        "content_mode": content_mode.value,
+    }
+    response = await client.get("/library/search", params=params)
+    return response
+
+
+async def alexandria_search_skills(
+    client: AlexandriaApiClient,
+    query: str,
+    required_tools: list[str] | None = None,
+    risk_level: RiskLevel | None = None,
+    tags: list[str] | None = None,
+    limit: int = DEFAULT_LIBRARY_SEARCH_LIMIT,
+) -> JSONValue:
+    """Search skill candidates without returning skill content.
+
+    Args:
+        client: Backend HTTP client.
+        query: Search query.
+        required_tools: Optional required tool filters.
+        risk_level: Optional skill risk filter.
+        tags: Optional tag filters.
+        limit: Maximum candidates to return.
+
+    Returns:
+        Backend candidate search response.
+    """
+    params: JSONObject = {
+        "q": query,
+        "item_type": ItemType.SKILL.value,
+        "required_tools": _items_or_empty(required_tools),
+        "tags_any": _items_or_empty(tags),
+        "limit": _bounded_library_search_limit(limit),
+        "offset": 0,
+        "content_mode": SearchContentMode.CANDIDATE.value,
+    }
+    if risk_level is not None:
+        params["risk_level"] = risk_level.value
+    response = await client.get("/library/search", params=params)
+    return response
+
+
+async def alexandria_search_prompts(
+    client: AlexandriaApiClient,
+    query: str,
+    prompt_kind: PromptKind | None = None,
+    tags: list[str] | None = None,
+    limit: int = DEFAULT_LIBRARY_SEARCH_LIMIT,
+) -> JSONValue:
+    """Search prompt candidates without returning prompt bodies.
+
+    Args:
+        client: Backend HTTP client.
+        query: Search query.
+        prompt_kind: Optional prompt kind filter.
+        tags: Optional tag filters.
+        limit: Maximum candidates to return.
+
+    Returns:
+        Backend candidate search response.
+    """
+    params: JSONObject = {
+        "q": query,
+        "item_type": ItemType.PROMPT.value,
+        "tags_any": _items_or_empty(tags),
+        "limit": _bounded_library_search_limit(limit),
+        "offset": 0,
+        "content_mode": SearchContentMode.CANDIDATE.value,
+    }
+    if prompt_kind is not None:
+        params["prompt_kind"] = prompt_kind.value
+    response = await client.get("/library/search", params=params)
     return response
 
 
@@ -447,6 +598,39 @@ async def alexandria_record_usage(
     return response
 
 
+async def alexandria_librarian_brief_preview(
+    client: AlexandriaApiClient,
+    prompt: str,
+    project: str | None = None,
+    max_input_chars: int = 12_000,
+    max_source_refs: int = 20,
+) -> JSONValue:
+    """Compile a budgeted librarian knowledge packet preview.
+
+    Args:
+        client: Backend HTTP client.
+        prompt: Librarian request text.
+        project: Optional project scope.
+        max_input_chars: Maximum packet size.
+        max_source_refs: Maximum source refs.
+
+    Returns:
+        Backend librarian brief preview response.
+    """
+    request = LibrarianBriefPreviewRequest(
+        prompt=prompt,
+        project=project,
+        budget=BudgetPolicySchema(
+            max_input_chars=_bounded_packet_budget(max_input_chars),
+            max_source_refs=_bounded_source_ref_limit(max_source_refs),
+        ),
+    )
+    payload = _schema_payload(request)
+    payload.pop("source_refs", None)
+    response = await client.post("/librarians/brief-preview", payload)
+    return response
+
+
 async def alexandria_ask_librarian(
     client: AlexandriaApiClient,
     prompt: str,
@@ -494,6 +678,8 @@ async def alexandria_ask_librarian(
         routing_specialties=[] if routing_specialties is None else routing_specialties,
     )
     payload = _schema_payload(request)
+    payload.pop("budget", None)
+    payload.pop("source_refs", None)
     response = await client.post("/librarians/ask", payload)
     return response
 
@@ -543,6 +729,8 @@ async def alexandria_librarian_route_preview(
         routing_specialties=[] if routing_specialties is None else routing_specialties,
     )
     payload = _schema_payload(request)
+    payload.pop("budget", None)
+    payload.pop("source_refs", None)
     response = await client.post("/librarians/route-preview", payload)
     return response
 
@@ -640,6 +828,14 @@ async def alexandria_librarian_oauth_refresh(
     return without_oauth_sensitive_fields(response)
 
 
+def _bounded_packet_budget(limit: int) -> int:
+    return min(max(int(limit), 1_000), 120_000)
+
+
+def _bounded_source_ref_limit(limit: int) -> int:
+    return min(max(int(limit), 1), 100)
+
+
 def _schema_payload(schema: BaseModel) -> JSONObject:
     payload = cast(JSONObject, schema.model_dump(mode="json", exclude_none=True))
     return payload
@@ -647,6 +843,11 @@ def _schema_payload(schema: BaseModel) -> JSONObject:
 
 def _bounded_search_limit(limit: int) -> int:
     bounded_limit = min(max(int(limit), 1), 50)
+    return bounded_limit
+
+
+def _bounded_library_search_limit(limit: int) -> int:
+    bounded_limit = min(max(int(limit), 1), 100)
     return bounded_limit
 
 

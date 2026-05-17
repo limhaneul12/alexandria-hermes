@@ -15,6 +15,7 @@ from app.cli_support.contracts.command_contracts import (
     MinioCommand,
     SkillsCreateCommand,
     SkillsListCommand,
+    SkillsSearchCommand,
 )
 from app.cli_support.contracts.request_mappers import (
     agent_skill_submit_payload,
@@ -83,6 +84,42 @@ def handle_skills_list(
         print_json(payload, context.stdout)
     else:
         print_item_table(payload, context.stdout)
+    return 0
+
+
+def handle_skills_search(
+    command: SkillsSearchCommand,
+    context: CommandContext,
+    client: CliBackendApiClient,
+) -> int:
+    """Run the skills candidate search CLI command.
+
+    Args:
+        command: Typed CLI command contract for the operation.
+        context: CLI runtime context with output settings.
+        client: Backend API client used for HTTP requests.
+
+    Returns:
+        Process-style exit code.
+    """
+    params: list[tuple[str, str]] = [
+        ("q", command.query),
+        ("item_type", "SKILL"),
+        ("limit", str(min(bounded_limit(command.limit, default=20), 100))),
+        ("offset", str(max(0, int(command.offset)))),
+        ("content_mode", "candidate"),
+    ]
+    params.extend(("required_tools", tool) for tool in command.tool)
+    params.extend(("tags_any", tag) for tag in command.tag)
+    if command.risk_level is not None:
+        params.append(("risk_level", command.risk_level.value))
+    payload = client.get(f"/library/search?{urllib.parse.urlencode(params)}")
+    if context.json_output:
+        print_json(payload, context.stdout)
+    else:
+        print_item_table(
+            payload, context.stdout, empty_message="No matching skills found."
+        )
     return 0
 
 
@@ -411,8 +448,16 @@ def handle_library_search(
     Returns:
         Process-style exit code.
     """
-    query = urllib.parse.urlencode({"q": str(command.query)})
-    payload = client.get(f"/retrieval/search?{query}")
+    params: list[tuple[str, str]] = [
+        ("q", str(command.query)),
+        ("limit", str(min(bounded_limit(command.limit, default=20), 100))),
+        ("offset", str(max(0, int(command.offset)))),
+        ("content_mode", command.content_mode),
+    ]
+    if command.item_type is not None:
+        params.append(("item_type", command.item_type.value))
+    query = urllib.parse.urlencode(params)
+    payload = client.get(f"/library/search?{query}")
     if context.json_output:
         print_json(payload, context.stdout)
     else:

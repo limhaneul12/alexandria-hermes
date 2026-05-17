@@ -8,6 +8,8 @@ import pytest
 from app.library.application.item_service import ItemService
 from app.library.application.skill_service import SkillService
 from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
+from app.library.domain.entities.item_search_hit import ItemSearchCandidate
+from app.library.domain.entities.item_search_query import ItemSearchQuery
 from app.library.domain.entities.read_models import LibraryItem
 from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.repositories.item_repository import IItemRepository
@@ -87,6 +89,13 @@ class FakeItemRepository(IItemRepository):
     ) -> list[LibraryItem]:
         """Search is unused by these tests."""
         return []
+
+    async def search_candidates(
+        self,
+        options: ItemSearchQuery,
+    ) -> tuple[list[ItemSearchCandidate], int]:
+        """Candidate search is unused by these tests."""
+        return [], 0
 
 
 def _valid_submit_skill_by_agent_payload() -> dict[str, JSONValue]:

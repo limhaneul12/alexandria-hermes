@@ -4,12 +4,19 @@
 
 처음 사용하는 사람이 Alexandria-Hermes를 설치한 뒤 Hermes가 로컬/현재 컨텍스트를 먼저 쓰고, 부족할 때 Alexandria를 자연스럽게 사용할 수 있게 만든다.
 
+Alexandria-Hermes는 **로그인 없는 single-operator/local-first** 시스템이다.
+기본 온보딩에는 GPT/Codex OAuth나 provider credential이 필요하지 않으며,
+`ALEXANDRIA_OPERATOR_API_KEY` 하나만 settings/provider/OAuth/librarian delegation 같은
+control-plane 작업을 보호한다.
+
 ## 전제
 
 - Alexandria-Hermes backend가 실행 가능하다.
 - `alexandria-hermes` CLI가 PATH에 있다.
 - Hermes Agent가 설치되어 있다.
 - operator key가 필요한 기능은 실제 secret을 문서에 남기지 않는다.
+- Docker/로컬 기본값은 localhost/private operator 사용을 전제로 한다. 외부 노출 전에는 VPN,
+  reverse proxy auth, firewall allowlist, SSH tunnel 중 하나 이상의 access boundary를 둔다.
 
 ## 빠른 흐름
 
@@ -17,17 +24,16 @@
 export ALEXANDRIA_API_URL="${ALEXANDRIA_API_URL:-http://localhost:8000}"
 export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 export ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-${SERVICE_OPERATOR_API_KEY:-}}"
-export ALEXANDRIA_API_TOKEN="${ALEXANDRIA_API_TOKEN:-$ALEXANDRIA_OPERATOR_API_KEY}"
 
 alexandria-hermes --base-url "$ALEXANDRIA_API_URL" --json health
 
-alexandria-hermes --json hermes onboard   --hermes-home "$HERMES_HOME"   --api-url "$ALEXANDRIA_API_URL"   --api-token "${ALEXANDRIA_API_TOKEN:-}"   --install-prompts   --install-mcp
+alexandria-hermes --json hermes onboard   --hermes-home "$HERMES_HOME"   --api-url "$ALEXANDRIA_API_URL"   --operator-api-key "${ALEXANDRIA_OPERATOR_API_KEY:-}"   --install-prompts   --install-mcp
 ```
 
 ## 확인
 
 ```bash
-alexandria-hermes --json hermes doctor   --hermes-home "$HERMES_HOME"   --api-url "$ALEXANDRIA_API_URL"   --api-token "${ALEXANDRIA_API_TOKEN:-}"
+alexandria-hermes --json hermes doctor   --hermes-home "$HERMES_HOME"   --api-url "$ALEXANDRIA_API_URL"   --operator-api-key "${ALEXANDRIA_OPERATOR_API_KEY:-}"
 
 alexandria-hermes --json hermes policy status --hermes-home "$HERMES_HOME"
 ```
@@ -56,7 +62,7 @@ alexandria-hermes --json hermes policy status --hermes-home "$HERMES_HOME"
 
 ```bash
 ALEXANDRIA_CLI="$(command -v alexandria-hermes)"
-hermes mcp add alexandria   --command "$ALEXANDRIA_CLI"   --args mcp serve   --env ALEXANDRIA_API_URL="$ALEXANDRIA_API_URL"   --env ALEXANDRIA_API_TOKEN="${ALEXANDRIA_API_TOKEN:-}"   --env ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-}"   --env HERMES_HOME="$HERMES_HOME"
+hermes mcp add alexandria   --command "$ALEXANDRIA_CLI"   --args mcp serve   --env ALEXANDRIA_API_URL="$ALEXANDRIA_API_URL"   --env ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-}"   --env HERMES_HOME="$HERMES_HOME"
 
 hermes mcp test alexandria
 ```
@@ -69,3 +75,9 @@ hermes mcp test alexandria
 - operator key는 OAuth token이 아니다. protected librarian/settings route에는 operator header가 필요하다.
 - 사서가 없어도 설치는 성공할 수 있다. Hermes self-acquisition이 fallback이다.
 - Alexandria는 local memory 대체물이 아니다. local-first, Alexandria-when-needed가 기본 계약이다.
+
+## 선택 사항: 외부 사서 provider / GPT-Codex OAuth
+
+ChatGPT/Codex OAuth와 OpenAI API key provider는 기본 설치가 아니라 선택 사서 위임 기능이다.
+Settings → Librarians에서 provider를 연결한 뒤에만 external librarian delegation이 해당 provider를 사용할 수 있다.
+OAuth token은 브라우저 상태나 문서에 남기지 않고 backend provider secret store에만 저장한다.

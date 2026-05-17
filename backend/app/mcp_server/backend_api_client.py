@@ -2,32 +2,45 @@
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
-
 import httpx
 from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
+from app.shared.util.config import settings_model_config
+from pydantic import AliasChoices, Field, field_validator
+from pydantic_settings import BaseSettings
 
 DEFAULT_ALEXANDRIA_API_URL = "http://localhost:8000"
 DEFAULT_MCP_TIMEOUT_SECONDS = 30.0
 
 HttpHeaders = dict[str, str]
+type QueryParamValue = bool | float | int | str | None
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
-class AlexandriaApiSettings:
+class AlexandriaApiSettings(BaseSettings):
     """Environment-backed settings for the MCP HTTP client."""
 
-    base_url: str = DEFAULT_ALEXANDRIA_API_URL
-    api_token: str | None = None
-    operator_api_key: str | None = None
-    timeout: float = DEFAULT_MCP_TIMEOUT_SECONDS
+    model_config = {
+        **settings_model_config(env_prefix=""),
+        "populate_by_name": True,
+    }
+
+    base_url: str = Field(
+        default=DEFAULT_ALEXANDRIA_API_URL,
+        validation_alias=AliasChoices("ALEXANDRIA_API_URL", "HERMES_API_URL"),
+    )
+    operator_api_key: str | None = Field(
+        default=None,
+        validation_alias="ALEXANDRIA_OPERATOR_API_KEY",
+    )
+    timeout: float = Field(
+        default=DEFAULT_MCP_TIMEOUT_SECONDS,
+        validation_alias="ALEXANDRIA_API_TIMEOUT_SECONDS",
+    )
 
     @classmethod
     def from_env(cls) -> AlexandriaApiSettings:
-        """Create settings from MCP environment variables.
+        """Create settings through the typed MCP settings boundary.
 
         Args:
             None.
@@ -35,43 +48,52 @@ class AlexandriaApiSettings:
         Returns:
             Client settings for backend API calls.
         """
-        alexandria_url = os.environ.get("ALEXANDRIA_API_URL")
-        hermes_url = os.environ.get("HERMES_API_URL")
-        if alexandria_url is not None and alexandria_url != "":
-            base_url = alexandria_url
-        elif hermes_url is not None and hermes_url != "":
-            base_url = hermes_url
-        else:
-            base_url = DEFAULT_ALEXANDRIA_API_URL
-        raw_token = os.environ.get("ALEXANDRIA_API_TOKEN")
-        if raw_token is not None and raw_token != "":
-            token: str | None = raw_token
-        else:
-            token = None
-        raw_operator_key = os.environ.get("ALEXANDRIA_OPERATOR_API_KEY")
-        if raw_operator_key is None or raw_operator_key == "":
-            raw_operator_key = os.environ.get("SERVICE_OPERATOR_API_KEY")
-        if raw_operator_key is None or raw_operator_key == "":
-            raw_operator_key = raw_token
-        if raw_operator_key is not None and raw_operator_key != "":
-            operator_key: str | None = raw_operator_key
-        else:
-            operator_key = None
-        raw_timeout = os.environ.get("ALEXANDRIA_API_TIMEOUT_SECONDS")
-        timeout = DEFAULT_MCP_TIMEOUT_SECONDS
-        if raw_timeout is not None:
-            try:
-                timeout = max(1.0, float(raw_timeout))
-            except ValueError as exc:
-                message = "ALEXANDRIA_API_TIMEOUT_SECONDS must be numeric"
-                raise AlexandriaApiConfigurationError(message) from exc
-        settings = cls(
-            base_url=base_url.rstrip("/"),
-            api_token=token,
-            operator_api_key=operator_key,
-            timeout=timeout,
-        )
+        settings = cls()
         return settings
+
+    @field_validator("base_url")
+    @classmethod
+    def normalize_base_url(cls, value: str) -> str:
+        """Normalize the configured backend URL.
+
+        Args:
+            value: Raw URL from environment or default.
+
+        Returns:
+            Normalized URL without a trailing slash.
+        """
+        stripped = value.strip()
+        return (stripped or DEFAULT_ALEXANDRIA_API_URL).rstrip("/")
+
+    @field_validator("operator_api_key", mode="before")
+    @classmethod
+    # Broad type justified: Pydantic before validators receive raw settings input.
+    def normalize_operator_key(cls, value: object) -> str | None:
+        """Normalize optional operator-key environment values.
+
+        Args:
+            value: Raw operator key value.
+
+        Returns:
+            Non-empty operator key, or None.
+        """
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @field_validator("timeout")
+    @classmethod
+    def normalize_timeout(cls, value: float) -> float:
+        """Clamp configured timeout to at least one second.
+
+        Args:
+            value: Parsed timeout value.
+
+        Returns:
+            Bounded timeout value.
+        """
+        return max(1.0, float(value))
 
 
 class AlexandriaApiConfigurationError(Exception):
@@ -153,8 +175,6 @@ class AlexandriaApiClient:
         headers: HttpHeaders = {"Accept": "application/json"}
         if request_body is not None:
             headers["Content-Type"] = "application/json"
-        if self._settings.api_token:
-            headers["Authorization"] = f"Bearer {self._settings.api_token}"
         if self._settings.operator_api_key:
             headers[OPERATOR_API_KEY_HEADER] = self._settings.operator_api_key
         try:
@@ -180,14 +200,17 @@ class AlexandriaApiClient:
         return decoded
 
 
-def _query_params(params: JSONObject | None) -> dict[str, str]:
+def _query_params(params: JSONObject | None) -> list[tuple[str, QueryParamValue]]:
     if params is None:
-        return {}
-    compact = {
-        key: str(value)
-        for key, value in params.items()
-        if value is not None and not isinstance(value, list | dict)
-    }
+        return []
+    compact: list[tuple[str, QueryParamValue]] = []
+    for key, value in params.items():
+        if value is None or isinstance(value, dict):
+            continue
+        if isinstance(value, list):
+            compact.extend((key, str(item)) for item in value)
+            continue
+        compact.append((key, str(value)))
     return compact
 
 

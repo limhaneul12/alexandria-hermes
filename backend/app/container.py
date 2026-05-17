@@ -16,6 +16,7 @@ from app.memory.containers import MemoryContainer
 from app.platform.config.app_config import AppConfig
 from app.platform.config.database_config import DatabaseConfig
 from app.shared.infrastructure.database import Database
+from app.shared.security.secret_cipher import SecretCipher, SecretCipherSettings
 
 
 @asynccontextmanager
@@ -48,6 +49,24 @@ def create_session(database: Database) -> AsyncSession:
     return database.session()
 
 
+def create_secret_cipher(config: AppConfig) -> SecretCipher:
+    """Create the provider secret cipher from typed service settings.
+
+    Args:
+        config: Typed service configuration.
+
+    Returns:
+        SecretCipher: Configured credential cipher.
+    """
+    settings = SecretCipherSettings(
+        app_name=config.app_name,
+        app_env=config.app_env,
+        secret_encryption_key=config.secret_encryption_key,
+    )
+    cipher = SecretCipher.from_settings(settings)
+    return cipher
+
+
 class ApplicationContainer(containers.DeclarativeContainer):
     """Root container for shared application resources."""
 
@@ -63,6 +82,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
     )
 
     app_config = providers.Singleton(AppConfig)
+    secret_cipher = providers.Singleton(create_secret_cipher, config=app_config)
     database_config = providers.Singleton(DatabaseConfig)
     database = providers.Resource(
         initialize_database,
@@ -82,6 +102,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
     connections = providers.Container(
         ConnectionsContainer,
         db_session=db_session,
+        secret_cipher=secret_cipher,
     )
     librarian = providers.Container(
         LibrarianContainer,

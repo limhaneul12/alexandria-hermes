@@ -18,23 +18,35 @@ from app.connections.interface.routers.librarian_router import (
 )
 from app.container import ApplicationContainer
 from app.librarian.interface.routers.agent_router import router as agent_router
+from app.librarian.interface.routers.librarian_brief_router import (
+    router as librarian_brief_router,
+)
 from app.librarian.interface.routers.librarian_ops_router import (
     router as librarian_ops_router,
 )
 from app.library.interface.routers.category_router import router as category_router
 from app.library.interface.routers.item_router import router as item_router
+from app.library.interface.routers.item_search_router import (
+    router as item_search_router,
+)
 from app.library.interface.routers.knowledge_router import router as knowledge_router
 from app.library.interface.routers.prompt_router import router as prompt_router
 from app.library.interface.routers.skill_router import router as skill_router
 from app.library.interface.routers.usage_router import router as usage_router
 from app.library.interface.routers.workflow_router import router as workflow_router
 from app.memory.interface.routers.context_router import router as context_router
+from app.memory.interface.routers.memory_compact_router import (
+    router as memory_compact_router,
+)
 from app.platform.config.app_config import AppConfig
 from app.platform.health_router import install_health_routes
 from app.platform.lifecycle.state import LifecycleState
 from app.platform.logging.formatter.config import configure_logging
 from app.platform.middleware.database_session import install_database_session_middleware
 from app.platform.middleware.request_logging import install_request_logging_middleware
+from app.retrieval.interface.routers.retrieval_boundary_router import (
+    router as retrieval_boundary_router,
+)
 from app.retrieval.interface.routers.search_router import router as search_router
 from app.shared.infrastructure.database import Database
 
@@ -152,17 +164,21 @@ def create_app(app_config: AppConfig) -> FastAPI:
 
     app.include_router(category_router)
     app.include_router(context_router)
+    app.include_router(memory_compact_router)
     app.include_router(item_router)
+    app.include_router(item_search_router)
     app.include_router(skill_router)
     app.include_router(prompt_router)
     app.include_router(workflow_router)
     app.include_router(knowledge_router)
     app.include_router(search_router)
+    app.include_router(retrieval_boundary_router)
     app.include_router(usage_router)
     app.include_router(agent_router)
     app.include_router(librarian_router)
     app.include_router(librarian_oauth_router)
     app.include_router(librarian_ops_router)
+    app.include_router(librarian_brief_router)
     app.include_router(minio_router)
 
     @app.get("/")
@@ -190,4 +206,4 @@ app = create_app(AppConfig())
 if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -8,6 +8,9 @@ from inspect import iscoroutinefunction
 import anyio
 import httpx
 import pytest
+from app.library.domain.event_enum.item_enums import ItemType
+from app.library.domain.event_enum.prompt_enums import PromptKind
+from app.library.domain.event_enum.skill_enums import RiskLevel
 from app.mcp_server.backend_api_client import (
     AlexandriaApiClient,
     AlexandriaApiSettings,
@@ -16,20 +19,31 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_archive_context,
     alexandria_ask_librarian,
     alexandria_capture_context,
+    alexandria_get_current_memory_compact,
+    alexandria_get_memory_compact,
     alexandria_get_prompt,
     alexandria_get_skill,
+    alexandria_librarian_brief_preview,
     alexandria_librarian_job_status,
     alexandria_librarian_oauth_poll,
     alexandria_librarian_oauth_refresh,
     alexandria_librarian_oauth_start,
     alexandria_librarian_oauth_status,
     alexandria_librarian_route_preview,
+    alexandria_list_memory_compact_artifacts,
+    alexandria_list_memory_compacts,
     alexandria_rag_status,
     alexandria_record_usage,
     alexandria_search,
+    alexandria_search_library,
+    alexandria_search_prompts,
+    alexandria_search_skills,
     alexandria_submit_skill_candidate,
 )
 from app.mcp_server.server_runtime import create_mcp_server
+from app.memory.domain.event_enum.memory_compact_enums import (
+    MemoryCompactStatus,
+)
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONValue
 
@@ -46,7 +60,6 @@ def _client() -> tuple[AlexandriaApiClient, list[RecordedCall]]:
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            api_token="secret-token",
             operator_api_key="operator-secret",
             timeout=12.0,
         ),
@@ -67,7 +80,6 @@ def _client_with_payload(
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            api_token="secret-token",
             operator_api_key="operator-secret",
             timeout=12.0,
         ),
@@ -93,16 +105,22 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
     assert iscoroutinefunction(alexandria_rag_status)
     assert iscoroutinefunction(alexandria_record_usage)
     assert iscoroutinefunction(alexandria_ask_librarian)
+    assert iscoroutinefunction(alexandria_librarian_brief_preview)
     assert iscoroutinefunction(alexandria_librarian_job_status)
     assert iscoroutinefunction(alexandria_librarian_oauth_start)
     assert iscoroutinefunction(alexandria_librarian_oauth_poll)
     assert iscoroutinefunction(alexandria_librarian_oauth_status)
     assert iscoroutinefunction(alexandria_librarian_oauth_refresh)
     assert iscoroutinefunction(alexandria_librarian_route_preview)
+    assert iscoroutinefunction(alexandria_list_memory_compact_artifacts)
+    assert iscoroutinefunction(alexandria_list_memory_compacts)
+    assert iscoroutinefunction(alexandria_search_library)
+    assert iscoroutinefunction(alexandria_search_skills)
+    assert iscoroutinefunction(alexandria_search_prompts)
 
 
 def test_mcp_client_sends_backend_http_only_with_auth_headers() -> None:
-    """MCP client should call the backend URL and attach auth headers."""
+    """MCP client should call the backend URL and attach the operator header."""
     client, calls = _client()
 
     payload = _run_json(
@@ -116,8 +134,8 @@ def test_mcp_client_sends_backend_http_only_with_auth_headers() -> None:
     assert str(request.url) == "http://backend:8000/memory/contexts/retrieval/search"
     assert request.headers["accept"] == "application/json"
     assert request.headers["content-type"] == "application/json"
-    assert request.headers["authorization"] == "Bearer secret-token"
-    assert request.headers["x-alexandria-operator-key"] == "operator-secret"
+    assert "authorization" not in request.headers
+    assert request.headers["x-operator-api-key"] == "operator-secret"
     assert request_body == {
         "query": "context recall",
         "strategy": "FTS_ONLY",
@@ -125,18 +143,18 @@ def test_mcp_client_sends_backend_http_only_with_auth_headers() -> None:
     }
 
 
-def test_mcp_settings_use_api_token_as_operator_key_fallback(
+def test_mcp_settings_ignore_legacy_api_token_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """MCP env loading should keep generated legacy API-token snippets usable."""
+    """MCP env loading should not treat the legacy token as operator authority."""
+    legacy_token_name = "ALEXANDRIA_" + "API_TOKEN"
     monkeypatch.delenv("ALEXANDRIA_OPERATOR_API_KEY", raising=False)
     monkeypatch.delenv("SERVICE_OPERATOR_API_KEY", raising=False)
-    monkeypatch.setenv("ALEXANDRIA_API_TOKEN", "legacy-token")
+    monkeypatch.setenv(legacy_token_name, "legacy-token")
 
     settings = AlexandriaApiSettings.from_env()
 
-    assert settings.api_token == "legacy-token"
-    assert settings.operator_api_key == "legacy-token"
+    assert settings.operator_api_key is None
 
 
 def test_mcp_tools_map_to_non_destructive_backend_endpoints() -> None:
@@ -222,6 +240,119 @@ def test_mcp_path_parameters_are_percent_encoded() -> None:
         "/library/skills/skill%2F1%23anchor",
         "/library/prompts/prompt%2F1%3Fraw%3Dtrue",
     ]
+
+
+def test_mcp_library_search_tools_use_candidate_endpoint() -> None:
+    """Library search MCP tools should not call full item list endpoints."""
+    client, calls = _client()
+
+    async def run_tools() -> None:
+        await alexandria_search_library(
+            client,
+            "pytest fixtures",
+            item_types=[ItemType.SKILL, ItemType.PROMPT],
+            tags=["testing"],
+            limit=7,
+            offset=2,
+        )
+        await alexandria_search_skills(
+            client,
+            "pytest fixtures",
+            required_tools=["pytest"],
+            risk_level=RiskLevel.LOW,
+            tags=["testing"],
+            limit=3,
+        )
+        await alexandria_search_prompts(
+            client,
+            "review prompt",
+            prompt_kind=PromptKind.DEVELOPER,
+            tags=["code-review"],
+            limit=4,
+        )
+
+    anyio.run(run_tools)
+
+    methods_and_paths = [
+        (request.method, str(request.url).removeprefix("http://backend:8000"))
+        for request in calls
+    ]
+    assert methods_and_paths == [
+        (
+            "GET",
+            "/library/search?q=pytest+fixtures&item_types=SKILL&item_types=PROMPT"
+            "&tags_any=testing&limit=7&offset=2&content_mode=candidate",
+        ),
+        (
+            "GET",
+            "/library/search?q=pytest+fixtures&item_type=SKILL"
+            "&required_tools=pytest&tags_any=testing&limit=3&offset=0"
+            "&content_mode=candidate&risk_level=LOW",
+        ),
+        (
+            "GET",
+            "/library/search?q=review+prompt&item_type=PROMPT&tags_any=code-review"
+            "&limit=4&offset=0&content_mode=candidate&prompt_kind=DEVELOPER",
+        ),
+    ]
+
+
+def test_mcp_memory_compact_tools_map_to_selected_artifact_endpoints() -> None:
+    """Memory Compact MCP tools should use first-class compact endpoints."""
+    client, calls = _client()
+
+    async def run_tools() -> None:
+        await alexandria_list_memory_compacts(
+            client,
+            project="alexandria-hermes",
+            status=MemoryCompactStatus.CURRENT,
+            limit=3,
+        )
+        await alexandria_get_current_memory_compact(client, project="alexandria-hermes")
+        await alexandria_get_memory_compact(client, "compact/1")
+
+    anyio.run(run_tools)
+
+    methods_and_paths = [
+        (request.method, str(request.url).removeprefix("http://backend:8000"))
+        for request in calls
+    ]
+    assert methods_and_paths == [
+        (
+            "GET",
+            "/memory/compacts?limit=3&offset=0&project=alexandria-hermes&status=CURRENT",
+        ),
+        ("GET", "/memory/compacts/current?project=alexandria-hermes"),
+        ("GET", "/memory/compacts/compact%2F1"),
+    ]
+
+
+def test_mcp_librarian_brief_preview_uses_budgeted_packet_contract() -> None:
+    """MCP brief preview should call the compact/source-ref preview endpoint."""
+    client, calls = _client()
+
+    _run_json(
+        alexandria_librarian_brief_preview(
+            client,
+            prompt="Need OAuth callback evidence",
+            project="alexandria-hermes",
+            max_input_chars=3000,
+            max_source_refs=4,
+        )
+    )
+
+    request_body = loads_json(calls[0].content or b"{}")
+    assert calls[0].method == "POST"
+    assert str(calls[0].url) == "http://backend:8000/librarians/brief-preview"
+    assert request_body == {
+        "prompt": "Need OAuth callback evidence",
+        "project": "alexandria-hermes",
+        "budget": {
+            "max_input_chars": 3000,
+            "max_source_refs": 4,
+            "max_preview_chars": 800,
+        },
+    }
 
 
 def test_mcp_collaboration_tools_map_to_backend_contracts() -> None:
@@ -358,14 +489,22 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_search",
         "alexandria_get_skill",
         "alexandria_get_prompt",
+        "alexandria_search_library",
+        "alexandria_search_skills",
+        "alexandria_search_prompts",
         "alexandria_recall_context",
         "alexandria_rag_context",
         "alexandria_capture_context",
+        "alexandria_list_memory_compact_artifacts",
+        "alexandria_list_memory_compacts",
+        "alexandria_get_current_memory_compact",
+        "alexandria_get_memory_compact",
         "alexandria_prepare_compact",
         "alexandria_request_skill_acquisition",
         "alexandria_submit_skill_candidate",
         "alexandria_record_usage",
         "alexandria_ask_librarian",
+        "alexandria_librarian_brief_preview",
         "alexandria_librarian_route_preview",
         "alexandria_librarian_job_status",
         "alexandria_librarian_oauth_start",

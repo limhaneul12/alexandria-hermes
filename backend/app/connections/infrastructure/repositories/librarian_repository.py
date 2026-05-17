@@ -19,7 +19,7 @@ from app.connections.infrastructure.models.librarian_provider_models import (
     ProviderSecretORM,
 )
 from app.shared.exceptions import NotFoundError
-from app.shared.security.secret_cipher import SecretCipher
+from app.shared.security.secret_cipher import SecretCipher, SecretCipherSettings
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,7 +52,9 @@ class SqlAlchemyLibrarianProviderRepository(ILibrarianProviderRepository):
         """
         self._session = session
         self._secret_cipher = (
-            SecretCipher.from_environment() if secret_cipher is None else secret_cipher
+            SecretCipher.from_settings(SecretCipherSettings())
+            if secret_cipher is None
+            else secret_cipher
         )
 
     async def create(self, payload: LibrarianProviderCreate) -> LibrarianProvider:
@@ -154,7 +156,9 @@ class ProviderSecretRepository(IProviderSecretRepositoryPort):
         """
         self._session = session
         self._secret_cipher = (
-            SecretCipher.from_environment() if secret_cipher is None else secret_cipher
+            SecretCipher.from_settings(SecretCipherSettings())
+            if secret_cipher is None
+            else secret_cipher
         )
 
     async def resolve(self, provider_id: str, key_name: str) -> str | None:

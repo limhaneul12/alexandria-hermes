@@ -5,11 +5,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from app.memory.domain.contracts.context_contracts import (
+    ContextAccessCreate,
     ContextChunkCreate,
     ContextChunkEmbeddingUpdate,
     ContextCreate,
 )
 from app.memory.domain.entities.context_read_models import (
+    ContextAccessEventRecord,
     ContextChunkRecord,
     ContextRecord,
     ContextSearchMatch,
@@ -108,14 +110,28 @@ class IContextRepository(ABC):
         """
 
     @abstractmethod
-    async def record_access(self, context_id: str) -> ContextRecord:
+    async def record_access(self, payload: ContextAccessCreate) -> ContextRecord:
         """Record an access event for recall/audit purposes.
 
         Args:
-            context_id: Context identifier.
+            payload: Context access event fields.
 
         Returns:
             Updated context read model.
+        """
+
+    @abstractmethod
+    async def access_events(
+        self, *, context_id: str, limit: int = 5
+    ) -> list[ContextAccessEventRecord]:
+        """List recent access events for one context.
+
+        Args:
+            context_id: Context identifier.
+            limit: Maximum events to return.
+
+        Returns:
+            Recent access events ordered newest first.
         """
 
     @abstractmethod

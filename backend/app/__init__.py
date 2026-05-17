@@ -1,1 +1,0 @@
-"""Alexandria-Hermes backend package."""

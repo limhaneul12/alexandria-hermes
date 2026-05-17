@@ -18,6 +18,9 @@ BOUNDED_INTERFACE_ROOTS = tuple(
     sorted(path for path in APP_ROOT.glob("*/interface") if path.is_dir())
 )
 SHARED_EXCEPTIONS = APP_ROOT / "shared" / "exceptions"
+ALLOWED_INIT_FILES = {
+    "shared/exceptions/__init__.py": "Shared exception catalog owns an explicit public import surface.",
+}
 
 MODULE_LINE_BUDGET = 450
 OVERSIZED_MODULE_ALLOWLIST = {
@@ -358,6 +361,23 @@ def test_interface_schema_folders_do_not_use_init_files() -> None:
     )
 
     assert offenders == []
+
+
+def test_backend_app_uses_init_files_only_for_explicit_export_surfaces() -> None:
+    offenders = sorted(
+        str(path.relative_to(APP_ROOT))
+        for path in APP_ROOT.rglob("__init__.py")
+        if str(path.relative_to(APP_ROOT)) not in ALLOWED_INIT_FILES
+    )
+
+    stale_allowlist = sorted(
+        relative
+        for relative in ALLOWED_INIT_FILES
+        if not (APP_ROOT / relative).exists()
+    )
+
+    assert offenders == []
+    assert stale_allowlist == []
 
 
 def test_backend_app_does_not_use_protocol() -> None:

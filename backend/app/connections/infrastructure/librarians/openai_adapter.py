@@ -20,6 +20,8 @@ class OpenAIClientConfig:
     """Constructor config for the official OpenAI SDK client."""
 
     api_key: str
+    base_url: str | None = None
+    default_headers: dict[str, str] | None = None
 
 
 OpenAIClientBuilder = Callable[[OpenAIClientConfig], OpenAI]
@@ -92,5 +94,9 @@ def build_openai_client(config: OpenAIClientConfig) -> OpenAI:
     Returns:
         OpenAI: Official OpenAI SDK client.
     """
-    client = OpenAI(api_key=config.api_key)
+    client = OpenAI(
+        api_key=config.api_key,
+        base_url=config.base_url,
+        default_headers=config.default_headers,
+    )
     return client

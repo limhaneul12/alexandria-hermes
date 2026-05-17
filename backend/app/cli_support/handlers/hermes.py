@@ -77,7 +77,7 @@ def handle_hermes_configure(
         mcp_config=build_mcp_configuration(
             hermes_home=resolved.path,
             api_url=api_url,
-            api_token=command.api_token,
+            operator_api_key=command.operator_api_key or "",
         ),
     )
     output = schema_payload(result, by_alias=True)
@@ -254,7 +254,7 @@ def handle_hermes_doctor(
         mcp_config=build_mcp_configuration(
             hermes_home=home,
             api_url=hermes_api_url(command, context),
-            api_token=command.api_token,
+            operator_api_key=command.operator_api_key or "",
         ),
         deep=command.deep,
         checks=checks,

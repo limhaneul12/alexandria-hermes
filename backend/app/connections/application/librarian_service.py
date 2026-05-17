@@ -1,4 +1,4 @@
-"""Librarian provider and generation service."""
+"""Librarian provider configuration service."""
 
 from __future__ import annotations
 
@@ -11,6 +11,9 @@ from app.connections.application.librarians.credential_policy import (
 )
 from app.connections.application.librarians.provider_payload_mapper import (
     build_provider_payload,
+)
+from app.connections.domain.contracts.librarian_client_contracts import (
+    LibrarianProviderClientFactory,
 )
 from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
@@ -32,17 +35,9 @@ from app.connections.domain.types.librarian_provider_payload_types import (
     LibrarianProviderTestPayload,
     LibrarianProviderUpdateValues,
 )
-from app.connections.infrastructure.librarians.clients import (
-    LibrarianClientFactory,
-    LibrarianProviderClientFactory,
-)
-from app.librarian.application.candidate_generator import build_candidate_stub
-from app.library.domain.contracts.skill_candidate_contracts import (
-    CreateSkillCandidateResult,
-)
 from app.shared.exceptions import NotFoundError, UnsupportedProviderError
 from app.shared.types.extra_types import JSONObject
-from app.shared.types.types_convert_utils import now_utc
+from app.shared.types.types_convert_utils import enum_value, now_utc
 
 _ALL_PROVIDER_SECRET_KEYS = tuple(ProviderSecretKey)
 _OAUTH_PROVIDER_SECRET_KEYS = (
@@ -72,9 +67,11 @@ def _provider_update_values(
     if "name" in payload:
         values["name"] = payload["name"]
     if "provider_type" in payload:
-        values["provider_type"] = payload["provider_type"]
+        values["provider_type"] = enum_value(
+            payload["provider_type"], ProviderType, "provider_type"
+        )
     if "auth_type" in payload:
-        values["auth_type"] = payload["auth_type"]
+        values["auth_type"] = enum_value(payload["auth_type"], AuthType, "auth_type")
     if "enabled" in payload:
         values["enabled"] = payload["enabled"]
     if "config" in payload:
@@ -89,14 +86,18 @@ class LibrarianService:
         self,
         provider_repo: ILibrarianProviderRepository,
         secret_repo: IProviderSecretRepository,
-        client_factory: LibrarianProviderClientFactory | None = None,
+        client_factory: LibrarianProviderClientFactory,
     ) -> None:
-        """Initialize librarian service dependencies."""
+        """Initialize librarian service dependencies.
+
+        Args:
+            provider_repo: Provider persistence port.
+            secret_repo: Provider secret persistence port.
+            client_factory: Provider test client factory.
+        """
         self.provider_repo = provider_repo
         self.secret_repo = secret_repo
-        self.client_factory = (
-            LibrarianClientFactory() if client_factory is None else client_factory
-        )
+        self.client_factory = client_factory
 
     async def create_provider(
         self,
@@ -122,6 +123,8 @@ class LibrarianService:
         Returns:
             Provider payload map.
         """
+        provider_type = enum_value(provider_type, ProviderType, "provider_type")
+        auth_type = enum_value(auth_type, AuthType, "auth_type")
         ensure_provider_config_has_no_credentials(config)
         ensure_openai_codex_oauth_config_is_safe(
             provider_type=provider_type,
@@ -220,8 +223,16 @@ class LibrarianService:
             )
         current_provider_type = row.provider_type
         current_auth_type = row.auth_type
-        provider_type = payload.get("provider_type", current_provider_type)
-        auth_type = payload.get("auth_type", current_auth_type)
+        provider_type = enum_value(
+            payload.get("provider_type", current_provider_type),
+            ProviderType,
+            "provider_type",
+        )
+        auth_type = enum_value(
+            payload.get("auth_type", current_auth_type),
+            AuthType,
+            "auth_type",
+        )
         ensure_provider_auth_type_is_supported(
             provider_type=provider_type,
             auth_type=auth_type,
@@ -335,26 +346,3 @@ class LibrarianService:
             test_query=test_query,
         )
         return result.as_public_dict()
-
-    def generate_candidate_stub(
-        self,
-        provider_id: str,
-        prompt: str,
-        seed: int | None = None,
-    ) -> CreateSkillCandidateResult:
-        """Generate deterministic candidate payload for prompt.
-
-        Args:
-            provider_id: Provider id used by caller.
-            prompt: Natural-language request.
-            seed: Optional deterministic seed.
-
-        Returns:
-        Typed candidate result.
-        """
-        candidate_result = build_candidate_stub(
-            provider_id=provider_id,
-            prompt=prompt,
-            seed=seed,
-        )
-        return candidate_result

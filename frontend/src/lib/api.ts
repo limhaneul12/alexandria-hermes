@@ -6,6 +6,8 @@ import type {
   CategoryDTO,
   ContextChunkDTO,
   ContextDTO,
+  ContextAccessEventCreateDTO,
+  ContextAccessEventDTO,
   ContextLintRequestDTO,
   ContextLintResultDTO,
   ContextListDTO,
@@ -20,12 +22,18 @@ import type {
   LibrarianOAuthStatusDTO,
   LibrarianAskRequestDTO,
   LibrarianAskResponseDTO,
+  LibrarianChatRequestDTO,
+  LibrarianChatResponseDTO,
   LibrarianProviderCreateDTO,
   LibrarianProviderDTO,
   LibrarianProviderTestDTO,
   LibrarianProviderUpdateDTO,
   LibraryDTO,
   LibraryItemDetailDTO,
+  LibraryUsageRecordCreateDTO,
+  LibraryUsageRecordDTO,
+  MemoryCompactDTO,
+  MemoryCompactListDTO,
   PromptCreateDTO,
   PromptCreateResultDTO,
   SkillCreateDTO,
@@ -156,6 +164,13 @@ export function askLibrarian(payload: LibrarianAskRequestDTO) {
   );
 }
 
+export function chatWithLibrarian(payload: LibrarianChatRequestDTO) {
+  return fetchJson<LibrarianChatResponseDTO>(
+    "/api/librarians/chat",
+    jsonInit("POST", payload),
+  );
+}
+
 export function fetchExternalArchiveCandidates(limit = 48) {
   const boundedLimit = Math.min(Math.max(limit, 1), 1000);
   return fetchJson<ExternalArchiveCandidateDTO[]>(
@@ -251,10 +266,52 @@ export function archiveContext(contextId: string) {
   );
 }
 
+export function fetchMemoryCompacts(params: URLSearchParams) {
+  const query = params.toString();
+  return fetchJson<MemoryCompactListDTO>(
+    `/api/library/compacts${query ? `?${query}` : ""}`,
+  );
+}
+
+export function fetchCurrentMemoryCompact(project: string | null) {
+  const query = project ? `?project=${encodeURIComponent(project)}` : "";
+  return fetchJson<MemoryCompactDTO>(`/api/library/compacts/current${query}`);
+}
+
+export function fetchMemoryCompact(compactId: string) {
+  return fetchJson<MemoryCompactDTO>(
+    `/api/library/compacts/${encodeURIComponent(compactId)}`,
+  );
+}
+
 export function accessContext(contextId: string) {
   return fetchJson<ContextDTO>(
     `/api/library/contexts/${encodeURIComponent(contextId)}/access`,
     jsonInit("POST", {}),
+  );
+}
+
+export function recordContextAccessEvent(
+  contextId: string,
+  payload: ContextAccessEventCreateDTO,
+) {
+  return fetchJson<ContextAccessEventDTO>(
+    `/api/library/contexts/${encodeURIComponent(contextId)}/access-events`,
+    jsonInit("POST", payload),
+  );
+}
+
+export function fetchContextAccessEvents(contextId: string, limit = 5) {
+  const boundedLimit = Math.min(Math.max(limit, 1), 5);
+  return fetchJson<ContextAccessEventDTO[]>(
+    `/api/library/contexts/${encodeURIComponent(contextId)}/access-events?limit=${boundedLimit}`,
+  );
+}
+
+export function recordLibraryUsage(payload: LibraryUsageRecordCreateDTO) {
+  return fetchJson<LibraryUsageRecordDTO>(
+    "/api/library/usage",
+    jsonInit("POST", payload),
   );
 }
 

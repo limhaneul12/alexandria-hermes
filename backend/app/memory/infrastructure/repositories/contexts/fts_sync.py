@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
-from app.memory.infrastructure.repositories.contexts.fts import CONTEXT_CHUNK_FTS_SQL
-from sqlalchemy import text
+from app.memory.infrastructure.repositories.contexts.fts import (
+    delete_chunk_fts_statement,
+    delete_context_fts_statement,
+    ensure_context_chunk_fts_table,
+    insert_chunk_fts_statement,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -24,25 +28,9 @@ async def upsert_chunk_fts(
     Returns:
         None.
     """
+    await session.execute(delete_chunk_fts_statement(), {"chunk_id": chunk.id})
     await session.execute(
-        text("DELETE FROM context_chunk_fts WHERE chunk_id = :chunk_id"),
-        {"chunk_id": chunk.id},
-    )
-    await session.execute(
-        text(
-            """
-            INSERT INTO context_chunk_fts(
-                chunk_id, context_id, title, summary, content, kind, project,
-                source_agent, tags, scope, workspace_id, agent_id, user_id,
-                session_id, heading
-            )
-            VALUES (
-                :chunk_id, :context_id, :title, :summary, :content, :kind,
-                :project, :source_agent, :tags, :scope, :workspace_id, :agent_id,
-                :user_id, :session_id, :heading
-            )
-            """
-        ),
+        insert_chunk_fts_statement(),
         {
             "chunk_id": chunk.id,
             "context_id": context.id,
@@ -73,8 +61,5 @@ async def remove_context_fts(*, session: AsyncSession, context_id: str) -> None:
     Returns:
         None.
     """
-    await session.execute(text(CONTEXT_CHUNK_FTS_SQL))
-    await session.execute(
-        text("DELETE FROM context_chunk_fts WHERE context_id = :context_id"),
-        {"context_id": context_id},
-    )
+    await ensure_context_chunk_fts_table(session=session)
+    await session.execute(delete_context_fts_statement(), {"context_id": context_id})

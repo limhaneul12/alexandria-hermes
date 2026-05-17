@@ -301,6 +301,29 @@ function toBackendAskPayload(payload: LibrarianAskRequestDTO): Record<string, un
   if (payload.routingSpecialties !== undefined) {
     body.routing_specialties = payload.routingSpecialties;
   }
+  if (payload.sourceRefs !== undefined) {
+    body.source_refs = payload.sourceRefs.map((sourceRef) => ({
+      source_type: sourceRef.sourceType,
+      source_id: sourceRef.sourceId,
+      title: sourceRef.title,
+      detail_path: sourceRef.detailPath,
+      preview: sourceRef.preview,
+    }));
+  }
+  if (payload.contextCompact !== undefined) {
+    body.context_compact = payload.contextCompact
+      ? {
+          markdown_body: payload.contextCompact.markdownBody,
+          source_refs: payload.contextCompact.sourceRefs.map((sourceRef) => ({
+            source_type: sourceRef.sourceType,
+            source_id: sourceRef.sourceId,
+            title: sourceRef.title,
+            detail_path: sourceRef.detailPath,
+            preview: sourceRef.preview,
+          })),
+        }
+      : null;
+  }
   return body;
 }
 

@@ -91,6 +91,19 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
                 json={"query": "API saves recalls", "strategy": "HYBRID"},
             )
             access_response = client.post(f"/memory/contexts/{context_id}/access")
+            access_event_response = client.post(
+                f"/memory/contexts/{context_id}/access-events",
+                json={
+                    "actor_name": "Alexandria UI",
+                    "actor_type": "UI",
+                    "access_method": "DETAIL_VIEW",
+                    "source_surface": "context-detail",
+                },
+            )
+            access_events_response = client.get(
+                f"/memory/contexts/{context_id}/access-events",
+                params={"limit": 5},
+            )
             archive_response = client.post(f"/memory/contexts/{context_id}/archive")
             rag_response = client.get("/memory/contexts/rag/status")
             reindex_response = client.post("/memory/contexts/retrieval/reindex")
@@ -115,6 +128,14 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
     assert context_id in search_response.json()["context_pack"]
     assert access_response.status_code == 200
     assert access_response.json()["access_count"] == 1
+    assert access_event_response.status_code == 201
+    assert access_event_response.json()["actor_type"] == "UI"
+    assert access_event_response.json()["access_method"] == "DETAIL_VIEW"
+    assert access_events_response.status_code == 200
+    assert len(access_events_response.json()) == 2
+    assert {event["source_surface"] for event in access_events_response.json()} == {
+        "context-detail"
+    }
     assert archive_response.status_code == 200
     assert archive_response.json()["is_archived"] is True
     assert rag_response.status_code == 200

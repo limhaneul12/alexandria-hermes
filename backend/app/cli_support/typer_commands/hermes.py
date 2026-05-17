@@ -33,14 +33,14 @@ policy_app = typer.Typer(help="Manage Hermes Alexandria usage policy")
 def _bundle_command(
     hermes_home: str | None,
     api_url: str | None,
-    api_token: str,
+    operator_api_key: str | None,
     dry_run: bool,
     overwrite: bool,
 ) -> HermesBundleCommand:
     return HermesBundleCommand(
         hermes_home=hermes_home,
         api_url=api_url,
-        api_token=api_token,
+        operator_api_key=operator_api_key,
         dry_run=dry_run,
         overwrite=overwrite,
         apply=True,
@@ -58,10 +58,10 @@ def hermes_install(
         "--api-url",
         envvar="ALEXANDRIA_API_URL",
     ),
-    api_token: str = typer.Option(
-        "",
-        "--api-token",
-        envvar="ALEXANDRIA_API_TOKEN",
+    operator_api_key: str | None = typer.Option(
+        None,
+        "--operator-api-key",
+        envvar="ALEXANDRIA_OPERATOR_API_KEY",
     ),
     apply: bool = typer.Option(False, "--apply"),
     restart_hint: bool = typer.Option(False, "--restart-hint"),
@@ -74,7 +74,7 @@ def hermes_install(
         ctx: Typer context.
         hermes_home: Optional Hermes home path.
         api_url: Optional Alexandria API URL.
-        api_token: Optional Alexandria API token.
+        operator_api_key: Optional Alexandria operator API key.
         apply: Whether to write files; omitted means preview.
         restart_hint: Whether to include session restart guidance.
         print_first_prompt: Whether to include the first Hermes prompt.
@@ -88,7 +88,7 @@ def hermes_install(
         HermesInstallCommand(
             hermes_home=hermes_home,
             api_url=api_url,
-            api_token=api_token,
+            operator_api_key=operator_api_key,
             dry_run=not apply,
             overwrite=overwrite,
             apply=apply,
@@ -108,10 +108,10 @@ def hermes_configure(
         "--api-url",
         envvar="ALEXANDRIA_API_URL",
     ),
-    api_token: str = typer.Option(
-        "",
-        "--api-token",
-        envvar="ALEXANDRIA_API_TOKEN",
+    operator_api_key: str | None = typer.Option(
+        None,
+        "--operator-api-key",
+        envvar="ALEXANDRIA_OPERATOR_API_KEY",
     ),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
@@ -121,7 +121,7 @@ def hermes_configure(
         ctx: Typer context.
         hermes_home: Optional Hermes home path.
         api_url: Optional Alexandria API URL.
-        api_token: Optional Alexandria API token.
+        operator_api_key: Optional Alexandria operator API key.
         dry_run: Whether to preview changes only.
 
     Returns:
@@ -132,7 +132,7 @@ def hermes_configure(
         HermesConfigureCommand(
             hermes_home=hermes_home,
             api_url=api_url,
-            api_token=api_token,
+            operator_api_key=operator_api_key,
             dry_run=dry_run,
         ),
         handle_hermes_configure,
@@ -148,10 +148,10 @@ def hermes_onboard(
         "--api-url",
         envvar="ALEXANDRIA_API_URL",
     ),
-    api_token: str = typer.Option(
-        "",
-        "--api-token",
-        envvar="ALEXANDRIA_API_TOKEN",
+    operator_api_key: str | None = typer.Option(
+        None,
+        "--operator-api-key",
+        envvar="ALEXANDRIA_OPERATOR_API_KEY",
     ),
     install_prompts: bool = typer.Option(False, "--install-prompts"),
     install_mcp: bool = typer.Option(False, "--install-mcp"),
@@ -164,7 +164,7 @@ def hermes_onboard(
         ctx: Typer context.
         hermes_home: Optional Hermes home path.
         api_url: Optional Alexandria API URL.
-        api_token: Optional Alexandria API token.
+        operator_api_key: Optional Alexandria operator API key.
         install_prompts: Whether to install prompt assets.
         install_mcp: Whether to install MCP config.
         overwrite: Whether to overwrite existing files.
@@ -178,7 +178,7 @@ def hermes_onboard(
         HermesOnboardCommand(
             hermes_home=hermes_home,
             api_url=api_url,
-            api_token=api_token,
+            operator_api_key=operator_api_key,
             dry_run=dry_run,
             overwrite=overwrite,
             install_prompts=install_prompts,
@@ -200,10 +200,10 @@ def hermes_install_prompts(
         "--api-url",
         envvar="ALEXANDRIA_API_URL",
     ),
-    api_token: str = typer.Option(
-        "",
-        "--api-token",
-        envvar="ALEXANDRIA_API_TOKEN",
+    operator_api_key: str | None = typer.Option(
+        None,
+        "--operator-api-key",
+        envvar="ALEXANDRIA_OPERATOR_API_KEY",
     ),
     overwrite: bool = typer.Option(False, "--overwrite"),
     dry_run: bool = typer.Option(False, "--dry-run"),
@@ -214,7 +214,7 @@ def hermes_install_prompts(
         ctx: Typer context.
         hermes_home: Optional Hermes home path.
         api_url: Optional Alexandria API URL.
-        api_token: Optional Alexandria API token.
+        operator_api_key: Optional Alexandria operator API key.
         overwrite: Whether to overwrite existing files.
         dry_run: Whether to preview changes only.
 
@@ -226,7 +226,7 @@ def hermes_install_prompts(
         _bundle_command(
             hermes_home=hermes_home,
             api_url=api_url,
-            api_token=api_token,
+            operator_api_key=operator_api_key,
             dry_run=dry_run,
             overwrite=overwrite,
         ),
@@ -243,10 +243,10 @@ def hermes_install_mcp(
         "--api-url",
         envvar="ALEXANDRIA_API_URL",
     ),
-    api_token: str = typer.Option(
-        "",
-        "--api-token",
-        envvar="ALEXANDRIA_API_TOKEN",
+    operator_api_key: str | None = typer.Option(
+        None,
+        "--operator-api-key",
+        envvar="ALEXANDRIA_OPERATOR_API_KEY",
     ),
     overwrite: bool = typer.Option(False, "--overwrite"),
     dry_run: bool = typer.Option(False, "--dry-run"),
@@ -257,7 +257,7 @@ def hermes_install_mcp(
         ctx: Typer context.
         hermes_home: Optional Hermes home path.
         api_url: Optional Alexandria API URL.
-        api_token: Optional Alexandria API token.
+        operator_api_key: Optional Alexandria operator API key.
         overwrite: Whether to overwrite existing files.
         dry_run: Whether to preview changes only.
 
@@ -269,7 +269,7 @@ def hermes_install_mcp(
         _bundle_command(
             hermes_home=hermes_home,
             api_url=api_url,
-            api_token=api_token,
+            operator_api_key=operator_api_key,
             dry_run=dry_run,
             overwrite=overwrite,
         ),
@@ -286,10 +286,10 @@ def hermes_doctor(
         "--api-url",
         envvar="ALEXANDRIA_API_URL",
     ),
-    api_token: str = typer.Option(
-        "",
-        "--api-token",
-        envvar="ALEXANDRIA_API_TOKEN",
+    operator_api_key: str | None = typer.Option(
+        None,
+        "--operator-api-key",
+        envvar="ALEXANDRIA_OPERATOR_API_KEY",
     ),
     require_home: bool = typer.Option(False, "--require-home"),
     deep: bool = typer.Option(False, "--deep"),
@@ -300,7 +300,7 @@ def hermes_doctor(
         ctx: Typer context.
         hermes_home: Optional Hermes home path.
         api_url: Optional Alexandria API URL.
-        api_token: Optional Alexandria API token.
+        operator_api_key: Optional Alexandria operator API key.
         require_home: Whether missing Hermes home should fail.
         deep: Whether to run deep readiness diagnostics.
 
@@ -312,7 +312,7 @@ def hermes_doctor(
         HermesDoctorCommand(
             hermes_home=hermes_home,
             api_url=api_url,
-            api_token=api_token,
+            operator_api_key=operator_api_key,
             require_home=require_home,
             deep=deep,
         ),
@@ -435,7 +435,7 @@ def hermes_sync(
             path=path,
             hermes_home=hermes_home,
             api_url=None,
-            api_token="",
+            operator_api_key=None,
             dry_run=dry_run,
             overwrite=overwrite,
             apply=True,

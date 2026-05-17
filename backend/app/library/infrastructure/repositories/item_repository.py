@@ -5,13 +5,22 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.library.domain.contracts.item_contracts import ItemCreate, ItemUpdate
+from app.library.domain.entities.item_search_hit import ItemSearchCandidate
+from app.library.domain.entities.item_search_query import ItemSearchQuery
 from app.library.domain.entities.read_models import LibraryItem
 from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.repositories.item_repository import IItemRepository
 from app.library.infrastructure.models.item_models import LibraryItemORM
+from app.library.infrastructure.repositories.items.candidate_search import (
+    build_candidate_search_plan,
+    candidate_from_mapping,
+    paginate_candidate_statement,
+)
 from app.library.infrastructure.repositories.items.fts import (
     build_item_fts_payload,
     build_item_fts_query,
+    delete_item_fts_statement,
+    insert_item_fts_statement,
 )
 from app.library.infrastructure.repositories.items.mapping import (
     map_item_row_to_read_model,
@@ -23,7 +32,7 @@ from app.library.infrastructure.repositories.items.queries import (
     build_items_page_statement,
 )
 from app.shared.exceptions import NotFoundError
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -193,24 +202,11 @@ class SqlAlchemyItemRepository(IItemRepository):
         """
         fts_payload = build_item_fts_payload(item)
         await self._session.execute(
-            text("DELETE FROM item_search_fts WHERE item_id = :item_id"),
+            delete_item_fts_statement(),
             {"item_id": fts_payload.item_id},
         )
         await self._session.execute(
-            text(
-                """
-                INSERT INTO item_search_fts(
-                    item_id,
-                    item_type,
-                    title,
-                    summary,
-                    content,
-                    tags,
-                    details
-                )
-                VALUES (:item_id, :item_type, :title, :summary, :content, :tags, :details)
-                """
-            ),
+            insert_item_fts_statement(),
             fts_payload.as_parameters(),
         )
 
@@ -224,7 +220,7 @@ class SqlAlchemyItemRepository(IItemRepository):
             None.
         """
         await self._session.execute(
-            text("DELETE FROM item_search_fts WHERE item_id = :item_id"),
+            delete_item_fts_statement(),
             {"item_id": item_id},
         )
 
@@ -245,7 +241,7 @@ class SqlAlchemyItemRepository(IItemRepository):
             return []
 
         ids_result = await self._session.execute(
-            text(fts_query.sql),
+            fts_query.statement,
             fts_query.parameters,
         )
         ids = [row[0] for row in ids_result.all()]
@@ -256,3 +252,36 @@ class SqlAlchemyItemRepository(IItemRepository):
             select(LibraryItemORM).where(LibraryItemORM.id.in_(ids))
         )
         return [map_item_row_to_read_model(row) for row in rows.scalars().all()]
+
+    async def search_candidates(
+        self,
+        options: ItemSearchQuery,
+    ) -> tuple[list[ItemSearchCandidate], int]:
+        """Run candidate search without selecting full content bodies.
+
+        Args:
+            options: Normalized search options.
+
+        Returns:
+            Candidate rows and total count before pagination.
+        """
+        plan = build_candidate_search_plan(options)
+        if options.query and not plan.has_query:
+            return [], 0
+
+        count = await self._session.scalar(
+            select(func.count()).select_from(plan.statement.subquery()),
+            plan.params,
+        )
+        total = 0 if count is None else int(count)
+        if total == 0:
+            return [], 0
+
+        page_statement = paginate_candidate_statement(
+            plan.statement,
+            limit=options.limit,
+            offset=options.offset,
+        )
+        rows = await self._session.execute(page_statement, plan.params)
+        candidates = [candidate_from_mapping(row._mapping) for row in rows.all()]
+        return candidates, total

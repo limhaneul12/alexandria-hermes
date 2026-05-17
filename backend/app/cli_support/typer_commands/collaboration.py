@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 from app.cli_support.contracts.command_contracts import (
     LibrarianAskCommand,
+    LibrarianBriefPreviewCommand,
     LibrarianJobStatusCommand,
     LibrarianOAuthCommand,
     LibrarianProfileActionCommand,
@@ -18,6 +19,7 @@ from app.cli_support.contracts.command_contracts import (
 )
 from app.cli_support.handlers.collaboration import (
     handle_librarian_ask,
+    handle_librarian_brief_preview,
     handle_librarian_job_status,
     handle_librarian_oauth_poll,
     handle_librarian_oauth_refresh,
@@ -55,8 +57,32 @@ def _codex_oauth_config() -> dict[str, str | int | bool]:
     return {
         "device_authorization_url": "https://auth.openai.com/api/accounts/deviceauth/usercode",
         "device_token_url": "https://auth.openai.com/api/accounts/deviceauth/token",
-        "client_id": "codex-cli",
     }
+
+
+@librarian_app.command("brief-preview")
+def librarian_brief_preview(
+    ctx: typer.Context,
+    prompt: str,
+    project: str | None = typer.Option(None, "--project"),
+    max_input_chars: int = typer.Option(12_000, "--max-input-chars"),
+    max_source_refs: int = typer.Option(20, "--max-source-refs"),
+) -> None:
+    """Compile a budgeted librarian knowledge packet without delegation.
+
+    Args:
+        ctx: Typer callback context and command-line option values.
+    """
+    run_client(
+        ctx,
+        LibrarianBriefPreviewCommand(
+            prompt=prompt,
+            project=project,
+            max_input_chars=max_input_chars,
+            max_source_refs=max_source_refs,
+        ),
+        handle_librarian_brief_preview,
+    )
 
 
 @librarian_app.command("ask")

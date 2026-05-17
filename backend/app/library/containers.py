@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 from app.library.application.category_service import CategoryService
+from app.library.application.item_search_service import ItemSearchService
 from app.library.application.item_service import ItemService
 from app.library.application.knowledge_service import KnowledgeService
 from app.library.application.prompt_service import PromptService
 from app.library.application.skill_service import SkillService
 from app.library.application.usage_service import UsageService
 from app.library.application.workflow_service import WorkflowService
-from app.library.infrastructure.repositories import (
+from app.library.infrastructure.repositories.category_repository import (
     SqlAlchemyCategoryRepository,
+)
+from app.library.infrastructure.repositories.item_repository import (
     SqlAlchemyItemRepository,
+)
+from app.library.infrastructure.repositories.usage_repository import (
     SqlAlchemyUsageRepository,
 )
 from dependency_injector import containers, providers
@@ -27,6 +32,7 @@ class LibraryContainer(containers.DeclarativeContainer):
     category_repo = providers.Factory(SqlAlchemyCategoryRepository, session=db_session)
 
     item_service = providers.Factory(ItemService, item_repo=item_repo)
+    item_search_service = providers.Factory(ItemSearchService, item_repo=item_repo)
     usage_service = providers.Factory(UsageService, usage_repo=usage_repo)
     category_service = providers.Factory(
         CategoryService,

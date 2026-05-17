@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArrowLeft, Clipboard, ScrollText } from "lucide-react";
 
+import { RecentActivityList } from "@/components/activity/recent-activity-list";
+import { ContentViewer } from "@/components/content/content-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { accessContext, archiveContext, fetchContext, fetchContextChunks } from "@/lib/api";
+import { archiveContext, fetchContext, fetchContextAccessEvents, fetchContextChunks, recordContextAccessEvent } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
 export function ContextDetailClient({ contextId }: { contextId: string }) {
@@ -16,6 +18,7 @@ export function ContextDetailClient({ contextId }: { contextId: string }) {
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const contextQuery = useQuery({ queryKey: ["context", contextId], queryFn: () => fetchContext(contextId) });
   const chunksQuery = useQuery({ queryKey: ["context-chunks", contextId], queryFn: () => fetchContextChunks(contextId) });
+  const accessEventsQuery = useQuery({ queryKey: ["context-access-events", contextId], queryFn: () => fetchContextAccessEvents(contextId, 5) });
   const archiveMutation = useMutation({
     mutationFn: archiveContext,
     onSuccess: () => {
@@ -25,8 +28,18 @@ export function ContextDetailClient({ contextId }: { contextId: string }) {
   });
 
   useEffect(() => {
-    void accessContext(contextId).catch(() => undefined);
-  }, [contextId]);
+    void recordContextAccessEvent(contextId, {
+      actorName: "Alexandria UI",
+      actorType: "UI",
+      accessMethod: "DETAIL_VIEW",
+      sourceSurface: "context-detail",
+    })
+      .then(() => {
+        void queryClient.invalidateQueries({ queryKey: ["context", contextId] });
+        void queryClient.invalidateQueries({ queryKey: ["context-access-events", contextId] });
+      })
+      .catch(() => undefined);
+  }, [contextId, queryClient]);
 
   if (contextQuery.isLoading) return <div className="archive-document-page p-10 text-sm text-[#514c44]">Opening context…</div>;
   if (contextQuery.isError || !contextQuery.data) return <div className="archive-document-page p-10 text-sm text-[#8f5037]">Context not found. Return to Context Vault and choose another entry.</div>;
@@ -78,7 +91,7 @@ export function ContextDetailClient({ contextId }: { contextId: string }) {
           <div className="space-y-5">
             <Card>
               <CardHeader><CardTitle className="flex items-center gap-2"><ScrollText className="h-5 w-5" aria-hidden="true" /> Markdown Preview</CardTitle></CardHeader>
-              <CardContent><pre className="max-h-[620px] overflow-auto rounded-xl border border-[#d8d3c7] bg-white/60 p-4 text-sm leading-7 text-[#36322d] whitespace-pre-wrap">{context.content}</pre></CardContent>
+              <CardContent><ContentViewer content={context.content} /></CardContent>
             </Card>
             <Card>
               <CardHeader><CardTitle>Retrieved Chunks</CardTitle></CardHeader>
@@ -94,6 +107,7 @@ export function ContextDetailClient({ contextId }: { contextId: string }) {
           </div>
           <aside className="space-y-5">
             <Card className="p-4"><p className="font-serif text-xl text-[#111111]">Recall Stats</p><dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between"><dt>Quality</dt><dd className="tabular-nums">{context.qualityScore}</dd></div><div className="flex justify-between"><dt>Accesses</dt><dd className="tabular-nums">{context.accessCount}</dd></div><div className="flex justify-between"><dt>Source</dt><dd>{context.sourceAgent}</dd></div></dl></Card>
+            <Card className="p-4"><p className="font-serif text-xl text-[#111111]">최근 조회/사용</p><div className="mt-4"><RecentActivityList items={(accessEventsQuery.data ?? []).slice(0, 5).map((event) => ({ id: event.id, occurredAt: event.accessedAt, actorName: event.actorName, method: event.accessMethod, sourceSurface: event.sourceSurface }))} /></div></Card>
             <Card className="p-4"><p className="font-serif text-xl text-[#111111]">Warnings</p>{context.warnings.length ? <ul className="mt-3 list-disc space-y-1 pl-4 text-sm text-[#8f5037]">{context.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : <p className="mt-3 text-sm text-[#6f6a60]">No warnings recorded.</p>}</Card>
           </aside>
         </div>

@@ -134,7 +134,7 @@ Notes:
 cd backend
 uv sync
 uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Health checks:
@@ -156,6 +156,11 @@ Frontend runs at:
 
 - `http://localhost:3000`
 
+`npm run dev` and `npm run start` bind the Next.js server to `127.0.0.1` for
+local single-operator safety. Container runs use `npm run dev:container` so the
+service binds only inside Docker while Compose still publishes host ports on
+`127.0.0.1`.
+
 ### Full Stack
 
 ```bash
@@ -166,6 +171,10 @@ This starts:
 
 - backend: `http://localhost:8000`
 - frontend: `http://localhost:3000`
+
+Compose runs the backend/frontend containers on `0.0.0.0` inside the Docker
+network, but host port publishing is restricted to `127.0.0.1` in
+`docker-compose.yml`.
 
 During the active npm supply-chain hold, avoid rebuilding the frontend image unless the hold is explicitly lifted, because the frontend Dockerfile runs `npm ci`. If images already exist, use `docker compose up --no-build` for local smoke QA.
 
@@ -348,7 +357,7 @@ explicit operator overrides. Access tokens and refresh tokens are stored only in
 backend provider secrets, never in browser state or public config examples.
 If an operator must override the Hermes-compatible defaults for a deployment,
 set the `SERVICE_CODEX_OAUTH_*` variables locally without committing them.
-Sensitive provider/settings routes require `X-Alexandria-Operator-Key`; the
+Sensitive provider/settings routes require `x-operator-api-key`; the
 Next.js server proxy forwards it from `ALEXANDRIA_OPERATOR_API_KEY`, and
 `docker-compose.yml` maps that value from `SERVICE_OPERATOR_API_KEY`.
 

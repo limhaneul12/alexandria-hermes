@@ -101,6 +101,10 @@ class ItemService:
         Returns:
             Item payload dictionary.
         """
+        item_type = enum_value(item_type, ItemType, "item_type")
+        status = enum_value(status, ItemStatus, "status")
+        source_type = enum_value(source_type, SourceType, "source_type")
+        created_by_type = enum_value(created_by_type, CreatedByType, "created_by_type")
         now = now_utc()
         model = await self.item_repo.create(
             payload=ItemCreate(
@@ -197,6 +201,8 @@ class ItemService:
         Returns:
             Tuple of ``(items, total_count)``.
         """
+        if item_type is not None:
+            item_type = enum_value(item_type, ItemType, "item_type")
         if item_type is None:
             rows, count = await self.item_repo.list_all(
                 limit=limit,
@@ -240,6 +246,8 @@ class ItemService:
         """
         if not query.strip():
             return []
+        if item_type is not None:
+            item_type = enum_value(item_type, ItemType, "item_type")
         rows = await self.item_repo.search(
             query=query,
             item_type=item_type,

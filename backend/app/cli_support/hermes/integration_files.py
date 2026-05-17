@@ -58,11 +58,11 @@ def install_hermes_bundle(
     resolved = resolve_hermes_home(command.hermes_home, require_source=False)
     validate_hermes_home(resolved.path)
     api_url = hermes_api_url(command, context)
-    api_token = command.api_token
+    operator_api_key = command.operator_api_key or ""
     files = hermes_install_files(
         hermes_home=resolved.path,
         api_url=api_url,
-        api_token=api_token,
+        operator_api_key=operator_api_key,
         include_prompts=include_prompts,
         include_mcp=include_mcp,
     )
@@ -85,7 +85,7 @@ def install_hermes_bundle(
         mcp_config=build_mcp_configuration(
             hermes_home=resolved.path,
             api_url=api_url,
-            api_token=redacted_token(api_token),
+            operator_api_key=redacted_operator_key(operator_api_key),
         ),
         restart_hint=hermes_restart_hint() if command.restart_hint else None,
         first_prompt=first_conversation_prompt()
@@ -137,7 +137,7 @@ def apply_hermes_files(
 def hermes_install_files(
     hermes_home: Path,
     api_url: str,
-    api_token: str,
+    operator_api_key: str,
     include_prompts: bool,
     include_mcp: bool,
 ) -> list[HermesInstallFile]:
@@ -146,7 +146,7 @@ def hermes_install_files(
     Args:
         hermes_home: Target Hermes home directory.
         api_url: Backend API URL written to generated config.
-        api_token: Backend API token written to generated config.
+        operator_api_key: Operator key written to generated config.
         include_prompts: Whether prompt instruction files should be included.
         include_mcp: Whether the MCP config file should be included.
 
@@ -170,7 +170,7 @@ def hermes_install_files(
                         build_mcp_configuration(
                             hermes_home=hermes_home,
                             api_url=api_url,
-                            api_token=api_token,
+                            operator_api_key=operator_api_key,
                         ),
                         by_alias=True,
                     )
@@ -553,14 +553,14 @@ Keep the user-facing response concise: what was recalled/used/saved, where it wa
 def build_mcp_configuration(
     hermes_home: Path,
     api_url: str,
-    api_token: str,
+    operator_api_key: str,
 ) -> McpConfiguration:
     """Build the typed MCP configuration contract for Hermes.
 
     Args:
         hermes_home: Hermes home path exposed to the MCP server process.
         api_url: Backend API URL exposed to the MCP server process.
-        api_token: Backend API token exposed to the MCP server process.
+        operator_api_key: Operator key exposed to the MCP server process.
 
     Returns:
         Typed MCP configuration payload.
@@ -570,7 +570,7 @@ def build_mcp_configuration(
         args=(McpLaunchArgument.MCP, McpLaunchArgument.SERVE),
         env=McpServerEnvironment(
             alexandria_api_url=api_url,
-            alexandria_api_token=api_token,
+            alexandria_operator_api_key=operator_api_key,
             hermes_home=str(hermes_home),
         ),
     )
@@ -578,14 +578,14 @@ def build_mcp_configuration(
     return config
 
 
-def redacted_token(api_token: str) -> str:
-    """Return a safe token value for command output.
+def redacted_operator_key(operator_api_key: str) -> str:
+    """Return a safe operator-key value for command output.
 
     Args:
-        api_token: Raw API token from flags or environment.
+        operator_api_key: Raw operator key from flags or environment.
 
     Returns:
-        Redacted placeholder for non-empty tokens; empty string otherwise.
+        Redacted placeholder for non-empty keys; empty string otherwise.
     """
-    redacted = "<REDACTED>" if api_token != "" else ""
+    redacted = "<REDACTED>" if operator_api_key != "" else ""
     return redacted

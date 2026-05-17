@@ -19,7 +19,7 @@ from app.retrieval.application.vector_serialization import (
 from app.retrieval.infrastructure.sqlite_vec_connection import (
     load_sqlite_vec_for_session,
 )
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -71,7 +71,7 @@ async def search_context_vectors(
         user_id=user_id,
         session_id=session_id,
     )
-    rows = await session.execute(text(vector_query.sql), vector_query.parameters)
+    rows = await session.execute(vector_query.statement, vector_query.parameters)
     ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
     if not ranked:
         return []

@@ -20,7 +20,7 @@ services:
       SERVICE_RAG_EMBEDDING_DIMENSIONS: ${SERVICE_RAG_EMBEDDING_DIMENSIONS:-384}
       SERVICE_RAG_EMBEDDING_CACHE_DIR: ${SERVICE_RAG_EMBEDDING_CACHE_DIR:-/app/data/fastembed-cache}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend/pyproject.toml:/app/pyproject.toml:ro
       - ./backend/uv.lock:/app/uv.lock:ro
@@ -35,12 +35,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    command: npm run dev
+    command: npm run dev:container
     environment:
       NEXT_PUBLIC_BACKEND_URL: http://backend:8000
       ALEXANDRIA_OPERATOR_API_KEY: ${SERVICE_OPERATOR_API_KEY}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       backend:
         condition: service_healthy

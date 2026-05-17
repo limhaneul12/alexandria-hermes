@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.memory.domain.event_enum.context_enums import (
+    ContextAccessActorType,
+    ContextAccessMethod,
     ContextContentFormat,
     ContextImportance,
     ContextKind,
@@ -66,6 +68,19 @@ class ContextChunkRecord:
     content_hash: str
     chunk_metadata: ContextMetadataPayload
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ContextAccessEventRecord:
+    """Read model for one Context Vault access event."""
+
+    id: str
+    context_id: str
+    accessed_at: datetime
+    actor_name: str
+    actor_type: ContextAccessActorType
+    access_method: ContextAccessMethod
+    source_surface: str | None
 
 
 @dataclass(frozen=True, slots=True)

@@ -21,6 +21,38 @@ from app.cli_support.routing.url_paths import normalized_base_url
 from app.cli_support.schemas.hermes_integration_schemas import HermesScannedFile
 from app.shared.exceptions.cli_exceptions import CliInputError
 from app.shared.serialization.orjson_codec import loads_json
+from app.shared.util.config import settings_model_config
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
+
+
+class HermesCliEnvironment(BaseSettings):
+    """Typed environment boundary for Hermes CLI path settings."""
+
+    model_config = settings_model_config(env_prefix="")
+
+    hermes_home: str | None = Field(default=None, validation_alias="HERMES_HOME")
+    config_path: str | None = Field(
+        default=None,
+        validation_alias=HERMES_CONFIG_ENV,
+    )
+
+    @field_validator("hermes_home", "config_path", mode="before")
+    @classmethod
+    # Broad type justified: Pydantic before validators receive raw settings input.
+    def empty_to_none(cls, value: object) -> str | None:
+        """Normalize blank environment values.
+
+        Args:
+            value: Raw environment value.
+
+        Returns:
+            Non-empty string or None.
+        """
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        return stripped or None
 
 
 def resolve_hermes_home(
@@ -43,7 +75,7 @@ def resolve_hermes_home(
     if explicit is not None:
         resolved = HermesResolvedHome(Path(explicit).expanduser(), "argument")
         return resolved
-    env_home = optional_text(os.environ.get("HERMES_HOME"))
+    env_home = optional_text(HermesCliEnvironment().hermes_home)
     if env_home is not None:
         resolved = HermesResolvedHome(Path(env_home).expanduser(), "HERMES_HOME")
         return resolved
@@ -97,7 +129,7 @@ def hermes_config_path() -> Path:
     Returns:
         Config path from environment or the default user config location.
     """
-    configured = optional_text(os.environ.get(HERMES_CONFIG_ENV))
+    configured = optional_text(HermesCliEnvironment().config_path)
     if configured is not None:
         config_path = Path(configured).expanduser()
         return config_path
@@ -118,8 +150,20 @@ def validate_hermes_home(path: Path) -> None:
         raise CliInputError(f"Hermes home does not exist: {path}")
     if not path.is_dir():
         raise CliInputError(f"Hermes home is not a directory: {path}")
-    if not os.access(path, os.W_OK):
+    if not path_has_write_access(path):
         raise CliInputError(f"Hermes home is not writable: {path}")
+
+
+def path_has_write_access(path: Path) -> bool:
+    """Return whether the current process can write to a path.
+
+    Args:
+        path: Filesystem path to check.
+
+    Returns:
+        True when the path is writable.
+    """
+    return os.access(path, os.W_OK)
 
 
 def hermes_api_url(

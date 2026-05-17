@@ -15,7 +15,8 @@ class StrictSchemaModel(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         frozen=True,
-        strict=True,
+        use_enum_values=True,
+        validate_default=True,
     )
 
 
@@ -24,4 +25,6 @@ class StrictRootSchemaModel(RootModel[RootValueT]):
 
     model_config = ConfigDict(
         frozen=True,
+        use_enum_values=True,
+        validate_default=True,
     )

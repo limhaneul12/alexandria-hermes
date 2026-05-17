@@ -63,6 +63,24 @@ class ContextContentFormat(StrEnum):
     TEXT = "TEXT"
 
 
+class ContextAccessActorType(StrEnum):
+    """Actor categories for Context Vault access events."""
+
+    UI = "UI"
+    AGENT = "AGENT"
+    LIBRARIAN = "LIBRARIAN"
+    SYSTEM = "SYSTEM"
+
+
+class ContextAccessMethod(StrEnum):
+    """How a Context Vault entry was accessed."""
+
+    DETAIL_VIEW = "DETAIL_VIEW"
+    RECALL = "RECALL"
+    RAG_SEARCH = "RAG_SEARCH"
+    MCP_TOOL = "MCP_TOOL"
+
+
 class RagStrategy(StrEnum):
     """Context retrieval strategies exposed by RAG search."""
 

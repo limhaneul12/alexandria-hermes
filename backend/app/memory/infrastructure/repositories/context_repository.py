@@ -5,23 +5,37 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.memory.domain.contracts.context_contracts import (
+    ContextAccessCreate,
     ContextChunkCreate,
     ContextChunkEmbeddingUpdate,
     ContextCreate,
 )
 from app.memory.domain.entities.context_read_models import (
+    ContextAccessEventRecord,
     ContextChunkRecord,
     ContextRecord,
     ContextSearchMatch,
 )
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.domain.repositories.context_repository import IContextRepository
-from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
+from app.memory.infrastructure.models.context_models import (
+    ContextChunkORM,
+    ContextORM,
+)
+from app.memory.infrastructure.repositories.contexts.access_events import (
+    list_context_access_events,
+    record_context_access,
+)
 from app.memory.infrastructure.repositories.contexts.embedding_reindex import (
     chunks_missing_embeddings,
     update_chunk_embeddings,
 )
-from app.memory.infrastructure.repositories.contexts.fts import CONTEXT_CHUNK_FTS_SQL
+from app.memory.infrastructure.repositories.contexts.filters import (
+    filtered_context_statement,
+)
+from app.memory.infrastructure.repositories.contexts.fts import (
+    ensure_context_chunk_fts_table,
+)
 from app.memory.infrastructure.repositories.contexts.fts_search import (
     search_context_fts,
 )
@@ -37,7 +51,7 @@ from app.memory.infrastructure.repositories.contexts.vector_search import (
     search_context_vectors,
 )
 from app.shared.exceptions import NotFoundError
-from sqlalchemy import Select, func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -58,7 +72,7 @@ class SqlAlchemyContextRepository(IContextRepository):
         Returns:
             None.
         """
-        await self._session.execute(text(CONTEXT_CHUNK_FTS_SQL))
+        await ensure_context_chunk_fts_table(session=self._session)
 
     async def create(
         self,
@@ -182,7 +196,7 @@ class SqlAlchemyContextRepository(IContextRepository):
         Returns:
             Matching context rows and total count before pagination.
         """
-        statement = self._filtered_statement(
+        statement = filtered_context_statement(
             kind=kind,
             project=project,
             scope=scope,
@@ -240,21 +254,42 @@ class SqlAlchemyContextRepository(IContextRepository):
         context = map_context_row(model)
         return context
 
-    async def record_access(self, context_id: str) -> ContextRecord:
+    async def record_access(self, payload: ContextAccessCreate) -> ContextRecord:
         """Record a recall/access event.
 
         Args:
-            context_id: Context identifier.
+            payload: Context access event fields.
 
         Returns:
             Updated context read model.
         """
-        model = await self._require_context(context_id)
-        model.last_accessed_at = datetime.now(UTC)
-        model.access_count += 1
-        await self._session.flush()
-        context = map_context_row(model)
+        model = await self._require_context(payload.context_id)
+        context = await record_context_access(
+            session=self._session,
+            model=model,
+            payload=payload,
+        )
         return context
+
+    async def access_events(
+        self, *, context_id: str, limit: int = 5
+    ) -> list[ContextAccessEventRecord]:
+        """Return recent access events for one context.
+
+        Args:
+            context_id: Context identifier.
+            limit: Maximum event rows to return.
+
+        Returns:
+            Recent context access events, newest first.
+        """
+        await self._require_context(context_id)
+        events = await list_context_access_events(
+            session=self._session,
+            context_id=context_id,
+            limit=limit,
+        )
+        return events
 
     async def search_fts(
         self,
@@ -391,50 +426,6 @@ class SqlAlchemyContextRepository(IContextRepository):
             updates=updates,
         )
         return updated
-
-    def _filtered_statement(
-        self,
-        *,
-        kind: ContextKind | None,
-        project: str | None,
-        scope: ContextScope | None,
-        workspace_id: str | None,
-        agent_id: str | None,
-        user_id: str | None,
-        session_id: str | None,
-        source_agent: str | None,
-        tag: str | None,
-        include_archived: bool,
-    ) -> Select[tuple[ContextORM]]:
-        statement = select(ContextORM)
-        if not include_archived:
-            statement = statement.where(ContextORM.is_archived.is_(False))
-        if kind is not None:
-            statement = statement.where(ContextORM.kind == kind.value)
-        if project is not None:
-            statement = statement.where(ContextORM.project == project)
-        if scope is not None:
-            statement = statement.where(ContextORM.scope == scope.value)
-        if workspace_id is not None:
-            statement = statement.where(ContextORM.workspace_id == workspace_id)
-        if agent_id is not None:
-            statement = statement.where(ContextORM.agent_id == agent_id)
-        if user_id is not None:
-            statement = statement.where(ContextORM.user_id == user_id)
-        if session_id is not None:
-            statement = statement.where(ContextORM.session_id == session_id)
-        if source_agent is not None:
-            statement = statement.where(ContextORM.source_agent == source_agent)
-        if tag is not None:
-            statement = statement.where(
-                text(
-                    "EXISTS ("
-                    "SELECT 1 FROM json_each(contexts.tags) "
-                    "WHERE json_each.value = :context_tag"
-                    ")"
-                ).bindparams(context_tag=tag)
-            )
-        return statement
 
     async def _require_context(self, context_id: str) -> ContextORM:
         model = await self._session.get(ContextORM, context_id)
