@@ -60,7 +60,19 @@ Current documentation entry points:
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — local development, quality gates, docs rules, and PR expectations
 - [`ROADMAP.md`](./ROADMAP.md) — OSS readiness status and near-term roadmap
 
-### Product screenshots
+### Product demo media
+
+These demo assets use safe local demo records to show populated Context Vault, Memory Compact, RAG Inspector, and Librarian Chat flows.
+
+| Context Vault flow | Memory Compacts flow |
+| --- | --- |
+| ![Context Vault flow](./docs/assets/demo/context-vault-flow.gif) | ![Memory Compacts flow](./docs/assets/demo/memory-compacts-flow.gif) |
+
+| RAG Inspector flow | Librarian Chat flow |
+| --- | --- |
+| ![RAG Inspector flow](./docs/assets/demo/rag-inspector-flow.gif) | ![Librarian Chat flow](./docs/assets/demo/librarian-chat-flow.gif) |
+
+Static screenshots are kept as a lighter fallback for platforms that do not autoplay GIFs.
 
 | Context Vault | Memory Compacts |
 | --- | --- |
@@ -69,8 +81,6 @@ Current documentation entry points:
 | RAG Inspector | Librarian Chat |
 | --- | --- |
 | ![RAG Inspector page](./docs/assets/screenshots/rag-inspector.png) | ![Librarian Chat page](./docs/assets/screenshots/librarian-chat.png) |
-
-These screenshots use safe local demo records to show populated Context Vault, Memory Compact, RAG Inspector, and Librarian Chat flows. Short GIFs can still supplement the static screenshots before a broader public launch.
 
 ---
 
@@ -383,6 +393,6 @@ Before a broad public OSS launch, keep this checklist visible:
 - [x] Backend and frontend GitHub Actions workflow badges are configured.
 - [x] GitHub bug/feature issue templates and PR template are present.
 - [x] Populated local UI screenshots are present for Context Vault, Memory Compacts, RAG Inspector, and Librarian Chat.
-- [ ] Add short demo GIFs for the main flows if static screenshots are not enough for launch.
+- [x] Short demo GIFs are present for the main populated flows.
 
-The remaining public-launch gap is richer visual/product proof where needed: short GIFs that show the populated flows step by step.
+The remaining public-launch gaps are operational docs and examples: backup/restore, Docker Compose upgrade guidance, API/MCP examples, and any final security disclosure polish.

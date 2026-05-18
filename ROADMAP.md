@@ -21,7 +21,7 @@ Verified local surfaces include:
 - [x] Backend and frontend CI workflows plus README badges added.
 - [x] Issue templates and PR template added.
 - [x] Populated local UI screenshots added for the main flows.
-- [ ] Add short demo GIFs for the main flows if static screenshots are not enough for launch.
+- [x] Short demo GIFs added for the main populated flows.
 - [ ] Add backup/restore guide.
 - [ ] Add Docker Compose upgrade guide.
 - [ ] Add API/MCP reference examples.
