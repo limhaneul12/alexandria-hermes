@@ -5,9 +5,6 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from dependency_injector import containers, providers
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.archive.containers import ArchiveContainer
 from app.connections.containers import ConnectionsContainer
 from app.librarian.containers import LibrarianContainer
@@ -17,6 +14,8 @@ from app.platform.config.app_config import AppConfig
 from app.platform.config.database_config import DatabaseConfig
 from app.shared.infrastructure.database import Database
 from app.shared.security.secret_cipher import SecretCipher, SecretCipherSettings
+from dependency_injector import containers, providers
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @asynccontextmanager

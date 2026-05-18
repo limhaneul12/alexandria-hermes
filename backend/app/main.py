@@ -7,8 +7,6 @@ from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 from typing import cast
 
-from fastapi import FastAPI
-
 from app.archive.interface.routers.minio_archive_router import router as minio_router
 from app.connections.interface.routers.librarian_oauth_router import (
     router as librarian_oauth_router,
@@ -49,6 +47,7 @@ from app.retrieval.interface.routers.retrieval_boundary_router import (
 )
 from app.retrieval.interface.routers.search_router import router as search_router
 from app.shared.infrastructure.database import Database
+from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
