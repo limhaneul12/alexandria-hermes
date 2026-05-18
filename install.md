@@ -50,6 +50,70 @@ export HERMES_API_URL="$ALEXANDRIA_API_URL"
 
 ---
 
+## 패키지 설치 방식: uv / pip / PyPI
+
+Alexandria-Hermes CLI는 Python package entrypoint `alexandria-hermes`로 제공된다. Backend service와 frontend UI는 여전히 이 repo의 application stack이 필요하지만, Hermes에 붙여 쓰는 CLI/MCP server binary는 `uv` 또는 `pip`로 설치할 수 있게 운영하는 것이 목표다.
+
+### 권장: uv tool 설치
+
+PyPI release가 올라간 뒤에는 아래 방식이 가장 깔끔하다.
+
+```bash
+uv tool install alexandria-hermes
+alexandria-hermes --help
+alexandria-hermes --base-url "${ALEXANDRIA_API_URL:-http://localhost:8000}" --json health
+```
+
+개발 중이거나 아직 PyPI release 전이면 GitHub repo에서 직접 설치한다.
+
+```bash
+uv tool install "git+https://github.com/limhaneul12/alexandria-hermes.git#subdirectory=backend"
+alexandria-hermes --help
+```
+
+로컬 clone에서 확인할 때는 backend package를 editable로 설치한다.
+
+```bash
+git clone https://github.com/limhaneul12/alexandria-hermes.git
+cd alexandria-hermes/backend
+uv sync
+uv run alexandria-hermes --help
+uv run alexandria-hermes --base-url "${ALEXANDRIA_API_URL:-http://localhost:8000}" --json health
+```
+
+### pip fallback
+
+PyPI release 후에는 일반 Python 환경에서도 설치할 수 있다.
+
+```bash
+python -m pip install alexandria-hermes
+alexandria-hermes --help
+```
+
+아직 PyPI release 전이면 Git URL을 사용한다.
+
+```bash
+python -m pip install "alexandria-hermes @ git+https://github.com/limhaneul12/alexandria-hermes.git#subdirectory=backend"
+```
+
+### PyPI publish 여부
+
+올리는 편이 좋다. 이유는 다음과 같다.
+
+- Hermes MCP 등록 예제가 `command: alexandria-hermes` 하나로 단순해진다.
+- `uv tool install alexandria-hermes`와 `pip install alexandria-hermes`가 모두 가능해진다.
+- 신규 사용자가 repo clone 없이 CLI/MCP client를 설치할 수 있다.
+
+단, PyPI에 올리기 전에는 아래를 먼저 확인한다.
+
+- package name `alexandria-hermes` 사용 가능 여부
+- README/install metadata가 PyPI page에서 깨지지 않는지
+- wheel/sdist에 secret, local `.env`, generated demo DB가 포함되지 않는지
+- `alexandria-hermes` console script가 `app.cli:main`을 정확히 가리키는지
+- backend server 운영은 별도 Docker Compose/local app setup이 필요하다는 점을 명확히 표시하는지
+
+---
+
 ## 사용법 가이드북
 
 기능별 사용 예제는 아래 가이드북에 분리했다.
@@ -169,6 +233,10 @@ alexandria-hermes --json hermes policy enable --hermes-home "$HERMES_HOME"
 repo root에서 실행한다.
 
 ```bash
+set -a
+[ -f .env ] && . ./.env
+set +a
+
 export ALEXANDRIA_API_URL="${ALEXANDRIA_API_URL:-http://localhost:8000}"
 export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 export ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-${SERVICE_OPERATOR_API_KEY:-}}"
@@ -475,8 +543,8 @@ mcp_servers:
 
 - `command`는 가능하면 `command -v alexandria-hermes`로 얻은 absolute path를 사용한다.
 - `ALEXANDRIA_API_URL`은 Hermes/Gateway 프로세스가 접근 가능한 URL이어야 한다.
-- 사서/provider OAuth tool을 쓰려면 `ALEXANDRIA_OPERATOR_API_KEY`가 backend의
-  `SERVICE_OPERATOR_API_KEY`와 같아야 한다.
+- 사서/provider OAuth tool을 쓰려면 Hermes/Gateway 프로세스의
+  `ALEXANDRIA_OPERATOR_API_KEY`가 backend 설정값과 같아야 한다.
 - basic local data-plane 테스트는 operator key 없이도 가능하지만, settings/provider/librarian delegation tool은 `ALEXANDRIA_OPERATOR_API_KEY`가 필요하다.
 - `mcpServers`가 아니라 Hermes native config의 `mcp_servers`에 들어가야 한다.
 

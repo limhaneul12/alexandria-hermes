@@ -74,6 +74,16 @@ These demo assets use safe local demo records to show populated Context Vault, M
 
 Static screenshots are kept as a lighter fallback for platforms that do not autoplay GIFs.
 
+To refresh real browser recordings for these flows, run the backend/frontend with safe demo data, install the pinned Playwright browser once, then record from the frontend package:
+
+```bash
+cd frontend
+npm run demo:install-browsers
+ALEXANDRIA_DEMO_FRONTEND_URL=http://127.0.0.1:3000 npm run demo:record
+```
+
+The recorder writes `.webm` captures to `docs/assets/demo/recordings/`. Publish selected recordings or convert them to optimized GIFs only after confirming they contain no operator keys, provider secrets, OAuth tokens, or private user data.
+
 | Context Vault | Memory Compacts |
 | --- | --- |
 | ![Context Vault page](./docs/assets/screenshots/context-vault.png) | ![Memory Compacts page](./docs/assets/screenshots/memory-compacts.png) |
@@ -104,7 +114,7 @@ Known boundaries:
 - No user-account login/session system is implemented. Sensitive control-plane routes use one operator key.
 - Public or team deployment needs an external access boundary first: VPN, reverse proxy auth, firewall allowlist, SSH tunnel, or equivalent.
 - Live provider/OAuth delegation requires configured credentials and is not exercised by the default offline test suite.
-- The npm supply-chain hold is active. Do **not** run `npm install`, `npm uninstall`, `npm ci`, or `npx` unless the hold is explicitly lifted. Prefer the committed lockfile and offline guard scripts.
+- For explicitly approved frontend dependency changes, use committed lockfile updates and safe installs such as `npm install --ignore-scripts --no-audit --no-fund`; do not run arbitrary `npx` commands.
 
 ---
 
@@ -138,7 +148,7 @@ Health checks:
 
 ### Frontend
 
-Use the existing lockfile/dependencies. Do not install new packages during the npm hold.
+Use the committed lockfile/dependencies. For dependency changes, keep scripts disabled during install and run the supply-chain guard before other frontend tasks.
 
 ```bash
 cd frontend

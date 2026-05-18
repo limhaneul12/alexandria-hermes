@@ -18,7 +18,9 @@
     "test:ask-librarian-widget": "node scripts/check-ask-librarian-widget.mjs",
     "test:librarian-chat": "node scripts/check-librarian-chat-contract.mjs",
     "test:library-ui-navigation": "node scripts/check-library-ui-navigation-contract.mjs",
-    "test:content-viewer": "node scripts/check-content-viewer-contract.mjs"
+    "test:content-viewer": "node scripts/check-content-viewer-contract.mjs",
+    "demo:install-browsers": "playwright install chromium",
+    "demo:record": "node scripts/record-demo-flows.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
@@ -36,6 +38,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^24.2.1",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.12",
