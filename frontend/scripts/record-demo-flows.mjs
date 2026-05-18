@@ -26,6 +26,12 @@ async function fillFirstVisible(page, selector, value) {
   await target.fill(value);
 }
 
+async function fillByLabel(page, label, value) {
+  const target = page.getByLabel(label).first();
+  await target.waitFor({ state: "visible", timeout: 10_000 });
+  await target.fill(value);
+}
+
 async function clickFirstVisible(page, selectors) {
   for (const selector of selectors) {
     const target = page.locator(selector).first();
@@ -46,7 +52,7 @@ async function pressEnterAfterFilter(page) {
 }
 
 async function selectDirectSearchMode(page) {
-  const select = page.locator("select").first();
+  const select = page.locator("main select").first();
   try {
     await select.waitFor({ state: "visible", timeout: 2_000 });
     await select.selectOption("DIRECT_SEARCH");
@@ -81,7 +87,7 @@ const flows = [
     name: "context-vault-flow",
     path: "/contexts",
     steps: async (page) => {
-      await fillFirstVisible(page, "input", demoQuery);
+      await fillByLabel(page, "Project", demoQuery);
       await pressEnterAfterFilter(page);
     },
   },
@@ -89,7 +95,7 @@ const flows = [
     name: "memory-compacts-flow",
     path: "/memory-compacts",
     steps: async (page) => {
-      await fillFirstVisible(page, "input", demoQuery);
+      await fillByLabel(page, "Project", demoQuery);
       await pressEnterAfterFilter(page);
     },
   },
@@ -97,13 +103,14 @@ const flows = [
     name: "rag-inspector-flow",
     path: "/rag-inspector",
     steps: async (page) => {
-      await fillFirstVisible(page, "textarea, input", "populated OSS screenshots Alexandria-Hermes demo");
+      await fillFirstVisible(page, "main input[name='rag-query']", "populated OSS screenshots Alexandria-Hermes demo");
       await clickFirstVisible(page, [
-        "button:has-text('Run')",
-        "button:has-text('Search')",
-        "button:has-text('실행')",
-        "button:has-text('검색')",
-        "button[type='submit']",
+        "main button:has-text('Inspect')",
+        "main button:has-text('Run')",
+        "main button:has-text('Search')",
+        "main button:has-text('실행')",
+        "main button:has-text('검색')",
+        "main button[type='submit']",
       ]);
       await page.waitForLoadState("networkidle").catch(() => undefined);
       await page.waitForTimeout(2_000);
@@ -114,13 +121,14 @@ const flows = [
     path: "/librarian/chat",
     steps: async (page) => {
       await selectDirectSearchMode(page);
-      await fillFirstVisible(page, "textarea, input", chatPrompt);
+      await fillFirstVisible(page, "main textarea[aria-label='질문 입력'], main textarea[placeholder='질문 입력'], main textarea, main input", chatPrompt);
       await clickFirstVisible(page, [
-        "button[type='submit']",
-        "button:has-text('Send')",
-        "button:has-text('Ask')",
-        "button:has-text('질문')",
-        "button:has-text('전송')",
+        "main button[type='submit']",
+        "main button:has-text('보내기')",
+        "main button:has-text('Send')",
+        "main button:has-text('Ask')",
+        "main button:has-text('질문')",
+        "main button:has-text('전송')",
       ]);
       await page.waitForLoadState("networkidle").catch(() => undefined);
       await page.waitForTimeout(3_000);
