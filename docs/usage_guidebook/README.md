@@ -33,7 +33,13 @@ docs/usage_guidebook/install_onboard/install_onboard_guide_01.md
 | hermes_policy | [hermes_policy_guide_01.md](hermes_policy/hermes_policy_guide_01.md) | default ON policy와 CLI on/off 사용법 |
 | mcp_runtime | [mcp_runtime_guide_01.md](mcp_runtime/mcp_runtime_guide_01.md) | MCP snippet과 Hermes runtime 등록 차이 |
 | self_acquisition | [self_acquisition_guide_01.md](self_acquisition/self_acquisition_guide_01.md) | 사서 없이 Hermes가 직접 조사/후보 제출하는 흐름 |
+| context_recall | [context_recall_guide_01.md](context_recall/context_recall_guide_01.md) | context 저장 후 recall/Context Pack을 확인하는 첫 기능 smoke test |
+| memory_compacts | [memory_compacts_guide_01.md](memory_compacts/memory_compacts_guide_01.md) | 장기기억 요약의 24시간 coverage window와 weekly rollup 기준 |
+| library_assets | [library_assets_guide_01.md](library_assets/library_assets_guide_01.md) | skills/prompts candidate search와 selected full-load 흐름 |
 | librarian_collaboration | [librarian_collaboration_guide_01.md](librarian_collaboration/librarian_collaboration_guide_01.md) | 사서를 optional 협업자로 쓰는 흐름 |
+| security_privacy | [security_privacy_guide_01.md](security_privacy/security_privacy_guide_01.md) | local-first single-operator 보안/프라이버시 모델 |
+| troubleshooting | [troubleshooting_guide_01.md](troubleshooting/troubleshooting_guide_01.md) | 증상 기반 설치/recall/MCP/build 문제 해결 |
+| oss_onboarding | [oss_onboarding_guide_01.md](oss_onboarding/oss_onboarding_guide_01.md) | 유명 OSS 온보딩 패턴을 반영한 문서 작성 기준 |
 
 ## 핵심 운영 모델
 
@@ -55,4 +61,25 @@ alexandria-hermes hermes policy disable
 
 ```bash
 alexandria-hermes hermes policy enable
+```
+
+
+## 추천 읽기 순서
+
+### 처음 쓰는 사용자
+
+```text
+install_onboard → context_recall → memory_compacts → mcp_runtime → hermes_policy
+```
+
+### Agent/Hermes 통합 사용자
+
+```text
+mcp_runtime → library_assets → self_acquisition → librarian_collaboration
+```
+
+### 운영자/공개 전 점검
+
+```text
+security_privacy → troubleshooting → oss_onboarding
 ```

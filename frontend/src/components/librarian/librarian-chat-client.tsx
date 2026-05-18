@@ -7,7 +7,12 @@ import { Bot, Loader2, Search, Send } from "lucide-react";
 import { ContentViewer } from "@/components/content/content-viewer";
 import { Button } from "@/components/ui/button";
 import { chatWithLibrarian } from "@/lib/api";
-import type { LibrarianChatMode, LibrarianChatResponseDTO, LibrarianChatTarget } from "@/types/library";
+import type {
+  LibrarianChatMode,
+  LibrarianChatResponseDTO,
+  LibrarianChatTarget,
+  LibrarianSourceRefDTO,
+} from "@/types/library";
 
 const TARGETS: Array<{ value: LibrarianChatTarget; label: string; description: string }> = [
   { value: "SKILL", label: "스킬", description: "실행 가능한 agent capability" },
@@ -20,6 +25,15 @@ function modeLabel(mode: LibrarianChatMode) {
   if (mode === "DIRECT_SEARCH") return "직접 검색 먼저";
   if (mode === "DELEGATE") return "사서에게 위임";
   return "둘 다";
+}
+
+function sourceRefLabel(sourceType: LibrarianSourceRefDTO["sourceType"]) {
+  if (sourceType === "SKILL") return "스킬";
+  if (sourceType === "PROMPT") return "프롬프트";
+  if (sourceType === "CONTEXT") return "장기기억";
+  if (sourceType === "MEMORY_COMPACT") return "기억 요약본";
+  if (sourceType === "KNOWLEDGE") return "지식 자료";
+  return "라이브러리 항목";
 }
 
 export function LibrarianChatClient() {
@@ -131,7 +145,7 @@ export function LibrarianChatClient() {
                       <a key={`${hit.sourceType}-${hit.id}`} href={hit.detailPath.replace(/^\/memory\/contexts/, "/contexts").replace(/^\/memory\/compacts/, "/memory-compacts")} className="rounded-xl border border-[#d8d3c7] bg-white/70 p-4 transition hover:bg-white">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <span className="font-semibold text-[#111111]">{hit.title}</span>
-                          <span className="rounded border border-[#cfc8b8] px-2 py-1 text-[11px] text-[#625c52]">{hit.sourceType}</span>
+                          <span className="rounded border border-[#cfc8b8] px-2 py-1 text-[11px] text-[#625c52]">{sourceRefLabel(hit.sourceType)}</span>
                         </div>
                         <p className="mt-2 text-sm leading-6 text-[#514c44]">{hit.preview}</p>
                       </a>
@@ -164,8 +178,8 @@ export function LibrarianChatClient() {
                 {response.sourceRefs.map((ref) => (
                   <li key={`${ref.sourceType}-${ref.sourceId}`} className="rounded-lg border border-[#d8d3c7] bg-white/70 p-3">
                     <p className="font-semibold text-[#111111]">{ref.title}</p>
-                    <p className="mt-1 text-xs text-[#6f6a60]">{ref.sourceType} · {ref.sourceId}</p>
-                    <p className="mt-1 text-xs text-[#6f6a60]">{ref.detailPath}</p>
+                    <p className="mt-1 text-xs text-[#6f6a60]">{sourceRefLabel(ref.sourceType)}</p>
+                    <p className="mt-1 text-xs text-[#6f6a60]">{ref.preview}</p>
                   </li>
                 ))}
               </ul>

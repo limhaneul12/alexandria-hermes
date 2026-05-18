@@ -476,6 +476,14 @@ Preferred MCP tools:
 
 Recommended context kinds: `DECISION`, `BUG_ROOT_CAUSE`, `HANDOFF`, `PLAN`, `RESEARCH`, `COMPACT`, and `USAGE`.
 
+Compact window policy:
+
+- Use a 24-hour rolling window as the default durable-memory compaction range for active projects.
+- Set `covered_from` to the previous compact's `covered_to`; set `covered_to` to the moment the compact is written.
+- If a single work burst is shorter than 24 hours, compact that session at handoff/end-of-task instead of padding time.
+- If more than 72 hours passed since the previous compact, start a fresh window from the first meaningful resumed event and mention the gap.
+- Create a separate 7-day weekly rollup only when daily/session compacts become too granular for recall.
+
 ## Self-acquisition policy
 
 When a reusable skill is missing:

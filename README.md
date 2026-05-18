@@ -1,6 +1,6 @@
 # ALEXANDRIA-HERMES
 
-> Local-first archive, Context Vault, and recall layer for humans, AI agents, and optional librarian agents.
+> Local-first agent library and recall layer for reusable skills, prompts, context, memory compacts, and optional librarian curation.
 
 <p align="center">
   <img src="./docs/assets/alexandria-hermes-cover.png" alt="ALEXANDRIA-HERMES archive cover" width="100%" />
@@ -16,6 +16,9 @@
   <a href="https://typer.tiangolo.com/"><img alt="Typer" src="https://img.shields.io/badge/Typer-0.25.1-009688"></a>
   <a href="https://nextjs.org/"><img alt="Next.js" src="https://img.shields.io/badge/Next.js-15.5.18-black?logo=nextdotjs"></a>
   <a href="https://react.dev/"><img alt="React" src="https://img.shields.io/badge/React-19.2.6-149ECA?logo=react&logoColor=white"></a>
+  <a href="https://github.com/limhaneul12/alexandria-hermes/actions/workflows/backend.yml"><img alt="Backend CI" src="https://github.com/limhaneul12/alexandria-hermes/actions/workflows/backend.yml/badge.svg"></a>
+  <a href="https://github.com/limhaneul12/alexandria-hermes/actions/workflows/frontend.yml"><img alt="Frontend CI" src="https://github.com/limhaneul12/alexandria-hermes/actions/workflows/frontend.yml/badge.svg"></a>
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
   <img alt="Backend tests" src="https://img.shields.io/badge/backend_tests-324%20passed-brightgreen">
   <img alt="Guardrails" src="https://img.shields.io/badge/guardrails-33%20passed-brightgreen">
   <img alt="Typecheck" src="https://img.shields.io/badge/pyrefly-0%20errors-brightgreen">
@@ -27,7 +30,7 @@
 
 Alexandria-Hermes is a **no-login, single-operator, local-first** archive for reusable AI-agent material.
 
-It manages skills, prompts, captured context, memory compacts, librarian briefs, and retrieval metadata so humans and agents can register, classify, search, recall, and reuse work later.
+It manages skills, prompts, captured context, memory compacts, librarian briefs, and retrieval metadata so humans and agents can register, classify, search, recall, and reuse work later. It is **not** an autonomous agent runtime, MCP marketplace, prompt marketplace, or generic hosted memory API; it is an agent-native operating library that Hermes-compatible agents can consult when local/current context is not enough.
 
 Hermes is one client of the archive, not the archive itself:
 
@@ -52,7 +55,22 @@ Current implementation focus:
 Current documentation entry points:
 
 - [`install.md`](./install.md) — local install, operator key, Hermes onboarding, and MCP registration
-- [`docs/usage_guidebook/`](./docs/usage_guidebook/) — feature-level operator guides
+- [`docs/usage_guidebook/`](./docs/usage_guidebook/) — task-oriented feature/operator guides
+- [`SECURITY.md`](./SECURITY.md) — local-first security model, secrets, and network exposure warnings
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — local development, quality gates, docs rules, and PR expectations
+- [`ROADMAP.md`](./ROADMAP.md) — OSS readiness status and near-term roadmap
+
+### Product screenshots
+
+| Context Vault | Memory Compacts |
+| --- | --- |
+| ![Context Vault page](./docs/assets/screenshots/context-vault.png) | ![Memory Compacts page](./docs/assets/screenshots/memory-compacts.png) |
+
+| RAG Inspector | Librarian Chat |
+| --- | --- |
+| ![RAG Inspector page](./docs/assets/screenshots/rag-inspector.png) | ![Librarian Chat page](./docs/assets/screenshots/librarian-chat.png) |
+
+These screenshots use safe local demo records to show populated Context Vault, Memory Compact, RAG Inspector, and Librarian Chat flows. Short GIFs can still supplement the static screenshots before a broader public launch.
 
 ---
 
@@ -123,6 +141,33 @@ Frontend runs at:
 - `http://localhost:3000`
 
 `npm run dev` and `npm run start` bind the Next.js server to `127.0.0.1` for local single-operator safety. Container runs use `npm run dev:container`/`npm run start:container` so the service binds only inside Docker while Compose publishes host ports on `127.0.0.1`.
+
+### First recall loop
+
+A good first-run success state is not just "the servers booted". Capture one durable context, recall it, then open it in the UI.
+
+```bash
+cat > /tmp/alexandria-first-context.md <<'MD'
+# First Alexandria context
+
+This local Alexandria-Hermes instance is running.
+Use Context Vault for durable decisions, handoffs, plans, memory compacts, and reusable agent context.
+MD
+
+./bin/alexandria-hermes context save \
+  --title "First Alexandria context" \
+  --kind DECISION \
+  --project alexandria-hermes \
+  --content-file /tmp/alexandria-first-context.md
+
+./bin/alexandria-hermes context recall \
+  "durable decisions handoffs memory compacts" \
+  --strategy FTS_ONLY \
+  --project alexandria-hermes \
+  --limit 3
+```
+
+Expected result: the recall response includes a Context Pack referencing the saved context. In the UI, check `/contexts`, `/capture-review`, and `/rag-inspector`.
 
 ### Full Stack
 
@@ -236,7 +281,7 @@ Supported behaviors:
 
 Primary surfaces:
 
-- backend routes under `/library/contexts` and `/library/compacts`
+- backend routes under `/memory/contexts` and `/memory/compacts` plus frontend proxy routes under `/api/library/contexts` and `/api/library/compacts`
 - frontend pages `/contexts`, `/contexts/{contextId}`, `/memory-compacts`, `/memory-compacts/{compactId}`, `/capture-review`, `/rag-inspector`
 - CLI commands under `alexandria-hermes context ...` and `alexandria-hermes memory-compacts ...`
 - MCP server via `alexandria-hermes mcp serve`
@@ -297,6 +342,9 @@ npm run test:ui-contract
 npm run test:librarian-chat
 npm run test:library-ui-navigation
 npm run test:content-viewer
+npm run test:library-category-filter
+npm run test:ask-librarian-widget
+npm run test:agent-route-payload
 npm run build
 npm run dev
 ```
@@ -318,3 +366,23 @@ Alexandria-Hermes aims to become an operational archive where:
 - usage history and RAG recall improve retrieval
 - librarian agents are optional helpers, not hard dependencies
 - humans and agents can both participate
+
+---
+
+## OSS Readiness
+
+Before a broad public OSS launch, keep this checklist visible:
+
+- [x] README explains the agent-native library/reuse model instead of positioning Alexandria-Hermes as a generic RAG app.
+- [x] Local quickstart reaches a visible recall result: capture → recall → inspect.
+- [x] Task-oriented usage guides cover install, MCP runtime, policy, self-acquisition, librarian collaboration, context recall, library assets, security, and troubleshooting.
+- [x] Backend quality gates pass locally: format, lint, type check, guardrails, and full tests.
+- [x] Frontend lint/contracts/build pass after clearing generated `.next` artifacts when needed.
+- [x] `SECURITY.md`, `CONTRIBUTING.md`, and `ROADMAP.md` are present.
+- [x] MIT `LICENSE` is present at the repository root.
+- [x] Backend and frontend GitHub Actions workflow badges are configured.
+- [x] GitHub bug/feature issue templates and PR template are present.
+- [x] Populated local UI screenshots are present for Context Vault, Memory Compacts, RAG Inspector, and Librarian Chat.
+- [ ] Add short demo GIFs for the main flows if static screenshots are not enough for launch.
+
+The remaining public-launch gap is richer visual/product proof where needed: short GIFs that show the populated flows step by step.

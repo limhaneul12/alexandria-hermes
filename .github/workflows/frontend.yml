@@ -1,0 +1,60 @@
+name: Frontend
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies from lockfile
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Run npm supply-chain guard
+        working-directory: frontend
+        run: npm run security:npm-supply-chain
+
+      - name: Run frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Run frontend contract tests
+        working-directory: frontend
+        run: |
+          npm run test:ui-contract
+          npm run test:librarian-chat
+          npm run test:library-ui-navigation
+          npm run test:content-viewer
+          npm run test:library-category-filter
+          npm run test:ask-librarian-widget
+          npm run test:agent-route-payload
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build

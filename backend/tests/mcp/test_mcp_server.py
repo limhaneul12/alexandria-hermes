@@ -135,7 +135,7 @@ def test_mcp_client_sends_backend_http_only_with_auth_headers() -> None:
     assert request.headers["accept"] == "application/json"
     assert request.headers["content-type"] == "application/json"
     assert "authorization" not in request.headers
-    assert request.headers["x-operator-api-key"] == "operator-secret"
+    assert request.headers["X-Alexandria-Operator-Key"] == "operator-secret"
     assert request_body == {
         "query": "context recall",
         "strategy": "FTS_ONLY",

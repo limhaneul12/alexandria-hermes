@@ -1,0 +1,55 @@
+name: Feature request
+description: Propose an improvement for the local-first agent library/control plane
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Alexandria-Hermes is a local-first agent-native library/control plane for reusable skills, prompts, context, memory compacts, usage history, and optional librarian curation. It is not an autonomous agent runtime, prompt marketplace, MCP marketplace, or generic hosted memory API.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / job to be done
+      description: What user or agent workflow is currently difficult?
+      placeholder: "A fresh Hermes agent cannot quickly discover..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful product behavior, not just an implementation detail.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend / API
+        - CLI / MCP
+        - Frontend UI
+        - Context Vault / RAG
+        - Memory Compacts
+        - Library skills/prompts
+        - Librarian delegation
+        - Install / Docker / CI
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What simpler local-first approach could work?
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This fits the local-first, no-login, single-operator model or clearly explains the boundary needed outside Alexandria-Hermes.
+          required: true
+        - label: This does not require storing raw secrets, full conversation logs, or provider tokens in library/context content.
+          required: true

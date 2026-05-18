@@ -205,6 +205,43 @@ def test_openai_api_key_executor_sends_prompt_to_responses_api() -> None:
     anyio.run(scenario)
 
 
+def test_librarian_instructions_require_counts_and_lists_for_inventory_questions() -> (
+    None
+):
+    """Librarian guidance should answer count/list prompts with structured inventory."""
+
+    async def scenario() -> None:
+        client = FakeOpenAIClient()
+
+        def build_client(config: OpenAIClientConfig):
+            return client
+
+        secret_repo = FakeSecretRepository(
+            {
+                ("openai-main", ProviderSecretKey.API_KEY.value): "***",
+            }
+        )
+        executor = OpenAIProviderDelegateExecutor(
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+        await executor.execute(
+            command=_command("hermes 와 관련된 skills 이 몇개지?"),
+            plan=_plan(_provider("openai-main", ProviderType.OPENAI, AuthType.API_KEY)),
+            fallback=_fallback("openai-main"),
+        )
+
+        instructions = str(client.responses.calls[0]["instructions"])
+        assert "count" in instructions
+        assert "top 5" in instructions
+        assert "numbered list" in instructions
+        assert "Do not expose raw API routes" in instructions
+        assert "frontend paths" in instructions
+        assert "natural product language" in instructions
+
+    anyio.run(scenario)
+
+
 def test_openai_codex_executor_uses_oauth_token_and_codex_base_url() -> None:
     async def scenario() -> None:
         configs: list[OpenAIClientConfig] = []

@@ -8,7 +8,7 @@ from typing import Annotated, Final
 from app.platform.config.app_config import AppConfig
 from fastapi import Header, HTTPException, status
 
-OPERATOR_API_KEY_HEADER: Final[str] = "x-operator-api-key"
+OPERATOR_API_KEY_HEADER: Final[str] = "X-Alexandria-Operator-Key"
 
 
 def configured_operator_api_key(config: AppConfig | None = None) -> str:
@@ -33,7 +33,7 @@ async def require_operator_api_key(
     """Reject requests missing the configured operator API key.
 
     Args:
-        operator_api_key: Request header value for ``x-operator-api-key``.
+        operator_api_key: Request header value for ``X-Alexandria-Operator-Key``.
 
     Returns:
         None.

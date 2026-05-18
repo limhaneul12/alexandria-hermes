@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible Alexandria-Hermes defect
+title: "fix: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Alexandria-Hermes. Do not include raw API keys, operator keys, OAuth tokens, provider secrets, private keys, or full unredacted conversation logs.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What broke, and what did you expect instead?
+      placeholder: "Context recall returns no matches after saving a context..."
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend / API
+        - CLI / MCP
+        - Frontend UI
+        - Context Vault / RAG
+        - Memory Compacts
+        - Library skills/prompts
+        - Librarian delegation
+        - Install / Docker / CI
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Use a fresh/local setup when possible. Redact secrets.
+      placeholder: |
+        1. Start backend with ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, command output, screenshots, or failing test names. Redact sensitive values.
+      render: shell
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        OS:
+        Python:
+        Node:
+        Browser:
+        Alexandria-Hermes commit:
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I removed or replaced secrets with placeholders such as [REDACTED] or <operator-key>.
+          required: true
+        - label: I am not asking for a hosted login/RBAC flow; this report respects the local-first single-operator model.
+          required: true

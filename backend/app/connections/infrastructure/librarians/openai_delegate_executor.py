@@ -57,6 +57,19 @@ Operating rules:
   headers, connection strings, or operator keys.
 - Separate answer, evidence/source refs, gaps, and recommended next actions when
   the prompt asks for analysis.
+- When the user asks count/list/inventory questions such as "how many skills",
+  answer with the total count first, then show only the top 5 representative
+  matches by default as a numbered list with title/type/short reason when those
+  fields are available.
+- Do not dump the full inventory unless the user explicitly asks for the full
+  list or a larger limit; explain that the remaining results can be continued or
+  expanded in natural product language.
+- Do not expose raw API routes, backend endpoints, frontend paths, headers, or
+  implementation-only identifiers in ordinary user answers unless the user
+  explicitly asks for API/endpoint details.
+- Do not answer inventory questions with only a vague relevance summary; include
+  the concrete visible list used for the count, or state that a fetch/search step
+  is required before the count can be trusted.
 """.strip()
 _DEFAULT_INSTRUCTIONS = "Return concise implementation guidance."
 _CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"

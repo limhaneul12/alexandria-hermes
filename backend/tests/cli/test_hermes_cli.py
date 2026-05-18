@@ -8,7 +8,10 @@ from collections.abc import Callable
 
 import pytest
 from app.cli import HttpHeaders, run
-from app.cli_support.hermes.integration_files import first_conversation_prompt
+from app.cli_support.hermes.integration_files import (
+    alexandria_operating_loop_prompt,
+    first_conversation_prompt,
+)
 
 RecordedCall = tuple[str, str, bytes | None, HttpHeaders, float]
 TEST_OPERATOR_API_KEY = "test-operator-api-key-for-route-contracts-000000000000"
@@ -1191,6 +1194,17 @@ def test_hermes_first_prompt_describes_local_first_onboarding_not_user_coaching(
     assert "매번 Alexandria부터" not in prompt
 
 
+def test_hermes_operating_loop_documents_compact_window_policy() -> None:
+    """Operating-loop prompt should tell agents how to bound Memory Compact time ranges."""
+    prompt = alexandria_operating_loop_prompt()
+
+    assert "Compact window policy" in prompt
+    assert "24-hour rolling window" in prompt
+    assert "covered_from" in prompt
+    assert "covered_to" in prompt
+    assert "7-day weekly rollup" in prompt
+
+
 def test_hermes_install_writes_default_enabled_policy_contract(tmp_path) -> None:
     """Hermes install should write a default-on policy contract."""
     hermes_home = tmp_path / "hermes"
@@ -1842,7 +1856,7 @@ def test_cli_starts_librarian_oauth_with_user_instructions_without_token_fields(
         calls[0][1]
         == "http://localhost:8000/settings/connections/provider%2F1/oauth/start"
     )
-    assert calls[0][3]["x-operator-api-key"] == TEST_OPERATOR_API_KEY
+    assert calls[0][3]["X-Alexandria-Operator-Key"] == TEST_OPERATOR_API_KEY
     assert "oauth_access_token" not in printed
     assert "device_code" not in printed
     assert json.loads(printed) == {
