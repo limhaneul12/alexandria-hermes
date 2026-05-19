@@ -86,44 +86,6 @@ async def search_skills(
 
 
 @router.get(
-    "/library/workflows",
-    response_model=ItemSearchResponse,
-    description="Legacy workflow candidate search operation without full content.",
-    status_code=status.HTTP_200_OK,
-    summary="Search workflows",
-)
-@router_exception_status(RETRIEVAL_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def search_workflows(
-    q: str = Query(min_length=1),
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    item_search_service: ItemSearchService = Depends(
-        Provide[ApplicationContainer.library.item_search_service]
-    ),
-) -> ItemSearchResponse:
-    """Search only workflow items.
-
-    Args:
-        q [str]: Value supplied to search_workflows.
-        limit [int]: Value supplied to search_workflows.
-        offset [int]: Value supplied to search_workflows.
-        item_search_service [ItemSearchService]: Value supplied to search_workflows.
-
-    Returns:
-        ItemSearchResponse: Value produced by search_workflows.
-    """
-    payload = await item_search_service.search(
-        query=q,
-        item_type=ItemType.WORKFLOW,
-        limit=limit,
-        offset=offset,
-    )
-    validation = ItemSearchResponse.model_validate(payload)
-    return validation
-
-
-@router.get(
     "/library/knowledge",
     response_model=ItemSearchResponse,
     description="Legacy knowledge candidate search operation without full content.",

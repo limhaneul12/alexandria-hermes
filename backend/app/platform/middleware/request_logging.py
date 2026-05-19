@@ -7,17 +7,16 @@ import time
 from collections.abc import Awaitable, Callable
 
 from app.shared.serialization.orjson_codec import dumps_json
-from app.shared.util.http_helpers.request_logging import (
-    log_request_exception,
-    log_request_outcome,
+from app.shared.utils.http_helpers.request_logging import (
+    RequestLogContext,
     request_log_metadata,
     should_skip_request_log,
 )
-from app.shared.util.http_helpers.response_headers import (
+from app.shared.utils.http_helpers.response_headers import (
     apply_response_headers,
     response_headers,
 )
-from app.shared.util.http_helpers.trace_context import (
+from app.shared.utils.http_helpers.trace_context import (
     resolve_endpoint_name,
     resolve_request_id,
     resolve_trace_context,
@@ -64,20 +63,21 @@ def install_request_logging_middleware(
 
         try:
             response = await call_next(request)
-        except Exception as error:
+        except Exception:
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
-            log_request_exception(
-                logger,
-                message="request failed",
-                event="request_failed",
+            log_context = RequestLogContext(
                 request_id=request_id,
+                trace_id=trace_id,
                 http_method=request.method,
                 path=request.url.path,
                 status_code=500,
                 duration_ms=duration_ms,
                 func=resolve_endpoint_name(request),
-                trace_id=trace_id,
-                error=error,
+            )
+            log_context.log_exception(
+                logger,
+                message="request failed",
+                event="request_failed",
             )
             return Response(
                 content=dumps_json(
@@ -90,23 +90,25 @@ def install_request_logging_middleware(
 
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
         level, event, message = request_log_metadata(response=response)
+        log_context = RequestLogContext(
+            request_id=request_id,
+            trace_id=trace_id,
+            http_method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            func=resolve_endpoint_name(request),
+        )
 
         if not should_skip_request_log(
             path=request.url.path,
             status_code=response.status_code,
         ):
-            log_request_outcome(
+            log_context.log_outcome(
                 logger,
                 level=level,
                 message=message,
                 event=event,
-                request_id=request_id,
-                http_method=request.method,
-                path=request.url.path,
-                status_code=response.status_code,
-                duration_ms=duration_ms,
-                func=resolve_endpoint_name(request),
-                trace_id=trace_id,
             )
 
         apply_response_headers(

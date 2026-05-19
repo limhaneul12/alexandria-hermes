@@ -9,7 +9,7 @@ Alexandria-Hermes는 로그인/RBAC SaaS가 아니라 **local-first single-opera
 - 사용자 계정, 세션 로그인, RBAC는 없다.
 - 민감 control-plane route는 operator key로 보호한다.
 - active Alexandria application secret은 `ALEXANDRIA_OPERATOR_API_KEY` 하나다.
-- backend service config 값은 repo root `.env`의 `SERVICE_OPERATOR_API_KEY`로 주입된다.
+- backend service config 값은 repo root `.env`의 `ALEXANDRIA_OPERATOR_API_KEY`로 주입된다.
 - client/CLI/MCP는 `ALEXANDRIA_OPERATOR_API_KEY`를 header로 전달한다.
 
 ## 보호되는 기능 예

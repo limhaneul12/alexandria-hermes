@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.library.domain.event_enum.item_enums import ItemType
 from app.shared.schemas.common_schemas import StrictSchemaModel
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field
 
 
 class RecommendRequest(StrictSchemaModel):
@@ -19,21 +19,6 @@ class RecommendRequest(StrictSchemaModel):
     query: str = Field(min_length=1)
     item_type: ItemType = Field(default=ItemType.SKILL)
     limit: int = Field(default=5, ge=1, le=20)
-
-    @field_validator("item_type", mode="before")
-    @classmethod
-    def parse_item_type(cls, value: str | ItemType) -> ItemType:
-        """Accept public JSON item type values at the request boundary.
-
-        Args:
-            value [str | ItemType]: Value supplied to parse_item_type.
-
-        Returns:
-            ItemType: Value produced by parse_item_type.
-        """
-        if isinstance(value, ItemType):
-            return value
-        return ItemType(value)
 
 
 class ClassifyRequest(StrictSchemaModel):

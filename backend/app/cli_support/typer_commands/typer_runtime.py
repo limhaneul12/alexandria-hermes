@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import typer
+from app.cli_support.backend_api_client import CliBackendApiClient
 from app.cli_support.contracts.runtime_contracts import (
     CommandContext,
 )
-from app.cli_support.transport.backend_api_client import CliBackendApiClient
 from app.shared.exceptions.cli_exceptions import (
     CliInputError,
     CliRequestError,

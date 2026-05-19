@@ -63,10 +63,10 @@ async def _close_context_service(
     await database.shutdown()
 
 
-def test_context_api_lints_saves_lists_searches_accesses_and_archives(
+def test_context_api_captures_lists_searches_accesses_and_archives(
     tmp_path: Path,
 ) -> None:
-    """Context API should expose the full archive-first recall lifecycle."""
+    """Context API should expose the agent-capture archive-first recall lifecycle."""
 
     database, session_context, session, service = anyio.run(
         _open_context_service, tmp_path / "context-api.db"
@@ -76,10 +76,9 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
             override_library_provider("context_service", service),
             TestClient(app, raise_server_exceptions=False) as client,
         ):
-            lint_response = client.post(
-                "/memory/contexts/lint", json=_context_payload()
+            create_response = client.post(
+                "/memory/contexts/capture", json=_context_payload()
             )
-            create_response = client.post("/memory/contexts", json=_context_payload())
             context_id = create_response.json()["id"]
             list_response = client.get(
                 "/memory/contexts", params={"project": "alexandria-hermes"}
@@ -110,10 +109,6 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
     finally:
         anyio.run(_close_context_service, database, session_context, session)
 
-    assert lint_response.status_code == 200
-    assert lint_response.json()["status"] == "SAVED"
-    assert "redaction_report" in lint_response.json()
-    assert lint_response.json()["save_suggestion"]["should_save"] is True
     assert create_response.status_code == 201
     assert create_response.json()["restore_prompt"] == "Continue from the API context."
     assert create_response.json()["source_type"] == "AGENT"
@@ -144,46 +139,6 @@ def test_context_api_lints_saves_lists_searches_accesses_and_archives(
     assert reindex_response.json()["updated"] == 0
 
 
-def test_context_api_lint_blocks_secret_without_echoing_content(tmp_path: Path) -> None:
-    """Secret-bearing lint responses should not echo blocked content."""
-
-    database, session_context, session, service = anyio.run(
-        _open_context_service, tmp_path / "lint-secret.db"
-    )
-    try:
-        payload = _context_payload() | {
-            "kind": "MEMORY",
-            "title": "Unsafe memory",
-            "summary": "Contains secret.",
-            "content": """# Unsafe
-
-## Summary
-Contains secret.
-
-## Restore Prompt
-No.
-
------BEGIN PRIVATE KEY-----
-abc
------END PRIVATE KEY-----
-""",
-        }
-        with (
-            override_library_provider("context_service", service),
-            TestClient(app, raise_server_exceptions=False) as client,
-        ):
-            response = client.post("/memory/contexts/lint", json=payload)
-    finally:
-        anyio.run(_close_context_service, database, session_context, session)
-
-    body = response.json()
-    assert response.status_code == 200
-    assert body["ok"] is False
-    assert body["status"] == "BLOCKED_SECRET_RISK"
-    assert body["redacted_content"] == "[BLOCKED_SECRET_CONTENT]"
-    assert "BEGIN PRIVATE KEY" not in str(body)
-
-
 def test_context_api_filters_recall_by_memory_scope(tmp_path: Path) -> None:
     """Scoped recall should return only contexts from requested memory lanes."""
 
@@ -201,11 +156,11 @@ def test_context_api_filters_recall_by_memory_scope(tmp_path: Path) -> None:
             TestClient(app, raise_server_exceptions=False) as client,
         ):
             project_response = client.post(
-                "/memory/contexts",
+                "/memory/contexts/capture",
                 json=base_payload | {"scope": "PROJECT"},
             )
             user_response = client.post(
-                "/memory/contexts",
+                "/memory/contexts/capture",
                 json=base_payload | {"scope": "USER", "user_id": "ha_nori"},
             )
             search_response = client.post(
@@ -257,6 +212,106 @@ def test_context_api_prepare_compact_saves_structured_handoff(tmp_path: Path) ->
     assert "Context Pack default" in response.json()["content"]
 
 
+def test_context_api_captures_agent_owned_harness_without_library_route(
+    tmp_path: Path,
+) -> None:
+    """Harness capture should store execution memory without library CRUD."""
+
+    database, session_context, session, service = anyio.run(
+        _open_context_service, tmp_path / "harness-capture.db"
+    )
+    try:
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            create_response = client.post(
+                "/memory/contexts/harnesses/capture",
+                json={
+                    "task_goal": "Remove workflow surface",
+                    "summary": "Reusable execution trace for removing a product surface.",
+                    "project": "alexandria-hermes",
+                    "source_agent": "Hermes",
+                    "environment": "local pytest",
+                    "trigger_context": "WORKFLOW was unused manual CRUD.",
+                    "steps": ["Add pruning contract", "Remove router"],
+                    "commands": ["uv run --no-editable pytest -q tests/library"],
+                    "tests": ["workflow pruning contract"],
+                    "failures": ["Initial route still exposed"],
+                    "fixes": ["Removed router registration"],
+                    "artifacts": [
+                        "backend/tests/library/interface/test_workflow_pruning_contract.py"
+                    ],
+                    "reusable_procedure": "Write a pruning contract, remove the public route, then run targeted tests.",
+                    "recall_keywords": ["workflow-removal", "surface-pruning"],
+                    "safety_notes": ["Do not add a replacement human CRUD surface."],
+                    "metadata": {
+                        "harness": {"task_goal": "spoofed"},
+                        "caller_note": "preserve caller metadata",
+                    },
+                },
+            )
+            search_response = client.post(
+                "/memory/contexts/retrieval/search",
+                json={
+                    "query": "surface pruning workflow removal",
+                    "kind": "HARNESS",
+                    "include_scopes": ["PROJECT"],
+                },
+            )
+
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    library_harness_paths = [
+        path for path in app.openapi()["paths"] if path.startswith("/library/harness")
+    ]
+    body = create_response.json()
+    assert create_response.status_code == 201
+    assert body["kind"] == "HARNESS"
+    assert body["source_type"] == "AGENT"
+    assert body["importance"] == "HIGH"
+    assert body["metadata"]["harness"]["task_goal"] == "Remove workflow surface"
+    assert body["metadata"]["harness"]["recall_keywords"] == [
+        "workflow-removal",
+        "surface-pruning",
+    ]
+    assert body["metadata"]["caller_note"] == "preserve caller metadata"
+    assert "## Reusable Procedure" in body["content"]
+    assert "Recall this HARNESS" in body["restore_prompt"]
+    assert search_response.status_code == 200
+    assert search_response.json()["matches"][0]["context"]["id"] == body["id"]
+    assert library_harness_paths == []
+
+
+def test_generic_context_capture_rejects_harness_kind(tmp_path: Path) -> None:
+    """Generic context capture should not bypass generated HARNESS metadata."""
+
+    database, session_context, session, service = anyio.run(
+        _open_context_service, tmp_path / "generic-harness-reject.db"
+    )
+    try:
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            response = client.post(
+                "/memory/contexts/capture",
+                json=_context_payload()
+                | {
+                    "kind": "HARNESS",
+                    "metadata": {"harness": {"task_goal": "spoofed"}},
+                },
+            )
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "HARNESS contexts must be captured through /memory/contexts/harnesses/capture"
+    )
+
+
 def test_context_api_accepts_imported_source_type(tmp_path: Path) -> None:
     """Imported context should use the canonical IMPORTED source category."""
 
@@ -269,7 +324,7 @@ def test_context_api_accepts_imported_source_type(tmp_path: Path) -> None:
             override_library_provider("context_service", service),
             TestClient(app, raise_server_exceptions=False) as client,
         ):
-            response = client.post("/memory/contexts", json=payload)
+            response = client.post("/memory/contexts/capture", json=payload)
     finally:
         anyio.run(_close_context_service, database, session_context, session)
 
@@ -289,7 +344,7 @@ def test_context_api_returns_validation_error_for_invalid_kind(tmp_path: Path) -
             override_library_provider("context_service", service),
             TestClient(app, raise_server_exceptions=False) as client,
         ):
-            response = client.post("/memory/contexts", json=payload)
+            response = client.post("/memory/contexts/capture", json=payload)
     finally:
         anyio.run(_close_context_service, database, session_context, session)
 

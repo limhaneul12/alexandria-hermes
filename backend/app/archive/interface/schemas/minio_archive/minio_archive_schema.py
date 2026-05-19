@@ -12,7 +12,7 @@ from app.library.interface.schemas.item.item_schema import ItemResponse
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
 from app.shared.types.types_convert_utils import enum_value
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field
 
 
 class MinioArchiveItemResponse(ItemResponse):
@@ -125,22 +125,6 @@ class MinioImportCandidateResponse(StrictSchemaModel):
     details: dict[str, JSONValue]
     confidence: float = Field(ge=0.0, le=1.0)
     needs_review: bool
-
-    @field_validator("item_type", mode="before")
-    @classmethod
-    def parse_item_type(cls, value: ItemType | str) -> ItemType:
-        """Parse candidate item type values.
-
-        Args:
-            value: Raw enum or string from validation.
-
-        Returns:
-            Parsed item type enum.
-        """
-        if isinstance(value, ItemType):
-            return value
-        parsed = ItemType(value)
-        return parsed
 
     @classmethod
     def from_candidate(

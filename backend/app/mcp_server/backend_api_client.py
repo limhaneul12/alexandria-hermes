@@ -6,7 +6,7 @@ import httpx
 from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
-from app.shared.util.config import settings_model_config
+from app.shared.utils.config import settings_model_config
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 

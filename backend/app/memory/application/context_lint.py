@@ -14,7 +14,7 @@ from app.memory.domain.types.context_payload_types import (
     ContextLintNormalizedPayload,
     SaveSuggestionPayload,
 )
-from app.shared.util.secret_redaction import redact_secret_text
+from app.shared.utils.secret_redaction import redact_secret_text
 
 HEADING_PATTERN = re.compile(r"^##\s+(.+)$", re.MULTILINE)
 
@@ -27,6 +27,15 @@ REQUIRED_HEADINGS_BY_KIND: dict[ContextKind, tuple[str, ...]] = {
     ContextKind.RESEARCH: ("Summary", "Evidence"),
     ContextKind.USAGE: ("Summary", "Evidence"),
     ContextKind.MEMORY: ("Summary", "Restore Prompt"),
+    ContextKind.HARNESS: (
+        "Summary",
+        "Execution Trace",
+        "Commands",
+        "Tests",
+        "Reusable Procedure",
+        "Recall Keywords",
+        "Restore Prompt",
+    ),
 }
 
 
@@ -158,6 +167,7 @@ def _save_suggestion(
         ContextKind.COMPACT,
         ContextKind.RESEARCH,
         ContextKind.MEMORY,
+        ContextKind.HARNESS,
     }
     lowered = f"{summary}\n{content}".lower()
     reason = "durable context kind is reusable"
@@ -166,6 +176,9 @@ def _save_suggestion(
         should_save = True
     elif "decision" in lowered or "decided" in lowered:
         reason = "project decision signal detected"
+        should_save = True
+    elif "harness" in lowered:
+        reason = "agent execution harness signal detected"
         should_save = True
     elif "workflow" in lowered or "handoff" in lowered:
         reason = "reusable workflow or handoff signal detected"

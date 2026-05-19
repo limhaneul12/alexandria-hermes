@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.memory.application.context_lint import ContextLintInput, lint_context
-from app.shared.util.secret_redaction import BLOCKED_SECRET_PLACEHOLDER
+from app.shared.utils.secret_redaction import BLOCKED_SECRET_PLACEHOLDER
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextStorageStatus,

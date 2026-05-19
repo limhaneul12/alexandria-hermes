@@ -20,11 +20,11 @@ _PROVIDER_CONTAINER_BY_NAME: Final[dict[str, str]] = {
     "memory_compact_service": "memory",
     "librarian_oauth_service": "connections",
     "librarian_ops_service": "librarian",
+    "skill_acquisition_service": "librarian",
     "librarian_service": "connections",
     "prompt_service": "library",
     "skill_service": "library",
     "usage_service": "library",
-    "workflow_service": "library",
 }
 
 

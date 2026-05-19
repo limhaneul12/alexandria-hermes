@@ -86,30 +86,6 @@ def test_cli_imports_minio_candidates_with_bounded_request_body() -> None:
 @pytest.mark.parametrize(
     ("argv", "invalid_value"),
     [
-        (
-            [
-                "skills",
-                "create",
-                "--title",
-                "Skill",
-                "--purpose",
-                "Purpose",
-                "--risk-level",
-                "BOGUS",
-            ],
-            "BOGUS",
-        ),
-        (
-            [
-                "prompts",
-                "create",
-                "--title",
-                "Prompt",
-                "--format",
-                "YAML",
-            ],
-            "YAML",
-        ),
         (["library", "list", "--type", "INVALID"], "INVALID"),
         (["minio", "scan", "--type", "BAD"], "BAD"),
     ],
@@ -128,118 +104,6 @@ def test_cli_rejects_invalid_choice_before_http_request(
     assert exit_code != 0
     assert invalid_value in stderr.getvalue()
     assert calls == []
-
-
-def test_cli_creates_manual_skill_from_content_file(tmp_path) -> None:
-    """Manual skill creation remains available outside the web form."""
-    content_file = tmp_path / "skill.md"
-    content_file.write_text(
-        "# FastAPI skill\nUse dependency overrides.", encoding="utf-8"
-    )
-    transport, calls = _transport(
-        {"id": "skill-1", "title": "FastAPI skill", "item_type": "SKILL"}
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        [
-            "skills",
-            "create",
-            "--title",
-            "FastAPI skill",
-            "--purpose",
-            "Teach agent testing",
-            "--content-file",
-            str(content_file),
-            "--tag",
-            "fastapi",
-            "--tool",
-            "pytest",
-            "--active",
-        ],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    request_body = json.loads((calls[0][2] or b"{}").decode())
-    assert exit_code == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/library/skills"
-    assert request_body == {
-        "title": "FastAPI skill",
-        "summary": None,
-        "content": "# FastAPI skill\nUse dependency overrides.",
-        "category_id": None,
-        "tags": ["fastapi"],
-        "purpose": "Teach agent testing",
-        "input_schema": {},
-        "output_schema": {},
-        "usage_example": None,
-        "required_tools": ["pytest"],
-        "risk_level": "LOW",
-        "version": "1.0.0",
-        "created_by_name": "Hermes CLI",
-        "status": "ACTIVE",
-    }
-    assert "created skill skill-1" in stdout.getvalue()
-
-
-def test_cli_submits_agent_skill_candidate_with_evidence(tmp_path) -> None:
-    """Hermes can self-submit a skill candidate when no librarian is available."""
-    content_file = tmp_path / "candidate.md"
-    content_file.write_text(
-        "# FastAPI skill\nUse dependency overrides.", encoding="utf-8"
-    )
-    transport, calls = _transport(
-        {"id": "skill-2", "title": "FastAPI skill", "item_type": "SKILL"}
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        [
-            "skills",
-            "create",
-            "--title",
-            "FastAPI skill",
-            "--purpose",
-            "Teach agent testing",
-            "--content-file",
-            str(content_file),
-            "--source-agent",
-            "Hermes",
-            "--evidence-url",
-            "https://example.com/fastapi-skill",
-            "--source-summary",
-            "Hermes researched the missing capability directly.",
-        ],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    request_body = json.loads((calls[0][2] or b"{}").decode())
-    assert exit_code == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/library/skills/submit-by-agent"
-    assert request_body == {
-        "title": "FastAPI skill",
-        "purpose": "Teach agent testing",
-        "summary": None,
-        "content": "# FastAPI skill\nUse dependency overrides.",
-        "category_id": None,
-        "tags": [],
-        "input_schema": {},
-        "output_schema": {},
-        "usage_example": None,
-        "required_tools": [],
-        "risk_level": "LOW",
-        "version": "1.0.0",
-        "created_by_name": "Hermes",
-        "activate": False,
-        "status": "DRAFT",
-        "evidence_urls": ["https://example.com/fastapi-skill"],
-        "source_summary": "Hermes researched the missing capability directly.",
-    }
-    assert "created skill skill-2" in stdout.getvalue()
 
 
 def test_cli_deletes_skill_by_id() -> None:
@@ -568,67 +432,8 @@ def test_repo_cli_shim_runs_help_without_uv_run() -> None:
 
     assert result.returncode == 0
     assert all(
-        command in result.stdout
-        for command in ("list", "search", "get", "create", "delete")
+        command in result.stdout for command in ("list", "search", "get", "delete")
     )
-
-
-def test_cli_creates_prompt_from_content_file_for_agents(tmp_path) -> None:
-    """Prompt creation supports agent-authored files without requiring the UI."""
-    content_file = tmp_path / "review.prompt.md"
-    content_file.write_text("Review this diff: {{diff}}", encoding="utf-8")
-    transport, calls = _transport(
-        {"id": "prompt-1", "title": "Review prompt", "item_type": "PROMPT"}
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        [
-            "prompts",
-            "create",
-            "--title",
-            "Review prompt",
-            "--content-file",
-            str(content_file),
-            "--domain",
-            "DEVELOPMENT",
-            "--task-type",
-            "CODE_REVIEW",
-            "--var",
-            "diff:required:검토할 diff",
-            "--created-by",
-            "Backend Agent",
-            "--created-by-type",
-            "AGENT",
-            "--source-type",
-            "AGENT_SUBMITTED",
-            "--active",
-        ],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    request_body = json.loads((calls[0][2] or b"{}").decode())
-    assert exit_code == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/library/prompts"
-    assert request_body["content"] == "Review this diff: {{diff}}"
-    assert request_body["prompt_domain"] == "DEVELOPMENT"
-    assert request_body["prompt_task_type"] == "CODE_REVIEW"
-    assert request_body["input_variables"] == [
-        {
-            "name": "diff",
-            "required": True,
-            "description": "검토할 diff",
-            "default_value": None,
-            "example": None,
-            "input_type": "text",
-        }
-    ]
-    assert request_body["created_by_type"] == "AGENT"
-    assert request_body["source_type"] == "AGENT_SUBMITTED"
-    assert request_body["status"] == "ACTIVE"
-    assert "created prompt prompt-1" in stdout.getvalue()
 
 
 def test_cli_uses_prompt_and_records_usage() -> None:
@@ -769,145 +574,6 @@ def test_prompt_cli_search_version_deprecate_and_diff() -> None:
     assert deprecate_body == {"status": "DEPRECATED", "change_summary": "stale"}
     assert "-old" in output
     assert "+new" in output
-
-
-def test_cli_lints_context_file_as_json(tmp_path) -> None:
-    """Context lint sends Markdown content to backend and returns agent-readable JSON."""
-    content_file = tmp_path / "handoff.md"
-    content_file.write_text("# Handoff\n\n## Summary\nReady.\n", encoding="utf-8")
-    transport, calls = _transport({"ok": True, "status": "SAVED", "score": 100})
-    stdout = io.StringIO()
-
-    exit_code = run(
-        [
-            "--json",
-            "context",
-            "lint",
-            str(content_file),
-            "--title",
-            "Sprint handoff",
-            "--kind",
-            "HANDOFF",
-            "--tag",
-            "sprint",
-        ],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    request_body = json.loads((calls[0][2] or b"{}").decode())
-    assert exit_code == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/memory/contexts/lint"
-    assert request_body == {
-        "kind": "HANDOFF",
-        "title": "Sprint handoff",
-        "content": "# Handoff\n\n## Summary\nReady.",
-        "summary": None,
-        "project": None,
-        "scope": "PROJECT",
-        "visibility": "PROJECT",
-        "source_agent": "Hermes",
-        "tags": ["sprint"],
-    }
-    assert json.loads(stdout.getvalue())["status"] == "SAVED"
-
-
-def test_cli_saves_and_recalls_context_with_context_pack_json(tmp_path) -> None:
-    """Context save and recall expose the backend Context Pack contract."""
-    content_file = tmp_path / "decision.md"
-    content_file.write_text(
-        "# Decision\n\n## Summary\nUse FTS fallback.", encoding="utf-8"
-    )
-    calls: list[RecordedCall] = []
-
-    def fake_transport(
-        method: str,
-        url: str,
-        body: bytes | None,
-        headers: HttpHeaders,
-        timeout: float,
-    ) -> tuple[int, bytes]:
-        calls.append((method, url, body, headers, timeout))
-        if url.endswith("/memory/contexts"):
-            return 201, json.dumps({"id": "ctx-1", "title": "Decision"}).encode()
-        return 200, json.dumps({"context_pack": "# Pack", "matches": []}).encode()
-
-    save_stdout = io.StringIO()
-    recall_stdout = io.StringIO()
-
-    save_exit = run(
-        [
-            "--json",
-            "context",
-            "save",
-            "--title",
-            "Decision",
-            "--kind",
-            "DECISION",
-            "--source-type",
-            "IMPORTED",
-            "--content-file",
-            str(content_file),
-        ],
-        transport=fake_transport,
-        stdout=save_stdout,
-    )
-    recall_exit = run(
-        ["--json", "context", "recall", "FTS fallback", "--strategy", "FTS_ONLY"],
-        transport=fake_transport,
-        stdout=recall_stdout,
-    )
-
-    save_body = json.loads((calls[0][2] or b"{}").decode())
-    recall_body = json.loads((calls[1][2] or b"{}").decode())
-    assert save_exit == 0
-    assert recall_exit == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/memory/contexts"
-    assert save_body["kind"] == "DECISION"
-    assert save_body["source_type"] == "IMPORTED"
-    assert save_body["content"] == "# Decision\n\n## Summary\nUse FTS fallback."
-    assert calls[1][0] == "POST"
-    assert calls[1][1] == "http://localhost:8000/memory/contexts/retrieval/search"
-    assert recall_body == {"query": "FTS fallback", "strategy": "FTS_ONLY", "limit": 5}
-    assert json.loads(save_stdout.getvalue())["id"] == "ctx-1"
-    assert json.loads(recall_stdout.getvalue())["context_pack"] == "# Pack"
-
-
-def test_cli_context_save_defaults_to_agent_source_type(tmp_path) -> None:
-    """CLI context saves are agent-authored unless an imported source is explicit."""
-    content_file = tmp_path / "handoff.md"
-    content_file.write_text("# Handoff\n\n## Summary\nReady.", encoding="utf-8")
-    calls: list[RecordedCall] = []
-
-    def fake_transport(
-        method: str,
-        url: str,
-        body: bytes | None,
-        headers: HttpHeaders,
-        timeout: float,
-    ) -> tuple[int, bytes]:
-        calls.append((method, url, body, headers, timeout))
-        return 201, json.dumps({"id": "ctx-1", "title": "Handoff"}).encode()
-
-    exit_code = run(
-        [
-            "--json",
-            "context",
-            "save",
-            "--title",
-            "Handoff",
-            "--content-file",
-            str(content_file),
-        ],
-        transport=fake_transport,
-        stdout=io.StringIO(),
-    )
-
-    request_body = json.loads((calls[0][2] or b"{}").decode())
-    assert exit_code == 0
-    assert request_body["source_type"] == "AGENT"
 
 
 def test_cli_context_reindex_calls_backend_embedding_reindex() -> None:
@@ -1544,8 +1210,14 @@ def test_hermes_install_prompts_includes_self_acquisition_loop(tmp_path) -> None
     assert exit_code == 0
     assert "Alexandria when needed, then Hermes self-acquisition" in rules
     assert "alexandria_search" in request_skill
+    assert "alexandria_start_skill_acquisition" in request_skill
+    assert "alexandria_skill_acquisition_job_status" in request_skill
+    assert "alexandria_complete_skill_acquisition" in request_skill
     assert "alexandria_submit_skill_candidate" in submit_skill
     assert "--evidence-url" in submit_skill
+    assert "mcp_alexandria_alexandria_start_skill_acquisition" in operating_loop
+    assert "mcp_alexandria_alexandria_skill_acquisition_job_status" in operating_loop
+    assert "mcp_alexandria_alexandria_complete_skill_acquisition" in operating_loop
     assert "local/current context first" in operating_loop
     assert "Prompt preservation policy" in operating_loop
 

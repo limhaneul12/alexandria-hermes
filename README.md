@@ -54,11 +54,28 @@ Current implementation focus:
 
 Current documentation entry points:
 
-- [`install.md`](./install.md) — local install, operator key, Hermes onboarding, and MCP registration
+- [`install.md`](./install.md) — install entry point and runtime-mode chooser
+- [`docs/install_guides/ko/install.md`](./docs/install_guides/ko/install.md) — Korean operator install guide
+- [`docs/install_guides/en/install.md`](./docs/install_guides/en/install.md) — English operator install guide
+- [`docs/install_guides/zh/install.md`](./docs/install_guides/zh/install.md) — 简体中文 operator install guide
+- [`docs/install_guides/ja/install.md`](./docs/install_guides/ja/install.md) — 日本語 operator install guide
 - [`docs/usage_guidebook/`](./docs/usage_guidebook/) — task-oriented feature/operator guides
 - [`SECURITY.md`](./SECURITY.md) — local-first security model, secrets, and network exposure warnings
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — local development, quality gates, docs rules, and PR expectations
 - [`ROADMAP.md`](./ROADMAP.md) — OSS readiness status and near-term roadmap
+
+### Runtime paths
+
+Alexandria-Hermes supports both human-facing UI use and agent-only library use. Choose the smallest runtime that matches the job:
+
+| Runtime | Best for | Start here |
+| --- | --- | --- |
+| Backend + SQLite daemon | Hermes/MCP users who only need the backend library and database | `alexandria-hermes setup --mode backend-daemon --apply` |
+| Full-stack separate processes | Local development with backend and frontend terminals | `alexandria-hermes setup --mode fullstack-separate --apply` |
+| Full-stack Docker Compose | First-class full UI runtime in containers | `alexandria-hermes setup --mode fullstack-compose --apply` |
+| Guidebook only | Planning install steps without writing local files | `alexandria-hermes setup --mode guidebook-only` |
+
+If an agent is installing this for you, it should ask which runtime mode you want before applying changes. Installing Alexandria-Hermes alone does not make Hermes use it automatically; Hermes needs the MCP config and the `skills_alexandria` skill/prompt bundle installed or loaded.
 
 ### Product demo media
 
@@ -72,8 +89,6 @@ These demo assets use safe local demo records to show populated Context Vault, M
 | --- | --- |
 | ![RAG Inspector flow](./docs/assets/demo/rag-inspector-flow.gif) | ![Librarian Chat flow](./docs/assets/demo/librarian-chat-flow.gif) |
 
-Static screenshots are kept as a lighter fallback for platforms that do not autoplay GIFs.
-
 To refresh real browser recordings for these flows, run the backend/frontend with safe demo data, install the pinned Playwright browser once, then record from the frontend package:
 
 ```bash
@@ -83,14 +98,6 @@ ALEXANDRIA_DEMO_FRONTEND_URL=http://127.0.0.1:3000 npm run demo:record
 ```
 
 The recorder writes `.webm` captures to `docs/assets/demo/recordings/`. Publish selected recordings or convert them to optimized GIFs only after confirming they contain no operator keys, provider secrets, OAuth tokens, or private user data.
-
-| Context Vault | Memory Compacts |
-| --- | --- |
-| ![Context Vault page](./docs/assets/screenshots/context-vault.png) | ![Memory Compacts page](./docs/assets/screenshots/memory-compacts.png) |
-
-| RAG Inspector | Librarian Chat |
-| --- | --- |
-| ![RAG Inspector page](./docs/assets/screenshots/rag-inspector.png) | ![Librarian Chat page](./docs/assets/screenshots/librarian-chat.png) |
 
 ---
 
@@ -402,7 +409,6 @@ Before a broad public OSS launch, keep this checklist visible:
 - [x] MIT `LICENSE` is present at the repository root.
 - [x] Backend and frontend GitHub Actions workflow badges are configured.
 - [x] GitHub bug/feature issue templates and PR template are present.
-- [x] Populated local UI screenshots are present for Context Vault, Memory Compacts, RAG Inspector, and Librarian Chat.
 - [x] Short demo GIFs are present for the main populated flows.
 
 The remaining public-launch gaps are operational docs and examples: backup/restore, Docker Compose upgrade guidance, API/MCP examples, and any final security disclosure polish.

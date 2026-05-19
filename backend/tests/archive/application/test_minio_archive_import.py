@@ -6,7 +6,6 @@ import asyncio
 from datetime import UTC, datetime
 from typing import cast
 
-from app.library.application.item_service import ItemService
 from app.archive.application.minio.use_cases.import_archive_items import (
     MinioArchiveImportUseCase,
 )
@@ -15,15 +14,16 @@ from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderUpdate,
 )
 from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.repositories.librarian_repository import (
+    ILibrarianProviderRepository,
+    IProviderSecretRepository,
+)
+from app.library.application.item_service import ItemService
 from app.library.domain.event_enum.item_enums import (
     CreatedByType,
     ItemStatus,
     ItemType,
     SourceType,
-)
-from app.connections.domain.repositories.librarian_repository import (
-    ILibrarianProviderRepository,
-    IProviderSecretRepository,
 )
 from app.library.domain.types.item_payload_types import (
     LibraryItemListResult,
@@ -315,7 +315,7 @@ def test_minio_archive_import_linked_persists_metadata_without_copying_original(
     assert result.imported_count == 1
     assert result.skipped_count == 0
     assert result.item_ids == ["item-1"]
-    assert item_service.created_items[0]["item_type"] is ItemType.WORKFLOW
+    assert item_service.created_items[0]["item_type"] is ItemType.KNOWLEDGE
     assert item_service.created_items[0]["source_type"] is SourceType.IMPORTED
     assert item_service.created_items[0]["created_by_type"] is CreatedByType.LIBRARIAN
     assert item_service.created_items[0]["details"]["storage"] == {
@@ -330,8 +330,8 @@ def test_minio_archive_import_linked_persists_metadata_without_copying_original(
     }
     assert item_service.created_items[0]["details"]["import"] == {
         "mode": "LINKED",
-        "confidence": 0.78,
-        "needs_review": False,
+        "confidence": 0.55,
+        "needs_review": True,
         "content_hash": item_service.created_items[0]["details"]["import"][
             "content_hash"
         ],

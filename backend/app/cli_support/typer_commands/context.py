@@ -7,11 +7,8 @@ from app.cli_support.contracts.command_contracts import (
     ContextCompactCommand,
     ContextCurateCommand,
     ContextIdCommand,
-    ContextLintCommand,
     ContextMemoryMapCommand,
-    ContextMetadataCommand,
     ContextRecallCommand,
-    ContextSaveCommand,
 )
 from app.cli_support.handlers.context import (
     handle_context_chunks,
@@ -19,11 +16,9 @@ from app.cli_support.handlers.context import (
     handle_context_curate,
     handle_context_doctor_rag,
     handle_context_embed,
-    handle_context_lint,
     handle_context_memory_map,
     handle_context_recall,
     handle_context_reindex,
-    handle_context_save,
 )
 from app.cli_support.typer_commands.typer_runtime import (
     run_client,
@@ -32,193 +27,12 @@ from app.cli_support.typer_commands.typer_runtime import (
     values,
 )
 from app.memory.domain.event_enum.context_enums import (
-    ContextImportance,
     ContextKind,
     ContextScope,
-    ContextSourceType,
     RagStrategy,
 )
 
 context_app = typer.Typer(help="Manage Context Vault entries")
-
-
-def _metadata(
-    title: str,
-    kind: ContextKind,
-    summary: str | None,
-    project: str | None,
-    scope: ContextScope,
-    workspace_id: str | None,
-    agent_id: str | None,
-    user_id: str | None,
-    session_id: str | None,
-    visibility: ContextScope,
-    source_agent: str,
-    tag: list[str] | None,
-) -> ContextMetadataCommand:
-    return ContextMetadataCommand(
-        title=title,
-        kind=kind,
-        summary=summary,
-        project=project,
-        scope=scope,
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        user_id=user_id,
-        session_id=session_id,
-        visibility=visibility,
-        source_agent=source_agent,
-        tag=values(tag),
-    )
-
-
-@context_app.command("lint")
-def context_lint(
-    ctx: typer.Context,
-    content_file: str,
-    title: str = typer.Option(..., "--title"),
-    kind: ContextKind = typer.Option(ContextKind.HANDOFF, "--kind"),
-    summary: str | None = typer.Option(None, "--summary"),
-    project: str | None = typer.Option(None, "--project"),
-    scope: ContextScope = typer.Option(ContextScope.PROJECT, "--scope"),
-    workspace_id: str | None = typer.Option(None, "--workspace-id"),
-    agent_id: str | None = typer.Option(None, "--agent-id"),
-    user_id: str | None = typer.Option(None, "--user-id"),
-    session_id: str | None = typer.Option(None, "--session-id"),
-    visibility: ContextScope = typer.Option(ContextScope.PROJECT, "--visibility"),
-    source_agent: str = typer.Option("Hermes", "--source-agent"),
-    tag: list[str] | None = typer.Option(None, "--tag"),
-) -> None:
-    """Lint context Markdown.
-
-    Args:
-        ctx: Typer context.
-        content_file: Markdown file path.
-        title: Context title.
-        kind: Context kind.
-        summary: Optional summary.
-        project: Optional project name.
-        source_agent: Agent creating the context.
-        tag: Repeatable context tags.
-
-    Returns:
-        None.
-    """
-    metadata = _metadata(
-        title,
-        kind,
-        summary,
-        project,
-        scope,
-        workspace_id,
-        agent_id,
-        user_id,
-        session_id,
-        visibility,
-        source_agent,
-        tag,
-    )
-    run_client(
-        ctx,
-        ContextLintCommand(
-            title=metadata.title,
-            kind=metadata.kind,
-            summary=metadata.summary,
-            project=metadata.project,
-            scope=metadata.scope,
-            workspace_id=metadata.workspace_id,
-            agent_id=metadata.agent_id,
-            user_id=metadata.user_id,
-            session_id=metadata.session_id,
-            visibility=metadata.visibility,
-            source_agent=metadata.source_agent,
-            tag=metadata.tag,
-            content_file=content_file,
-        ),
-        handle_context_lint,
-    )
-
-
-@context_app.command("save")
-def context_save(
-    ctx: typer.Context,
-    content: str | None = typer.Option(None, "--content"),
-    content_file: str | None = typer.Option(None, "--content-file"),
-    title: str = typer.Option(..., "--title"),
-    kind: ContextKind = typer.Option(ContextKind.HANDOFF, "--kind"),
-    summary: str | None = typer.Option(None, "--summary"),
-    project: str | None = typer.Option(None, "--project"),
-    scope: ContextScope = typer.Option(ContextScope.PROJECT, "--scope"),
-    workspace_id: str | None = typer.Option(None, "--workspace-id"),
-    agent_id: str | None = typer.Option(None, "--agent-id"),
-    user_id: str | None = typer.Option(None, "--user-id"),
-    session_id: str | None = typer.Option(None, "--session-id"),
-    visibility: ContextScope = typer.Option(ContextScope.PROJECT, "--visibility"),
-    source_agent: str = typer.Option("Hermes", "--source-agent"),
-    tag: list[str] | None = typer.Option(None, "--tag"),
-    source_type: ContextSourceType = typer.Option(
-        ContextSourceType.AGENT,
-        "--source-type",
-    ),
-    importance: ContextImportance = typer.Option(
-        ContextImportance.MEDIUM,
-        "--importance",
-    ),
-) -> None:
-    """Save context Markdown.
-
-    Args:
-        ctx: Typer context.
-        content: Inline Markdown content.
-        content_file: Markdown file path.
-        title: Context title.
-        kind: Context kind.
-        summary: Optional summary.
-        project: Optional project name.
-        source_agent: Agent creating the context.
-        tag: Repeatable context tags.
-        source_type: Context source type.
-        importance: Context importance.
-
-    Returns:
-        None.
-    """
-    metadata = _metadata(
-        title,
-        kind,
-        summary,
-        project,
-        scope,
-        workspace_id,
-        agent_id,
-        user_id,
-        session_id,
-        visibility,
-        source_agent,
-        tag,
-    )
-    run_client(
-        ctx,
-        ContextSaveCommand(
-            title=metadata.title,
-            kind=metadata.kind,
-            summary=metadata.summary,
-            project=metadata.project,
-            scope=metadata.scope,
-            workspace_id=metadata.workspace_id,
-            agent_id=metadata.agent_id,
-            user_id=metadata.user_id,
-            session_id=metadata.session_id,
-            visibility=metadata.visibility,
-            source_agent=metadata.source_agent,
-            tag=metadata.tag,
-            content=content,
-            content_file=content_file,
-            source_type=source_type,
-            importance=importance,
-        ),
-        handle_context_save,
-    )
 
 
 def _recall_command(

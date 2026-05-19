@@ -11,7 +11,7 @@ from app.library.domain.types.usage_payload_types import (
 )
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONObject
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict
 
 
 class UsageRecordRequest(StrictSchemaModel):
@@ -42,24 +42,6 @@ class UsageRecordRequest(StrictSchemaModel):
     selection_source: SelectionSource
     success: bool
     feedback: str | JSONObject | None = None
-
-    @field_validator("selection_source", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_selection_source(cls, value: object) -> SelectionSource:
-        """Accept JSON enum values while preserving strict internal typing.
-
-        Args:
-            value [object]: Value supplied to parse_selection_source.
-
-        Returns:
-            SelectionSource: Value produced by parse_selection_source.
-        """
-        if isinstance(value, SelectionSource):
-            return value
-        if isinstance(value, str):
-            return SelectionSource(value)
-        raise ValueError("selection_source must be a valid selection source")
 
     def to_payload(self, used_at: datetime) -> UsageRecordCommandPayload:
         """Return application command payload for recording usage.

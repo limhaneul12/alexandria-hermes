@@ -1,4 +1,4 @@
-export type ItemType = "SKILL" | "WORKFLOW" | "KNOWLEDGE" | "PROMPT";
+export type ItemType = "SKILL" | "KNOWLEDGE" | "PROMPT";
 export type VisibleItemType = "SKILL" | "PROMPT";
 export type ArchiveType = VisibleItemType;
 
@@ -65,7 +65,7 @@ export type PromptTaskType =
   | "GENERAL_TASK";
 
 export const ITEM_TYPES = ["SKILL", "PROMPT"] as const satisfies readonly VisibleItemType[];
-export const BACKEND_ITEM_TYPES = ["SKILL", "WORKFLOW", "KNOWLEDGE", "PROMPT"] as const satisfies readonly ItemType[];
+export const BACKEND_ITEM_TYPES = ["SKILL", "KNOWLEDGE", "PROMPT"] as const satisfies readonly ItemType[];
 export const PROMPT_CONTENT_FORMATS = ["MARKDOWN", "XML", "JSON", "TEXT"] as const satisfies readonly PromptContentFormat[];
 export const PROMPT_KINDS = ["SYSTEM", "DEVELOPER", "USER_TEMPLATE", "EVAL", "TOOL_GUIDE", "CHAIN"] as const satisfies readonly PromptKind[];
 export const PROMPT_DOMAINS = ["DEVELOPMENT", "DESIGN", "WRITING", "RESEARCH", "ANALYSIS", "PLANNING", "REVIEW", "TESTING", "DEBUGGING", "OPERATIONS", "DATA", "EDUCATION", "MARKETING", "PRODUCT", "SECURITY", "GENERAL"] as const satisfies readonly PromptDomain[];
@@ -479,7 +479,8 @@ export type ContextKind =
   | "PLAN"
   | "RESEARCH"
   | "USAGE"
-  | "MEMORY";
+  | "MEMORY"
+  | "HARNESS";
 export type ContextSourceType = "AGENT" | "USER" | "SYSTEM" | "IMPORTED";
 export type ContextImportance = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type ContextStorageStatus =
@@ -500,6 +501,7 @@ export const CONTEXT_KINDS = [
   "RESEARCH",
   "USAGE",
   "MEMORY",
+  "HARNESS",
 ] as const satisfies readonly ContextKind[];
 export const RAG_STRATEGIES = ["HYBRID", "FTS_ONLY", "VECTOR_ONLY"] as const satisfies readonly RagStrategy[];
 
@@ -564,35 +566,6 @@ export type ContextChunkDTO = {
 export type ContextListDTO = {
   items: ContextDTO[];
   total: number;
-};
-
-export type ContextSaveDTO = {
-  kind: ContextKind;
-  title: string;
-  content: string;
-  summary: string | null;
-  project: string | null;
-  sourceAgent: string;
-  sourceType: ContextSourceType;
-  importance: ContextImportance;
-  tags: string[];
-  metadata: Record<string, unknown>;
-};
-
-export type ContextLintRequestDTO = Pick<
-  ContextSaveDTO,
-  "kind" | "title" | "content" | "summary" | "project" | "sourceAgent" | "tags"
->;
-
-export type ContextLintResultDTO = {
-  ok: boolean;
-  status: ContextStorageStatus;
-  score: number;
-  errors: string[];
-  warnings: string[];
-  suggestions: string[];
-  redactedContent: string;
-  normalized: Record<string, unknown>;
 };
 
 export type ContextSearchDTO = {

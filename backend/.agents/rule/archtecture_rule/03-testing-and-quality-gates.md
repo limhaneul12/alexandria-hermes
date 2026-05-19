@@ -158,5 +158,18 @@ Current backend gate is:
 - lint/type scope: `<backend_root>` whole tree
 - test scope: `<test_root>` whole tree
 
-Routine commands should reuse the existing environment through `uv run`.
-`install-*` targets are only for explicit environment sync.
+Routine commands should prefer the backend Makefile targets. Those targets run
+`uv run --no-editable ...` so Python 3.13 does not fall back to hidden editable
+`.pth` import hooks when console-entrypoint behavior is tested outside the
+project root.
+
+Use:
+
+- `make format_check`
+- `make type_checking`
+- `make guardrails`
+- `make test`
+- `make ci`
+
+`install-local` remains the explicit environment sync target and must also use
+non-editable installation.

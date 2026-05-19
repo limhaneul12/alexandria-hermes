@@ -7,7 +7,7 @@ from typing import cast
 from app.container import ApplicationContainer
 from app.library.application.item_service import ItemService
 from app.library.application.prompt_service import PromptService
-from app.library.domain.event_enum.item_enums import ItemType
+from app.library.domain.event_enum.item_enums import CreatedByType, ItemType, SourceType
 from app.library.domain.types.prompt_payload_types import PromptVariablePayload
 from app.library.interface.routers._helpers import (
     build_patch_payload,
@@ -18,7 +18,7 @@ from app.library.interface.schemas.item.item_schema import (
     ItemResponseList,
 )
 from app.library.interface.schemas.prompt.request_schemas import (
-    PromptCreateRequest,
+    AgentSubmitPromptRequest,
     PromptPatchRequest,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
@@ -29,37 +29,29 @@ from fastapi import APIRouter, Depends, Query, status
 router = APIRouter(prefix="/library/prompts", tags=["prompts"])
 
 
-def _variable_payloads(request: PromptCreateRequest) -> list[PromptVariablePayload]:
-    variables = [
-        cast(PromptVariablePayload, variable.model_dump())
-        for variable in request.input_variables
-    ]
-    return variables
-
-
 @router.post(
-    "",
+    "/submit-by-agent",
     response_model=ItemResponse,
     status_code=status.HTTP_201_CREATED,
-    description="Library API operation.",
-    summary="Create prompt",
+    description="Agent-authored prompt submission.",
+    summary="Submit prompt by agent",
 )
 @router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
 @inject
-async def create_prompt(
-    request: PromptCreateRequest,
+async def submit_prompt_by_agent(
+    request: AgentSubmitPromptRequest,
     prompt_service: PromptService = Depends(
         Provide[ApplicationContainer.library.prompt_service]
     ),
 ) -> ItemResponse:
-    """Create one prompt entry from manual or actor-submitted input.
+    """Persist an agent-authored prompt without exposing human prompt creation.
 
     Args:
-        request: Prompt create request.
+        request: Agent prompt submission payload.
         prompt_service: Prompt service dependency.
 
     Returns:
-        Created item response.
+        Created prompt item response.
     """
     payload = await prompt_service.create_prompt(
         title=request.title,
@@ -71,7 +63,10 @@ async def create_prompt(
         prompt_kind=request.prompt_kind,
         prompt_domain=request.prompt_domain,
         prompt_task_type=request.prompt_task_type,
-        input_variables=_variable_payloads(request),
+        input_variables=cast(
+            list[PromptVariablePayload],
+            [item.model_dump() for item in request.input_variables],
+        ),
         output_format=request.output_format,
         target_actor=request.target_actor,
         target_model_family=request.target_model_family,
@@ -81,8 +76,8 @@ async def create_prompt(
         version=request.version,
         change_summary=request.change_summary,
         created_by_name=request.created_by_name,
-        created_by_type=request.created_by_type,
-        source_type=request.source_type,
+        created_by_type=CreatedByType.AGENT,
+        source_type=SourceType.AGENT_SUBMITTED,
         status=request.status,
     )
     validation = ItemResponse.model_validate(payload)

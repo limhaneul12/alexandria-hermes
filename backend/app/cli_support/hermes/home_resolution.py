@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from app.cli_support.argument_values import optional_text
 from app.cli_support.contracts.command_contracts import (
     HermesBundleCommand,
     HermesConfigureCommand,
@@ -16,12 +17,11 @@ from app.cli_support.contracts.runtime_contracts import (
     CommandContext,
     HermesResolvedHome,
 )
-from app.cli_support.input.argument_values import optional_text
-from app.cli_support.routing.url_paths import normalized_base_url
 from app.cli_support.schemas.hermes_integration_schemas import HermesScannedFile
+from app.cli_support.url_paths import normalized_base_url
 from app.shared.exceptions.cli_exceptions import CliInputError
 from app.shared.serialization.orjson_codec import loads_json
-from app.shared.util.config import settings_model_config
+from app.shared.utils.config import settings_model_config
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 

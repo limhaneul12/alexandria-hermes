@@ -50,7 +50,6 @@ for (const path of walk(root)) {
 const dashboard = readFileSync(join(root, "components/dashboard/dashboard-client.tsx"), "utf8");
 const library = readFileSync(join(root, "components/library/library-client.tsx"), "utf8");
 const forms = readFileSync(join(root, "components/library/library-forms.tsx"), "utf8");
-const createPage = readFileSync(join(root, "components/library/library-create-page.tsx"), "utf8");
 const detail = readFileSync(join(root, "components/skill/skill-detail-client.tsx"), "utf8");
 const settings = readFileSync(join(root, "components/settings/settings-client.tsx"), "utf8");
 const layout = readFileSync(join(root, "components/layout/sidebar.tsx"), "utf8");
@@ -66,14 +65,13 @@ const globals = readFileSync(join(root, "app/globals.css"), "utf8");
 const requiredPageCopy = [
   ["dashboard guide", `${dashboard}\n${i18n}`, ["The Archive Guide", "The Archive Philosophy", "Getting Started", "Core Concepts", "On This Page", "Ask the Librarian"]],
   ["document shell", `${appShell}\n${layout}\n${topHeader}\n${globals}\n${i18n}`, ["archive-main", "Alexandria", "Archive", "Search skills, prompts, folders", "archive-right-rail", "#f6f3ec"]],
-  ["library/i18n", `${library}\n${forms}\n${i18n}`, ["서재", "문서 유형", "신뢰 높은순", "총", "아카이브", "LibraryItemCreatePanel", "Preview / Lint"]],
+  ["library/i18n", `${library}\n${forms}\n${i18n}`, ["서재", "문서 유형", "신뢰 높은순", "총", "아카이브", "FolderCreateForm"]],
   ["settings", `${settings}\n${i18n}`, ["언어", "한국어", "English", "서재 사용 환경"]],
   ["detail", `${detail}\n${i18n}`, ["Archive Controls", "사용 가이드 열기", "목차", "브라우저 팝업 없이"]],
 ];
 
 const requiredFeatureContracts = [
   ["folder CRUD", `${api}\n${library}`, ["createCategory", "deleteCategory", "createCategoryMutation", "deleteCategoryMutation", "pendingCategoryDelete"]],
-  ["direct item authoring", `${api}\n${library}\n${forms}\n${createPage}`, ["createSkill", "createPrompt", "SkillCreateForm", "uploadSkillFile", "readAsText", "PromptFields"]],
   [
     "OpenAI and MINIO librarian providers",
     `${settings}\n${api}\n${store}\n${archiveAdapter}`,
@@ -94,6 +92,20 @@ const requiredFeatureContracts = [
 
 if (layout.includes('labelKey: "librarianSettings", href: "/settings"')) {
   violations.push("sidebar routes librarian settings to /settings instead of /settings/librarians");
+}
+
+for (const forbidden of [
+  ["sidebar", layout, ["/library/skills/new", "/library/prompts/new", "/capture-review", "createSkill", "createPrompt", "captureReview"]],
+  ["library client", library, ["/library/skills/new", "/library/prompts/new", "?create=", "Add"]],
+  ["library forms", forms, ["LibraryItemCreatePanel", "SkillCreateForm", "PromptFields", "uploadSkillFile"]],
+  ["api client", api, ["createSkill(", "createPrompt(", "captureContext(", "lintContext(", "saveContext("]],
+]) {
+  const [name, content, forbiddenValues] = forbidden;
+  for (const value of forbiddenValues) {
+    if (content.includes(value)) {
+      violations.push(`${name} still exposes removed authoring/review contract: ${value}`);
+    }
+  }
 }
 
 for (const [name, content, required] of [...requiredPageCopy, ...requiredFeatureContracts]) {

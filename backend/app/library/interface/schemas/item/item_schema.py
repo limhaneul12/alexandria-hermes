@@ -12,47 +12,7 @@ from app.library.domain.event_enum.item_enums import (
 )
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
-from pydantic import ConfigDict, Field, field_validator
-
-
-# Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-def _item_type(value: object) -> ItemType:
-    """Accept public JSON item type values at API boundaries."""
-    if isinstance(value, ItemType):
-        return value
-    if isinstance(value, str):
-        return ItemType(value)
-    raise ValueError("item_type must be a valid item type")
-
-
-# Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-def _item_status(value: object) -> ItemStatus:
-    """Accept public JSON item status values at API boundaries."""
-    if isinstance(value, ItemStatus):
-        return value
-    if isinstance(value, str):
-        return ItemStatus(value)
-    raise ValueError("status must be a valid item status")
-
-
-# Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-def _source_type(value: object) -> SourceType:
-    """Accept public JSON source type values at API boundaries."""
-    if isinstance(value, SourceType):
-        return value
-    if isinstance(value, str):
-        return SourceType(value)
-    raise ValueError("source_type must be a valid source type")
-
-
-# Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-def _created_by_type(value: object) -> CreatedByType:
-    """Accept public JSON creator type values at API boundaries."""
-    if isinstance(value, CreatedByType):
-        return value
-    if isinstance(value, str):
-        return CreatedByType(value)
-    raise ValueError("created_by_type must be a valid creator type")
+from pydantic import ConfigDict, Field
 
 
 class ItemCreateRequest(StrictSchemaModel):
@@ -90,62 +50,6 @@ class ItemCreateRequest(StrictSchemaModel):
     created_by_name: str
     details: dict[str, JSONValue] = Field(default_factory=dict)
 
-    @field_validator("item_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_item_type(cls, value: object) -> ItemType:
-        """Parse JSON item type values.
-
-        Args:
-            value [object]: Value supplied to parse_item_type.
-
-        Returns:
-            ItemType: Value produced by parse_item_type.
-        """
-        return _item_type(value)
-
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_status(cls, value: object) -> ItemStatus:
-        """Parse JSON status values.
-
-        Args:
-            value [object]: Value supplied to parse_status.
-
-        Returns:
-            ItemStatus: Value produced by parse_status.
-        """
-        return _item_status(value)
-
-    @field_validator("source_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_source_type(cls, value: object) -> SourceType:
-        """Parse JSON source type values.
-
-        Args:
-            value [object]: Value supplied to parse_source_type.
-
-        Returns:
-            SourceType: Value produced by parse_source_type.
-        """
-        return _source_type(value)
-
-    @field_validator("created_by_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_created_by_type(cls, value: object) -> CreatedByType:
-        """Parse JSON creator type values.
-
-        Args:
-            value [object]: Value supplied to parse_created_by_type.
-
-        Returns:
-            CreatedByType: Value produced by parse_created_by_type.
-        """
-        return _created_by_type(value)
-
 
 class ItemUpdateRequest(StrictSchemaModel):
     """Patch payload for generic item metadata or details."""
@@ -170,22 +74,6 @@ class ItemUpdateRequest(StrictSchemaModel):
     tags: list[str] | None = None
     status: ItemStatus | None = None
     details: dict[str, JSONValue] | None = None
-
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_status(cls, value: object) -> ItemStatus | None:
-        """Parse JSON status values when provided.
-
-        Args:
-            value [object]: Value supplied to parse_status.
-
-        Returns:
-            ItemStatus | None: Value produced by parse_status.
-        """
-        if value is None:
-            return None
-        return _item_status(value)
 
 
 class ItemResponse(StrictSchemaModel):
@@ -229,62 +117,6 @@ class ItemResponse(StrictSchemaModel):
     created_at: datetime
     updated_at: datetime
 
-    @field_validator("item_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_item_type(cls, value: object) -> ItemType:
-        """Parse response item type values from repository payloads.
-
-        Args:
-            value [object]: Value supplied to parse_item_type.
-
-        Returns:
-            ItemType: Value produced by parse_item_type.
-        """
-        return _item_type(value)
-
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_status(cls, value: object) -> ItemStatus:
-        """Parse response status values from repository payloads.
-
-        Args:
-            value [object]: Value supplied to parse_status.
-
-        Returns:
-            ItemStatus: Value produced by parse_status.
-        """
-        return _item_status(value)
-
-    @field_validator("source_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_source_type(cls, value: object) -> SourceType:
-        """Parse response source type values from repository payloads.
-
-        Args:
-            value [object]: Value supplied to parse_source_type.
-
-        Returns:
-            SourceType: Value produced by parse_source_type.
-        """
-        return _source_type(value)
-
-    @field_validator("created_by_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_created_by_type(cls, value: object) -> CreatedByType:
-        """Parse response creator type values from repository payloads.
-
-        Args:
-            value [object]: Value supplied to parse_created_by_type.
-
-        Returns:
-            CreatedByType: Value produced by parse_created_by_type.
-        """
-        return _created_by_type(value)
-
     def to_public(self) -> dict[str, JSONValue]:
         """Serialize with JSON friendly dict for FastAPI response.
 
@@ -307,17 +139,3 @@ class ClassificationResponse(StrictSchemaModel):
 
     label: ItemType
     confidence: float = Field(ge=0.0, le=1.0)
-
-    @field_validator("label", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_label(cls, value: object) -> ItemType:
-        """Parse response classification labels from raw string payloads.
-
-        Args:
-            value [object]: Value supplied to parse_label.
-
-        Returns:
-            ItemType: Value produced by parse_label.
-        """
-        return _item_type(value)

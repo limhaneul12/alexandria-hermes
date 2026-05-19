@@ -48,10 +48,6 @@ OVERSIZED_MODULE_ALLOWLIST = {
         "Typer collaboration command tree spans provider/profile/oauth verbs; split "
         "into command-group modules before adding more verbs."
     ),
-    "cli_support/typer_commands/context.py": (
-        "Context CLI command tree covers lint/save/search/compact flows; split by "
-        "Context Vault operation family on next CLI expansion."
-    ),
     "connections/application/librarians/oauth_service.py": (
         "OAuth service owns the full device-flow lifecycle; extract token storage and "
         "status projection before adding new OAuth providers."
@@ -75,10 +71,6 @@ OVERSIZED_MODULE_ALLOWLIST = {
     "memory/interface/routers/context_router.py": (
         "Context router exposes the full Context Vault surface; split route modules by "
         "lint/save/search/archive when changing context routes."
-    ),
-    "memory/interface/schemas/context/context_schema.py": (
-        "Context API schema catalog covers all Context Vault I/O contracts; split by "
-        "operation family before adding schema groups."
     ),
 }
 
@@ -174,6 +166,55 @@ def _list_model_validate_comprehensions(
         for child in ast.walk(node)
         if isinstance(child, ast.ListComp) and _is_model_validate_call(child.elt)
     ]
+
+
+def _is_field_validator_before(decorator: ast.expr) -> bool:
+    if not isinstance(decorator, ast.Call):
+        return False
+    if not isinstance(decorator.func, ast.Name):
+        return False
+    if decorator.func.id != "field_validator":
+        return False
+    return any(
+        keyword.arg == "mode"
+        and isinstance(keyword.value, ast.Constant)
+        and keyword.value.value == "before"
+        for keyword in decorator.keywords
+    )
+
+
+def _is_direct_enum_constructor_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id[:1].isupper()
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "value"
+    )
+
+
+def _is_imported_parse_value_call(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id.startswith("parse_")
+        and node.func.id.endswith("_value")
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "value"
+    )
+
+
+def _before_validator_reimplements_enum_parsing(node: ast.FunctionDef) -> bool:
+    if not any(
+        _is_field_validator_before(decorator) for decorator in node.decorator_list
+    ):
+        return False
+    return any(
+        _is_direct_enum_constructor_call(child) or _is_imported_parse_value_call(child)
+        for child in ast.walk(node)
+    )
 
 
 def _direct_model_validate_returns(node: ast.AsyncFunctionDef) -> list[ast.Return]:
@@ -361,6 +402,30 @@ def test_interface_schema_folders_do_not_use_init_files() -> None:
     )
 
     assert offenders == []
+
+
+def test_pydantic_schemas_do_not_reimplement_enum_parsing() -> None:
+    helper_modules = sorted(
+        str(path.relative_to(APP_ROOT))
+        for schemas_root in _schema_roots()
+        for path in schemas_root.rglob("*enum_parsing*.py")
+    )
+
+    redundant_validators: list[str] = []
+    for schemas_root in _schema_roots():
+        for path in sorted(schemas_root.rglob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            redundant_validators.extend(
+                f"{path.relative_to(APP_ROOT)}:{node.lineno}:{node.name}"
+                for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef)
+                and _before_validator_reimplements_enum_parsing(node)
+            )
+
+    assert helper_modules == []
+    assert redundant_validators == []
 
 
 def test_backend_app_uses_init_files_only_for_explicit_export_surfaces() -> None:

@@ -6,7 +6,7 @@ from app.librarian.domain.entities.budget_policy import BudgetPolicy
 from app.librarian.domain.entities.context_pack_compact import ContextPackCompact
 from app.librarian.domain.entities.source_ref import SourceRef, SourceRefType
 from app.shared.schemas.common_schemas import StrictSchemaModel
-from pydantic import Field, field_validator
+from pydantic import Field
 
 
 class SourceRefSchema(StrictSchemaModel):
@@ -17,21 +17,6 @@ class SourceRefSchema(StrictSchemaModel):
     title: str = Field(min_length=1)
     detail_path: str = Field(min_length=1)
     preview: str | None = None
-
-    @field_validator("source_type", mode="before")
-    @classmethod
-    def parse_source_type(cls, value: SourceRefType | str) -> SourceRefType:
-        """Parse source ref type values from JSON.
-
-        Args:
-            value: Source ref type enum or public type string.
-
-        Returns:
-            Parsed source ref type.
-        """
-        if isinstance(value, SourceRefType):
-            return value
-        return SourceRefType(value)
 
     def to_entity(self) -> SourceRef:
         """Convert schema to domain entity.

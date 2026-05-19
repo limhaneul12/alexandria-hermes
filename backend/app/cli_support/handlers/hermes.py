@@ -28,6 +28,7 @@ from app.cli_support.hermes.integration_files import (
     install_hermes_bundle,
 )
 from app.cli_support.hermes.policy_files import read_policy, write_policy
+from app.cli_support.json_payloads import schema_payload
 from app.cli_support.presentation.output_renderers import print_hermes_payload
 from app.cli_support.schemas.hermes_integration_schemas import (
     HermesConfigurationResult,
@@ -35,7 +36,6 @@ from app.cli_support.schemas.hermes_integration_schemas import (
     HermesLocalConfiguration,
     HermesScanResult,
 )
-from app.cli_support.serialization.json_payloads import schema_payload
 from app.shared.serialization.orjson_codec import dumps_pretty_json
 
 

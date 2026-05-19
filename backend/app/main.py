@@ -31,7 +31,6 @@ from app.library.interface.routers.knowledge_router import router as knowledge_r
 from app.library.interface.routers.prompt_router import router as prompt_router
 from app.library.interface.routers.skill_router import router as skill_router
 from app.library.interface.routers.usage_router import router as usage_router
-from app.library.interface.routers.workflow_router import router as workflow_router
 from app.memory.interface.routers.context_router import router as context_router
 from app.memory.interface.routers.memory_compact_router import (
     router as memory_compact_router,
@@ -168,7 +167,6 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(item_search_router)
     app.include_router(skill_router)
     app.include_router(prompt_router)
-    app.include_router(workflow_router)
     app.include_router(knowledge_router)
     app.include_router(search_router)
     app.include_router(retrieval_boundary_router)

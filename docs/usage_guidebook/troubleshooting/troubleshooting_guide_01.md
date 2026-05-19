@@ -114,6 +114,6 @@ Operator API key required
 
 ### 확인/조치
 
-- backend `.env`의 `SERVICE_OPERATOR_API_KEY`와 client/MCP env의 `ALEXANDRIA_OPERATOR_API_KEY`가 같은지 확인한다.
+- backend `.env`의 `ALEXANDRIA_OPERATOR_API_KEY`와 client/MCP env의 `ALEXANDRIA_OPERATOR_API_KEY`가 같은지 확인한다.
 - 실제 값은 로그/문서에 출력하지 않는다.
 - 일반 context/library read-only smoke test는 operator key 없이도 가능한 경로가 있다.

@@ -47,25 +47,6 @@ class AgentCreateRequest(StrictSchemaModel):
     librarian_routing_priority: int = Field(default=100, ge=0)
     librarian_enabled: bool = True
 
-    @field_validator("librarian_role", mode="before")
-    @classmethod
-    def parse_librarian_role(
-        cls, value: LibrarianProfileRole | str
-    ) -> LibrarianProfileRole:
-        """Parse public JSON role strings.
-
-        Args:
-            value: Incoming role enum or public string value.
-
-        Returns:
-            LibrarianProfileRole: Parsed role enum.
-        """
-        if isinstance(value, LibrarianProfileRole):
-            return value
-        if isinstance(value, str):
-            return LibrarianProfileRole(value)
-        raise ValueError("librarian_role must be a valid profile role")
-
 
 class AgentPatchRequest(StrictSchemaModel):
     """Payload for updating fields on an existing agent."""
@@ -101,27 +82,6 @@ class AgentPatchRequest(StrictSchemaModel):
     librarian_specialties: list[str] | None = None
     librarian_routing_priority: int | None = Field(default=None, ge=0)
     librarian_enabled: bool | None = None
-
-    @field_validator("librarian_role", mode="before")
-    @classmethod
-    def parse_librarian_role(
-        cls, value: LibrarianProfileRole | str | None
-    ) -> LibrarianProfileRole | None:
-        """Parse public JSON role strings when provided.
-
-        Args:
-            value: Incoming optional role enum or public string value.
-
-        Returns:
-            LibrarianProfileRole | None: Parsed role enum, or None when omitted.
-        """
-        if value is None:
-            return None
-        if isinstance(value, LibrarianProfileRole):
-            return value
-        if isinstance(value, str):
-            return LibrarianProfileRole(value)
-        raise ValueError("librarian_role must be a valid profile role")
 
     @model_validator(mode="after")
     def require_actionable_patch(self) -> AgentPatchRequest:
@@ -198,25 +158,6 @@ class AgentResponse(StrictSchemaModel):
     librarian_enabled: bool
     created_at: datetime
     updated_at: datetime
-
-    @field_validator("librarian_role", mode="before")
-    @classmethod
-    def parse_librarian_role(
-        cls, value: LibrarianProfileRole | str
-    ) -> LibrarianProfileRole:
-        """Parse persisted role values into the public enum.
-
-        Args:
-            value: Persisted role enum or string value.
-
-        Returns:
-            LibrarianProfileRole: Parsed role enum.
-        """
-        if isinstance(value, LibrarianProfileRole):
-            return value
-        if isinstance(value, str):
-            return LibrarianProfileRole(value)
-        raise ValueError("librarian_role must be a valid profile role")
 
     @field_validator("librarian_specialties", mode="before")
     @classmethod

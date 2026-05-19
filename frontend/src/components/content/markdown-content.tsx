@@ -116,9 +116,9 @@ function parseMarkdown(content: string): Block[] {
   return blocks;
 }
 
-export function MarkdownContent({ content }: { content: string }) {
+export function MarkdownContent({ content, emptyLabel }: { content: string; emptyLabel: string }) {
   const blocks = parseMarkdown(content);
-  if (!blocks.length) return <p className="text-sm text-[#6f6a60]">표시할 본문이 없습니다.</p>;
+  if (!blocks.length) return <p className="text-sm text-[#6f6a60]">{emptyLabel}</p>;
 
   return (
     <div className="space-y-4 text-sm leading-7 text-[#36322d]">

@@ -10,12 +10,17 @@ from app.memory.application.context_lint import (
     ContextLintResult,
     lint_context,
 )
+from app.memory.application.harness_context import (
+    build_harness_context_content,
+    harness_context_metadata,
+)
 from app.memory.domain.contracts.context_contracts import (
     ContextAccessCreate,
     ContextChunkCreate,
     ContextChunkEmbeddingUpdate,
     ContextCreate,
 )
+from app.memory.domain.contracts.harness_contracts import HarnessCapture
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,
@@ -326,6 +331,36 @@ class ContextService:
             source_type=ContextSourceType.AGENT,
             importance=ContextImportance.HIGH,
             tags=["compact", "handoff"],
+        )
+        return context
+
+    async def capture_harness(self, payload: HarnessCapture) -> ContextRecord:
+        """Save an agent-owned execution harness as Context Vault memory.
+
+        Args:
+            payload: Harness capture command.
+
+        Returns:
+            Stored HARNESS context read model.
+        """
+        scope = enum_value(payload.scope, ContextScope, "scope")
+        context = await self.save(
+            kind=ContextKind.HARNESS,
+            title=f"Harness: {payload.task_goal.strip()}",
+            summary=payload.summary,
+            content=build_harness_context_content(payload),
+            project=payload.project,
+            scope=scope,
+            workspace_id=payload.workspace_id,
+            agent_id=payload.agent_id,
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+            visibility=scope,
+            source_agent=payload.source_agent,
+            source_type=ContextSourceType.AGENT,
+            importance=ContextImportance.HIGH,
+            tags=["harness", *_clean_harness_tags(payload.recall_keywords)],
+            context_metadata=harness_context_metadata(payload),
         )
         return context
 
@@ -753,3 +788,7 @@ def _metadata_or_empty(
         empty_metadata: ContextMetadataPayload = {}
         return empty_metadata
     return metadata
+
+
+def _clean_harness_tags(values: list[str]) -> list[str]:
+    return sorted({value.strip() for value in values if value.strip()})

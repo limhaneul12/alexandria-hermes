@@ -7,12 +7,9 @@ import type {
   ContextAccessActorType,
   ContextAccessMethod,
   ContextKind,
-  ContextLintRequestDTO,
-  ContextLintResultDTO,
   ContextListDTO,
   ContextPackDTO,
   ContextPrepareCompactDTO,
-  ContextSaveDTO,
   ContextSearchDTO,
   ContextSearchMatchDTO,
   ContextStorageStatus,
@@ -71,17 +68,6 @@ type BackendContextAccessEvent = {
 type BackendContextList = {
   items: BackendContext[];
   total: number;
-};
-
-type BackendLintResult = {
-  ok: boolean;
-  status: ContextStorageStatus;
-  score: number;
-  errors: string[];
-  warnings: string[];
-  suggestions: string[];
-  redacted_content: string;
-  normalized: Record<string, unknown>;
 };
 
 type BackendContextMatch = {
@@ -166,19 +152,6 @@ function toContextAccessEventDTO(event: BackendContextAccessEvent): ContextAcces
   };
 }
 
-function toLintResultDTO(result: BackendLintResult): ContextLintResultDTO {
-  return {
-    ok: result.ok,
-    status: result.status,
-    score: result.score,
-    errors: result.errors,
-    warnings: result.warnings,
-    suggestions: result.suggestions,
-    redactedContent: result.redacted_content,
-    normalized: result.normalized,
-  };
-}
-
 function toContextMatchDTO(match: BackendContextMatch): ContextSearchMatchDTO {
   return {
     context: toContextDTO(match.context),
@@ -210,33 +183,6 @@ function toRagStatusDTO(status: BackendRagStatus): RagStatusDTO {
     modelName: status.model_name,
     dimensions: status.dimensions,
     warnings: status.warnings,
-  };
-}
-
-function contextBody(payload: ContextSaveDTO) {
-  return {
-    kind: payload.kind,
-    title: payload.title,
-    content: payload.content,
-    summary: payload.summary,
-    project: payload.project,
-    source_agent: payload.sourceAgent,
-    source_type: payload.sourceType,
-    importance: payload.importance,
-    tags: payload.tags,
-    metadata: payload.metadata,
-  };
-}
-
-function lintBody(payload: ContextLintRequestDTO) {
-  return {
-    kind: payload.kind,
-    title: payload.title,
-    content: payload.content,
-    summary: payload.summary,
-    project: payload.project,
-    source_agent: payload.sourceAgent,
-    tags: payload.tags,
   };
 }
 
@@ -277,33 +223,6 @@ export async function loadContextFromBackend(contextId: string): Promise<Context
 export async function loadContextChunksFromBackend(contextId: string): Promise<ContextChunkDTO[]> {
   const chunks = await backendFetch<BackendContextChunk[]>(`/memory/contexts/${encodeURIComponent(contextId)}/chunks`);
   return chunks.map(toContextChunkDTO);
-}
-
-export async function lintContextInBackend(payload: ContextLintRequestDTO): Promise<ContextLintResultDTO> {
-  const result = await backendFetch<BackendLintResult>("/memory/contexts/lint", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(lintBody(payload)),
-  });
-  return toLintResultDTO(result);
-}
-
-export async function saveContextInBackend(payload: ContextSaveDTO): Promise<ContextDTO> {
-  const context = await backendFetch<BackendContext>("/memory/contexts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(contextBody(payload)),
-  });
-  return toContextDTO(context);
-}
-
-export async function captureContextInBackend(payload: ContextSaveDTO): Promise<ContextDTO> {
-  const context = await backendFetch<BackendContext>("/memory/contexts/capture", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(contextBody(payload)),
-  });
-  return toContextDTO(context);
 }
 
 export async function prepareCompactInBackend(payload: ContextPrepareCompactDTO): Promise<ContextDTO> {

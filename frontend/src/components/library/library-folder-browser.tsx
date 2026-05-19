@@ -5,7 +5,7 @@ import { ArrowUp, Folder, Trash2 } from "lucide-react";
 
 import { LibraryBreadcrumb } from "@/components/library/library-breadcrumb";
 import { Button } from "@/components/ui/button";
-import { t, type Language } from "@/lib/i18n";
+import { t, tx, type Language } from "@/lib/i18n";
 import type { CategoryNode } from "@/types/library";
 
 export function findCategoryPath(categories: CategoryNode[], slug: string | null): CategoryNode[] {
@@ -46,7 +46,7 @@ function CategoryBrowseCard({
         </span>
         <span className="min-w-0">
           <span className="block truncate text-base font-bold text-[#111111]">{category.name}</span>
-          <span className="text-sm text-[#625c52]">{category.skillCount} items</span>
+          <span className="text-sm text-[#625c52]">{tx(language, "folderItemCount", { count: category.skillCount })}</span>
         </span>
       </Link>
       <button
@@ -80,16 +80,16 @@ export function LibraryFolderBrowser({
 
   return (
     <section className="mb-9" aria-labelledby="folder-browser-heading">
-      <LibraryBreadcrumb path={activePath} />
+      <LibraryBreadcrumb language={language} path={activePath} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 id="folder-browser-heading" className="font-serif text-3xl font-bold text-[#111111]">하위 폴더</h2>
-          <p className="mt-1 text-sm text-[#625c52]">폴더를 먼저 탐색하고, 선택한 shelf의 항목만 아래에서 확인합니다.</p>
+          <h2 id="folder-browser-heading" className="font-serif text-3xl font-bold text-[#111111]">{t(language, "childFolders")}</h2>
+          <p className="mt-1 text-sm text-[#625c52]">{t(language, "folderBrowserDescription")}</p>
         </div>
         {activePath.length > 0 ? (
           <Button asChild variant="secondary" size="sm">
             <Link href={parent ? `/library/${parent.slug}` : "/library"}>
-              <ArrowUp className="h-4 w-4" aria-hidden="true" /> 상위 폴더로
+              <ArrowUp className="h-4 w-4" aria-hidden="true" /> {t(language, "moveToParentFolder")}
             </Link>
           </Button>
         ) : null}

@@ -10,10 +10,10 @@ type RecentActivity = {
 
 export function RecentActivityList({
   items,
-  emptyLabel = "아직 기록된 조회/사용 이력이 없습니다.",
+  emptyLabel,
 }: {
   items: RecentActivity[];
-  emptyLabel?: string;
+  emptyLabel: string;
 }) {
   const recent = items.slice(0, 5);
   if (recent.length === 0) {

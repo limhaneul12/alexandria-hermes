@@ -19,6 +19,8 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_archive_context,
     alexandria_ask_librarian,
     alexandria_capture_context,
+    alexandria_capture_harness,
+    alexandria_complete_skill_acquisition,
     alexandria_get_current_memory_compact,
     alexandria_get_memory_compact,
     alexandria_get_prompt,
@@ -38,9 +40,12 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_search_library,
     alexandria_search_prompts,
     alexandria_search_skills,
+    alexandria_skill_acquisition_job_status,
+    alexandria_start_skill_acquisition,
     alexandria_submit_skill_candidate,
 )
 from app.mcp_server.server_runtime import create_mcp_server
+from app.memory.domain.event_enum.context_enums import ContextKind
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
@@ -102,6 +107,7 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
     """MCP tool HTTP calls should expose async handlers to FastMCP."""
     assert iscoroutinefunction(alexandria_search)
     assert iscoroutinefunction(alexandria_capture_context)
+    assert iscoroutinefunction(alexandria_capture_harness)
     assert iscoroutinefunction(alexandria_rag_status)
     assert iscoroutinefunction(alexandria_record_usage)
     assert iscoroutinefunction(alexandria_ask_librarian)
@@ -117,6 +123,9 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
     assert iscoroutinefunction(alexandria_search_library)
     assert iscoroutinefunction(alexandria_search_skills)
     assert iscoroutinefunction(alexandria_search_prompts)
+    assert iscoroutinefunction(alexandria_start_skill_acquisition)
+    assert iscoroutinefunction(alexandria_skill_acquisition_job_status)
+    assert iscoroutinefunction(alexandria_complete_skill_acquisition)
 
 
 def test_mcp_client_sends_backend_http_only_with_auth_headers() -> None:
@@ -148,8 +157,7 @@ def test_mcp_settings_ignore_legacy_api_token_fallback(
 ) -> None:
     """MCP env loading should not treat the legacy token as operator authority."""
     legacy_token_name = "ALEXANDRIA_" + "API_TOKEN"
-    monkeypatch.delenv("ALEXANDRIA_OPERATOR_API_KEY", raising=False)
-    monkeypatch.delenv("SERVICE_OPERATOR_API_KEY", raising=False)
+    monkeypatch.setenv("ALEXANDRIA_OPERATOR_API_KEY", "")
     monkeypatch.setenv(legacy_token_name, "legacy-token")
 
     settings = AlexandriaApiSettings.from_env()
@@ -211,6 +219,58 @@ def test_mcp_submit_skill_candidate_sends_self_acquisition_evidence() -> None:
     assert request_body["source_summary"] == "Hermes researched the gap directly."
 
 
+def test_mcp_async_skill_acquisition_tools_use_durable_job_endpoints() -> None:
+    """Async skill-acquisition tools should use durable job APIs."""
+    client, calls = _client()
+
+    async def run_tools() -> None:
+        await alexandria_start_skill_acquisition(
+            client,
+            prompt="Need browser automation skill",
+            project="alexandria-hermes",
+            task_summary="Browser test blocked.",
+            provider_id="provider-1",
+        )
+        await alexandria_skill_acquisition_job_status(client, "job/1")
+        await alexandria_complete_skill_acquisition(
+            client,
+            job_id="job/1",
+            title="Browser automation skill",
+            purpose="Automate browser checks safely.",
+            content="Use stable selectors and bounded waits.",
+            evidence_urls=["https://example.com/browser"],
+            source_summary="Provider returned a sanitized artifact.",
+            next_steps=["Retry the blocked browser test."],
+            tags=["browser"],
+            required_tools=["playwright"],
+        )
+
+    anyio.run(run_tools)
+
+    methods_and_paths = [
+        (request.method, str(request.url).removeprefix("http://backend:8000"))
+        for request in calls
+    ]
+    start_body = loads_json(calls[0].content or b"{}")
+    completion_body = loads_json(calls[2].content or b"{}")
+    assert methods_and_paths == [
+        ("POST", "/librarians/skill-acquisition-jobs"),
+        ("GET", "/librarians/skill-acquisition-jobs/job%2F1"),
+        ("POST", "/librarians/skill-acquisition-jobs/job%2F1/complete"),
+    ]
+    assert start_body == {
+        "prompt": "Need browser automation skill",
+        "agent_name": "Hermes",
+        "project": "alexandria-hermes",
+        "task_summary": "Browser test blocked.",
+        "provider_id": "provider-1",
+    }
+    assert completion_body["title"] == "Browser automation skill"
+    assert completion_body["evidence_urls"] == ["https://example.com/browser"]
+    assert completion_body["next_steps"] == ["Retry the blocked browser test."]
+    assert completion_body["required_tools"] == ["playwright"]
+
+
 def test_mcp_capture_marks_agent_authored_context_explicitly() -> None:
     """MCP capture should not rely on implicit backend source-type defaults."""
     client, calls = _client()
@@ -221,6 +281,50 @@ def test_mcp_capture_marks_agent_authored_context_explicitly() -> None:
 
     request_body = loads_json(calls[0].content or b"{}")
     assert request_body["source_type"] == "AGENT"
+
+
+def test_mcp_capture_harness_uses_context_vault_not_library_crud() -> None:
+    """Harness MCP capture should target Context Vault's agent-owned route."""
+    client, calls = _client()
+
+    _run_json(
+        alexandria_capture_harness(
+            client,
+            task_goal="Remove workflow surface",
+            reusable_procedure="Write a pruning contract and remove the public route.",
+            project="alexandria-hermes",
+            steps=["Add test", "Remove route"],
+            commands=["uv run --no-editable pytest -q tests/library"],
+            tests=["workflow pruning contract"],
+            recall_keywords=["workflow-removal"],
+        )
+    )
+
+    request_body = loads_json(calls[0].content or b"{}")
+    assert calls[0].method == "POST"
+    assert str(calls[0].url) == "http://backend:8000/memory/contexts/harnesses/capture"
+    assert request_body["task_goal"] == "Remove workflow surface"
+    assert request_body["reusable_procedure"] == (
+        "Write a pruning contract and remove the public route."
+    )
+    assert request_body["recall_keywords"] == ["workflow-removal"]
+
+
+def test_mcp_generic_context_capture_rejects_harness_kind() -> None:
+    """Generic context capture must not bypass the HARNESS tool contract."""
+    client, calls = _client()
+
+    with pytest.raises(ValueError, match="alexandria_capture_harness"):
+        _run_json(
+            alexandria_capture_context(
+                client,
+                title="Spoofed harness",
+                content="## Summary\nspoof",
+                kind=ContextKind.HARNESS,
+            )
+        )
+
+    assert calls == []
 
 
 def test_mcp_path_parameters_are_percent_encoded() -> None:
@@ -478,7 +582,7 @@ def test_mcp_librarian_oauth_tools_map_to_safe_backend_lifecycle() -> None:
 
 
 def test_fastmcp_server_registers_required_alexandria_tools() -> None:
-    """FastMCP registration should expose the G005 tool contract names."""
+    """FastMCP registration should expose the durable tool contract names."""
     client, _ = _client()
     server = create_mcp_server(client=client)
 
@@ -495,12 +599,16 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_recall_context",
         "alexandria_rag_context",
         "alexandria_capture_context",
+        "alexandria_capture_harness",
         "alexandria_list_memory_compact_artifacts",
         "alexandria_list_memory_compacts",
         "alexandria_get_current_memory_compact",
         "alexandria_get_memory_compact",
         "alexandria_prepare_compact",
         "alexandria_request_skill_acquisition",
+        "alexandria_start_skill_acquisition",
+        "alexandria_skill_acquisition_job_status",
+        "alexandria_complete_skill_acquisition",
         "alexandria_submit_skill_candidate",
         "alexandria_record_usage",
         "alexandria_ask_librarian",

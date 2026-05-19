@@ -19,16 +19,6 @@ from app.memory.domain.event_enum.context_enums import (
 from app.memory.domain.types.context_payload_types import (
     ContextLintNormalizedPayload,
 )
-from app.memory.interface.schemas.context.context_enum_parsing import (
-    parse_content_format_value,
-    parse_context_kind_value,
-    parse_importance_value,
-    parse_rag_health_state_value,
-    parse_rag_strategy_value,
-    parse_scope_value,
-    parse_source_type_value,
-    parse_storage_status_value,
-)
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONObject
 from pydantic import ConfigDict, Field, field_validator
@@ -67,37 +57,6 @@ class ContextLintRequest(StrictSchemaModel):
     source_agent: str = "Hermes"
     tags: list[str] = Field(default_factory=list)
 
-    @field_validator("kind", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_kind(cls, value: object) -> ContextKind:
-        """Parse JSON context kind values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed context kind.
-        """
-        parsed = parse_context_kind_value(value)
-        if parsed is None:
-            raise ValueError("kind is required")
-        return parsed
-
-    @field_validator("scope", "visibility", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_scope(cls, value: object) -> ContextScope:
-        """Parse JSON context scope values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed context scope.
-        """
-        return parse_scope_value(value)
-
 
 class ContextLintResponse(StrictSchemaModel):
     """Machine-readable lint result."""
@@ -113,20 +72,6 @@ class ContextLintResponse(StrictSchemaModel):
     save_suggestion: JSONObject
     normalized: ContextLintNormalizedPayload
 
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_status(cls, value: object) -> ContextStorageStatus:
-        """Parse JSON context storage status values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed storage status.
-        """
-        return parse_storage_status_value(value)
-
 
 class ContextSaveRequest(ContextLintRequest):
     """Payload for saving a context."""
@@ -136,37 +81,35 @@ class ContextSaveRequest(ContextLintRequest):
     expires_at: datetime | None = None
     metadata: JSONObject = Field(default_factory=dict)
 
-    @field_validator("source_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_source_type(cls, value: object) -> ContextSourceType:
-        """Parse JSON context source type values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed source type.
-        """
-        return parse_source_type_value(value)
-
-    @field_validator("importance", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_importance(cls, value: object) -> ContextImportance:
-        """Parse JSON context importance values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed importance.
-        """
-        return parse_importance_value(value)
-
 
 class ContextCaptureRequest(ContextSaveRequest):
     """Payload for capture-semantics context saving."""
+
+
+class HarnessCaptureRequest(StrictSchemaModel):
+    """Payload for saving an agent-owned execution harness."""
+
+    task_goal: str = Field(min_length=1)
+    reusable_procedure: str = Field(min_length=1)
+    summary: str | None = None
+    project: str | None = None
+    scope: ContextScope = ContextScope.PROJECT
+    workspace_id: str | None = None
+    agent_id: str | None = None
+    user_id: str | None = None
+    session_id: str | None = None
+    source_agent: str = "Hermes"
+    environment: str | None = None
+    trigger_context: str | None = None
+    steps: list[str] = Field(default_factory=list)
+    commands: list[str] = Field(default_factory=list)
+    tests: list[str] = Field(default_factory=list)
+    failures: list[str] = Field(default_factory=list)
+    fixes: list[str] = Field(default_factory=list)
+    artifacts: list[str] = Field(default_factory=list)
+    recall_keywords: list[str] = Field(default_factory=list)
+    safety_notes: list[str] = Field(default_factory=list)
+    metadata: JSONObject = Field(default_factory=dict)
 
 
 class ContextPrepareCompactRequest(StrictSchemaModel):
@@ -186,20 +129,6 @@ class ContextPrepareCompactRequest(StrictSchemaModel):
     key_decisions: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
-
-    @field_validator("scope", "visibility", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_scope(cls, value: object) -> ContextScope:
-        """Parse JSON context scope values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed context scope.
-        """
-        return parse_scope_value(value)
 
 
 class ContextResponse(StrictSchemaModel):
@@ -235,93 +164,6 @@ class ContextResponse(StrictSchemaModel):
     access_count: int
     is_archived: bool
 
-    @field_validator("kind", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_kind(cls, value: object) -> ContextKind:
-        """Parse JSON context kind values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed context kind.
-        """
-        parsed = parse_context_kind_value(value)
-        if parsed is None:
-            raise ValueError("kind is required")
-        return parsed
-
-    @field_validator("content_format", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_content_format(cls, value: object) -> ContextContentFormat:
-        """Parse JSON context content format values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed content format.
-        """
-        return parse_content_format_value(value)
-
-    @field_validator("source_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_source_type(cls, value: object) -> ContextSourceType:
-        """Parse JSON context source type values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed source type.
-        """
-        return parse_source_type_value(value)
-
-    @field_validator("scope", "visibility", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_scope(cls, value: object) -> ContextScope:
-        """Parse JSON context scope values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed context scope.
-        """
-        return parse_scope_value(value)
-
-    @field_validator("importance", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_importance(cls, value: object) -> ContextImportance:
-        """Parse JSON context importance values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed importance.
-        """
-        return parse_importance_value(value)
-
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_status(cls, value: object) -> ContextStorageStatus:
-        """Parse JSON context storage status values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed storage status.
-        """
-        return parse_storage_status_value(value)
-
 
 class ContextListResponse(StrictSchemaModel):
     """Paginated context list response."""
@@ -356,42 +198,6 @@ class ContextAccessEventRequest(StrictSchemaModel):
     access_method: ContextAccessMethod = ContextAccessMethod.DETAIL_VIEW
     source_surface: str | None = "context-detail"
 
-    @field_validator("actor_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_actor_type(cls, value: object) -> ContextAccessActorType:
-        """Parse JSON access actor type values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed actor type.
-        """
-        if isinstance(value, ContextAccessActorType):
-            return value
-        if isinstance(value, str):
-            return ContextAccessActorType(value)
-        raise ValueError("actor_type is required")
-
-    @field_validator("access_method", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_access_method(cls, value: object) -> ContextAccessMethod:
-        """Parse JSON access method values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed access method.
-        """
-        if isinstance(value, ContextAccessMethod):
-            return value
-        if isinstance(value, str):
-            return ContextAccessMethod(value)
-        raise ValueError("access_method is required")
-
 
 class ContextAccessEventResponse(StrictSchemaModel):
     """Stored context access event response."""
@@ -403,42 +209,6 @@ class ContextAccessEventResponse(StrictSchemaModel):
     actor_type: ContextAccessActorType
     access_method: ContextAccessMethod
     source_surface: str | None
-
-    @field_validator("actor_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_actor_type(cls, value: object) -> ContextAccessActorType:
-        """Parse JSON access actor type values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed actor type.
-        """
-        if isinstance(value, ContextAccessActorType):
-            return value
-        if isinstance(value, str):
-            return ContextAccessActorType(value)
-        raise ValueError("actor_type is required")
-
-    @field_validator("access_method", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_access_method(cls, value: object) -> ContextAccessMethod:
-        """Parse JSON access method values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed access method.
-        """
-        if isinstance(value, ContextAccessMethod):
-            return value
-        if isinstance(value, str):
-            return ContextAccessMethod(value)
-        raise ValueError("access_method is required")
 
 
 class ContextAccessEventResponseList(
@@ -461,51 +231,23 @@ class ContextSearchRequest(StrictSchemaModel):
     user_id: str | None = None
     session_id: str | None = None
 
-    @field_validator("strategy", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_strategy(cls, value: object) -> RagStrategy:
-        """Parse JSON RAG strategy values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed RAG strategy.
-        """
-        return parse_rag_strategy_value(value)
-
-    @field_validator("kind", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_kind(cls, value: object) -> ContextKind | None:
-        """Parse optional JSON context kind values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed context kind when provided.
-        """
-        return parse_context_kind_value(value)
-
     @field_validator("include_scopes", mode="before")
     @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_include_scopes(cls, value: object) -> list[ContextScope]:
-        """Parse JSON context scope filter values.
+    # Broad type justified: Pydantic before validators receive raw boundary input
+    # when normalizing legacy null scope filters to the default empty list.
+    def default_include_scopes(cls, value: object) -> object:
+        """Normalize legacy null scope filters to an empty list.
 
         Args:
             value: Raw boundary value.
 
         Returns:
-            Parsed context scope filters.
+            Empty list for legacy nulls, otherwise the original value for
+            Pydantic to validate against the typed field contract.
         """
         if value is None:
             return []
-        if not isinstance(value, list):
-            raise ValueError("include_scopes must be a list")
-        return [parse_scope_value(item) for item in value]
+        return value
 
 
 class ContextSearchMatchResponse(StrictSchemaModel):
@@ -530,20 +272,6 @@ class ContextPackResponse(StrictSchemaModel):
     matches: list[ContextSearchMatchResponse]
     context_pack: str
 
-    @field_validator("strategy", "effective_strategy", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_strategy(cls, value: object) -> RagStrategy:
-        """Parse JSON RAG strategy values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed RAG strategy.
-        """
-        return parse_rag_strategy_value(value)
-
 
 class RagStatusResponse(StrictSchemaModel):
     """Context RAG health response."""
@@ -555,34 +283,6 @@ class RagStatusResponse(StrictSchemaModel):
     model_name: str
     dimensions: int
     warnings: list[str]
-
-    @field_validator("fts", "vector", "embedding", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_health_state(cls, value: object) -> RagHealthState:
-        """Parse JSON RAG health state values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed RAG health state.
-        """
-        return parse_rag_health_state_value(value)
-
-    @field_validator("default_strategy", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_default_strategy(cls, value: object) -> RagStrategy:
-        """Parse JSON default RAG strategy values.
-
-        Args:
-            value: Raw boundary value.
-
-        Returns:
-            Parsed default RAG strategy.
-        """
-        return parse_rag_strategy_value(value)
 
 
 class ContextReindexResponse(StrictSchemaModel):

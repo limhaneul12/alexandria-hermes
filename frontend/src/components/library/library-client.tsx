@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Code2, FolderPlus, Plus, Search, ScrollText, X } from "lucide-react";
+import { Code2, FolderPlus, Search, ScrollText, X } from "lucide-react";
 
 import { LibraryFolderBrowser, findCategoryPath, flattenCategories } from "@/components/library/library-folder-browser";
 import { FolderCreateForm } from "@/components/library/library-forms";
@@ -12,7 +12,7 @@ import { LibraryItemCard } from "@/components/library/library-item-card";
 import { Button } from "@/components/ui/button";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { createCategory, deleteCategory, fetchLibrary } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { t, tx } from "@/lib/i18n";
 import { buildCategoryCreatePayload, flattenCategoryOptions } from "@/lib/library/forms";
 import { useLibraryStore } from "@/store/library-store";
 import { isItemType, type CategoryNode, type VisibleItemType } from "@/types/library";
@@ -52,7 +52,6 @@ export function LibraryClient({
   const typeParam = searchParams.get("type");
   const type = forcedType ?? (typeParam && isItemType(typeParam) ? typeParam : null);
   const sortParam = searchParams.get("sort");
-  const createParam = searchParams.get("create");
   const sort = sortParam === "recent" || sortParam === "title" ? sortParam : "popular";
 
   const [inlineSearch, setInlineSearch] = useState(searchQuery);
@@ -65,10 +64,6 @@ export function LibraryClient({
 
   useEffect(() => setInlineSearch(searchQuery), [searchQuery]);
 
-  useEffect(() => {
-    if (createParam === "skill") router.replace("/library/skills/new", { scroll: false });
-    if (createParam === "prompt") router.replace("/library/prompts/new", { scroll: false });
-  }, [createParam, router]);
 
   const params = useMemo(() => {
     const next = new URLSearchParams();
@@ -96,8 +91,8 @@ export function LibraryClient({
     () => findCategoryPath(data?.categories ?? [], categorySlug),
     [categorySlug, data?.categories],
   );
-  const pageTitle = title ?? activePath.at(-1)?.name ?? "내 서재";
-  const pageDescription = description ?? "폴더 단위로 스킬과 프롬프트를 탐색하고, 선택한 항목만 상세 화면에서 full-load합니다.";
+  const pageTitle = title ?? activePath.at(-1)?.name ?? t(language, "myLibrary");
+  const pageDescription = description ?? t(language, flatList && forcedType === "SKILL" ? "flatSkillsDescription" : flatList && forcedType === "PROMPT" ? "flatPromptsDescription" : "libraryDefaultDescription");
   const hasFilters = Boolean(searchQuery || categorySlug || tag || (!forcedType && type));
   const visibleItems = useMemo(() => data?.items ?? [], [data?.items]);
   const sortedItems = useMemo(() => {
@@ -168,28 +163,28 @@ export function LibraryClient({
   }
 
   const typeOptions: SelectOption[] = [
-    { value: "", label: "All Types" },
-    { value: "SKILL", label: "Skills" },
-    { value: "PROMPT", label: "Prompts" },
+    { value: "", label: t(language, "allTypes") },
+    { value: "SKILL", label: t(language, "skill") },
+    { value: "PROMPT", label: t(language, "prompt") },
   ];
   const categorySelectOptions: SelectOption[] = [
-    { value: "", label: "All Categories" },
+    { value: "", label: t(language, "allCategories") },
     ...flatCategories.map((category) => ({ value: category.slug, label: category.name })),
   ];
   const tagOptions: SelectOption[] = [
-    { value: "", label: "All Tags" },
+    { value: "", label: t(language, "allTags") },
     ...(data?.tags ?? []).map((tagName) => ({ value: tagName, label: tagName })),
   ];
   const sortOptions: SelectOption[] = [
-    { value: "popular", label: "Popular" },
-    { value: "recent", label: "Newest" },
-    { value: "title", label: "Title" },
+    { value: "popular", label: t(language, "popular") },
+    { value: "recent", label: t(language, "newest") },
+    { value: "title", label: t(language, "titleSort") },
   ];
 
   return (
     <div className="archive-document-page min-h-[calc(100vh-74px)] px-8 py-10 md:px-14 xl:px-16">
       <section className="mb-7 border-b border-[#cfc8b8] pb-7">
-        <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#161616]">{flatList ? "Flat Library List" : "Shelf Browser"}</p>
+        <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#161616]">{flatList ? t(language, "flatLibraryList") : t(language, "shelfBrowser")}</p>
         <h1 className="mt-4 font-serif text-6xl font-bold leading-none tracking-[-0.055em] text-[#050505] md:text-7xl">{pageTitle}</h1>
         <p className="mt-4 max-w-3xl text-base leading-7 text-[#111111]">{pageDescription}</p>
       </section>
@@ -200,31 +195,26 @@ export function LibraryClient({
           <input
             value={inlineSearch}
             onChange={(event) => setInlineSearch(event.target.value)}
-            placeholder="What are you looking for?"
+            placeholder={t(language, "librarySearchPlaceholder")}
             className="h-12 w-full rounded-lg border border-[#d8d3c7] bg-white pl-11 pr-4 text-sm text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15"
           />
         </form>
 
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
           {forcedType ? null : (
-            <Select label="Type" value={type ?? ""} options={typeOptions} onChange={(value) => replaceLibraryQuery({ type: value || null })} />
+            <Select label={t(language, "typeFilter")} value={type ?? ""} options={typeOptions} onChange={(value) => replaceLibraryQuery({ type: value || null })} />
           )}
           {!flatList ? (
-            <Select label="Category" value={categorySlug ?? ""} options={categorySelectOptions} onChange={(value) => router.push(value ? `/library/${value}` : "/library", { scroll: false })} />
+            <Select label={t(language, "categoryFilter")} value={categorySlug ?? ""} options={categorySelectOptions} onChange={(value) => router.push(value ? `/library/${value}` : "/library", { scroll: false })} />
           ) : null}
-          <Select label="Tags" value={tag ?? ""} options={tagOptions} onChange={(value) => replaceLibraryQuery({ tag: value || null })} />
-          <Select label="Sort by" value={sort} options={sortOptions} onChange={(value) => replaceLibraryQuery({ sort: value })} />
+          <Select label={t(language, "tagsFilter")} value={tag ?? ""} options={tagOptions} onChange={(value) => replaceLibraryQuery({ tag: value || null })} />
+          <Select label={t(language, "sortBy")} value={sort} options={sortOptions} onChange={(value) => replaceLibraryQuery({ sort: value })} />
           <div className="flex flex-wrap items-end gap-2">
             {!flatList ? (
               <Button type="button" variant="secondary" onClick={() => setShowFolderForm((value) => !value)}>
-                <FolderPlus className="h-4 w-4" /> Folder
+                <FolderPlus className="h-4 w-4" /> {t(language, "folder")}
               </Button>
             ) : null}
-            <Button asChild>
-              <Link href={forcedType === "PROMPT" ? "/library/prompts/new" : "/library/skills/new"}>
-                <Plus className="h-4 w-4" /> Add
-              </Link>
-            </Button>
           </div>
         </div>
       </div>
@@ -246,13 +236,13 @@ export function LibraryClient({
       {pendingCategoryDelete ? (
         <div className="archive-inline-confirm mb-6" role="status" aria-live="polite">
           <div>
-            <p className="font-semibold text-[#111111]">{pendingCategoryDelete.name} 폴더를 삭제할까요?</p>
-            <p className="mt-1 text-sm text-[#6f6a60]">브라우저 팝업 대신 이 화면 안에서만 확인합니다.</p>
+            <p className="font-semibold text-[#111111]">{tx(language, "deleteCategoryInlineConfirm", { name: pendingCategoryDelete.name })}</p>
+            <p className="mt-1 text-sm text-[#6f6a60]">{t(language, "inlineDeleteConfirmation")}</p>
           </div>
           <div className="flex gap-2">
-            <Button type="button" variant="secondary" onClick={() => setPendingCategoryDelete(null)} disabled={deleteCategoryMutation.isPending}>취소</Button>
+            <Button type="button" variant="secondary" onClick={() => setPendingCategoryDelete(null)} disabled={deleteCategoryMutation.isPending}>{t(language, "cancel")}</Button>
             <Button type="button" onClick={confirmDeleteCategory} disabled={deleteCategoryMutation.isPending}>
-              {deleteCategoryMutation.isPending ? "삭제 중" : "삭제"}
+              {deleteCategoryMutation.isPending ? t(language, "deleting") : t(language, "deleteAction")}
             </Button>
           </div>
         </div>
@@ -280,13 +270,13 @@ export function LibraryClient({
         <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2 id="library-items-heading" className="font-serif text-3xl font-bold text-[#111111]">
-              {flatList ? pageTitle : "항목"}
+              {flatList ? pageTitle : t(language, "libraryItemsHeading")}
             </h2>
-            <p className="mt-1 text-sm text-[#625c52]">총 {data?.total ?? sortedItems.length}개의 아카이브 후보를 표시합니다.</p>
+            <p className="mt-1 text-sm text-[#625c52]">{tx(language, "archiveCandidateCount", { count: data?.total ?? sortedItems.length })}</p>
           </div>
           <div className="flex gap-2">
-            <Button asChild variant="secondary" size="sm"><Link href="/library/skills"><Code2 className="h-4 w-4" /> 내 스킬</Link></Button>
-            <Button asChild variant="secondary" size="sm"><Link href="/library/prompts"><ScrollText className="h-4 w-4" /> 내 프롬프트</Link></Button>
+            <Button asChild variant="secondary" size="sm"><Link href="/library/skills"><Code2 className="h-4 w-4" /> {t(language, "mySkills")}</Link></Button>
+            <Button asChild variant="secondary" size="sm"><Link href="/library/prompts"><ScrollText className="h-4 w-4" /> {t(language, "myPrompts")}</Link></Button>
           </div>
         </div>
 
@@ -297,7 +287,7 @@ export function LibraryClient({
         ) : sortedItems.length === 0 ? (
           <div className="archive-explore-card p-8 text-[#625c52]">
             <p className="font-serif text-2xl text-[#111111]">{t(language, "noItemsTitle")}</p>
-            <p className="mt-2 text-sm">새 스킬/프롬프트를 만들거나 다른 필터를 선택하세요.</p>
+            <p className="mt-2 text-sm">{t(language, "emptyItemsDescription")}</p>
           </div>
         ) : (
           <div className={flatList ? "grid gap-3" : "grid gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"}>

@@ -30,8 +30,6 @@ class LibrarianOpsService:
             LibrarianClassificationPayload: Taxonomy label and confidence.
         """
         lowered = text.lower()
-        if "workflow" in lowered:
-            return {"label": ItemType.WORKFLOW, "confidence": 0.76}
         if "api" in lowered or "agent" in lowered:
             return {"label": ItemType.SKILL, "confidence": 0.83}
         return {"label": ItemType.KNOWLEDGE, "confidence": 0.55}

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from app.container import ApplicationContainer
 from app.memory.application.context_service import ContextService
+from app.memory.domain.contracts.harness_contracts import HarnessCapture
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.interface.schemas.context.context_mapping import (
     access_event_payload,
     chunk_payload,
     context_payload,
     health_payload,
-    lint_payload,
     pack_payload,
     reindex_payload,
 )
@@ -23,17 +23,16 @@ from app.memory.interface.schemas.context.context_schema import (
     ContextAccessEventResponseList,
     ContextCaptureRequest,
     ContextChunkResponseList,
-    ContextLintRequest,
-    ContextLintResponse,
     ContextListResponse,
     ContextPackResponse,
     ContextPrepareCompactRequest,
     ContextReindexResponse,
     ContextResponse,
-    ContextSaveRequest,
     ContextSearchRequest,
+    HarnessCaptureRequest,
     RagStatusResponse,
 )
+from app.shared.exceptions import ValidationError
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import CONTEXT_ROUTE_EXCEPTION_MAPPING
 from dependency_injector.wiring import Provide, inject
@@ -43,7 +42,7 @@ router = APIRouter(prefix="/memory/contexts", tags=["library-contexts"])
 
 
 async def _save_context(
-    request: ContextSaveRequest,
+    request: ContextCaptureRequest,
     service: ContextService,
 ) -> ContextResponse:
     context = await service.save(
@@ -66,77 +65,6 @@ async def _save_context(
         context_metadata=metadata_payload(request.metadata),
     )
     response = ContextResponse.model_validate(context_payload(context))
-    return response
-
-
-@router.post(
-    "/lint",
-    response_model=ContextLintResponse,
-    status_code=status.HTTP_200_OK,
-    description="Lint Context Vault content without saving it.",
-    summary="Lint context",
-)
-@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def lint_context(
-    request: ContextLintRequest,
-    service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-) -> ContextLintResponse:
-    """Lint a context payload.
-
-    Args:
-        request: Context lint request.
-        service: Context application service.
-
-    Returns:
-        Lint result response.
-    """
-    result = service.lint(
-        kind=request.kind,
-        title=request.title,
-        content=request.content,
-        summary=request.summary,
-        project=request.project,
-        scope=request.scope,
-        workspace_id=request.workspace_id,
-        agent_id=request.agent_id,
-        user_id=request.user_id,
-        session_id=request.session_id,
-        visibility=request.visibility,
-        source_agent=request.source_agent,
-        tags=request.tags,
-    )
-    response = ContextLintResponse.model_validate(lint_payload(result))
-    return response
-
-
-@router.post(
-    "",
-    response_model=ContextResponse,
-    status_code=status.HTTP_201_CREATED,
-    description="Save a Context Vault entry after linting/redaction.",
-    summary="Create context",
-)
-@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def create_context(
-    request: ContextSaveRequest,
-    service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-) -> ContextResponse:
-    """Save a context entry.
-
-    Args:
-        request: Context save request.
-        service: Context application service.
-
-    Returns:
-        Stored context response.
-    """
-    response = await _save_context(request=request, service=service)
     return response
 
 
@@ -270,7 +198,68 @@ async def capture_context(
     Returns:
         Stored context response.
     """
+    if request.kind == ContextKind.HARNESS:
+        raise ValidationError(
+            "HARNESS contexts must be captured through "
+            "/memory/contexts/harnesses/capture"
+        )
     response = await _save_context(request=request, service=service)
+    return response
+
+
+@router.post(
+    "/harnesses/capture",
+    response_model=ContextResponse,
+    status_code=status.HTTP_201_CREATED,
+    description=(
+        "Capture an agent-owned execution harness as Context Vault memory. "
+        "This is not a human CRUD surface."
+    ),
+    summary="Capture execution harness",
+)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def capture_harness(
+    request: HarnessCaptureRequest,
+    service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
+) -> ContextResponse:
+    """Capture an agent-owned execution harness.
+
+    Args:
+        request: Harness capture request.
+        service: Context application service.
+
+    Returns:
+        Stored HARNESS context response.
+    """
+    context = await service.capture_harness(
+        HarnessCapture(
+            task_goal=request.task_goal,
+            reusable_procedure=request.reusable_procedure,
+            summary=request.summary,
+            project=request.project,
+            scope=request.scope,
+            workspace_id=request.workspace_id,
+            agent_id=request.agent_id,
+            user_id=request.user_id,
+            session_id=request.session_id,
+            source_agent=request.source_agent,
+            environment=request.environment,
+            trigger_context=request.trigger_context,
+            steps=request.steps,
+            commands=request.commands,
+            tests=request.tests,
+            failures=request.failures,
+            fixes=request.fixes,
+            artifacts=request.artifacts,
+            recall_keywords=request.recall_keywords,
+            safety_notes=request.safety_notes,
+            metadata=metadata_payload(request.metadata),
+        )
+    )
+    response = ContextResponse.model_validate(context_payload(context))
     return response
 
 

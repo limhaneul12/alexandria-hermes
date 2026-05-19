@@ -16,9 +16,9 @@ from app.cli_support.contracts.command_contracts import (
 from app.cli_support.contracts.runtime_contracts import CommandContext
 from app.cli_support.environment import cli_secret_value
 from app.cli_support.presentation.output_renderers import print_json, text_field
-from app.cli_support.routing.url_paths import quote_path
+from app.cli_support.url_paths import quote_path
 from app.shared.types.extra_types import JSONObject, JSONValue
-from app.shared.util.oauth_redaction import without_oauth_sensitive_fields
+from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
 
 
 def usage_record_body(command: UsageRecordCliCommand) -> JSONObject:

@@ -10,27 +10,7 @@ from app.connections.domain.types.librarian_provider_payload_types import (
 )
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.types.extra_types import JSONObject
-from pydantic import ConfigDict, Field, field_validator
-
-
-# Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-def _provider_type(value: object) -> ProviderType:
-    """Accept public JSON provider type values at API boundaries."""
-    if isinstance(value, ProviderType):
-        return value
-    if isinstance(value, str):
-        return ProviderType(value)
-    raise ValueError("provider_type must be a valid provider type")
-
-
-# Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-def _auth_type(value: object) -> AuthType:
-    """Accept public JSON auth type values at API boundaries."""
-    if isinstance(value, AuthType):
-        return value
-    if isinstance(value, str):
-        return AuthType(value)
-    raise ValueError("auth_type must be a valid auth type")
+from pydantic import ConfigDict, Field
 
 
 class LibrarianProviderCreateRequest(StrictSchemaModel):
@@ -67,34 +47,6 @@ class LibrarianProviderCreateRequest(StrictSchemaModel):
         repr=False,
         json_schema_extra={"writeOnly": True},
     )
-
-    @field_validator("provider_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_provider_type(cls, value: object) -> ProviderType:
-        """Parse JSON provider type values.
-
-        Args:
-            value [object]: Value supplied to parse_provider_type.
-
-        Returns:
-            ProviderType: Value produced by parse_provider_type.
-        """
-        return _provider_type(value)
-
-    @field_validator("auth_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_auth_type(cls, value: object) -> AuthType:
-        """Parse JSON auth type values.
-
-        Args:
-            value [object]: Value supplied to parse_auth_type.
-
-        Returns:
-            AuthType: Value produced by parse_auth_type.
-        """
-        return _auth_type(value)
 
 
 class LibrarianProviderPatchRequest(StrictSchemaModel):
@@ -150,38 +102,6 @@ class LibrarianProviderPatchRequest(StrictSchemaModel):
             payload["oauth_access_token"] = self.oauth_access_token
         return payload
 
-    @field_validator("provider_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_provider_type(cls, value: object) -> ProviderType | None:
-        """Parse JSON provider type values when provided.
-
-        Args:
-            value [object]: Value supplied to parse_provider_type.
-
-        Returns:
-            ProviderType | None: Value produced by parse_provider_type.
-        """
-        if value is None:
-            return None
-        return _provider_type(value)
-
-    @field_validator("auth_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_auth_type(cls, value: object) -> AuthType | None:
-        """Parse JSON auth type values when provided.
-
-        Args:
-            value [object]: Value supplied to parse_auth_type.
-
-        Returns:
-            AuthType | None: Value produced by parse_auth_type.
-        """
-        if value is None:
-            return None
-        return _auth_type(value)
-
 
 class LibrarianProviderResponse(StrictSchemaModel):
     """Provider response model with timestamps."""
@@ -211,34 +131,6 @@ class LibrarianProviderResponse(StrictSchemaModel):
     config: JSONObject
     created_at: datetime
     updated_at: datetime
-
-    @field_validator("provider_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_provider_type(cls, value: object) -> ProviderType:
-        """Parse response provider type values from repository payloads.
-
-        Args:
-            value [object]: Value supplied to parse_provider_type.
-
-        Returns:
-            ProviderType: Value produced by parse_provider_type.
-        """
-        return _provider_type(value)
-
-    @field_validator("auth_type", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_auth_type(cls, value: object) -> AuthType:
-        """Parse response auth type values from repository payloads.
-
-        Args:
-            value [object]: Value supplied to parse_auth_type.
-
-        Returns:
-            AuthType: Value produced by parse_auth_type.
-        """
-        return _auth_type(value)
 
 
 class LibrarianProviderResponseList(

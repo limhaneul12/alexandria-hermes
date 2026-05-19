@@ -19,6 +19,7 @@
     "test:librarian-chat": "node scripts/check-librarian-chat-contract.mjs",
     "test:library-ui-navigation": "node scripts/check-library-ui-navigation-contract.mjs",
     "test:content-viewer": "node scripts/check-content-viewer-contract.mjs",
+    "test:i18n": "node scripts/check-i18n-contract.mjs",
     "demo:install-browsers": "playwright install chromium",
     "demo:record": "node scripts/record-demo-flows.mjs"
   },

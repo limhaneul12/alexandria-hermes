@@ -8,6 +8,7 @@ from app.librarian.application.hermes_collaboration_service import (
 )
 from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
 from app.librarian.application.librarian_ops_service import LibrarianOpsService
+from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
 )
@@ -20,6 +21,12 @@ from app.librarian.interface.schemas.librarian.librarian_ops_schemas import (
     ClassifyRequest,
     CreateCandidateRequest,
     RecommendRequest,
+)
+from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import (
+    SkillAcquisitionCompletionRequest,
+    SkillAcquisitionJobRequest,
+    SkillAcquisitionJobResponse,
+    skill_acquisition_job_response,
 )
 from app.library.application.item_search_service import ItemSearchService
 from app.library.domain.event_enum.item_enums import ItemType
@@ -165,6 +172,102 @@ async def librarian_job_status(
     payload = await collaboration_service.job_status(job_id)
     validation = LibrarianJobStatusResponse.model_validate(payload)
     return validation
+
+
+@router.post(
+    "/skill-acquisition-jobs",
+    response_model=SkillAcquisitionJobResponse,
+    description="Create a durable local skill-acquisition job.",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Create skill acquisition job",
+)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def create_skill_acquisition_job(
+    request: SkillAcquisitionJobRequest,
+    service: SkillAcquisitionService = Depends(
+        Provide[ApplicationContainer.librarian.skill_acquisition_service]
+    ),
+) -> SkillAcquisitionJobResponse:
+    """Create a durable skill-acquisition job.
+
+    Args:
+        request: Skill-acquisition job request.
+        service: Skill-acquisition application service.
+
+    Returns:
+        Created durable job response.
+    """
+    job = await service.request_job(
+        prompt=request.prompt,
+        agent_name=request.agent_name,
+        project=request.project,
+        task_summary=request.task_summary,
+        provider_id=request.provider_id,
+        librarian_profile_id=request.librarian_profile_id,
+    )
+    return skill_acquisition_job_response(job)
+
+
+@router.get(
+    "/skill-acquisition-jobs/{job_id}",
+    response_model=SkillAcquisitionJobResponse,
+    description="Return a durable skill-acquisition job status/result.",
+    status_code=status.HTTP_200_OK,
+    summary="Get skill acquisition job",
+)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def get_skill_acquisition_job(
+    job_id: str,
+    service: SkillAcquisitionService = Depends(
+        Provide[ApplicationContainer.librarian.skill_acquisition_service]
+    ),
+) -> SkillAcquisitionJobResponse:
+    """Return one durable skill-acquisition job.
+
+    Args:
+        job_id: Skill-acquisition job identifier.
+        service: Skill-acquisition application service.
+
+    Returns:
+        Durable job response.
+    """
+    job = await service.get_job(job_id)
+    return skill_acquisition_job_response(job)
+
+
+@router.post(
+    "/skill-acquisition-jobs/{job_id}/complete",
+    response_model=SkillAcquisitionJobResponse,
+    description="Persist an acquired skill artifact and attach a resume context.",
+    status_code=status.HTTP_200_OK,
+    summary="Complete skill acquisition job",
+)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def complete_skill_acquisition_job(
+    job_id: str,
+    request: SkillAcquisitionCompletionRequest,
+    service: SkillAcquisitionService = Depends(
+        Provide[ApplicationContainer.librarian.skill_acquisition_service]
+    ),
+) -> SkillAcquisitionJobResponse:
+    """Complete one durable skill-acquisition job with a structured artifact.
+
+    Args:
+        job_id: Skill-acquisition job identifier.
+        request: Structured acquired skill artifact.
+        service: Skill-acquisition application service.
+
+    Returns:
+        Completed durable job response with skill/context handles.
+    """
+    job = await service.complete_with_skill_artifact(
+        job_id=job_id,
+        artifact=request.to_artifact(),
+    )
+    return skill_acquisition_job_response(job)
 
 
 @router.post(

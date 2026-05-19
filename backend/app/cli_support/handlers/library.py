@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import urllib.parse
 
+from app.cli_support.argument_values import bounded_limit
+from app.cli_support.backend_api_client import CliBackendApiClient
 from app.cli_support.contracts.command_contracts import (
     FolderIdCommand,
     FoldersCreateCommand,
@@ -13,18 +15,15 @@ from app.cli_support.contracts.command_contracts import (
     LibraryListCommand,
     LibrarySearchCommand,
     MinioCommand,
-    SkillsCreateCommand,
     SkillsListCommand,
     SkillsSearchCommand,
 )
 from app.cli_support.contracts.request_mappers import (
-    agent_skill_submit_payload,
     folder_create_payload,
     minio_import_payload,
-    skill_create_payload,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
-from app.cli_support.input.argument_values import bounded_limit
+from app.cli_support.json_payloads import schema_payload
 from app.cli_support.presentation.output_renderers import (
     json_list,
     print_candidate_table,
@@ -33,13 +32,11 @@ from app.cli_support.presentation.output_renderers import (
     print_json,
     text_field,
 )
-from app.cli_support.routing.url_paths import quote_path
 from app.cli_support.schemas.library_command_schemas import (
     DeletedResourceResult,
     FolderEnsureResult,
 )
-from app.cli_support.serialization.json_payloads import schema_payload
-from app.cli_support.transport.backend_api_client import CliBackendApiClient
+from app.cli_support.url_paths import quote_path
 from app.shared.exceptions.cli_exceptions import CliInputError
 from app.shared.types.extra_types import JSONObject
 
@@ -142,45 +139,6 @@ def handle_skills_get(
     payload = client.get(f"/library/skills/{quote_path(item_id)}")
     print_json(payload, context.stdout)
     return 0
-
-
-def handle_skills_create(
-    command: SkillsCreateCommand,
-    context: CommandContext,
-    client: CliBackendApiClient,
-) -> int:
-    """Run the skills create CLI command.
-
-    Args:
-        command: Typed CLI command contract for the operation.
-        context: CLI runtime context with output settings.
-        client: Backend API client used for HTTP requests.
-
-    Returns:
-        Process-style exit code.
-    """
-    if _is_agent_skill_submission(command):
-        endpoint = "/library/skills/submit-by-agent"
-        body = agent_skill_submit_payload(command)
-    else:
-        endpoint = "/library/skills"
-        body = skill_create_payload(command)
-    payload = client.post(endpoint, body)
-    if context.json_output:
-        print_json(payload, context.stdout)
-    else:
-        title = text_field(payload, "title")
-        item_id = text_field(payload, "id")
-        print(f"created skill {item_id}: {title}", file=context.stdout)
-    return 0
-
-
-def _is_agent_skill_submission(command: SkillsCreateCommand) -> bool:
-    return (
-        command.source_agent is not None
-        or bool(command.evidence_url)
-        or command.source_summary is not None
-    )
 
 
 def handle_skills_delete(

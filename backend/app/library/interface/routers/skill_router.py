@@ -7,7 +7,7 @@ from typing import cast
 from app.container import ApplicationContainer
 from app.library.application.item_service import ItemService
 from app.library.application.skill_service import SkillService
-from app.library.domain.event_enum.item_enums import ItemStatus, ItemType
+from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.types.skill_payload_types import SkillSchemaPayload
 from app.library.interface.routers._helpers import (
     build_patch_payload,
@@ -19,61 +19,14 @@ from app.library.interface.schemas.item.item_schema import (
 )
 from app.library.interface.schemas.skill.request_schemas import (
     AgentSubmitSkillRequest,
-    SkillCreateRequest,
     SkillPatchRequest,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
-from app.shared.types.types_convert_utils import enum_value
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
 router = APIRouter(prefix="/library/skills", tags=["skills"])
-
-
-@router.post(
-    "",
-    response_model=ItemResponse,
-    status_code=status.HTTP_201_CREATED,
-    description="Library API operation.",
-    summary="Create skill",
-)
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def create_skill(
-    request: SkillCreateRequest,
-    skill_service: SkillService = Depends(
-        Provide[ApplicationContainer.library.skill_service]
-    ),
-) -> ItemResponse:
-    """Create one skill entry from manual input.
-
-    Args:
-        request [SkillCreateRequest]: Value supplied to create_skill.
-        skill_service [SkillService]: Value supplied to create_skill.
-
-    Returns:
-        ItemResponse: Value produced by create_skill.
-    """
-    payload = await skill_service.create_skill(
-        title=request.title,
-        summary=request.summary,
-        content=request.content,
-        category_id=request.category_id,
-        tags=request.tags,
-        purpose=request.purpose,
-        input_schema=cast(SkillSchemaPayload, request.input_schema),
-        output_schema=cast(SkillSchemaPayload, request.output_schema),
-        usage_example=request.usage_example,
-        required_tools=request.required_tools,
-        risk_level=request.risk_level,
-        version=request.version,
-        created_by_name=request.created_by_name,
-        activate=enum_value(request.status, ItemStatus, "status") is ItemStatus.ACTIVE,
-        status=request.status,
-    )
-    validation = ItemResponse.model_validate(payload)
-    return validation
 
 
 @router.post(

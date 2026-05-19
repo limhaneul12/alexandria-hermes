@@ -7,7 +7,7 @@ from app.cli_support.contracts.runtime_contracts import (
     HttpResponse,
     HttpTransport,
 )
-from app.cli_support.core.runtime import main, run
+from app.cli_support.runtime import main, run
 from app.cli_support.typer_entry import typer_app
 
 __all__ = [

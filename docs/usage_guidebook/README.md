@@ -27,6 +27,15 @@ docs/usage_guidebook/install_onboard/install_onboard_guide_01.md
 
 ## 현재 가이드
 
+언어별 설치 guidebook은 `docs/install_guides/`로 분리했다.
+
+| 언어 | 설치 가이드 |
+| --- | --- |
+| 한국어 | [../install_guides/ko/install.md](../install_guides/ko/install.md) |
+| English | [../install_guides/en/install.md](../install_guides/en/install.md) |
+| 简体中文 | [../install_guides/zh/install.md](../install_guides/zh/install.md) |
+| 日本語 | [../install_guides/ja/install.md](../install_guides/ja/install.md) |
+
 | 기능 | 가이드 | 목적 |
 | --- | --- | --- |
 | install_onboard | [install_onboard_guide_01.md](install_onboard/install_onboard_guide_01.md) | 처음 설치자가 Hermes에 Alexandria를 붙이는 기본 흐름 |

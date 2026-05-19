@@ -21,6 +21,15 @@ class LibrarianDelegationStatus(StrEnum):
     NOT_FOUND = "NOT_FOUND"
 
 
+class SkillAcquisitionJobStatus(StrEnum):
+    """Durable skill-acquisition job lifecycle status."""
+
+    ACCEPTED = "ACCEPTED"
+    GUIDANCE_ONLY = "GUIDANCE_ONLY"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
 class LibrarianProfileRole(StrEnum):
     """Routing role assigned to a saved librarian profile."""
 

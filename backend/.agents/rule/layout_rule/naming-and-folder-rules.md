@@ -130,6 +130,8 @@ Utility code is allowed when it has clear ownership.
   `{domain}_utils/`.
 - utility files inside those folders should still be named by purpose, not as a
   catch-all `utils.py` or `helpers.py`.
+- use `utils` as the directory name, not singular `util`, for backend-wide
+  utility packages.
 
 Examples:
 

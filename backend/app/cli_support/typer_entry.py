@@ -14,9 +14,9 @@ from app.cli_support.contracts.runtime_contracts import (
     CommandContext,
 )
 from app.cli_support.handlers.library import handle_health
-from app.cli_support.routing.url_paths import normalized_base_url
 from app.cli_support.typer_commands.collaboration import librarian_app, usage_app
 from app.cli_support.typer_commands.context import context_app
+from app.cli_support.typer_commands.daemon import daemon_app
 from app.cli_support.typer_commands.hermes import hermes_app
 from app.cli_support.typer_commands.library import (
     folders_app,
@@ -27,7 +27,10 @@ from app.cli_support.typer_commands.library import (
 from app.cli_support.typer_commands.library_prompts import prompts_app
 from app.cli_support.typer_commands.mcp import mcp_app
 from app.cli_support.typer_commands.memory_compact import memory_compact_app
+from app.cli_support.typer_commands.runtime import serve_command
+from app.cli_support.typer_commands.setup import setup_app
 from app.cli_support.typer_commands.typer_runtime import run_context
+from app.cli_support.url_paths import normalized_base_url
 from app.mcp_server.mcp_protocol_enums import McpLaunchArgument
 from app.shared.exceptions.cli_exceptions import CliRuntimeStateError
 
@@ -44,10 +47,13 @@ typer_app.add_typer(library_app, name="library")
 typer_app.add_typer(minio_app, name="minio")
 typer_app.add_typer(context_app, name="context")
 typer_app.add_typer(memory_compact_app, name="memory-compacts")
+typer_app.add_typer(setup_app, name="setup")
+typer_app.add_typer(daemon_app, name="daemon")
 typer_app.add_typer(hermes_app, name="hermes")
 typer_app.add_typer(librarian_app, name="librarian")
 typer_app.add_typer(usage_app, name="usage")
 typer_app.add_typer(mcp_app, name=McpLaunchArgument.MCP.value)
+typer_app.command("serve")(serve_command)
 
 
 @typer_app.callback()

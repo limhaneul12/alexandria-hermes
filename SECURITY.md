@@ -10,7 +10,7 @@ Alexandria-Hermes is **no-login, single-operator, local-first** software.
 
 - There is no signup/login/session/RBAC system.
 - Sensitive control-plane routes are protected by one operator key.
-- Backend service config receives the key as `SERVICE_OPERATOR_API_KEY`.
+- Backend service config receives the key as `ALEXANDRIA_OPERATOR_API_KEY`.
 - CLI/MCP/frontend server proxy clients send `ALEXANDRIA_OPERATOR_API_KEY` to the backend operator-key header.
 - `ALEXANDRIA_API_TOKEN` is not an active product auth mechanism.
 

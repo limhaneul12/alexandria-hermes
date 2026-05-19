@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.platform.config.app_config import AppConfig
 
 
@@ -55,3 +54,15 @@ def test_app_config_keeps_codex_oauth_env_overrides(
     assert config.codex_oauth_client_id == "custom-client-id"
     assert config.codex_oauth_device_expires_in_seconds == 600
     assert config.codex_oauth_min_poll_interval_seconds == 5
+
+
+def test_app_config_reads_operator_key_from_alexandria_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shared operator secret should use the Alexandria env name."""
+    expected_key = "alexandria-operator-key-for-local-single-operator"
+    monkeypatch.setenv("ALEXANDRIA_OPERATOR_API_KEY", expected_key)
+
+    config = AppConfig(_env_file=None)
+
+    assert config.operator_api_key.get_secret_value() == expected_key

@@ -67,3 +67,41 @@ When that happens:
 - allow a raw passthrough lane when transport parsing succeeded but canonical schema promotion is not yet justified,
 - convert to an explicit schema as soon as the stable structure is understood,
 - do not let dynamic looseness leak into the stable adapter API.
+
+## Enum Normalization Rule
+
+Do not add `mode="before"` validators solely to convert public enum strings
+into enum members.
+
+Pydantic already validates string-backed enum fields, including optional enum
+fields, against the annotated enum contract. A before validator is justified
+only when it adds real boundary behavior such as legacy aliases, non-standard
+external payload shapes, or null/default normalization that Pydantic would not
+perform from the field annotation alone.
+
+When a before validator is justified for one small normalization rule, normalize
+only that rule and return the value for Pydantic to validate against the
+annotated field. Do not duplicate the full enum/type validation path inside the
+validator.
+
+Bad direction:
+
+```python
+@field_validator("status", mode="before")
+@classmethod
+def parse_status(cls, value: object) -> ItemStatus:
+    if isinstance(value, ItemStatus):
+        return value
+    if isinstance(value, str):
+        return ItemStatus(value)
+    raise ValueError("status must be a valid item status")
+```
+
+Preferred direction:
+
+```python
+status: ItemStatus = ItemStatus.DRAFT
+```
+
+This keeps strict typing focused on real contracts instead of framework
+reimplementation.

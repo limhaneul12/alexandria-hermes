@@ -64,6 +64,14 @@ Preferred boundary split:
 
 Every Pydantic boundary schema should make intentional configuration choices for its role instead of relying on defaults by accident.
 
+Pydantic boundary schemas should not reimplement validation that the field
+annotation already provides. In particular, do not add `mode="before"`
+validators just to convert enum strings into enum members; declare the enum
+field and let Pydantic validate the public JSON value. Add a before validator
+only when the boundary needs behavior beyond the annotation, such as legacy
+aliases, non-standard external payload shapes, settings/path coercion, or
+intentional null/default normalization.
+
 ## Layer Contract Split Rule
 
 ### Adopt now
@@ -97,6 +105,10 @@ Boundary strictness can be applied at three levels:
 - explicit strict field types (`StrictStr`, `StrictInt`, `StrictFloat`, `StrictBool`)
 - per-field strict validation (`Field(strict=True)`) when needed
 - model-level strict mode (`ConfigDict(strict=True)`) when the whole schema should reject coercion by default
+
+Strictness must not be confused with extra parsing layers. If a typed Pydantic
+field already rejects invalid input, prefer that field annotation over a custom
+validator plus broad `object` input.
 
 ## ConfigDict Intent Rule
 

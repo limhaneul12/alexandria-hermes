@@ -8,12 +8,9 @@ import type {
   ContextDTO,
   ContextAccessEventCreateDTO,
   ContextAccessEventDTO,
-  ContextLintRequestDTO,
-  ContextLintResultDTO,
   ContextListDTO,
   ContextPackDTO,
   ContextPrepareCompactDTO,
-  ContextSaveDTO,
   ContextSearchDTO,
   DashboardDTO,
   ExternalArchiveCandidateDTO,
@@ -34,10 +31,6 @@ import type {
   LibraryUsageRecordDTO,
   MemoryCompactDTO,
   MemoryCompactListDTO,
-  PromptCreateDTO,
-  PromptCreateResultDTO,
-  SkillCreateDTO,
-  SkillCreateResultDTO,
   RagStatusDTO,
   SkillDetailDTO,
 } from "@/types/library";
@@ -82,13 +75,6 @@ export function deleteCategory(categoryId: string) {
   return fetchJson<void>(`/api/categories/${encodeURIComponent(categoryId)}`, { method: "DELETE" });
 }
 
-export function createSkill(payload: SkillCreateDTO) {
-  return fetchJson<SkillCreateResultDTO>("/api/skills", jsonInit("POST", payload));
-}
-
-export function createPrompt(payload: PromptCreateDTO) {
-  return fetchJson<PromptCreateResultDTO>("/api/prompts", jsonInit("POST", payload));
-}
 
 export function deleteLibraryItem(itemId: string) {
   return fetchJson<void>(`/api/items/${encodeURIComponent(itemId)}`, { method: "DELETE" });
@@ -227,23 +213,6 @@ export function fetchContextChunks(contextId: string) {
   );
 }
 
-export function lintContext(payload: ContextLintRequestDTO) {
-  return fetchJson<ContextLintResultDTO>(
-    "/api/library/contexts/lint",
-    jsonInit("POST", payload),
-  );
-}
-
-export function saveContext(payload: ContextSaveDTO) {
-  return fetchJson<ContextDTO>("/api/library/contexts", jsonInit("POST", payload));
-}
-
-export function captureContext(payload: ContextSaveDTO) {
-  return fetchJson<ContextDTO>(
-    "/api/library/contexts/capture",
-    jsonInit("POST", payload),
-  );
-}
 
 export function prepareCompact(payload: ContextPrepareCompactDTO) {
   return fetchJson<ContextDTO>(

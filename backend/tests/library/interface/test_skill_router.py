@@ -137,46 +137,6 @@ def _post_submit_skill_by_agent(
     return response.status_code, response.json()
 
 
-def test_create_skill_registers_manual_skill_with_public_json_payload() -> None:
-    """POST /library/skills should create a manually registered user skill."""
-    item_repo = FakeItemRepository()
-
-    def override_skill_service() -> SkillService:
-        return SkillService(item_service=ItemService(item_repo=item_repo))
-
-    with (
-        override_library_provider("skill_service", override_skill_service()),
-        TestClient(app) as client,
-    ):
-        response = client.post(
-            "/library/skills",
-            json={
-                "title": "Manual FastAPI skill",
-                "summary": "Manual skill registration smoke.",
-                "content": "Use narrow dependency overrides.",
-                "category_id": "00000000-0000-4000-8000-000000000002",
-                "tags": ["fastapi", "manual"],
-                "purpose": "Register a reusable skill from the library UI.",
-                "input_schema": {},
-                "output_schema": {},
-                "usage_example": "Fill the form and save the skill.",
-                "required_tools": ["pytest"],
-                "risk_level": "LOW",
-                "version": "1.0.0",
-                "created_by_name": "alex",
-                "status": "DRAFT",
-            },
-        )
-
-    assert response.status_code == 201
-    assert response.json()["title"] == "Manual FastAPI skill"
-    assert response.json()["item_type"] == "SKILL"
-    assert response.json()["status"] == "DRAFT"
-    assert item_repo.created_payload is not None
-    assert item_repo.created_payload["source_type"] == "USER_CREATED"
-    assert item_repo.created_payload["created_by_type"] == "USER"
-
-
 def test_submit_skill_by_agent_accepts_json_enum_values_and_returns_created_skill() -> (
     None
 ):

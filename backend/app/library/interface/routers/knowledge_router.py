@@ -15,7 +15,6 @@ from app.library.interface.schemas.item.item_schema import (
     ItemResponseList,
 )
 from app.library.interface.schemas.knowledge.knowledge_schema import (
-    KnowledgeCreateRequest,
     KnowledgePatchRequest,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
@@ -24,46 +23,6 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
 router = APIRouter(prefix="/library/knowledge", tags=["knowledge"])
-
-
-@router.post(
-    "",
-    response_model=ItemResponse,
-    status_code=status.HTTP_201_CREATED,
-    description="Library API operation.",
-    summary="Create knowledge",
-)
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def create_knowledge(
-    request: KnowledgeCreateRequest,
-    knowledge_service: KnowledgeService = Depends(
-        Provide[ApplicationContainer.library.knowledge_service]
-    ),
-) -> ItemResponse:
-    """Create one knowledge item.
-
-    Args:
-        request [KnowledgeCreateRequest]: Value supplied to create_knowledge.
-        knowledge_service [KnowledgeService]: Value supplied to create_knowledge.
-
-    Returns:
-        ItemResponse: Value produced by create_knowledge.
-    """
-    payload = await knowledge_service.create_knowledge(
-        title=request.title,
-        summary=request.summary,
-        content=request.content,
-        category_id=request.category_id,
-        tags=request.tags,
-        body=request.body,
-        references=request.references,
-        related_items=request.related_items,
-        created_by_name=request.created_by_name,
-        status=request.status,
-    )
-    validation = ItemResponse.model_validate(payload)
-    return validation
 
 
 @router.get(

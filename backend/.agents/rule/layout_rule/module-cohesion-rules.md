@@ -59,6 +59,31 @@ Use utilities only when the helper's ownership is clear.
 
 Avoid dumping unrelated helpers into `utils.py` or broad helper modules.
 
+When several utility functions share the same request context, payload, or
+configuration parameters, prefer a small purpose-named class over repeating the
+same arguments through many functions. Use the constructor for the common state,
+keep the class responsibility narrow, and keep the public method surface small
+(roughly five methods or fewer). Do not convert such helpers to dataclasses
+unless the object is primarily a value/result DTO.
+
+## Single-File Directory Rule
+
+Avoid creating a directory that contains only one production Python module when
+the directory is merely a convenience wrapper around that module.
+
+Preferred direction:
+
+- flatten one-file utility/plumbing directories into a clearly named module;
+- keep concept directories only when they are real architectural boundaries or
+  already contain multiple cohesive modules;
+- when one module becomes too large for one clear responsibility, split it into
+  a folder with multiple purpose-named modules.
+
+Acceptable single-file boundary folders include stable architecture seams such
+as repository implementations, concept-owned schema boundaries, and domain enum
+or type locations when the surrounding layer expects those paths. Do not flatten
+those solely for tidiness if doing so would weaken boundary clarity.
+
 ## Enum, Type, and Constant Location Rule
 
 Stable field-name sets, enum-like strings, detail-field lists, and dispatch

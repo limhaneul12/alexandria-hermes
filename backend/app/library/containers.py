@@ -9,7 +9,6 @@ from app.library.application.knowledge_service import KnowledgeService
 from app.library.application.prompt_service import PromptService
 from app.library.application.skill_service import SkillService
 from app.library.application.usage_service import UsageService
-from app.library.application.workflow_service import WorkflowService
 from app.library.infrastructure.repositories.category_repository import (
     SqlAlchemyCategoryRepository,
 )
@@ -44,10 +43,6 @@ class LibraryContainer(containers.DeclarativeContainer):
     )
     prompt_service = providers.Factory(
         PromptService,
-        item_service=item_service,
-    )
-    workflow_service = providers.Factory(
-        WorkflowService,
         item_service=item_service,
     )
     knowledge_service = providers.Factory(

@@ -11,8 +11,8 @@ from app.platform.schemas.health_schema import (
     ready_payload_from_snapshot,
 )
 from app.shared.serialization.model_codec import dumps_model
-from app.shared.util.http_helpers.readiness import status_code_from_ready
-from app.shared.util.http_helpers.response_headers import json_response
+from app.shared.utils.http_helpers.readiness import status_code_from_ready
+from app.shared.utils.http_helpers.response_headers import json_response
 from fastapi import FastAPI, status
 from fastapi.responses import Response
 

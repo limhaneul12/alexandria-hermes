@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { deleteLibraryItem, fetchLibraryItemDetail, recordLibraryUsage } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { t, tx, type Language } from "@/lib/i18n";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { useLibraryStore } from "@/store/library-store";
 import type { LibraryItemDetailDTO } from "@/types/library";
@@ -25,7 +25,7 @@ function renderPrompt(content: string, variables: Record<string, string>) {
   return content.replace(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g, (_match, name: string) => variables[name] ?? `{{${name}}}`);
 }
 
-function ArchiveControls({ data, onDelete, pending, failed }: { data: LibraryItemDetailDTO; onDelete: () => void; pending: boolean; failed: boolean }) {
+function ArchiveControls({ data, language, onDelete, pending, failed }: { data: LibraryItemDetailDTO; language: Language; onDelete: () => void; pending: boolean; failed: boolean }) {
   const [confirming, setConfirming] = useState(false);
 
   function requestDelete() {
@@ -38,61 +38,61 @@ function ArchiveControls({ data, onDelete, pending, failed }: { data: LibraryIte
 
   return (
     <Card id="archive-controls" className="archive-paper-card scroll-mt-24 p-4">
-      <p className="font-serif text-xl text-[#111111]">Archive Controls</p>
+      <p className="font-serif text-xl text-[#111111]">{t(language, "archiveControls")}</p>
       <dl className="mt-4 space-y-3 text-sm">
-        <div className="flex justify-between gap-4"><dt className="text-[#6f6a60]">Status</dt><dd className="text-[#111111]">ACTIVE/DRAFT</dd></div>
-        <div className="flex justify-between gap-4"><dt className="text-[#6f6a60]">Version</dt><dd className="text-[#111111]">{data.version}</dd></div>
-        <div className="flex justify-between gap-4"><dt className="text-[#6f6a60]">Updated</dt><dd className="text-[#111111]">{formatDate(data.updatedAt)}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-[#6f6a60]">{t(language, "status")}</dt><dd className="text-[#111111]">ACTIVE/DRAFT</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-[#6f6a60]">{t(language, "version")}</dt><dd className="text-[#111111]">{data.version}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-[#6f6a60]">{t(language, "updated")}</dt><dd className="text-[#111111]">{formatDate(data.updatedAt)}</dd></div>
       </dl>
       <div className="mt-5 rounded-xl border border-[#c88a72] bg-[#fff4ef] p-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8f5037]">Removal panel</p>
-        <p className="mt-2 text-xs leading-5 text-[#6f6a60]">삭제 확인은 브라우저 팝업 없이 이 카드 안에서 처리합니다.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8f5037]">{t(language, "removalPanel")}</p>
+        <p className="mt-2 text-xs leading-5 text-[#6f6a60]">{t(language, "removalPanelDescription")}</p>
         {confirming ? (
           <div className="mt-3 rounded-lg border border-[#d9b4a3] bg-white/70 p-3">
-            <p className="text-sm font-semibold text-[#111111]">{data.title} 자료를 삭제할까요?</p>
+            <p className="text-sm font-semibold text-[#111111]">{tx(language, "deleteItemConfirm", { title: data.title })}</p>
             <div className="mt-3 flex gap-2">
-              <Button type="button" variant="secondary" onClick={() => setConfirming(false)} disabled={pending} className="flex-1">취소</Button>
+              <Button type="button" variant="secondary" onClick={() => setConfirming(false)} disabled={pending} className="flex-1">{t(language, "cancel")}</Button>
               <Button type="button" onClick={requestDelete} disabled={pending} className="flex-1 bg-[#8f5037] text-white hover:bg-[#7d412c]">
-                <Trash2 className="h-4 w-4" /> {pending ? "삭제 중" : "삭제"}
+                <Trash2 className="h-4 w-4" /> {pending ? t(language, "deletingSkill") : t(language, "deleteProvider")}
               </Button>
             </div>
           </div>
         ) : (
           <Button type="button" variant="secondary" onClick={requestDelete} disabled={pending} className="mt-3 w-full border-[#c88a72] text-[#8f5037] hover:bg-[#ffe8dd]">
-            <Trash2 className="h-4 w-4" /> {pending ? "삭제 중" : `${data.type} 삭제`}
+            <Trash2 className="h-4 w-4" /> {pending ? t(language, "deletingSkill") : tx(language, "deleteItemByType", { type: data.type })}
           </Button>
         )}
-        {failed ? <p className="mt-2 text-xs text-[#8f5037]">삭제하지 못했습니다.</p> : null}
+        {failed ? <p className="mt-2 text-xs text-[#8f5037]">{t(language, "skillDeleteFailed")}</p> : null}
       </div>
     </Card>
   );
 }
 
-function PromptBody({ data }: { data: LibraryItemDetailDTO }) {
+function PromptBody({ data, language }: { data: LibraryItemDetailDTO; language: Language }) {
   const [variables, setVariables] = useState<Record<string, string>>({});
   const rendered = useMemo(() => renderPrompt(data.content, variables), [data.content, variables]);
   const prompt = data.prompt;
   return (
     <>
       <Card id="overview" className="scroll-mt-24">
-        <CardHeader><CardTitle className="flex items-center gap-2"><ScrollText className="h-5 w-5" /> Prompt Body</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2"><ScrollText className="h-5 w-5" /> {t(language, "promptBody")}</CardTitle></CardHeader>
         <CardContent>
           <ContentViewer content={data.content} />
         </CardContent>
       </Card>
       <Card id="variables" className="scroll-mt-24">
-        <CardHeader><CardTitle>Fill Variables</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t(language, "fillVariables")}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           {prompt?.inputVariables.length ? prompt.inputVariables.map((variable) => (
             <label key={variable.name} className="block text-xs text-[#514c44]">
               {variable.name}{variable.required ? " *" : ""}
               <textarea value={variables[variable.name] ?? ""} onChange={(event) => setVariables((current) => ({ ...current, [variable.name]: event.target.value }))} rows={3} className="mt-1 w-full rounded-md border border-[#d8d3c7] bg-white/60 px-3 py-2 text-sm text-[#111111] outline-none focus:border-gold-300/60" />
             </label>
-          )) : <EmptySection message="등록된 변수가 없습니다." />}
+          )) : <EmptySection message={t(language, "noPromptVariables")} />}
           <pre className="max-h-80 overflow-auto rounded-xl border border-gold-300/15 bg-white/60 p-4 text-sm leading-7 text-[#36322d]"><code>{rendered}</code></pre>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => void navigator.clipboard.writeText(data.content)}><Clipboard className="h-4 w-4" /> Copy Prompt</Button>
-            <Button type="button" variant="secondary" onClick={() => void navigator.clipboard.writeText(rendered)}><Clipboard className="h-4 w-4" /> Copy Rendered Prompt</Button>
+            <Button type="button" onClick={() => void navigator.clipboard.writeText(data.content)}><Clipboard className="h-4 w-4" /> {t(language, "copyPrompt")}</Button>
+            <Button type="button" variant="secondary" onClick={() => void navigator.clipboard.writeText(rendered)}><Clipboard className="h-4 w-4" /> {t(language, "copyRenderedPrompt")}</Button>
           </div>
         </CardContent>
       </Card>
@@ -101,8 +101,10 @@ function PromptBody({ data }: { data: LibraryItemDetailDTO }) {
 }
 
 function SelfAcquisitionCard({
+  language,
   metadata,
 }: {
+  language: Language;
   metadata: NonNullable<LibraryItemDetailDTO["skillAcquisition"]>;
 }) {
   const harness = metadata.harness;
@@ -112,7 +114,7 @@ function SelfAcquisitionCard({
     <Card id="self-acquisition" className="archive-paper-card scroll-mt-24">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5" /> Self-acquisition evidence
+          <ShieldCheck className="h-5 w-5" /> {t(language, "selfAcquisitionEvidence")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -127,7 +129,7 @@ function SelfAcquisitionCard({
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6f6a60]">Evidence URLs</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6f6a60]">{t(language, "evidenceUrls")}</p>
           {metadata.evidenceUrls.length ? (
             <ul className="mt-2 space-y-2">
               {metadata.evidenceUrls.map((url) => (
@@ -140,7 +142,7 @@ function SelfAcquisitionCard({
               ))}
             </ul>
           ) : (
-            <EmptySection message="아직 근거 URL이 없습니다. 후보는 검토가 필요합니다." />
+            <EmptySection message={t(language, "noEvidenceUrls")} />
           )}
         </div>
 
@@ -148,13 +150,13 @@ function SelfAcquisitionCard({
           <div className="overflow-hidden rounded-xl border border-[#d8d3c7]">
             <table className="w-full text-left text-sm">
               <thead className="bg-[#eee9df] text-[#6f6a60]">
-                <tr><th className="p-3">Check</th><th className="p-3">Result</th><th className="p-3">Message</th></tr>
+                <tr><th className="p-3">{t(language, "check")}</th><th className="p-3">{t(language, "result")}</th><th className="p-3">{t(language, "message")}</th></tr>
               </thead>
               <tbody className="divide-y divide-[#d8d3c7] bg-white/50">
                 {harness.checks.map((check) => (
                   <tr key={check.name}>
                     <td className="p-3 font-medium text-[#111111]">{check.name.replaceAll("_", " ")}</td>
-                    <td className="p-3 text-[#514c44]">{check.passed ? "pass" : "review"}</td>
+                    <td className="p-3 text-[#514c44]">{check.passed ? t(language, "pass") : t(language, "review")}</td>
                     <td className="p-3 text-[#514c44]">{check.message}</td>
                   </tr>
                 ))}
@@ -218,14 +220,14 @@ export function SkillDetailClient({ skillId }: { skillId: string }) {
     <div className="archive-document-page grid gap-8 px-8 py-10 md:px-14 xl:grid-cols-[250px_minmax(0,1fr)] xl:px-16">
       <aside className="hidden xl:block">
         <Card className="archive-paper-card sticky top-24 p-4">
-          <p className="mb-4 font-serif text-lg text-[#111111]">서재</p>
+          <p className="mb-4 font-serif text-lg text-[#111111]">{t(language, "library")}</p>
           <Link href={`/library/${item.category.slug}`} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-[#36322d] hover:bg-[#e9e4da]"><ArrowLeft className="h-4 w-4" /> {item.category.name}</Link>
-          <div className="mt-4 space-y-2 border-t border-[#d8d3c7] pt-4 text-sm text-[#6f6a60]"><p>Computer Science</p><p className="pl-3 text-[#111111]">{item.category.name}</p></div>
+          <div className="mt-4 space-y-2 border-t border-[#d8d3c7] pt-4 text-sm text-[#6f6a60]"><p>{t(language, "category")}</p><p className="pl-3 text-[#111111]">{item.category.name}</p></div>
         </Card>
       </aside>
 
       <article className="space-y-5">
-        <p className="text-xs font-bold uppercase tracking-[0.32em] text-[#111111]">{isPrompt ? "Prompt Reading Room" : t(language, "skillDetailKicker")}</p>
+        <p className="text-xs font-bold uppercase tracking-[0.32em] text-[#111111]">{isPrompt ? t(language, "promptReadingRoom") : t(language, "skillDetailKicker")}</p>
         <Card className="archive-paper-card overflow-hidden p-6">
           <div className="grid gap-7 lg:grid-cols-[190px_minmax(0,1fr)]">
             <div className={`book-cover ${isPrompt ? "prompt-card" : ""} flex min-h-64 items-center justify-center rounded-xl border border-gold-300/20 p-5 text-center font-serif text-xl leading-tight text-[#111111]`}>{item.title}</div>
@@ -234,7 +236,7 @@ export function SkillDetailClient({ skillId }: { skillId: string }) {
               <h1 className="mt-4 text-balance font-serif text-5xl leading-tight tracking-[-0.03em] text-[#070707] md:text-6xl">{item.title}</h1>
               <p className="mt-4 max-w-3xl text-sm leading-7 text-[#36322d]">{item.description}</p>
               <div className="mt-5 flex flex-wrap gap-2">
-                {isPrompt ? <><Button type="button" onClick={() => void navigator.clipboard.writeText(item.content)}><Clipboard className="h-4 w-4" /> Copy Prompt</Button><Button asChild variant="secondary"><a href="#variables">Fill Variables</a></Button></> : <Button asChild><a href="#usage-guide"><BookOpen className="h-4 w-4" /> {t(language, "openUsageGuide")}</a></Button>}
+                {isPrompt ? <><Button type="button" onClick={() => void navigator.clipboard.writeText(item.content)}><Clipboard className="h-4 w-4" /> {t(language, "copyPrompt")}</Button><Button asChild variant="secondary"><a href="#variables">{t(language, "fillVariables")}</a></Button></> : <Button asChild><a href="#usage-guide"><BookOpen className="h-4 w-4" /> {t(language, "openUsageGuide")}</a></Button>}
               </div>
             </div>
           </div>
@@ -250,24 +252,24 @@ export function SkillDetailClient({ skillId }: { skillId: string }) {
                   [t(language, "createdBy"), item.author], [t(language, "createdAt"), formatDate(item.updatedAt)],
                   [t(language, "lastAccessed"), formatRelative(item.lastAccessedAt)], [t(language, "version"), item.version],
                   [t(language, "tags"), item.tags.join(", ") || "-"],
-                  ...(isPrompt && item.prompt ? [["Prompt Domain", item.prompt.promptDomain], ["Task", item.prompt.promptTaskType], ["Variables", String(item.prompt.inputVariables.length)]] : []),
+                  ...(isPrompt && item.prompt ? [[t(language, "promptDomain"), item.prompt.promptDomain], [t(language, "promptTask"), item.prompt.promptTaskType], [t(language, "variables"), String(item.prompt.inputVariables.length)]] : []),
                 ].map(([label, value]) => <tr key={label}><th className="w-40 bg-[#eee9df] px-4 py-3 align-top font-medium text-[#6f6a60]">{label}</th><td className="break-words px-4 py-3 text-[#111111]">{value}</td></tr>)}
               </tbody></table></CardContent>
             </Card>
 
-            {isPrompt ? <PromptBody data={data} /> : (
+            {isPrompt ? <PromptBody data={data} language={language} /> : (
               <>
-                {item.skillAcquisition ? <SelfAcquisitionCard metadata={item.skillAcquisition} /> : null}
+                {item.skillAcquisition ? <SelfAcquisitionCard language={language} metadata={item.skillAcquisition} /> : null}
                 <Card id="usage-guide" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><Table2 className="h-5 w-5" /> {t(language, "usageGuide")}</CardTitle></CardHeader><CardContent>{item.content.trim() ? <ContentViewer content={item.content} /> : <EmptySection message={t(language, "usageGuideEmpty")} />}</CardContent></Card>
               </>
             )}
 
-            <Card id="history" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><History className="h-5 w-5" /> {t(language, "recentUsageHistory")}</CardTitle></CardHeader><CardContent><RecentActivityList items={item.usageHistory.slice(0, 5).map((usage) => ({ id: usage.id, occurredAt: usage.accessedAt, actorName: usage.agentName, method: usage.accessMethod, sourceSurface: null }))} /></CardContent></Card>
+            <Card id="history" className="scroll-mt-24"><CardHeader><CardTitle className="flex items-center gap-2"><History className="h-5 w-5" /> {t(language, "recentUsageHistory")}</CardTitle></CardHeader><CardContent><RecentActivityList emptyLabel={t(language, "usageHistoryEmpty")} items={item.usageHistory.slice(0, 5).map((usage) => ({ id: usage.id, occurredAt: usage.accessedAt, actorName: usage.agentName, method: usage.accessMethod, sourceSurface: null }))} /></CardContent></Card>
           </div>
 
           <aside className="space-y-5">
             <Card className="p-4"><p className="mb-3 font-serif text-xl text-[#111111]">{t(language, "tableOfContents")}</p><nav className="space-y-1">{item.tableOfContents.map((item, index) => <a key={item.id} href={`#${item.id}`} className="flex gap-3 rounded-lg px-3 py-2 text-sm text-[#514c44] hover:bg-white/[0.05] hover:text-[#111111]"><span className="text-[#958c7e]">{index + 1}.</span> {item.label}</a>)}</nav></Card>
-            <ArchiveControls data={data} onDelete={handleDelete} pending={deleteMutation.isPending} failed={deleteMutation.isError} />
+            <ArchiveControls data={data} language={language} onDelete={handleDelete} pending={deleteMutation.isPending} failed={deleteMutation.isError} />
           </aside>
         </div>
       </article>

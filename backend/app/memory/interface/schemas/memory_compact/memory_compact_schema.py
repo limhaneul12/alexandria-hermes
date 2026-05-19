@@ -74,21 +74,6 @@ class MemoryCompactCreateRequest(StrictSchemaModel):
         """
         return _parse_datetime(value)
 
-    @field_validator("status", mode="before")
-    @classmethod
-    def parse_status(cls, value: MemoryCompactStatus | str) -> MemoryCompactStatus:
-        """Parse status values from public JSON.
-
-        Args:
-            value: Memory Compact status enum or public status string.
-
-        Returns:
-            Parsed Memory Compact status.
-        """
-        if isinstance(value, MemoryCompactStatus):
-            return value
-        return MemoryCompactStatus(value)
-
     def to_create(self) -> MemoryCompactCreate:
         """Convert request schema to service contract.
 

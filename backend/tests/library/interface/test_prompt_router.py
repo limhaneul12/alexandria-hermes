@@ -92,8 +92,8 @@ class FakeItemRepository(IItemRepository):
         return [], 0
 
 
-def test_create_prompt_registers_prompt_with_actor_and_format_metadata() -> None:
-    """POST /library/prompts should create prompt records for humans and agents."""
+def test_submit_prompt_by_agent_records_agent_authored_prompt() -> None:
+    """POST /library/prompts/submit-by-agent should be the prompt create path."""
     item_repo = FakeItemRepository()
 
     def override_prompt_service() -> PromptService:
@@ -104,102 +104,28 @@ def test_create_prompt_registers_prompt_with_actor_and_format_metadata() -> None
         TestClient(app, raise_server_exceptions=False) as client,
     ):
         response = client.post(
-            "/library/prompts",
+            "/library/prompts/submit-by-agent",
             json={
-                "title": "FastAPI review prompt",
-                "summary": "Review backend API changes.",
-                "content": "Review this diff: {{diff}}",
+                "title": "Agent-authored prompt",
+                "summary": "Generated from agent prompt work.",
+                "content": "Summarize this context: {{context}}",
                 "category_id": "00000000-0000-4000-8000-000000000002",
-                "tags": ["fastapi", "review"],
+                "tags": ["agent", "prompt"],
                 "content_format": "MARKDOWN",
                 "prompt_kind": "USER_TEMPLATE",
                 "prompt_domain": "DEVELOPMENT",
-                "prompt_task_type": "CODE_REVIEW",
-                "input_variables": [{"name": "diff", "required": True}],
-                "created_by_name": "review-agent",
-                "created_by_type": "AGENT",
-                "source_type": "AGENT_SUBMITTED",
-                "status": "DRAFT",
+                "prompt_task_type": "DOCUMENT_SUMMARY",
+                "input_variables": [{"name": "context", "required": True}],
+                "created_by_name": "prompt-agent",
+                "status": "ACTIVE",
             },
         )
 
     assert response.status_code == 201
     assert response.json()["item_type"] == "PROMPT"
-    assert response.json()["details"] == {
-        "content_format": "MARKDOWN",
-        "prompt_kind": "USER_TEMPLATE",
-        "prompt_domain": "DEVELOPMENT",
-        "prompt_task_type": "CODE_REVIEW",
-        "input_variables": [
-            {
-                "name": "diff",
-                "required": True,
-                "description": None,
-                "default_value": None,
-                "example": None,
-                "input_type": "text",
-            }
-        ],
-        "output_format": None,
-        "target_actor": None,
-        "target_model_family": None,
-        "language": None,
-        "related_item_ids": [],
-        "safety_notes": None,
-        "version": "1.0.0",
-        "change_summary": None,
-        "quality_gate": {
-            "status": "PASSED",
-            "checks": [
-                {
-                    "name": "title_present",
-                    "passed": True,
-                    "message": "title is present",
-                },
-                {
-                    "name": "content_present",
-                    "passed": True,
-                    "message": "content is present",
-                },
-                {
-                    "name": "dangerous_command_absent",
-                    "passed": True,
-                    "message": "dangerous shell command marker is absent",
-                },
-                {
-                    "name": "secret_redaction",
-                    "passed": True,
-                    "message": "secret content is redacted or safe",
-                },
-            ],
-        },
-    }
+    assert response.json()["source_type"] == "AGENT_SUBMITTED"
+    assert response.json()["created_by_type"] == "AGENT"
+    assert response.json()["created_by_name"] == "prompt-agent"
     assert item_repo.created_payload is not None
-    assert item_repo.created_payload["item_type"] == "PROMPT"
     assert item_repo.created_payload["source_type"] == "AGENT_SUBMITTED"
-
-
-def test_create_prompt_rejects_duplicate_variable_names() -> None:
-    """POST /library/prompts rejects templates with ambiguous duplicate variables."""
-    item_repo = FakeItemRepository()
-
-    def override_prompt_service() -> PromptService:
-        return PromptService(item_service=ItemService(item_repo=item_repo))
-
-    with (
-        override_library_provider("prompt_service", override_prompt_service()),
-        TestClient(app, raise_server_exceptions=False) as client,
-    ):
-        response = client.post(
-            "/library/prompts",
-            json={
-                "title": "Duplicate variables",
-                "content": "{{diff}} {{diff}}",
-                "input_variables": [
-                    {"name": "diff"},
-                    {"name": "diff"},
-                ],
-            },
-        )
-
-    assert response.status_code == 422
+    assert item_repo.created_payload["created_by_type"] == "AGENT"

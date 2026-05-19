@@ -60,6 +60,12 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
                 "PRAGMA index_list(memory_compacts)"
             ).fetchall()
         }
+        skill_acquisition_job_columns = {
+            row[1]: row[2]
+            for row in connection.execute(
+                "PRAGMA table_info(skill_acquisition_jobs)"
+            ).fetchall()
+        }
         fts_definition = connection.execute(
             "SELECT sql FROM sqlite_master WHERE name = 'item_search_fts'"
         ).fetchone()[0]
@@ -79,6 +85,9 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
                 """
             ).fetchall()
         }
+        contexts_definition = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'contexts'"
+        ).fetchone()[0]
 
     assert category_columns["id"] == "VARCHAR(36)"
     assert category_columns["parent_id"] == "VARCHAR(36)"
@@ -89,10 +98,14 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
     assert chunk_columns["context_id"] == "VARCHAR(36)"
     assert memory_compact_columns["id"] == "VARCHAR(36)"
     assert memory_compact_columns["status"] == "VARCHAR(24)"
+    assert skill_acquisition_job_columns["id"] == "VARCHAR(36)"
+    assert skill_acquisition_job_columns["status"] == "VARCHAR(32)"
+    assert skill_acquisition_job_columns["evidence_urls"] == "JSON"
     assert memory_compact_indexes["uq_memory_compacts_current_project"] == 1
     assert memory_compact_indexes["uq_memory_compacts_current_default_project"] == 1
     assert "item_id UNINDEXED" in fts_definition
     assert "chunk_id UNINDEXED" in context_fts_definition
+    assert "'HARNESS'" in contexts_definition
     assert speculative_tables == set()
 
 
@@ -157,6 +170,140 @@ def test_alembic_upgrade_removes_legacy_default_minio_provider_when_present(
 
     assert remaining_providers == [("real-minio-provider", "team-minio")]
     assert remaining_legacy_secrets == 0
+
+
+def test_alembic_upgrade_removes_legacy_workflow_library_items(
+    tmp_path: Path,
+) -> None:
+    """Alembic should delete legacy WORKFLOW rows and reject new workflow items."""
+
+    database_path = tmp_path / "workflow-item-type.db"
+    previous_revision = "202605172010_add_context_access_events"
+    result = _run_alembic(database_path, previous_revision)
+    assert result.returncode == 0, result.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            INSERT INTO library_items (
+                id,
+                item_type,
+                title,
+                summary,
+                content,
+                category_id,
+                tags,
+                status,
+                source_type,
+                created_by_type,
+                created_by_name,
+                created_at,
+                updated_at,
+                details,
+                is_archived
+            )
+            VALUES (
+                'workflow-item',
+                'WORKFLOW',
+                'Legacy workflow item',
+                NULL,
+                'Legacy workflow content',
+                NULL,
+                '[]',
+                'ACTIVE',
+                'USER_CREATED',
+                'USER',
+                'Hermes',
+                '2026-05-18 00:00:00',
+                '2026-05-18 00:00:00',
+                '{}',
+                0
+            );
+            INSERT INTO usage_histories (
+                id,
+                item_id,
+                item_type,
+                agent_name,
+                librarian_provider,
+                query,
+                selection_source,
+                used_at,
+                success,
+                feedback
+            )
+            VALUES (
+                'workflow-usage',
+                'workflow-item',
+                'WORKFLOW',
+                'Hermes',
+                NULL,
+                NULL,
+                'MANUAL_BROWSE',
+                '2026-05-18 00:00:00',
+                1,
+                NULL
+            );
+            """
+        )
+
+    result = _run_alembic(database_path, "head")
+    assert result.returncode == 0, result.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        workflow_count = connection.execute(
+            "SELECT COUNT(*) FROM library_items WHERE item_type = 'WORKFLOW'"
+        ).fetchone()[0]
+        usage_count = connection.execute(
+            "SELECT COUNT(*) FROM usage_histories WHERE id = 'workflow-usage'"
+        ).fetchone()[0]
+
+        try:
+            connection.execute(
+                """
+                INSERT INTO library_items (
+                    id,
+                    item_type,
+                    title,
+                    summary,
+                    content,
+                    category_id,
+                    tags,
+                    status,
+                    source_type,
+                    created_by_type,
+                    created_by_name,
+                    created_at,
+                    updated_at,
+                    details,
+                    is_archived
+                )
+                VALUES (
+                    'new-workflow-item',
+                    'WORKFLOW',
+                    'Rejected workflow item',
+                    NULL,
+                    'Should fail',
+                    NULL,
+                    '[]',
+                    'ACTIVE',
+                    'USER_CREATED',
+                    'USER',
+                    'Hermes',
+                    '2026-05-18 00:00:00',
+                    '2026-05-18 00:00:00',
+                    '{}',
+                    0
+                )
+                """
+            )
+        except sqlite3.IntegrityError:
+            workflow_rejected = True
+        else:
+            workflow_rejected = False
+
+    assert workflow_count == 0
+    assert usage_count == 0
+    assert workflow_rejected is True
 
 
 def test_alembic_upgrade_allows_prompt_library_items(tmp_path: Path) -> None:

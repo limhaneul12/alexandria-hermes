@@ -5,17 +5,7 @@ from __future__ import annotations
 from app.library.domain.event_enum.item_enums import ItemStatus
 from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
-from pydantic import ConfigDict, Field, field_validator
-
-
-# Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-def _item_status(value: object) -> ItemStatus:
-    """Accept public JSON item status values at API boundaries."""
-    if isinstance(value, ItemStatus):
-        return value
-    if isinstance(value, str):
-        return ItemStatus(value)
-    raise ValueError("status must be a valid item status")
+from pydantic import ConfigDict, Field
 
 
 class KnowledgeCreateRequest(StrictSchemaModel):
@@ -53,20 +43,6 @@ class KnowledgeCreateRequest(StrictSchemaModel):
     created_by_name: str
     status: ItemStatus = ItemStatus.DRAFT
 
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_status(cls, value: object) -> ItemStatus:
-        """Parse JSON status values.
-
-        Args:
-            value [object]: Value supplied to parse_status.
-
-        Returns:
-            ItemStatus: Value produced by parse_status.
-        """
-        return _item_status(value)
-
 
 class KnowledgePatchRequest(StrictSchemaModel):
     """Patch payload for knowledge updates."""
@@ -95,22 +71,6 @@ class KnowledgePatchRequest(StrictSchemaModel):
     body: str | None = None
     references: list[str] | None = None
     related_items: list[str] | None = None
-
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_status(cls, value: object) -> ItemStatus | None:
-        """Parse JSON status values when provided.
-
-        Args:
-            value [object]: Value supplied to parse_status.
-
-        Returns:
-            ItemStatus | None: Value produced by parse_status.
-        """
-        if value is None:
-            return None
-        return _item_status(value)
 
 
 class KnowledgeResponse(StrictSchemaModel):

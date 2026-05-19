@@ -4,21 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.library.domain.event_enum.item_enums import CreatedByType, ItemType, SourceType
+from app.cli_support.typer_commands.command_choices import SetupRuntimeMode
+from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.event_enum.prompt_enums import (
-    PromptContentFormat,
-    PromptDomain,
     PromptKind,
-    PromptTaskType,
 )
 from app.library.domain.event_enum.skill_enums import RiskLevel
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.mcp_server.mcp_protocol_enums import McpTransport
 from app.memory.domain.event_enum.context_enums import (
-    ContextImportance,
     ContextKind,
     ContextScope,
-    ContextSourceType,
     RagStrategy,
 )
 from app.memory.domain.event_enum.memory_compact_enums import (
@@ -59,28 +55,6 @@ class ItemIdCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class SkillsCreateCommand:
-    """Parameters for creating a manual skill."""
-
-    title: str
-    purpose: str
-    content: str | None
-    content_file: str | None
-    summary: str | None
-    category_id: str | None
-    tag: list[str]
-    tool: list[str]
-    usage_example: str | None
-    risk_level: RiskLevel
-    version: str
-    created_by: str
-    active: bool
-    source_agent: str | None
-    evidence_url: list[str]
-    source_summary: str | None
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
 class PromptsListCommand:
     """Parameters for listing prompts."""
 
@@ -88,33 +62,6 @@ class PromptsListCommand:
     offset: int
     kind: PromptKind | None
     tag: str | None
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class PromptsCreateCommand:
-    """Parameters for creating a prompt."""
-
-    title: str
-    summary: str | None
-    content: str | None
-    content_file: str | None
-    kind: PromptKind
-    domain: PromptDomain
-    task_type: PromptTaskType
-    content_format: PromptContentFormat
-    var: list[str]
-    output_format: str | None
-    target_actor: str | None
-    target_model_family: str | None
-    language: str | None
-    related_item_id: list[str]
-    category_id: str | None
-    tag: list[str]
-    version: str
-    created_by: str
-    created_by_type: CreatedByType
-    source_type: SourceType
-    active: bool
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -367,41 +314,6 @@ class MinioCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class ContextMetadataCommand:
-    """Shared context metadata parameters."""
-
-    title: str
-    kind: ContextKind
-    summary: str | None
-    project: str | None
-    scope: ContextScope
-    workspace_id: str | None
-    agent_id: str | None
-    user_id: str | None
-    session_id: str | None
-    visibility: ContextScope
-    source_agent: str
-    tag: list[str]
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class ContextLintCommand(ContextMetadataCommand):
-    """Parameters for linting context Markdown."""
-
-    content_file: str
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class ContextSaveCommand(ContextMetadataCommand):
-    """Parameters for saving context Markdown."""
-
-    content: str | None
-    content_file: str | None
-    source_type: ContextSourceType
-    importance: ContextImportance
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
 class ContextRecallCommand:
     """Parameters for context recall/RAG search."""
 
@@ -477,6 +389,46 @@ class ContextCurateCommand:
     project: str | None
     stale_after_days: int
     limit: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ServeCommand:
+    """Parameters for running the backend foreground server."""
+
+    env_file: str | None
+    host: str
+    port: int
+    reload: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DaemonCommand:
+    """Parameters for local backend daemon lifecycle commands."""
+
+    action: str
+    hermes_home: str | None
+    service_home: str | None
+    env_file: str | None
+    host: str
+    port: int
+    dry_run: bool
+    apply: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SetupCommand:
+    """Parameters for Alexandria-Hermes runtime setup."""
+
+    mode: SetupRuntimeMode | None
+    hermes_home: str | None
+    env_path: str | None
+    api_url: str | None
+    operator_api_key: str | None
+    non_interactive: bool
+    dry_run: bool
+    apply: bool
+    write_guidebook: bool
+    install_hermes_assets: bool
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -1,7 +1,8 @@
 """Common service configuration model.
 
 This module reads shared service configuration from ``.env`` and environment
-variables. All fields use the ``SERVICE_`` prefix.
+variables. Most service fields use the ``SERVICE_`` prefix; the single operator
+secret uses the public Alexandria runtime name, ``ALEXANDRIA_OPERATOR_API_KEY``.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from app.retrieval.application.embedding_provider import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
 )
-from app.shared.util.config import settings_model_config
+from app.shared.utils.config import settings_model_config
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 
@@ -31,7 +32,10 @@ class AppConfig(BaseSettings):
         and log level.
     """
 
-    model_config = settings_model_config(env_prefix="SERVICE_")
+    model_config = {
+        **settings_model_config(env_prefix="SERVICE_"),
+        "populate_by_name": True,
+    }
 
     # Service identifier used by logs and operational tooling.
     app_name: str = Field(default="alexandria-hermes")
@@ -44,7 +48,10 @@ class AppConfig(BaseSettings):
     # 32-byte URL-safe base64 key or passphrase used to encrypt provider secrets at rest.
     secret_encryption_key: str | None = Field(default=None)
     # Operator API key required for sensitive settings/provider operations.
-    operator_api_key: SecretStr = Field(min_length=32)
+    operator_api_key: SecretStr = Field(
+        min_length=32,
+        validation_alias="ALEXANDRIA_OPERATOR_API_KEY",
+    )
     # OpenAI Codex OAuth issuer used to derive official device-flow endpoints.
     codex_oauth_issuer: str = Field(default=DEFAULT_CODEX_OAUTH_ISSUER, min_length=1)
     # Public OpenAI Codex OAuth client id. This is overridable but not a secret.

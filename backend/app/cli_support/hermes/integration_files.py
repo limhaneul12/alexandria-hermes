@@ -22,13 +22,13 @@ from app.cli_support.hermes.policy_files import (
     POLICY_RELATIVE_PATH,
     default_policy_yaml,
 )
+from app.cli_support.json_payloads import schema_payload
 from app.cli_support.schemas.hermes_integration_schemas import (
     HermesBundleInstallationResult,
     McpConfiguration,
     McpServerEnvironment,
     McpServerLaunch,
 )
-from app.cli_support.serialization.json_payloads import schema_payload
 from app.mcp_server.mcp_protocol_enums import (
     McpExecutable,
     McpLaunchArgument,
@@ -224,8 +224,15 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
             "source/evidence URLs and create the skill candidate yourself.\n"
             "3. Submit with `alexandria_submit_skill_candidate` or CLI "
             "`skills create --source-agent Hermes --evidence-url <url>`.\n"
-            "4. Ask the librarian only when direct research is too costly, blocked, "
-            "or needs a stronger review.\n"
+            "4. If direct research is too costly, blocked, or needs stronger review, "
+            "call `alexandria_start_skill_acquisition` with prompt/project/task "
+            "details and continue other work.\n"
+            "5. When the durable job produces a structured skill artifact, call "
+            "`alexandria_complete_skill_acquisition` to persist the skill and "
+            "resume context on the job.\n"
+            "6. Poll with `alexandria_skill_acquisition_job_status`; when "
+            "`result_available=true`, use the returned `skill_id` and `context_id` "
+            "resume handles.\n"
         ),
         "submit-skill-candidate.md": (
             "# Submit Skill Candidate\n\n"
@@ -497,6 +504,9 @@ When a reusable skill is missing:
 
 Preferred MCP tool:
 
+- `mcp_alexandria_alexandria_start_skill_acquisition`
+- `mcp_alexandria_alexandria_skill_acquisition_job_status`
+- `mcp_alexandria_alexandria_complete_skill_acquisition`
 - `mcp_alexandria_alexandria_submit_skill_candidate`
 
 CLI fallback:

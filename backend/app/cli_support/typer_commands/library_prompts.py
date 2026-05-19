@@ -7,14 +7,12 @@ from app.cli_support.contracts.command_contracts import (
     ItemIdCommand,
     PromptDeprecateCommand,
     PromptDiffCommand,
-    PromptsCreateCommand,
     PromptsListCommand,
     PromptsSearchCommand,
     PromptsUseCommand,
     PromptVersionCommand,
 )
 from app.cli_support.handlers.prompts import (
-    handle_prompts_create,
     handle_prompts_deprecate,
     handle_prompts_diff,
     handle_prompts_get,
@@ -23,14 +21,7 @@ from app.cli_support.handlers.prompts import (
     handle_prompts_use,
     handle_prompts_version,
 )
-from app.cli_support.typer_commands.command_choices import (
-    PromptContentFormat,
-    PromptCreatorType,
-    PromptDomain,
-    PromptKind,
-    PromptSourceType,
-    PromptTaskType,
-)
+from app.cli_support.typer_commands.command_choices import PromptKind
 from app.cli_support.typer_commands.typer_runtime import run_client, values
 
 prompts_app = typer.Typer(help="Manage prompt records")
@@ -180,101 +171,6 @@ def prompts_diff(ctx: typer.Context, left_item_id: str, right_item_id: str) -> N
         ctx,
         PromptDiffCommand(left_item_id=left_item_id, right_item_id=right_item_id),
         handle_prompts_diff,
-    )
-
-
-@prompts_app.command("create")
-def prompts_create(
-    ctx: typer.Context,
-    title: str = typer.Option(..., "--title"),
-    summary: str | None = typer.Option(None, "--summary"),
-    content: str | None = typer.Option(None, "--content"),
-    content_file: str | None = typer.Option(None, "--content-file"),
-    kind: PromptKind = typer.Option(PromptKind.USER_TEMPLATE, "--kind"),
-    domain: PromptDomain = typer.Option(PromptDomain.GENERAL, "--domain"),
-    task_type: PromptTaskType = typer.Option(
-        PromptTaskType.GENERAL_TASK,
-        "--task-type",
-    ),
-    content_format: PromptContentFormat = typer.Option(
-        PromptContentFormat.MARKDOWN,
-        "--format",
-    ),
-    var: list[str] | None = typer.Option(None, "--var"),
-    output_format: str | None = typer.Option(None, "--output-format"),
-    target_actor: str | None = typer.Option(None, "--target-actor"),
-    target_model_family: str | None = typer.Option(None, "--target-model-family"),
-    language: str | None = typer.Option(None, "--language"),
-    related_item_id: list[str] | None = typer.Option(None, "--related-item-id"),
-    category_id: str | None = typer.Option(None, "--category-id"),
-    tag: list[str] | None = typer.Option(None, "--tag"),
-    version: str = typer.Option("1.0.0", "--version"),
-    created_by: str = typer.Option("Hermes CLI", "--created-by"),
-    created_by_type: PromptCreatorType = typer.Option(
-        PromptCreatorType.USER,
-        "--created-by-type",
-    ),
-    source_type: PromptSourceType = typer.Option(
-        PromptSourceType.USER_CREATED,
-        "--source-type",
-    ),
-    active: bool = typer.Option(False, "--active"),
-) -> None:
-    """Create a prompt.
-
-    Args:
-        ctx: Typer context.
-        title: Prompt title.
-        summary: Optional prompt summary.
-        content: Inline prompt content.
-        content_file: File containing prompt content.
-        kind: Prompt kind.
-        domain: Prompt domain.
-        task_type: Prompt task type.
-        content_format: Prompt content format.
-        var: Repeatable prompt variables.
-        output_format: Optional output format.
-        target_actor: Optional target actor.
-        target_model_family: Optional target model family.
-        language: Optional language.
-        related_item_id: Repeatable related item identifiers.
-        category_id: Optional category identifier.
-        tag: Repeatable tags.
-        version: Prompt version.
-        created_by: Creator display name.
-        created_by_type: Creator type.
-        source_type: Source type.
-        active: Whether the prompt is active.
-
-    Returns:
-        None.
-    """
-    run_client(
-        ctx,
-        PromptsCreateCommand(
-            title=title,
-            summary=summary,
-            content=content,
-            content_file=content_file,
-            kind=kind,
-            domain=domain,
-            task_type=task_type,
-            content_format=content_format,
-            var=values(var),
-            output_format=output_format,
-            target_actor=target_actor,
-            target_model_family=target_model_family,
-            language=language,
-            related_item_id=values(related_item_id),
-            category_id=category_id,
-            tag=values(tag),
-            version=version,
-            created_by=created_by,
-            created_by_type=created_by_type,
-            source_type=source_type,
-            active=active,
-        ),
-        handle_prompts_create,
     )
 
 

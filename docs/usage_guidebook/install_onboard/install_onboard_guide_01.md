@@ -21,9 +21,13 @@ control-plane 작업을 보호한다.
 ## 빠른 흐름
 
 ```bash
+set -a
+[ -f .env ] && . ./.env
+set +a
+
 export ALEXANDRIA_API_URL="${ALEXANDRIA_API_URL:-http://localhost:8000}"
 export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-export ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-${SERVICE_OPERATOR_API_KEY:-}}"
+export ALEXANDRIA_OPERATOR_API_KEY="${ALEXANDRIA_OPERATOR_API_KEY:-}"
 
 alexandria-hermes --base-url "$ALEXANDRIA_API_URL" --json health
 

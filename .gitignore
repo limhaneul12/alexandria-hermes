@@ -251,8 +251,12 @@ docs/*
 !docs/project_subject/**
 !docs/project_remaining_work/
 !docs/project_remaining_work/**
+!docs/plans/
+!docs/plans/**
 !docs/assets/
 !docs/assets/**
+!docs/install_guides/
+!docs/install_guides/**
 !docs/usage_guidebook/
 !docs/usage_guidebook/**
 
@@ -262,3 +266,4 @@ backend/data/
 .playwright-mcp/
 # Playwright demo recordings (generated locally)
 docs/assets/demo/recordings/
+backend/.smoke/

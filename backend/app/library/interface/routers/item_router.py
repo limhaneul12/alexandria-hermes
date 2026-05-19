@@ -7,7 +7,6 @@ from app.library.application.item_service import ItemService
 from app.library.domain.event_enum.item_enums import ItemType
 from app.library.interface.routers._helpers import build_patch_payload
 from app.library.interface.schemas.item.item_schema import (
-    ItemCreateRequest,
     ItemResponse,
     ItemResponseList,
     ItemUpdateRequest,
@@ -18,45 +17,6 @@ from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
 router = APIRouter(prefix="/library/items", tags=["items"])
-
-
-@router.post(
-    "",
-    response_model=ItemResponse,
-    status_code=status.HTTP_201_CREATED,
-    description="Library API operation.",
-    summary="Create item",
-)
-@router_exception_status(LIBRARY_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def create_item(
-    request: ItemCreateRequest,
-    service: ItemService = Depends(Provide[ApplicationContainer.library.item_service]),
-) -> ItemResponse:
-    """Create a generic library item.
-
-    Args:
-        request [ItemCreateRequest]: Value supplied to create_item.
-        service [ItemService]: Value supplied to create_item.
-
-    Returns:
-        ItemResponse: Value produced by create_item.
-    """
-    result = await service.create_item(
-        item_type=request.item_type,
-        title=request.title,
-        summary=request.summary,
-        content=request.content,
-        category_id=request.category_id,
-        tags=request.tags,
-        status=request.status,
-        source_type=request.source_type,
-        created_by_type=request.created_by_type,
-        created_by_name=request.created_by_name,
-        details=request.details,
-    )
-    validation = ItemResponse.model_validate(result)
-    return validation
 
 
 @router.get(

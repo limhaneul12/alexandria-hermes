@@ -17,16 +17,12 @@ import type {
   LibraryItemCardDTO,
   LibraryItemDetailDTO,
   PromptContentFormat,
-  PromptCreateDTO,
-  PromptCreateResultDTO,
   PromptDomain,
   PromptKind,
   PromptTaskType,
-  SkillCreateDTO,
   SkillAcquisitionMetadataDTO,
   SkillCandidateHarnessDTO,
   SkillCandidateHarnessStatus,
-  SkillCreateResultDTO,
   SkillDetailDTO,
   SourceType,
 } from "@/types/library";
@@ -382,79 +378,6 @@ export async function deleteLibraryItemInBackend(item: LibraryItemCardDTO): Prom
     return;
   }
   await deleteSkillInBackend(item.id);
-}
-
-export async function createSkillInBackend(payload: SkillCreateDTO): Promise<SkillCreateResultDTO> {
-  const item = await backendFetch<BackendItem>("/library/skills", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: payload.title,
-      summary: payload.summary,
-      content: payload.content,
-      category_id: payload.categoryId,
-      tags: payload.tags,
-      purpose: payload.purpose,
-      input_schema: {},
-      output_schema: {},
-      usage_example: payload.usageExample,
-      required_tools: payload.requiredTools,
-      risk_level: payload.riskLevel,
-      version: payload.version,
-      created_by_name: payload.createdByName,
-      status: payload.status,
-    }),
-  });
-  return toSkillCard(
-    item,
-    new Map<string, BackendCategory>(),
-    new Map<string, number>(),
-    new Map<string, string>(),
-  );
-}
-
-export async function createPromptInBackend(payload: PromptCreateDTO): Promise<PromptCreateResultDTO> {
-  const item = await backendFetch<BackendItem>("/library/prompts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: payload.title,
-      summary: payload.summary,
-      content: payload.content,
-      category_id: payload.categoryId,
-      tags: payload.tags,
-      content_format: payload.contentFormat,
-      prompt_kind: payload.promptKind,
-      prompt_domain: payload.promptDomain,
-      prompt_task_type: payload.promptTaskType,
-      input_variables: payload.inputVariables.map((variable) => ({
-        name: variable.name,
-        required: variable.required,
-        description: variable.description,
-        default_value: variable.defaultValue,
-        example: variable.example,
-        input_type: variable.inputType,
-      })),
-      output_format: payload.outputFormat,
-      target_actor: payload.targetActor,
-      target_model_family: payload.targetModelFamily,
-      language: payload.language,
-      related_item_ids: payload.relatedItemIds,
-      safety_notes: payload.safetyNotes,
-      version: payload.version,
-      change_summary: payload.changeSummary,
-      created_by_name: payload.createdByName,
-      created_by_type: payload.createdByType,
-      source_type: payload.sourceType,
-      status: payload.status,
-    }),
-  });
-  return toSkillCard(
-    item,
-    new Map<string, BackendCategory>(),
-    new Map<string, number>(),
-    new Map<string, string>(),
-  );
 }
 
 export async function recordLibraryUsageInBackend(

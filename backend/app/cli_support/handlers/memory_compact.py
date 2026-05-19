@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
+from app.cli_support.argument_values import bounded_limit
+from app.cli_support.backend_api_client import CliBackendApiClient
 from app.cli_support.contracts.command_contracts import (
     MemoryCompactIdCommand,
     MemoryCompactListCommand,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
-from app.cli_support.input.argument_values import bounded_limit
 from app.cli_support.presentation.output_renderers import print_json, text_field
-from app.cli_support.routing.url_paths import quote_path
-from app.cli_support.transport.backend_api_client import CliBackendApiClient
+from app.cli_support.url_paths import quote_path
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 

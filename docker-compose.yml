@@ -13,7 +13,7 @@ services:
       start_period: 20s
     environment:
       PYTHONUNBUFFERED: "1"
-      SERVICE_OPERATOR_API_KEY: ${SERVICE_OPERATOR_API_KEY}
+      ALEXANDRIA_OPERATOR_API_KEY: ${ALEXANDRIA_OPERATOR_API_KEY}
       SERVICE_RAG_VECTOR_ENABLED: ${SERVICE_RAG_VECTOR_ENABLED:-true}
       SERVICE_RAG_EMBEDDING_PROVIDER: ${SERVICE_RAG_EMBEDDING_PROVIDER:-fastembed}
       SERVICE_RAG_EMBEDDING_MODEL: ${SERVICE_RAG_EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
@@ -38,7 +38,7 @@ services:
     command: npm run dev:container
     environment:
       NEXT_PUBLIC_BACKEND_URL: http://backend:8000
-      ALEXANDRIA_OPERATOR_API_KEY: ${SERVICE_OPERATOR_API_KEY}
+      ALEXANDRIA_OPERATOR_API_KEY: ${ALEXANDRIA_OPERATOR_API_KEY}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

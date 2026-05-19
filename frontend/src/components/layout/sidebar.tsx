@@ -7,12 +7,10 @@ import {
   Archive,
   BookOpen,
   Bot,
-  ClipboardCheck,
   Code2,
   Gauge,
   Home,
   Library,
-  PlusSquare,
   ScrollText,
   Settings,
   type LucideIcon,
@@ -26,15 +24,12 @@ type ActiveTarget =
   | "library"
   | "skills"
   | "prompts"
-  | "new-skill"
-  | "new-prompt"
   | "librarian-chat"
   | "librarians"
   | "settings"
   | "contexts"
   | "memory-compacts"
-  | "rag"
-  | "capture";
+  | "rag";
 
 type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active: ActiveTarget };
 type NavSection = { titleKey: TranslationKey | "libraryStatic" | "memoryStatic"; items: NavItem[] };
@@ -47,8 +42,6 @@ const sections: NavSection[] = [
       { labelKey: "myLibrary", href: "/library", icon: Library, active: "library" },
       { labelKey: "mySkills", href: "/library/skills", icon: Code2, active: "skills" },
       { labelKey: "myPrompts", href: "/library/prompts", icon: Archive, active: "prompts" },
-      { labelKey: "createSkill", href: "/library/skills/new", icon: PlusSquare, active: "new-skill" },
-      { labelKey: "createPrompt", href: "/library/prompts/new", icon: PlusSquare, active: "new-prompt" },
     ],
   },
   {
@@ -57,7 +50,6 @@ const sections: NavSection[] = [
       { labelKey: "contextVault", href: "/contexts", icon: ScrollText, active: "contexts" },
       { labelKey: "memoryCompacts", href: "/memory-compacts", icon: BookOpen, active: "memory-compacts" },
       { labelKey: "ragInspector", href: "/rag-inspector", icon: Gauge, active: "rag" },
-      { labelKey: "captureReview", href: "/capture-review", icon: ClipboardCheck, active: "capture" },
     ],
   },
   {
@@ -87,15 +79,12 @@ function isActive(pathname: string, active: ActiveTarget) {
   if (active === "library") return pathname === "/library" || /^\/library\/[^/]+$/.test(pathname);
   if (active === "skills") return pathname === "/library/skills";
   if (active === "prompts") return pathname === "/library/prompts";
-  if (active === "new-skill") return pathname === "/library/skills/new";
-  if (active === "new-prompt") return pathname === "/library/prompts/new";
   if (active === "librarian-chat") return pathname === "/librarian/chat";
   if (active === "settings") return pathname === "/settings";
   if (active === "librarians") return pathname === "/settings/librarians";
   if (active === "contexts") return pathname.startsWith("/contexts");
   if (active === "memory-compacts") return pathname.startsWith("/memory-compacts");
   if (active === "rag") return pathname === "/rag-inspector";
-  if (active === "capture") return pathname === "/capture-review";
   return false;
 }
 

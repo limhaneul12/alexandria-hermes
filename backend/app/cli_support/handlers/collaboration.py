@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.cli_support.backend_api_client import CliBackendApiClient
 from app.cli_support.contracts.command_contracts import (
     LibrarianAskCommand,
     LibrarianBriefPreviewCommand,
@@ -29,10 +30,9 @@ from app.cli_support.handlers.collaboration_helpers import (
     usage_record_body,
 )
 from app.cli_support.presentation.output_renderers import print_json, text_field
-from app.cli_support.routing.url_paths import quote_path
-from app.cli_support.transport.backend_api_client import CliBackendApiClient
+from app.cli_support.url_paths import quote_path
 from app.shared.types.extra_types import JSONObject
-from app.shared.util.oauth_redaction import without_oauth_sensitive_fields
+from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
 
 
 def handle_usage_record(

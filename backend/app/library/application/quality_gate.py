@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from app.library.domain.event_enum.item_enums import ItemType
 from app.shared.types.extra_types import JSONObject
-from app.shared.util.secret_redaction import redact_secret_text
+from app.shared.utils.secret_redaction import redact_secret_text
 
 DANGEROUS_COMMAND_MARKERS = ("rm -rf /", "docker volume rm", "kubectl delete")
 

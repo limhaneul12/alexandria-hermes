@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.shared.util.config import settings_model_config
+from app.shared.utils.config import settings_model_config
 from pydantic import Field
 from pydantic_settings import BaseSettings
 

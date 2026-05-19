@@ -7,32 +7,47 @@ const forms = readFileSync(new URL("../src/components/library/library-forms.tsx"
 const contextVault = readFileSync(new URL("../src/components/context/context-vault-client.tsx", import.meta.url), "utf8");
 const librarianChat = readFileSync(new URL("../src/components/librarian/librarian-chat-client.tsx", import.meta.url), "utf8");
 const librarianChatBackend = readFileSync(new URL("../src/lib/backend/librarian-chat.ts", import.meta.url), "utf8");
+const contextRoute = readFileSync(new URL("../src/app/api/library/contexts/route.ts", import.meta.url), "utf8");
+const backendContexts = readFileSync(new URL("../src/lib/backend/contexts.ts", import.meta.url), "utf8");
+const libraryTypes = readFileSync(new URL("../src/types/library.ts", import.meta.url), "utf8");
 
-for (const route of ["/library/skills", "/library/prompts", "/library/skills/new", "/library/prompts/new", "/librarian/chat"]) {
+for (const route of ["/library/skills", "/library/prompts", "/librarian/chat"]) {
   assert.match(sidebar, new RegExp(route.replaceAll("/", "\\/")), `sidebar must expose ${route}`);
+}
+for (const route of ["/library/skills/new", "/library/prompts/new", "/capture-review"]) {
+  assert.doesNotMatch(sidebar, new RegExp(route.replaceAll("/", "\\/")), `sidebar must not expose removed route ${route}`);
 }
 assert.match(sidebar, /librarianChat/, "sidebar must expose 사서와 얘기하기 via i18n key");
 for (const removed of ["favorites", "recommendations", "categories", "recent"]) {
   assert.doesNotMatch(sidebar, new RegExp(`labelKey:\\s*["']${removed}["']`), `${removed} must not remain as a top-level library nav entry`);
 }
 assert.doesNotMatch(sidebar, /\/library\?create=/, "sidebar must not use query-owned create routes");
-assert.match(libraryClient, /router\.replace\("\/library\/skills\/new"/, "legacy ?create=skill must redirect to dedicated route");
-assert.match(libraryClient, /router\.replace\("\/library\/prompts\/new"/, "legacy ?create=prompt must redirect to dedicated route");
+assert.doesNotMatch(libraryClient, /router\.replace\("\/library\/skills\/new"/, "legacy ?create=skill redirect must be removed");
+assert.doesNotMatch(libraryClient, /router\.replace\("\/library\/prompts\/new"/, "legacy ?create=prompt redirect must be removed");
+assert.doesNotMatch(libraryClient, /\/library\/skills\/new|\/library\/prompts\/new/, "library client must not link removed create routes");
 
 for (const file of [
   "../src/app/library/skills/page.tsx",
   "../src/app/library/prompts/page.tsx",
-  "../src/app/library/skills/new/page.tsx",
-  "../src/app/library/prompts/new/page.tsx",
   "../src/app/librarian/chat/page.tsx",
 ]) {
   assert.equal(existsSync(new URL(file, import.meta.url)), true, `${file} must exist`);
+}
+for (const file of [
+  "../src/app/library/skills/new/page.tsx",
+  "../src/app/library/prompts/new/page.tsx",
+  "../src/app/capture-review/page.tsx",
+]) {
+  assert.equal(existsSync(new URL(file, import.meta.url)), false, `${file} must stay deleted`);
 }
 for (const [label, source] of [["library client", libraryClient], ["library forms", forms], ["context vault", contextVault]]) {
   assert.doesNotMatch(source, /<select\b/, `${label} must use Alexandria Select instead of native select`);
 }
 assert.doesNotMatch(librarianChat, /@\/components\/ui\/select/, "librarian chat must not expand Alexandria Select beyond the approved scope");
 assert.doesNotMatch(librarianChatBackend, /\/library\/items\//, "librarian chat source refs must use existing library detail routes");
+assert.doesNotMatch(contextRoute, /export async function POST/, "frontend context list route must not expose removed manual context save");
+assert.doesNotMatch(backendContexts, /\/memory\/contexts\/lint|saveContextInBackend|lintContextInBackend/, "frontend backend client must not call removed manual context lint/save routes");
+assert.match(libraryTypes, /"HARNESS"/, "frontend context types must include read-only HARNESS context kind");
 assert.match(
   librarianChatBackend,
   /detailPath:\s*`\/library\/\$\{categorySlug\}\/\$\{encodeURIComponent\(hit\.id\)\}`/,

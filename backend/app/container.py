@@ -108,6 +108,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_session=db_session,
         librarian_provider_repo=connections.librarian_provider_repo,
         provider_secret_repo=connections.provider_secret_repo,
+        skill_service=library.skill_service,
+        context_service=memory.context_service,
     )
     archive = providers.Container(
         ArchiveContainer,

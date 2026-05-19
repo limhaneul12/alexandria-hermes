@@ -12,7 +12,6 @@ from app.cli_support.contracts.command_contracts import (
     LibraryListCommand,
     LibrarySearchCommand,
     MinioCommand,
-    SkillsCreateCommand,
     SkillsListCommand,
     SkillsSearchCommand,
 )
@@ -25,7 +24,6 @@ from app.cli_support.handlers.library import (
     handle_library_search,
     handle_minio_import,
     handle_minio_scan,
-    handle_skills_create,
     handle_skills_delete,
     handle_skills_get,
     handle_skills_list,
@@ -112,74 +110,6 @@ def skills_get(ctx: typer.Context, item_id: str) -> None:
         None.
     """
     run_client(ctx, ItemIdCommand(item_id=item_id), handle_skills_get)
-
-
-@skills_app.command("create")
-def skills_create(
-    ctx: typer.Context,
-    title: str = typer.Option(..., "--title"),
-    purpose: str = typer.Option(..., "--purpose"),
-    content: str | None = typer.Option(None, "--content"),
-    content_file: str | None = typer.Option(None, "--content-file"),
-    summary: str | None = typer.Option(None, "--summary"),
-    category_id: str | None = typer.Option(None, "--category-id"),
-    tag: list[str] | None = typer.Option(None, "--tag"),
-    tool: list[str] | None = typer.Option(None, "--tool"),
-    usage_example: str | None = typer.Option(None, "--usage-example"),
-    risk_level: SkillRiskLevel = typer.Option(SkillRiskLevel.LOW, "--risk-level"),
-    version: str = typer.Option("1.0.0", "--version"),
-    created_by: str = typer.Option("Hermes CLI", "--created-by"),
-    active: bool = typer.Option(False, "--active"),
-    source_agent: str | None = typer.Option(None, "--source-agent"),
-    evidence_url: list[str] | None = typer.Option(None, "--evidence-url"),
-    source_summary: str | None = typer.Option(None, "--source-summary"),
-) -> None:
-    """Create a manual skill or submit an agent-authored candidate.
-
-    Args:
-        ctx: Typer context.
-        title: Skill title.
-        purpose: Skill purpose.
-        content: Inline skill content.
-        content_file: File containing skill content.
-        summary: Optional skill summary.
-        category_id: Optional category identifier.
-        tag: Repeatable tags.
-        tool: Repeatable related tools.
-        usage_example: Optional usage example.
-        risk_level: Skill risk level.
-        version: Skill version.
-        created_by: Creator display name.
-        active: Whether the skill is active.
-        source_agent: Agent name for self-acquired candidate submissions.
-        evidence_url: Repeatable source URLs for self-acquired candidates.
-        source_summary: Optional source/evidence summary.
-
-    Returns:
-        None.
-    """
-    run_client(
-        ctx,
-        SkillsCreateCommand(
-            title=title,
-            purpose=purpose,
-            content=content,
-            content_file=content_file,
-            summary=summary,
-            category_id=category_id,
-            tag=values(tag),
-            tool=values(tool),
-            usage_example=usage_example,
-            risk_level=risk_level,
-            version=version,
-            created_by=created_by,
-            active=active,
-            source_agent=source_agent,
-            evidence_url=values(evidence_url),
-            source_summary=source_summary,
-        ),
-        handle_skills_create,
-    )
 
 
 @skills_app.command("delete")

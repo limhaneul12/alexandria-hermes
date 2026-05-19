@@ -16,13 +16,7 @@ from app.platform.schemas.logging_schema import (
 )
 from app.shared.serialization.model_codec import model_to_dict
 from app.shared.types.extra_types import JSONObject
-from app.shared.util.logging import (
-    log_record_extra_float,
-    log_record_extra_int,
-    log_record_extra_str,
-    log_record_extra_str_or_default,
-    redact_sensitive_text,
-)
+from app.shared.utils.logging import LogRecordExtraReader, redact_sensitive_text
 
 
 def should_include_error_stack(app_env: str) -> bool:
@@ -101,41 +95,40 @@ def build_error_payload(
     return error_payload
 
 
-def build_trace_context(record: logging.LogRecord) -> JsonLogTraceContext:
+def build_trace_context(extra_reader: LogRecordExtraReader) -> JsonLogTraceContext:
     """Build trace context payload from a log record.
 
     Args:
-        record: Python logging record.
+        extra_reader: Typed reader for structured logging extra fields.
 
     Returns:
         Structured trace context.
     """
-    request_id = log_record_extra_str(record=record, key="request_id")
+    request_id = extra_reader.string("request_id")
     trace_context = JsonLogTraceContext(
         request_id=request_id,
-        correlation_id=log_record_extra_str(
-            record=record,
-            key="correlation_id",
+        correlation_id=extra_reader.string(
+            "correlation_id",
             default=request_id,
         ),
-        trace_id=log_record_extra_str(record=record, key="trace_id"),
+        trace_id=extra_reader.string("trace_id"),
     )
     return trace_context
 
 
-def build_http_context(record: logging.LogRecord) -> JsonLogHttpContext:
+def build_http_context(extra_reader: LogRecordExtraReader) -> JsonLogHttpContext:
     """Build HTTP context payload from a log record.
 
     Args:
-        record: Python logging record.
+        extra_reader: Typed reader for structured logging extra fields.
 
     Returns:
         Structured HTTP context.
     """
     http_context = JsonLogHttpContext(
-        method=log_record_extra_str(record=record, key="http_method"),
-        path=log_record_extra_str(record=record, key="path"),
-        status_code=log_record_extra_int(record=record, key="status_code"),
+        method=extra_reader.string("http_method"),
+        path=extra_reader.string("path"),
+        status_code=extra_reader.int_value("status_code"),
     )
     return http_context
 
@@ -156,9 +149,9 @@ def build_log_payload(
     Returns:
         Validated structured log payload.
     """
-    event_name = log_record_extra_str_or_default(
-        record=record,
-        key="event",
+    extra_reader = LogRecordExtraReader(record)
+    event_name = extra_reader.required_string(
+        "event",
         default=record.name,
     )
     log_payload = JsonLogPayload(
@@ -167,11 +160,11 @@ def build_log_payload(
         logger=record.name,
         event=event_name,
         msg=redact_sensitive_text(record.getMessage()) or "",
-        func=log_record_extra_str(record=record, key="func", default=record.funcName),
-        duration_ms=log_record_extra_float(record=record, key="duration_ms"),
+        func=extra_reader.string("func", default=record.funcName),
+        duration_ms=extra_reader.float_value("duration_ms"),
         service=service_context,
-        trace=build_trace_context(record),
-        http=build_http_context(record),
+        trace=build_trace_context(extra_reader),
+        http=build_http_context(extra_reader),
         error=build_error_payload(record=record, include_stack=include_error_stack),
     )
     return log_payload

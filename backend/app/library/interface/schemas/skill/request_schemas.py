@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.library.domain.event_enum.item_enums import ItemStatus
 from app.library.domain.event_enum.skill_enums import RiskLevel
-from app.library.interface.schemas.skill.enum_parsing import item_status, risk_level
 from app.library.interface.schemas.skill.examples import (
     AGENT_SUBMIT_SKILL_EXAMPLE,
     LIBRARIAN_SKILL_EXAMPLE,
@@ -13,7 +12,7 @@ from app.library.interface.schemas.skill.examples import (
 )
 from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.types.extra_types import JSONValue
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field
 
 
 class SkillCreateRequest(StrictSchemaModel):
@@ -35,36 +34,6 @@ class SkillCreateRequest(StrictSchemaModel):
     version: str = "1.0.0"
     created_by_name: str
     status: ItemStatus = ItemStatus.DRAFT
-
-    @field_validator("risk_level", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_risk_level(cls, value: object) -> RiskLevel:
-        """Parse JSON risk level values.
-
-        Args:
-            value [object]: Value supplied to parse_risk_level.
-
-        Returns:
-            RiskLevel: Value produced by parse_risk_level.
-        """
-        parsed_level = risk_level(value)
-        return parsed_level
-
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_status(cls, value: object) -> ItemStatus:
-        """Parse JSON status values.
-
-        Args:
-            value [object]: Value supplied to parse_status.
-
-        Returns:
-            ItemStatus: Value produced by parse_status.
-        """
-        parsed_status = item_status(value)
-        return parsed_status
 
 
 class AgentSubmitSkillRequest(StrictSchemaModel):
@@ -92,36 +61,6 @@ class AgentSubmitSkillRequest(StrictSchemaModel):
     evidence_urls: list[str] = Field(default_factory=list)
     source_summary: str | None = None
 
-    @field_validator("risk_level", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_risk_level(cls, value: object) -> RiskLevel:
-        """Parse JSON risk level values.
-
-        Args:
-            value [object]: Value supplied to parse_risk_level.
-
-        Returns:
-            RiskLevel: Value produced by parse_risk_level.
-        """
-        parsed_level = risk_level(value)
-        return parsed_level
-
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_status(cls, value: object) -> ItemStatus:
-        """Parse JSON status values.
-
-        Args:
-            value [object]: Value supplied to parse_status.
-
-        Returns:
-            ItemStatus: Value produced by parse_status.
-        """
-        parsed_status = item_status(value)
-        return parsed_status
-
 
 class SkillPatchRequest(StrictSchemaModel):
     """Patch payload for editing an existing skill."""
@@ -141,42 +80,6 @@ class SkillPatchRequest(StrictSchemaModel):
     required_tools: list[str] | None = None
     risk_level: RiskLevel | None = None
     version: str | None = None
-
-    @field_validator("risk_level", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_risk_level(cls, value: object) -> RiskLevel | None:
-        """Parse JSON risk level values when provided.
-
-        Args:
-            value [object]: Value supplied to parse_risk_level.
-
-        Returns:
-            RiskLevel | None: Value produced by parse_risk_level.
-        """
-        if value is None:
-            parsed_level = None
-        else:
-            parsed_level = risk_level(value)
-        return parsed_level
-
-    @field_validator("status", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input before contract validation.
-    def parse_status(cls, value: object) -> ItemStatus | None:
-        """Parse JSON status values when provided.
-
-        Args:
-            value [object]: Value supplied to parse_status.
-
-        Returns:
-            ItemStatus | None: Value produced by parse_status.
-        """
-        if value is None:
-            parsed_status = None
-        else:
-            parsed_status = item_status(value)
-        return parsed_status
 
 
 class LibrarianSkillRequest(StrictSchemaModel):

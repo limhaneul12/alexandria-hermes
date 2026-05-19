@@ -53,6 +53,46 @@ Use the boundary rule set for:
 - Avoid broad `Any` unless the dynamic boundary truly requires it.
 - If a runtime seam is inherently dynamic, localize that looseness to parsing/normalization boundaries and convert to explicit contracts quickly.
 
+## Type Hygiene Rule
+
+Strong typing should reduce code, not create defensive boilerplate.
+
+Do not add broad `object` / `Any` annotations, casts, helper functions, or
+justification comments only to satisfy Pyrefly or guardrails when an existing
+framework contract already validates the value.
+
+Preferred order when Pyrefly reports a type issue:
+
+1. tighten the field, DTO, or helper signature;
+2. rely on the existing Pydantic/domain contract when it already performs the
+   validation;
+3. introduce a narrow normalization helper only when the boundary really accepts
+   more than the annotated contract;
+4. add a broad type plus justification only for genuinely dynamic seams such as
+   raw transport payloads, framework callback surfaces, settings coercion, or
+   compatibility normalization.
+
+Bad direction:
+
+```python
+# Broad type justified: Pydantic before validators receive raw boundary input.
+def _item_type(value: object) -> ItemType:
+    if isinstance(value, ItemType):
+        return value
+    if isinstance(value, str):
+        return ItemType(value)
+    raise ValueError("item_type must be a valid item type")
+```
+
+Preferred direction:
+
+```python
+item_type: ItemType
+```
+
+If a broad type remains, the justification must explain the real dynamic
+boundary behavior, not merely restate that a type checker required it.
+
 ## Source vs Test Rule
 
 - Production `src/` code should be held to a stricter standard than tests.
@@ -67,6 +107,8 @@ Current direction:
 - production `src/` code should remain stricter than tests,
 - do not silence type issues casually,
 - do not use broad casts or `Any` as the first escape hatch.
+- do not reimplement Pydantic's built-in enum parsing just to make Pyrefly
+  accept a before-validator signature.
 
 ## Boundary With Other Rule Sets
 

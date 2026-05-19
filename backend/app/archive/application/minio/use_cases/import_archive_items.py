@@ -333,8 +333,6 @@ def _classify_item(key: str, content: str) -> tuple[ItemType, float]:
         or "{{" in haystack
     ):
         return ItemType.PROMPT, 0.82
-    if "workflow" in haystack or "checklist" in haystack or "runbook" in haystack:
-        return ItemType.WORKFLOW, 0.78
     if "skill" in haystack or "purpose:" in haystack or "required_tools" in haystack:
         return ItemType.SKILL, 0.78
     if "/library/skills/" in normalized_key or key.lower().startswith("skills/"):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.shared.util.oauth_redaction import without_oauth_sensitive_fields
+from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
 
 
 def test_oauth_redaction_removes_case_and_separator_variants_recursively() -> None:
