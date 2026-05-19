@@ -5,7 +5,6 @@ from __future__ import annotations
 from app.library.application.category_service import CategoryService
 from app.library.application.item_search_service import ItemSearchService
 from app.library.application.item_service import ItemService
-from app.library.application.knowledge_service import KnowledgeService
 from app.library.application.prompt_service import PromptService
 from app.library.application.skill_service import SkillService
 from app.library.application.usage_service import UsageService
@@ -43,9 +42,5 @@ class LibraryContainer(containers.DeclarativeContainer):
     )
     prompt_service = providers.Factory(
         PromptService,
-        item_service=item_service,
-    )
-    knowledge_service = providers.Factory(
-        KnowledgeService,
         item_service=item_service,
     )

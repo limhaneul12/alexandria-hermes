@@ -9,7 +9,6 @@ class ItemType(StrEnum):
     """Library item top-level type."""
 
     SKILL = "SKILL"
-    KNOWLEDGE = "KNOWLEDGE"
     PROMPT = "PROMPT"
 
 

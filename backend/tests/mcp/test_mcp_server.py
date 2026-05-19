@@ -686,7 +686,6 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_get_current_memory_compact",
         "alexandria_get_memory_compact",
         "alexandria_prepare_compact",
-        "alexandria_request_skill_acquisition",
         "alexandria_start_skill_acquisition",
         "alexandria_skill_acquisition_job_status",
         "alexandria_complete_skill_acquisition",
@@ -703,3 +702,4 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_archive_context",
         "alexandria_rag_status",
     } <= names
+    assert "alexandria_request_skill_acquisition" not in names

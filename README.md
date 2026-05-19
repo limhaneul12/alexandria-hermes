@@ -192,7 +192,7 @@ MD
   --limit 3
 ```
 
-Expected result: the recall response includes a Context Pack referencing the saved context. In the UI, check `/contexts`, `/capture-review`, and `/rag-inspector`.
+Expected result: the recall response includes a Context Pack referencing the saved context. In the UI, check `/contexts` for the saved entry and `/rag-inspector` for retrieval health.
 
 ### Full Stack
 
@@ -306,7 +306,7 @@ Supported behaviors:
 Primary surfaces:
 
 - backend routes under `/memory/contexts` and `/memory/compacts` plus frontend proxy routes under `/api/library/contexts` and `/api/library/compacts`
-- frontend pages `/contexts`, `/contexts/{contextId}`, `/memory-compacts`, `/memory-compacts/{compactId}`, `/capture-review`, `/rag-inspector`
+- frontend pages `/contexts`, `/contexts/{contextId}`, `/memory-compacts`, `/memory-compacts/{compactId}`, `/rag-inspector`
 - CLI commands under `alexandria-hermes context ...` and `alexandria-hermes memory-compacts ...`
 - MCP server via `alexandria-hermes mcp serve`
 

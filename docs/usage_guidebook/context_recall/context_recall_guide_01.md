@@ -72,8 +72,9 @@ alexandria-hermes --base-url http://localhost:8000 context doctor-rag
 ```text
 http://localhost:3000/contexts
 http://localhost:3000/rag-inspector
-http://localhost:3000/capture-review
 ```
+
+`/contexts`에서 저장된 context가 보이고, `/rag-inspector`에서 FTS/vector/RAG 상태를 확인할 수 있어야 한다.
 
 ## 흔한 실패
 

@@ -12,9 +12,6 @@ from app.librarian.interface.schemas.librarian.librarian_brief_schemas import (
     BudgetPolicySchema,
     LibrarianBriefPreviewRequest,
 )
-from app.librarian.interface.schemas.librarian.librarian_ops_schemas import (
-    CreateCandidateRequest,
-)
 from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import (
     SkillAcquisitionCompletionRequest,
     SkillAcquisitionJobRequest,
@@ -59,7 +56,6 @@ DEFAULT_CAPTURE_KIND = ContextKind.HANDOFF
 DEFAULT_SOURCE_AGENT = "Hermes"
 DEFAULT_CAPTURE_SOURCE_TYPE = ContextSourceType.AGENT
 DEFAULT_CAPTURE_IMPORTANCE = ContextImportance.MEDIUM
-DEFAULT_SKILL_PROVIDER_ID = "hermes-self-acquisition"
 DEFAULT_CANDIDATE_AUTHOR = "Hermes"
 DEFAULT_LIBRARY_SEARCH_LIMIT = 20
 
@@ -555,33 +551,6 @@ async def alexandria_search_prompts(
     if prompt_kind is not None:
         params["prompt_kind"] = prompt_kind.value
     response = await client.get("/library/search", params=params)
-    return response
-
-
-async def alexandria_request_skill_acquisition(
-    client: AlexandriaApiClient,
-    prompt: str,
-    provider_id: str = DEFAULT_SKILL_PROVIDER_ID,
-    category_id: str | None = None,
-) -> JSONValue:
-    """Request a draft skill candidate from the librarian workflow.
-
-    Args:
-        client: Backend HTTP client.
-        prompt: Missing-capability description.
-        provider_id: Librarian provider identifier or self-acquisition marker.
-        category_id: Optional category identifier.
-
-    Returns:
-        Draft skill candidate response.
-    """
-    request = CreateCandidateRequest(
-        provider_id=provider_id,
-        prompt=prompt,
-        category_id=category_id,
-    )
-    payload = _schema_payload(request)
-    response = await client.post("/librarians/create-skill-candidate", payload)
     return response
 
 

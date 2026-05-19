@@ -17,7 +17,6 @@ class SourceRefType(StrEnum):
     LIBRARY_ITEM = "LIBRARY_ITEM"
     SKILL = "SKILL"
     PROMPT = "PROMPT"
-    KNOWLEDGE = "KNOWLEDGE"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

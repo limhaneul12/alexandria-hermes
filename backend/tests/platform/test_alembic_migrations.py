@@ -306,6 +306,140 @@ def test_alembic_upgrade_removes_legacy_workflow_library_items(
     assert workflow_rejected is True
 
 
+def test_alembic_upgrade_removes_legacy_knowledge_library_items(
+    tmp_path: Path,
+) -> None:
+    """Alembic should delete legacy KNOWLEDGE rows and reject new knowledge items."""
+
+    database_path = tmp_path / "knowledge-item-type.db"
+    previous_revision = "202605191840_remove_minio_providers"
+    result = _run_alembic(database_path, previous_revision)
+    assert result.returncode == 0, result.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            INSERT INTO library_items (
+                id,
+                item_type,
+                title,
+                summary,
+                content,
+                category_id,
+                tags,
+                status,
+                source_type,
+                created_by_type,
+                created_by_name,
+                created_at,
+                updated_at,
+                details,
+                is_archived
+            )
+            VALUES (
+                'knowledge-item',
+                'KNOWLEDGE',
+                'Legacy knowledge item',
+                NULL,
+                'Knowledge content belongs in Context Vault',
+                NULL,
+                '[]',
+                'ACTIVE',
+                'USER_CREATED',
+                'USER',
+                'Hermes',
+                '2026-05-19 00:00:00',
+                '2026-05-19 00:00:00',
+                '{}',
+                0
+            );
+            INSERT INTO usage_histories (
+                id,
+                item_id,
+                item_type,
+                agent_name,
+                librarian_provider,
+                query,
+                selection_source,
+                used_at,
+                success,
+                feedback
+            )
+            VALUES (
+                'knowledge-usage',
+                'knowledge-item',
+                'KNOWLEDGE',
+                'Hermes',
+                NULL,
+                NULL,
+                'MANUAL_BROWSE',
+                '2026-05-19 00:00:00',
+                1,
+                NULL
+            );
+            """
+        )
+
+    result = _run_alembic(database_path, "head")
+    assert result.returncode == 0, result.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        knowledge_count = connection.execute(
+            "SELECT COUNT(*) FROM library_items WHERE item_type = 'KNOWLEDGE'"
+        ).fetchone()[0]
+        usage_count = connection.execute(
+            "SELECT COUNT(*) FROM usage_histories WHERE id = 'knowledge-usage'"
+        ).fetchone()[0]
+
+        try:
+            connection.execute(
+                """
+                INSERT INTO library_items (
+                    id,
+                    item_type,
+                    title,
+                    summary,
+                    content,
+                    category_id,
+                    tags,
+                    status,
+                    source_type,
+                    created_by_type,
+                    created_by_name,
+                    created_at,
+                    updated_at,
+                    details,
+                    is_archived
+                )
+                VALUES (
+                    'new-knowledge-item',
+                    'KNOWLEDGE',
+                    'Rejected knowledge item',
+                    NULL,
+                    'Should fail',
+                    NULL,
+                    '[]',
+                    'ACTIVE',
+                    'USER_CREATED',
+                    'USER',
+                    'Hermes',
+                    '2026-05-19 00:00:00',
+                    '2026-05-19 00:00:00',
+                    '{}',
+                    0
+                )
+                """
+            )
+        except sqlite3.IntegrityError:
+            knowledge_rejected = True
+        else:
+            knowledge_rejected = False
+
+    assert knowledge_count == 0
+    assert usage_count == 0
+    assert knowledge_rejected is True
+
+
 def test_alembic_upgrade_allows_prompt_library_items(tmp_path: Path) -> None:
     """Alembic should allow PROMPT rows because prompt records share library_items."""
 

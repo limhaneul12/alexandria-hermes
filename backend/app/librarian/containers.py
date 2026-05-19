@@ -17,7 +17,6 @@ from app.librarian.application.hermes_collaboration_service import (
     HermesCollaborationService,
 )
 from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
-from app.librarian.application.librarian_ops_service import LibrarianOpsService
 from app.librarian.application.skill_acquisition_runner import SkillAcquisitionRunner
 from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
 from app.librarian.infrastructure.repositories.agent_repository import (
@@ -52,7 +51,6 @@ class LibrarianContainer(containers.DeclarativeContainer):
         secret_repo=provider_secret_repo,
     )
     knowledge_packet_compiler = providers.Factory(KnowledgePacketCompiler)
-    librarian_ops_service = providers.Factory(LibrarianOpsService)
     skill_acquisition_service = providers.Factory(
         SkillAcquisitionService,
         repository=skill_acquisition_job_repo,

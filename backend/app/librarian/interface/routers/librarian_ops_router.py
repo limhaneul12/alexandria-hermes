@@ -1,13 +1,17 @@
-"""Librarian runtime operations: recommend/classify/candidate generation."""
+"""Librarian collaboration and durable skill-acquisition routes."""
 
 from __future__ import annotations
+
+import logging
+from collections.abc import Awaitable, Callable
+from inspect import isawaitable
+from typing import cast
 
 from app.container import ApplicationContainer
 from app.librarian.application.hermes_collaboration_service import (
     HermesCollaborationService,
 )
 from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
-from app.librarian.application.librarian_ops_service import LibrarianOpsService
 from app.librarian.application.skill_acquisition_runner import SkillAcquisitionRunner
 from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
@@ -21,28 +25,16 @@ from app.librarian.interface.schemas.librarian.hermes_collaboration_schemas impo
     AskLibrarianResponse,
     LibrarianJobStatusResponse,
 )
-from app.librarian.interface.schemas.librarian.librarian_ops_schemas import (
-    ClassifyRequest,
-    CreateCandidateRequest,
-    RecommendRequest,
-)
 from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import (
     SkillAcquisitionCompletionRequest,
     SkillAcquisitionJobRequest,
     SkillAcquisitionJobResponse,
     skill_acquisition_job_response,
 )
-from app.library.application.item_search_service import ItemSearchService
-from app.library.domain.event_enum.item_enums import ItemType
-from app.library.interface.schemas.item.item_schema import (
-    ClassificationResponse,
-    ItemResponse,
-)
-from app.library.interface.schemas.item.item_search_schema import ItemSearchResponse
 from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
-from app.shared.types.types_convert_utils import enum_value
+from app.shared.infrastructure.database import Database
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, BackgroundTasks, Depends, status
 
@@ -51,6 +43,41 @@ router = APIRouter(
     tags=["librarian"],
     dependencies=[Depends(require_operator_api_key)],
 )
+logger = logging.getLogger(__name__)
+
+
+async def _run_skill_acquisition_background_job(
+    *,
+    database: Database,
+    runner_factory: Callable[
+        [], SkillAcquisitionRunner | Awaitable[SkillAcquisitionRunner]
+    ],
+    job_id: str,
+) -> None:
+    """Run one skill-acquisition job in an independently committed session.
+
+    Args:
+        database: Application database coordinator.
+        runner_factory: Provider that builds a runner after the background
+            session has been rebound.
+        job_id: Durable skill-acquisition job identifier.
+    """
+    async with database.request_session() as session:
+        try:
+            runner_candidate = runner_factory()
+            if isawaitable(runner_candidate):
+                runner = await cast(Awaitable[SkillAcquisitionRunner], runner_candidate)
+            else:
+                runner = runner_candidate
+            await runner.run_job(job_id)
+        except Exception:
+            await session.rollback()
+            logger.exception(
+                "Skill acquisition background task failed",
+                extra={"job_id": job_id},
+            )
+            raise
+        await session.commit()
 
 
 def _ask_command(
@@ -193,8 +220,11 @@ async def create_skill_acquisition_job(
     service: SkillAcquisitionService = Depends(
         Provide[ApplicationContainer.librarian.skill_acquisition_service]
     ),
-    runner: SkillAcquisitionRunner = Depends(
-        Provide[ApplicationContainer.librarian.skill_acquisition_runner]
+    database: Database = Depends(Provide[ApplicationContainer.database]),
+    runner_factory: Callable[
+        [], SkillAcquisitionRunner | Awaitable[SkillAcquisitionRunner]
+    ] = Depends(
+        Provide[ApplicationContainer.librarian.skill_acquisition_runner.provider]
     ),
 ) -> SkillAcquisitionJobResponse:
     """Create a durable skill-acquisition job.
@@ -215,7 +245,12 @@ async def create_skill_acquisition_job(
         librarian_profile_id=request.librarian_profile_id,
     )
     if job.status is SkillAcquisitionJobStatus.ACCEPTED:
-        background_tasks.add_task(runner.run_job, job.id)
+        background_tasks.add_task(
+            _run_skill_acquisition_background_job,
+            database=database,
+            runner_factory=runner_factory,
+            job_id=job.id,
+        )
     return skill_acquisition_job_response(job)
 
 
@@ -278,98 +313,3 @@ async def complete_skill_acquisition_job(
         artifact=request.to_artifact(),
     )
     return skill_acquisition_job_response(job)
-
-
-@router.post(
-    "/recommend",
-    response_model=ItemSearchResponse,
-    description="Recommend lightweight library candidates without full content.",
-    status_code=status.HTTP_200_OK,
-    summary="Recommend",
-)
-@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def recommend(
-    request: RecommendRequest,
-    item_search_service: ItemSearchService = Depends(
-        Provide[ApplicationContainer.library.item_search_service]
-    ),
-) -> ItemSearchResponse:
-    """Recommend items by query with simple keyword search fallback.
-
-    Args:
-        request [RecommendRequest]: Value supplied to recommend.
-        item_search_service [ItemSearchService]: Value supplied to recommend.
-
-    Returns:
-        ItemSearchResponse: Value produced by recommend.
-    """
-    payload = await item_search_service.search(
-        query=request.query,
-        item_type=enum_value(request.item_type, ItemType, "item_type"),
-        limit=request.limit,
-    )
-    validation = ItemSearchResponse.model_validate(payload)
-    return validation
-
-
-@router.post(
-    "/classify",
-    response_model=ClassificationResponse,
-    description="Library API operation.",
-    status_code=status.HTTP_200_OK,
-    summary="Classify",
-)
-@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def classify(
-    request: ClassifyRequest,
-    librarian_ops_service: LibrarianOpsService = Depends(
-        Provide[ApplicationContainer.librarian.librarian_ops_service]
-    ),
-) -> ClassificationResponse:
-    """Classify prompt into rough taxonomy categories.
-
-    Args:
-        request [ClassifyRequest]: Value supplied to classify.
-        librarian_ops_service: Librarian operation application service.
-
-    Returns:
-        ClassificationResponse: Value produced by classify.
-    """
-    payload = librarian_ops_service.classify(request.text)
-    validation = ClassificationResponse.model_validate(payload)
-    return validation
-
-
-@router.post(
-    "/create-skill-candidate",
-    response_model=ItemResponse,
-    description="Library API operation.",
-    status_code=status.HTTP_200_OK,
-    summary="Create skill candidate",
-)
-@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def create_skill_candidate(
-    request: CreateCandidateRequest,
-    librarian_ops_service: LibrarianOpsService = Depends(
-        Provide[ApplicationContainer.librarian.librarian_ops_service]
-    ),
-) -> ItemResponse:
-    """Generate candidate payload and return draft candidate.
-
-    Args:
-        request [CreateCandidateRequest]: Value supplied to create_skill_candidate.
-        librarian_ops_service: Librarian operation application service.
-
-    Returns:
-        ItemResponse: Value produced by create_skill_candidate.
-    """
-    payload = librarian_ops_service.generate_skill_candidate(
-        provider_id=request.provider_id,
-        prompt=request.prompt,
-        category_id=request.category_id,
-    )
-    validation = ItemResponse.model_validate(payload)
-    return validation

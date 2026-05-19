@@ -1,4 +1,4 @@
-export type ItemType = "SKILL" | "KNOWLEDGE" | "PROMPT";
+export type ItemType = "SKILL" | "PROMPT";
 export type VisibleItemType = "SKILL" | "PROMPT";
 export type ArchiveType = VisibleItemType;
 
@@ -65,7 +65,7 @@ export type PromptTaskType =
   | "GENERAL_TASK";
 
 export const ITEM_TYPES = ["SKILL", "PROMPT"] as const satisfies readonly VisibleItemType[];
-export const BACKEND_ITEM_TYPES = ["SKILL", "KNOWLEDGE", "PROMPT"] as const satisfies readonly ItemType[];
+export const BACKEND_ITEM_TYPES = ["SKILL", "PROMPT"] as const satisfies readonly ItemType[];
 export const PROMPT_CONTENT_FORMATS = ["MARKDOWN", "XML", "JSON", "TEXT"] as const satisfies readonly PromptContentFormat[];
 export const PROMPT_KINDS = ["SYSTEM", "DEVELOPER", "USER_TEMPLATE", "EVAL", "TOOL_GUIDE", "CHAIN"] as const satisfies readonly PromptKind[];
 export const PROMPT_DOMAINS = ["DEVELOPMENT", "DESIGN", "WRITING", "RESEARCH", "ANALYSIS", "PLANNING", "REVIEW", "TESTING", "DEBUGGING", "OPERATIONS", "DATA", "EDUCATION", "MARKETING", "PRODUCT", "SECURITY", "GENERAL"] as const satisfies readonly PromptDomain[];
@@ -386,7 +386,7 @@ export type LibrarianAskRequestDTO = {
 };
 
 export type LibrarianSourceRefDTO = {
-  sourceType: "CONTEXT" | "MEMORY_COMPACT" | "LIBRARY_ITEM" | "SKILL" | "PROMPT" | "KNOWLEDGE";
+  sourceType: "CONTEXT" | "MEMORY_COMPACT" | "LIBRARY_ITEM" | "SKILL" | "PROMPT";
   sourceId: string;
   title: string;
   detailPath: string;

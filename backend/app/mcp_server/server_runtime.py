@@ -444,20 +444,6 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             api_client, current_goal
         )
 
-    @server.tool(name="alexandria_request_skill_acquisition")
-    async def _tool_request_skill_acquisition(prompt: str) -> JSONValue:
-        """Request a draft skill candidate for a missing capability.
-
-        Args:
-            prompt: Missing-capability description.
-
-        Returns:
-            Draft skill candidate response.
-        """
-        return await backend_tool_gateway.alexandria_request_skill_acquisition(
-            api_client, prompt
-        )
-
     @server.tool(name="alexandria_start_skill_acquisition")
     async def _tool_start_skill_acquisition(
         prompt: str,

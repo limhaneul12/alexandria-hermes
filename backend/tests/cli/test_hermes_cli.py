@@ -295,9 +295,7 @@ def test_cli_searches_library_items() -> None:
     """The CLI exposes the UI search path for shell and agent use."""
     transport, calls = _transport(
         {
-            "items": [
-                {"id": "knowledge-1", "item_type": "KNOWLEDGE", "title": "Indexing"}
-            ],
+            "items": [{"id": "prompt-1", "item_type": "PROMPT", "title": "Indexing"}],
             "total": 1,
             "limit": 10,
             "offset": 0,
@@ -311,7 +309,7 @@ def test_cli_searches_library_items() -> None:
             "search",
             "postgres index",
             "--type",
-            "KNOWLEDGE",
+            "PROMPT",
             "--limit",
             "10",
         ],
@@ -323,9 +321,9 @@ def test_cli_searches_library_items() -> None:
     assert calls[0][0] == "GET"
     assert calls[0][1] == (
         "http://localhost:8000/library/search?q=postgres+index&limit=10&offset=0"
-        "&content_mode=candidate&item_type=KNOWLEDGE"
+        "&content_mode=candidate&item_type=PROMPT"
     )
-    assert "knowledge-1" in stdout.getvalue()
+    assert "prompt-1" in stdout.getvalue()
 
 
 def test_cli_searches_skill_candidates_with_filters() -> None:

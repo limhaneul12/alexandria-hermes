@@ -57,7 +57,8 @@ local Hermes skill/prompt/context
 → Alexandria search/recall
 → Hermes self-acquisition
 → optional librarian collaboration
-→ draft/review queue
+→ immediate agent/MCP save or skill-acquisition result
+→ human view/search/archive/delete curation
 ```
 
 기본값은 Alexandria 사용 ON이다. 끄려면:

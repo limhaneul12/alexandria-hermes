@@ -32,7 +32,6 @@ function sourceRefLabel(sourceType: LibrarianSourceRefDTO["sourceType"]) {
   if (sourceType === "PROMPT") return "프롬프트";
   if (sourceType === "CONTEXT") return "장기기억";
   if (sourceType === "MEMORY_COMPACT") return "기억 요약본";
-  if (sourceType === "KNOWLEDGE") return "지식 자료";
   return "라이브러리 항목";
 }
 

@@ -40,20 +40,6 @@ class FailingAuthoringService:
             },
         ),
         (
-            "knowledge_service",
-            "/library/knowledge",
-            {
-                "title": "Manual knowledge",
-                "summary": "Manual knowledge registration smoke.",
-                "content": "Humans should not directly register library knowledge.",
-                "body": "Humans can view, search, delete, and archive later.",
-                "references": ["README.md"],
-                "related_items": [],
-                "created_by_name": "alex",
-                "status": "DRAFT",
-            },
-        ),
-        (
             "skill_service",
             "/library/skills",
             {

@@ -22,7 +22,7 @@ def test_library_item_type_excludes_workflow() -> None:
     """Generic library item contracts should not accept WORKFLOW as an item type."""
     item_type_values = {item_type.value for item_type in ItemType}
 
-    assert item_type_values == {"SKILL", "KNOWLEDGE", "PROMPT"}
+    assert item_type_values == {"SKILL", "PROMPT"}
 
 
 @pytest.mark.parametrize("raw_item_type", ["WORKFLOW", "workflow"])

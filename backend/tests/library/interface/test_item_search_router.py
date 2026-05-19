@@ -205,8 +205,8 @@ def test_legacy_retrieval_search_uses_candidate_contract_for_special_characters(
             override_library_provider("item_search_service", search_service),
             TestClient(app, raise_server_exceptions=False) as client,
         ):
-            quote_response = client.get("/retrieval/search", params={"q": '"'})
-            hyphen_response = client.get("/retrieval/search", params={"q": "-"})
+            quote_response = client.get("/library/search", params={"q": '"'})
+            hyphen_response = client.get("/library/search", params={"q": "-"})
     finally:
         anyio.run(session_context.__aexit__, None, None, None)
         anyio.run(database.shutdown)

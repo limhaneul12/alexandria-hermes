@@ -26,7 +26,6 @@ from app.library.interface.routers.item_router import router as item_router
 from app.library.interface.routers.item_search_router import (
     router as item_search_router,
 )
-from app.library.interface.routers.knowledge_router import router as knowledge_router
 from app.library.interface.routers.prompt_router import router as prompt_router
 from app.library.interface.routers.skill_router import router as skill_router
 from app.library.interface.routers.usage_router import router as usage_router
@@ -40,10 +39,6 @@ from app.platform.lifecycle.state import LifecycleState
 from app.platform.logging.formatter.config import configure_logging
 from app.platform.middleware.database_session import install_database_session_middleware
 from app.platform.middleware.request_logging import install_request_logging_middleware
-from app.retrieval.interface.routers.retrieval_boundary_router import (
-    router as retrieval_boundary_router,
-)
-from app.retrieval.interface.routers.search_router import router as search_router
 from app.shared.infrastructure.database import Database
 from fastapi import FastAPI
 
@@ -163,9 +158,6 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(item_search_router)
     app.include_router(skill_router)
     app.include_router(prompt_router)
-    app.include_router(knowledge_router)
-    app.include_router(search_router)
-    app.include_router(retrieval_boundary_router)
     app.include_router(usage_router)
     app.include_router(agent_router)
     app.include_router(librarian_router)

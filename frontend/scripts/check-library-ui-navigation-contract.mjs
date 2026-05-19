@@ -12,6 +12,10 @@ const backendContexts = readFileSync(new URL("../src/lib/backend/contexts.ts", i
 const backendArchive = readFileSync(new URL("../src/lib/backend/archive.ts", import.meta.url), "utf8");
 const settingsClient = readFileSync(new URL("../src/components/settings/settings-client.tsx", import.meta.url), "utf8");
 const libraryTypes = readFileSync(new URL("../src/types/library.ts", import.meta.url), "utf8");
+const rootReadme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+const usageGuideIndex = readFileSync(new URL("../../docs/usage_guidebook/README.md", import.meta.url), "utf8");
+const contextRecallGuide = readFileSync(new URL("../../docs/usage_guidebook/context_recall/context_recall_guide_01.md", import.meta.url), "utf8");
+const backendLibraryDoc = readFileSync(new URL("../../docs/backend_lib.md", import.meta.url), "utf8");
 
 for (const route of ["/library/skills", "/library/prompts", "/librarian/chat"]) {
   assert.match(sidebar, new RegExp(route.replaceAll("/", "\\/")), `sidebar must expose ${route}`);
@@ -55,6 +59,39 @@ for (const [label, source] of [["settings", settingsClient], ["archive adapter",
   assert.doesNotMatch(source, /MINIO|minio|MinIO|Object Storage|object storage/, `${label} must not expose removed object-storage import UI`);
 }
 assert.match(libraryTypes, /"HARNESS"/, "frontend context types must include read-only HARNESS context kind");
+for (const [label, source, removedValues] of [
+  [
+    "README",
+    rootReadme,
+    ["/capture-review"],
+  ],
+  [
+    "usage guide index",
+    usageGuideIndex,
+    ["draft/review queue"],
+  ],
+  [
+    "context recall guide",
+    contextRecallGuide,
+    ["/capture-review"],
+  ],
+  [
+    "backend library docs",
+    backendLibraryDoc,
+    [
+      "item_type: SKILL | WORKFLOW",
+      "Users must be able to manually create and edit skills.",
+      "Path 1: User manually creates a skill",
+      "POST /workflows",
+      "GET /workflows",
+      "GET /search/workflows?q=",
+    ],
+  ],
+]) {
+  for (const removedValue of removedValues) {
+    assert.equal(source.includes(removedValue), false, `${label} must not document removed manual authoring/review surface: ${removedValue}`);
+  }
+}
 assert.match(
   librarianChatBackend,
   /detailPath:\s*`\/library\/\$\{categorySlug\}\/\$\{encodeURIComponent\(hit\.id\)\}`/,
