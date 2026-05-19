@@ -271,6 +271,87 @@ def test_mcp_async_skill_acquisition_tools_use_durable_job_endpoints() -> None:
     assert completion_body["required_tools"] == ["playwright"]
 
 
+def test_mcp_skill_acquisition_status_polling_returns_durable_handles() -> None:
+    """Polling should return job_id/status now and handles after completion."""
+    calls: list[RecordedCall] = []
+    responses: list[JSONValue] = [
+        {
+            "id": "job/1",
+            "status": "ACCEPTED",
+            "result_available": False,
+            "secret": "provider-secret-material",
+            "token": "secret-token",
+        },
+        {
+            "id": "job/1",
+            "status": "ACCEPTED",
+            "result_available": False,
+            "error_message": None,
+        },
+        {
+            "id": "job/1",
+            "status": "COMPLETED",
+            "skill_id": "00000000-0000-4000-8000-000000000777",
+            "context_id": "00000000-0000-4000-8000-000000000888",
+            "result_available": True,
+            "error_message": None,
+            "secret": "provider-secret-material",
+            "token": "secret-token",
+        },
+    ]
+
+    async def fake_transport(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        payload = responses[len(calls) - 1]
+        return httpx.Response(200, content=dumps_json(payload))
+
+    client = AlexandriaApiClient(
+        AlexandriaApiSettings(
+            base_url="http://backend:8000",
+            operator_api_key="operator-secret",
+            timeout=12.0,
+        ),
+        transport=httpx.MockTransport(fake_transport),
+    )
+
+    async def run_tools() -> None:
+        start_response = await alexandria_start_skill_acquisition(
+            client,
+            prompt="Need browser automation skill",
+        )
+        status_pending = await alexandria_skill_acquisition_job_status(client, "job/1")
+        status_complete = await alexandria_skill_acquisition_job_status(client, "job/1")
+        return start_response, status_pending, status_complete
+
+    start_response, status_pending, status_complete = anyio.run(run_tools)
+
+    methods_and_paths = [
+        (request.method, str(request.url).removeprefix("http://backend:8000"))
+        for request in calls
+    ]
+    assert methods_and_paths == [
+        ("POST", "/librarians/skill-acquisition-jobs"),
+        ("GET", "/librarians/skill-acquisition-jobs/job%2F1"),
+        ("GET", "/librarians/skill-acquisition-jobs/job%2F1"),
+    ]
+    assert start_response["status"] == "ACCEPTED"
+    assert "secret" not in start_response
+    assert "token" not in start_response
+    assert status_pending["status"] == "ACCEPTED"
+    assert status_pending["result_available"] is False
+    assert status_pending.get("skill_id") is None
+    assert status_pending.get("context_id") is None
+    assert status_complete["status"] == "COMPLETED"
+    assert status_complete["result_available"] is True
+    assert status_complete["skill_id"] == "00000000-0000-4000-8000-000000000777"
+    assert status_complete["context_id"] == "00000000-0000-4000-8000-000000000888"
+    assert "secret" not in status_complete
+    assert "token" not in status_complete
+    assert (
+        "00000000-0000-4000-8000-000000000777" in dumps_json(status_complete).decode()
+    )
+
+
 def test_mcp_capture_marks_agent_authored_context_explicitly() -> None:
     """MCP capture should not rely on implicit backend source-type defaults."""
     client, calls = _client()

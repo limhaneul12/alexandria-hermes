@@ -14,7 +14,13 @@ from .common_exceptions import (
     RedisExceptionResult,
 )
 from .exception_decorators import router_exception_status
-from .librarian_exceptions import LibrarianDomainError, LibrarianValidationError
+from .librarian_exceptions import (
+    LibrarianDomainError,
+    LibrarianSkillAcquisitionArtifactError,
+    LibrarianSkillAcquisitionExecutionError,
+    LibrarianSkillAcquisitionProviderError,
+    LibrarianValidationError,
+)
 from .library_exceptions import (
     CircularCategoryError,
     LibraryCategoryCycleError,
@@ -53,6 +59,9 @@ __all__ = [
     "RETRIEVAL_ROUTE_EXCEPTION_MAPPING",
     "CircularCategoryError",
     "LibrarianDomainError",
+    "LibrarianSkillAcquisitionArtifactError",
+    "LibrarianSkillAcquisitionExecutionError",
+    "LibrarianSkillAcquisitionProviderError",
     "LibrarianValidationError",
     "LibraryCategoryCycleError",
     "LibraryDomainError",

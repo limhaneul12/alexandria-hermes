@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import anyio
+import pytest
 from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
 from app.connections.domain.repositories.librarian_repository import (
@@ -32,6 +33,7 @@ from app.library.domain.entities.item_search_query import ItemSearchQuery
 from app.library.domain.entities.read_models import LibraryItem
 from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.repositories.item_repository import IItemRepository
+from app.memory.application.context_service import ContextService
 from app.memory.domain.entities.context_read_models import ContextRecord
 from app.memory.domain.event_enum.context_enums import (
     ContextContentFormat,
@@ -41,6 +43,10 @@ from app.memory.domain.event_enum.context_enums import (
     ContextSourceType,
     ContextStorageStatus,
 )
+from app.memory.infrastructure.repositories.context_repository import (
+    SqlAlchemyContextRepository,
+)
+from app.shared.exceptions import ValidationError
 from app.shared.infrastructure.database import Database
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,9 +110,11 @@ class FakeItemRepository(IItemRepository):
     def __init__(self) -> None:
         """Initialize captured item state."""
         self.created: LibraryItem | None = None
+        self.create_count = 0
 
     async def create(self, *, payload: ItemCreate) -> LibraryItem:
         """Create one in-memory skill item."""
+        self.create_count += 1
         self.created = LibraryItem(
             id="00000000-0000-4000-8000-000000000777",
             item_type=payload.item_type.value,
@@ -372,6 +380,49 @@ def test_skill_acquisition_job_fails_without_provider_credentials(
     assert error_message == "Provider credentials unavailable"
 
 
+def test_skill_acquisition_completion_rejects_failed_jobs(
+    tmp_path: Path,
+) -> None:
+    """Failed jobs should not create a skill or resume packet on completion."""
+
+    async def run_case() -> tuple[str, int, object | None]:
+        item_repo = FakeItemRepository()
+        context_service = FakeContextService()
+        database, session, service = await _service(
+            tmp_path / "failed-complete.db",
+            providers=[_provider()],
+            secrets={},
+            skill_service=SkillService(item_service=ItemService(item_repo=item_repo)),
+            context_service=context_service,
+        )
+        try:
+            job = await service.request_job(
+                prompt="Need a deterministic HTTP mocking skill",
+                provider_id="provider-1",
+                agent_name="Hermes",
+            )
+            with pytest.raises(
+                ValidationError, match="Skill acquisition job is not completable"
+            ) as exc_info:
+                await service.complete_with_skill_artifact(
+                    job_id=job.id,
+                    artifact=SkillAcquisitionArtifact(
+                        title="HTTP boundary fake skill",
+                        purpose="Build deterministic API boundary fakes.",
+                        content="Prefer boundary fakes over internal mocks.",
+                    ),
+                )
+            return str(exc_info.value), item_repo.create_count, context_service.compact
+        finally:
+            await _close(database, session)
+
+    error_message, create_count, compact = anyio.run(run_case)
+
+    assert error_message == "Skill acquisition job is not completable"
+    assert create_count == 0
+    assert compact is None
+
+
 def test_skill_acquisition_completion_persists_skill_and_resume_packet(
     tmp_path: Path,
 ) -> None:
@@ -448,3 +499,75 @@ def test_skill_acquisition_completion_persists_skill_and_resume_packet(
     assert created.details["acquisition_method"] == "SELF_ACQUISITION"
     assert compact["project"] == "alexandria-hermes"
     assert "Apply the skill" in compact["next_actions"][0]
+
+
+def test_skill_acquisition_completion_context_pack_contains_required_headings(
+    tmp_path: Path,
+) -> None:
+    """Resume packets created during completion must include the required headings."""
+
+    async def run_case() -> tuple[str | None, str]:
+        database = Database(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'complete-compact.db'}",
+            create_schema=True,
+        )
+        await database.initialize()
+        session = database.session()
+        try:
+            context_service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+            )
+            item_repo = FakeItemRepository()
+            service = SkillAcquisitionService(
+                repository=SqlAlchemySkillAcquisitionJobRepository(session=session),
+                provider_repo=FakeProviderRepository(providers=[]),
+                secret_repo=FakeSecretRepository(secrets={}),
+                skill_service=SkillService(
+                    item_service=ItemService(item_repo=item_repo)
+                ),
+                context_service=context_service,
+                now_provider=lambda: _NOW,
+            )
+
+            job = await service.request_job(
+                prompt="Need a robust HTTP mock skill",
+                agent_name="Hermes",
+                project="alexandria-hermes",
+                task_summary="Keep brittle tests deterministic.",
+            )
+            completed = await service.complete_with_skill_artifact(
+                job_id=job.id,
+                artifact=SkillAcquisitionArtifact(
+                    title="HTTP mock skill",
+                    purpose="Stabilize third-party API tests.",
+                    summary="Use explicit context handoff for resume.",
+                    content="Prefer mock-based external boundaries.",
+                    tags=["testing", "mocks"],
+                    required_tools=["pytest"],
+                    evidence_urls=["https://example.com/http-mock"],
+                    source_summary="Hermes prepared a handoff-friendly packet.",
+                    next_steps=["Resume the verification task."],
+                ),
+            )
+
+            resume_context = await context_service.get(completed.context_id)
+            assert resume_context is not None
+            assert completed.skill_id == "00000000-0000-4000-8000-000000000777"
+            assert completed.context_id is not None
+            assert completed.context_id == resume_context.id
+            return resume_context.content, completed.skill_id
+        finally:
+            await session.commit()
+            await session.close()
+            await database.shutdown()
+
+    content, skill_id = anyio.run(run_case)
+
+    assert skill_id == "00000000-0000-4000-8000-000000000777"
+    assert "## Summary" in content
+    assert "## Summary\nCompact handoff prepared for Alexandria-Hermes." in content
+    assert "## Restore Prompt" in content
+    assert (
+        "## Restore Prompt\nContinue from this Alexandria-Hermes compact context."
+        in content
+    )

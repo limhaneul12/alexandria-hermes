@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from app.librarian.domain.entities.skill_acquisition_job import SkillAcquisitionJob
@@ -11,8 +13,20 @@ from app.librarian.domain.event_enum.collaboration_enums import (
 from app.library.domain.event_enum.item_enums import ItemType
 from app.main import app
 from app.shared.types.extra_types import JSONValue
+from dependency_injector import providers
 from fastapi.testclient import TestClient
 from tests.shared.provider_overrides import override_library_provider
+
+
+@contextmanager
+def _override_librarian_provider(
+    provider_name: str,
+    value: object,
+) -> Iterator[None]:
+    """Temporarily override one librarian container provider."""
+    provider = app.state.container.librarian.providers[provider_name]
+    with provider.override(providers.Object(value)):
+        yield
 
 
 class FakeItemSearchService:
@@ -94,20 +108,27 @@ class FakeLibrarianGenerationService:
 class FakeSkillAcquisitionService:
     """Deterministic durable acquisition job service for router tests."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        status: SkillAcquisitionJobStatus = SkillAcquisitionJobStatus.ACCEPTED,
+        result_summary: str = "Skill acquisition job accepted.",
+    ) -> None:
         """Initialize captured job state."""
+        self.status = status
+        self.result_summary = result_summary
         self.job = SkillAcquisitionJob(
             id="skill-acquisition-1",
             prompt="Need a browser automation skill",
             agent_name="Hermes",
             project="alexandria-hermes",
             task_summary="Investigate Playwright usage.",
-            status=SkillAcquisitionJobStatus.ACCEPTED,
+            status=self.status,
             provider_id="00000000-0000-4000-8000-000000000501",
             librarian_profile_id=None,
             skill_id=None,
             context_id=None,
-            result_summary="Skill acquisition job accepted.",
+            result_summary=self.result_summary,
             evidence_urls=[],
             error_message=None,
             created_at=datetime(2026, 5, 18, 17, 30, tzinfo=UTC),
@@ -132,12 +153,12 @@ class FakeSkillAcquisitionService:
             agent_name=agent_name,
             project=project,
             task_summary=task_summary,
-            status=SkillAcquisitionJobStatus.ACCEPTED,
+            status=self.status,
             provider_id=provider_id,
             librarian_profile_id=librarian_profile_id,
             skill_id=None,
             context_id=None,
-            result_summary="Skill acquisition job accepted.",
+            result_summary=self.result_summary,
             evidence_urls=[],
             error_message=None,
             created_at=datetime(2026, 5, 18, 17, 30, tzinfo=UTC),
@@ -175,6 +196,18 @@ class FakeSkillAcquisitionService:
         return self.job
 
 
+class FakeSkillAcquisitionRunner:
+    """Minimal non-network background runner for scheduling checks."""
+
+    def __init__(self) -> None:
+        """Initialize runner call history."""
+        self.run_job_calls: list[str] = []
+
+    async def run_job(self, job_id: str) -> None:
+        """Record one scheduled background run."""
+        self.run_job_calls.append(job_id)
+
+
 def test_recommend_accepts_json_item_type_string_and_returns_items() -> None:
     """POST /librarians/recommend should accept public item_type enum strings."""
     item_service = FakeItemSearchService()
@@ -182,12 +215,14 @@ def test_recommend_accepts_json_item_type_string_and_returns_items() -> None:
     def override_item_service() -> FakeItemSearchService:
         return item_service
 
-    with override_library_provider("item_search_service", override_item_service()):
-        with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.post(
-                "/librarians/recommend",
-                json={"query": "strict JSON", "item_type": "SKILL", "limit": 1},
-            )
+    with (
+        override_library_provider("item_search_service", override_item_service()),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.post(
+            "/librarians/recommend",
+            json={"query": "strict JSON", "item_type": "SKILL", "limit": 1},
+        )
 
     assert response.status_code == 200
     assert response.json() == {
@@ -218,22 +253,26 @@ def test_recommend_accepts_json_item_type_string_and_returns_items() -> None:
 def test_skill_acquisition_job_routes_return_sanitized_durable_status() -> None:
     """Skill acquisition routes should create and poll durable sanitized jobs."""
     service = FakeSkillAcquisitionService()
+    runner = FakeSkillAcquisitionRunner()
 
-    with override_library_provider("skill_acquisition_service", service):
-        with TestClient(app, raise_server_exceptions=False) as client:
-            create_response = client.post(
-                "/librarians/skill-acquisition-jobs",
-                json={
-                    "prompt": "Need a browser automation skill",
-                    "agent_name": "Hermes",
-                    "project": "alexandria-hermes",
-                    "task_summary": "Investigate Playwright usage.",
-                    "provider_id": "00000000-0000-4000-8000-000000000501",
-                },
-            )
-            status_response = client.get(
-                "/librarians/skill-acquisition-jobs/skill-acquisition-1"
-            )
+    with (
+        override_library_provider("skill_acquisition_service", service),
+        _override_librarian_provider("skill_acquisition_runner", runner),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        create_response = client.post(
+            "/librarians/skill-acquisition-jobs",
+            json={
+                "prompt": "Need a browser automation skill",
+                "agent_name": "Hermes",
+                "project": "alexandria-hermes",
+                "task_summary": "Investigate Playwright usage.",
+                "provider_id": "00000000-0000-4000-8000-000000000501",
+            },
+        )
+        status_response = client.get(
+            "/librarians/skill-acquisition-jobs/skill-acquisition-1"
+        )
 
     assert create_response.status_code == 202
     assert status_response.status_code == 200
@@ -245,27 +284,65 @@ def test_skill_acquisition_job_routes_return_sanitized_durable_status() -> None:
     assert body["prompt"] == "Need a browser automation skill"
     assert "SECRET" not in serialized
     assert "api_key" not in serialized
+    assert runner.run_job_calls == ["skill-acquisition-1"]
+
+
+def test_skill_acquisition_job_does_not_schedule_background_runner_for_non_accepted() -> (
+    None
+):
+    """GUIDANCE_ONLY and FAILED jobs should never schedule a background run."""
+    for status in (
+        SkillAcquisitionJobStatus.GUIDANCE_ONLY,
+        SkillAcquisitionJobStatus.FAILED,
+    ):
+        service = FakeSkillAcquisitionService(
+            status=status,
+            result_summary="Non-accepted skill-acquisition job.",
+        )
+        runner = FakeSkillAcquisitionRunner()
+
+        with (
+            override_library_provider("skill_acquisition_service", service),
+            _override_librarian_provider("skill_acquisition_runner", runner),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            create_response = client.post(
+                "/librarians/skill-acquisition-jobs",
+                json={
+                    "prompt": "Need a browser automation skill",
+                    "agent_name": "Hermes",
+                    "project": "alexandria-hermes",
+                    "task_summary": "Investigate Playwright usage.",
+                    "provider_id": "00000000-0000-4000-8000-000000000501",
+                },
+            )
+
+        assert create_response.status_code == 202
+        assert create_response.json()["status"] == status.value
+        assert runner.run_job_calls == []
 
 
 def test_skill_acquisition_completion_route_returns_resume_handles() -> None:
     """Completion route should return persisted skill and context handles."""
     service = FakeSkillAcquisitionService()
 
-    with override_library_provider("skill_acquisition_service", service):
-        with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.post(
-                "/librarians/skill-acquisition-jobs/skill-acquisition-1/complete",
-                json={
-                    "title": "Browser automation skill",
-                    "purpose": "Use browser automation deterministically.",
-                    "content": "Use a real browser boundary and stable selectors.",
-                    "summary": "Skill persisted from async acquisition.",
-                    "tags": ["browser"],
-                    "evidence_urls": ["https://example.com/browser"],
-                    "source_summary": "Provider returned a sanitized artifact.",
-                    "next_steps": ["Apply this skill to the waiting browser task."],
-                },
-            )
+    with (
+        override_library_provider("skill_acquisition_service", service),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.post(
+            "/librarians/skill-acquisition-jobs/skill-acquisition-1/complete",
+            json={
+                "title": "Browser automation skill",
+                "purpose": "Use browser automation deterministically.",
+                "content": "Use a real browser boundary and stable selectors.",
+                "summary": "Skill persisted from async acquisition.",
+                "tags": ["browser"],
+                "evidence_urls": ["https://example.com/browser"],
+                "source_summary": "Provider returned a sanitized artifact.",
+                "next_steps": ["Apply this skill to the waiting browser task."],
+            },
+        )
 
     assert response.status_code == 200
     body = response.json()
@@ -284,24 +361,65 @@ def test_skill_acquisition_completion_route_returns_resume_handles() -> None:
     }
 
 
+def test_skill_acquisition_status_route_returns_resume_handles_after_completion() -> (
+    None
+):
+    """Polling the status route after completion should expose durable result handles."""
+    service = FakeSkillAcquisitionService()
+
+    with (
+        override_library_provider("skill_acquisition_service", service),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        create_response = client.post(
+            "/librarians/skill-acquisition-jobs",
+            json={"prompt": "Need a browser automation skill"},
+        )
+        complete_response = client.post(
+            "/librarians/skill-acquisition-jobs/skill-acquisition-1/complete",
+            json={
+                "title": "Browser automation skill",
+                "purpose": "Use browser automation deterministically.",
+                "content": "Use a real browser boundary and stable selectors.",
+                "summary": "Skill persisted from async acquisition.",
+            },
+        )
+        status_response = client.get(
+            "/librarians/skill-acquisition-jobs/skill-acquisition-1"
+        )
+
+    assert create_response.status_code == 202
+    assert complete_response.status_code == 200
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "COMPLETED"
+    assert status_response.json()["result_available"] is True
+    assert status_response.json()["skill_id"] == "00000000-0000-4000-8000-000000000777"
+    assert (
+        status_response.json()["context_id"] == "00000000-0000-4000-8000-000000000888"
+    )
+    assert "SECRET" not in status_response.text
+
+
 def test_create_skill_candidate_returns_strict_item_response_shape() -> None:
     """POST /librarians/create-skill-candidate should return valid ItemResponse JSON."""
 
     def override_librarian_service() -> FakeLibrarianGenerationService:
         return FakeLibrarianGenerationService()
 
-    with override_library_provider(
-        "librarian_ops_service", override_librarian_service()
+    with (
+        override_library_provider(
+            "librarian_ops_service", override_librarian_service()
+        ),
+        TestClient(app, raise_server_exceptions=False) as client,
     ):
-        with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.post(
-                "/librarians/create-skill-candidate",
-                json={
-                    "provider_id": "00000000-0000-4000-8000-000000000501",
-                    "prompt": "Create a strict JSON skill.",
-                    "category_id": "00000000-0000-4000-8000-000000000002",
-                },
-            )
+        response = client.post(
+            "/librarians/create-skill-candidate",
+            json={
+                "provider_id": "00000000-0000-4000-8000-000000000501",
+                "prompt": "Create a strict JSON skill.",
+                "category_id": "00000000-0000-4000-8000-000000000002",
+            },
+        )
 
     assert response.status_code == 200
     body = response.json()

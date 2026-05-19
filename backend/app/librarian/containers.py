@@ -9,12 +9,16 @@ from app.connections.domain.repositories.librarian_repository import (
 from app.connections.infrastructure.librarians.openai_delegate_executor import (
     OpenAIProviderDelegateExecutor,
 )
+from app.connections.infrastructure.librarians.openai_skill_acquisition_executor import (
+    OpenAISkillAcquisitionExecutor,
+)
 from app.librarian.application.agent_service import AgentService
 from app.librarian.application.hermes_collaboration_service import (
     HermesCollaborationService,
 )
 from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
 from app.librarian.application.librarian_ops_service import LibrarianOpsService
+from app.librarian.application.skill_acquisition_runner import SkillAcquisitionRunner
 from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
 from app.librarian.infrastructure.repositories.agent_repository import (
     SqlAlchemyAgentRepository,
@@ -56,6 +60,16 @@ class LibrarianContainer(containers.DeclarativeContainer):
         secret_repo=provider_secret_repo,
         skill_service=skill_service,
         context_service=context_service,
+    )
+    skill_acquisition_executor = providers.Factory(
+        OpenAISkillAcquisitionExecutor,
+        provider_repo=librarian_provider_repo,
+        secret_repo=provider_secret_repo,
+    )
+    skill_acquisition_runner = providers.Factory(
+        SkillAcquisitionRunner,
+        service=skill_acquisition_service,
+        executor=skill_acquisition_executor,
     )
     agent_service = providers.Factory(
         AgentService,

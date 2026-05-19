@@ -8,9 +8,13 @@ from app.librarian.application.hermes_collaboration_service import (
 )
 from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
 from app.librarian.application.librarian_ops_service import LibrarianOpsService
+from app.librarian.application.skill_acquisition_runner import SkillAcquisitionRunner
 from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
+)
+from app.librarian.domain.event_enum.collaboration_enums import (
+    SkillAcquisitionJobStatus,
 )
 from app.librarian.interface.schemas.librarian.hermes_collaboration_schemas import (
     AskLibrarianRequest,
@@ -40,7 +44,7 @@ from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
 from app.shared.types.types_convert_utils import enum_value
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 router = APIRouter(
     prefix="/librarians",
@@ -185,8 +189,12 @@ async def librarian_job_status(
 @inject
 async def create_skill_acquisition_job(
     request: SkillAcquisitionJobRequest,
+    background_tasks: BackgroundTasks,
     service: SkillAcquisitionService = Depends(
         Provide[ApplicationContainer.librarian.skill_acquisition_service]
+    ),
+    runner: SkillAcquisitionRunner = Depends(
+        Provide[ApplicationContainer.librarian.skill_acquisition_runner]
     ),
 ) -> SkillAcquisitionJobResponse:
     """Create a durable skill-acquisition job.
@@ -206,6 +214,8 @@ async def create_skill_acquisition_job(
         provider_id=request.provider_id,
         librarian_profile_id=request.librarian_profile_id,
     )
+    if job.status is SkillAcquisitionJobStatus.ACCEPTED:
+        background_tasks.add_task(runner.run_job, job.id)
     return skill_acquisition_job_response(job)
 
 

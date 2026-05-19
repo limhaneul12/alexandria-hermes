@@ -30,6 +30,7 @@ from app.memory.application.context_service import ContextService
 from app.memory.domain.entities.context_read_models import ContextRecord
 from app.shared.exceptions import NotFoundError, ValidationError
 from app.shared.types.types_convert_utils import now_utc
+from app.shared.utils.logging import redact_sensitive_text
 
 _JOB_PREFIX = "skill-acquisition-"
 _GUIDANCE_SUMMARY = (
@@ -180,6 +181,37 @@ class SkillAcquisitionService:
                 error_message=None,
                 skill_id=skill_id,
                 context_id=context_id,
+                updated_at=now,
+                completed_at=now,
+            ),
+        )
+        return job
+
+    async def fail_job(
+        self,
+        *,
+        job_id: str,
+        error_message: str,
+    ) -> SkillAcquisitionJob:
+        """Mark one durable job as failed and sanitize provider failure details.
+
+        Args:
+            job_id: Job identifier.
+            error_message: Failure message from executor/provider.
+
+        Returns:
+            Updated job.
+        """
+        now = self._now_provider()
+        job = await self._repository.update(
+            job_id,
+            SkillAcquisitionJobUpdate(
+                status=SkillAcquisitionJobStatus.FAILED,
+                result_summary=None,
+                evidence_urls=[],
+                error_message=_redact_secret_text(error_message),
+                skill_id=None,
+                context_id=None,
                 updated_at=now,
                 completed_at=now,
             ),
@@ -365,3 +397,9 @@ def _optional_text(value: str | None) -> str:
 
 def _clean_items(values: list[str]) -> list[str]:
     return [value.strip() for value in values if value.strip()]
+
+
+def _redact_secret_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return redact_sensitive_text(value)

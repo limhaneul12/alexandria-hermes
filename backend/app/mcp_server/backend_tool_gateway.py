@@ -618,7 +618,7 @@ async def alexandria_start_skill_acquisition(
     )
     payload = _schema_payload(request)
     response = await client.post("/librarians/skill-acquisition-jobs", payload)
-    return response
+    return without_oauth_sensitive_fields(response)
 
 
 async def alexandria_skill_acquisition_job_status(
@@ -637,7 +637,7 @@ async def alexandria_skill_acquisition_job_status(
     response = await client.get(
         f"/librarians/skill-acquisition-jobs/{_path_segment(job_id)}"
     )
-    return response
+    return without_oauth_sensitive_fields(response)
 
 
 async def alexandria_complete_skill_acquisition(
