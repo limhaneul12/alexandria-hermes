@@ -505,49 +505,6 @@ def test_api_key_credential_repr_never_exposes_api_key_value() -> None:
     assert _secret_is_absent_from(credential)
 
 
-def test_minio_connection_messages_never_expose_credential_values() -> None:
-    """MINIO validation remains storage-only and should not expose credential values."""
-
-    async def scenario() -> None:
-        factory = LibrarianClientFactory(
-            openai_client_builder=ExplodingOpenAIClientBuilder(),
-            dry_run=True,
-        )
-        minio_provider = _provider(
-            provider_type=ProviderType.MINIO.value,
-            config={"endpoint": "https://minio.local", "bucket": "library"},
-        )
-
-        valid_result = await factory.test_connection(
-            provider=minio_provider,
-            secret_resolver=StaticSecretResolver("access-key:secret-key"),
-            test_query="ping",
-        )
-        malformed_result = await factory.test_connection(
-            provider=minio_provider,
-            secret_resolver=StaticSecretResolver("access-key-without-secret"),
-            test_query="ping",
-        )
-
-        assert valid_result.as_public_dict() == {
-            "provider_id": PROVIDER_ID,
-            "ok": True,
-            "message": "MINIO settings accepted for object listing",
-        }
-        assert malformed_result.as_public_dict() == {
-            "provider_id": PROVIDER_ID,
-            "ok": False,
-            "message": "MINIO credential must be access_key:secret_key",
-        }
-        for result in [valid_result, malformed_result]:
-            assert "access-key" not in repr(result)
-            assert "secret-key" not in repr(result)
-            assert "access-key" not in str(result.as_public_dict())
-            assert "secret-key" not in str(result.as_public_dict())
-
-    anyio.run(scenario)
-
-
 def test_librarian_service_test_provider_uses_client_factory_without_network() -> None:
     """LibrarianService should delegate provider testing to the client factory abstraction."""
 

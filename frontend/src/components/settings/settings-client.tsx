@@ -3,7 +3,6 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Cloud,
   Gauge,
   KeyRound,
   Languages,
@@ -24,12 +23,10 @@ import {
   createLibrarianProvider,
   deleteAgent,
   deleteLibrarianProvider,
-  fetchExternalArchiveCandidates,
   fetchAgents,
   fetchLibrarianOAuthStatus,
   fetchLibrarianProviders,
   fetchRagStatus,
-  importExternalArchiveCandidates,
   pollLibrarianOAuth,
   refreshLibrarianOAuth,
   startLibrarianOAuth,
@@ -84,8 +81,7 @@ function formatMessage(template: string, values: Record<string, string>) {
   );
 }
 
-function credentialLabel(language: Language, authType: AuthType, providerType?: ProviderType) {
-  if (providerType === "MINIO") return t(language, "minioCredential");
+function credentialLabel(language: Language, authType: AuthType) {
   if (authType === "OAUTH") return t(language, "oauthAuthorization");
   if (authType === "NONE") return t(language, "credentialNone");
   return t(language, "apiKey");
@@ -213,11 +209,6 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
   const [credential, setCredential] = useState("");
   const [model, setModel] = useState("gpt-5.5");
   const [baseUrl, setBaseUrl] = useState("");
-  const [minioEndpoint, setMinioEndpoint] = useState("");
-  const [minioBucket, setMinioBucket] = useState("");
-  const [minioPrefix, setMinioPrefix] = useState("");
-  const [minioRegion, setMinioRegion] = useState("");
-  const [minioUseSsl, setMinioUseSsl] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [oauthDeviceInstruction, setOauthDeviceInstruction] =
@@ -251,16 +242,6 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
     queryKey: ["rag-status"],
     queryFn: fetchRagStatus,
   });
-  const importCandidatesQuery = useQuery({
-    queryKey: ["external-archive-candidates"],
-    queryFn: () => fetchExternalArchiveCandidates(24),
-    enabled: false,
-    staleTime: 30_000,
-  });
-  const hasEnabledMinioProvider = useMemo(
-    () => providersQuery.data?.some((provider) => provider.providerType === "MINIO" && provider.enabled) ?? false,
-    [providersQuery.data],
-  );
   const oauthProviders = useMemo(
     () =>
       providersQuery.data?.filter(
@@ -321,13 +302,7 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
 
   const providerConfig = useMemo(() => {
     const config: Record<string, unknown> = {};
-    if (providerType === "MINIO") {
-      if (minioEndpoint.trim()) config.endpoint = minioEndpoint.trim();
-      if (minioBucket.trim()) config.bucket = minioBucket.trim();
-      if (minioPrefix.trim()) config.prefix = minioPrefix.trim();
-      if (minioRegion.trim()) config.region = minioRegion.trim();
-      config.use_ssl = minioUseSsl;
-    } else if (providerType === "OPENAI_CODEX") {
+    if (providerType === "OPENAI_CODEX") {
       return config;
     } else {
       if (model.trim()) config.model = model.trim();
@@ -336,11 +311,6 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
     return config;
   }, [
     baseUrl,
-    minioBucket,
-    minioEndpoint,
-    minioPrefix,
-    minioRegion,
-    minioUseSsl,
     model,
     providerType,
   ]);
@@ -368,7 +338,6 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
         removeProvider(providers, providerId),
       );
       void queryClient.invalidateQueries({ queryKey: ["librarian-providers"] });
-      void queryClient.invalidateQueries({ queryKey: ["external-archive-candidates"] });
     },
     onError: () => setStatusMessage(t(language, "providerDeleteFailed")),
   });
@@ -467,21 +436,6 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
     },
   });
 
-  const importArchiveMutation = useMutation({
-    mutationFn: () => importExternalArchiveCandidates(48),
-    onSuccess: (result) => {
-      setStatusMessage(
-        formatMessage(t(language, "minioImportSucceeded"), {
-          imported: String(result.importedCount),
-          skipped: String(result.skippedCount),
-        }),
-      );
-      void importCandidatesQuery.refetch();
-      void queryClient.invalidateQueries({ queryKey: ["library"] });
-      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-    onError: () => setStatusMessage(t(language, "minioImportFailed")),
-  });
 
   async function handleCreateProvider(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -489,10 +443,6 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
     const trimmedCredential = credential.trim();
     if (!trimmedName || (!isOAuthProvider && !trimmedCredential)) {
       setStatusMessage(t(language, isOAuthProvider ? "nameRequired" : "nameAndCredentialRequired"));
-      return;
-    }
-    if (providerType === "MINIO" && (!minioEndpoint.trim() || !minioBucket.trim())) {
-      setStatusMessage(t(language, "minioRequiredFields"));
       return;
     }
     const payload: LibrarianProviderCreateDTO = {
@@ -713,17 +663,6 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
                     setCredential("");
                   }}
                 />
-                <ProviderOption
-                  active={providerType === "MINIO"}
-                  icon={Cloud}
-                  title={t(language, "objectStorageProviderTitle")}
-                  description={t(language, "minioProviderDescription")}
-                  onClick={() => {
-                    setProviderType("MINIO");
-                    setProviderName("");
-                    setCredential("");
-                  }}
-                />
               </div>
 
               <label className={fieldClassName}>
@@ -732,13 +671,7 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
                   name="providerName"
                   autoComplete="organization"
                   value={providerName}
-                  placeholder={
-                    providerType === "MINIO"
-                      ? "Team external archive"
-                      : providerType === "OPENAI_CODEX"
-                        ? "Codex OAuth librarian"
-                        : "OpenAI librarian"
-                  }
+                  placeholder={providerType === "OPENAI_CODEX" ? "Codex OAuth librarian" : "OpenAI librarian"}
                   onChange={(event) => setProviderName(event.target.value)}
                 />
                 <p className={helperClassName}>{t(language, "providerNameHelper")}</p>
@@ -748,25 +681,23 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
                 <div className={fieldClassName}>
                   <span>{t(language, "authMethod")}</span>
                   <div className="rounded-md border border-[#cfc8b8] bg-white/80 px-3 py-2 text-sm font-medium text-[#111111]">
-                    {credentialLabel(language, authType, providerType)}
+                    {credentialLabel(language, authType)}
                   </div>
                   <p className={helperClassName}>
                     {providerType === "OPENAI_CODEX"
                       ? t(language, "codexOAuthHelper")
-                      : providerType === "OPENAI"
-                        ? t(language, "openaiOAuthNotForApi")
-                        : t(language, "minioApiKeyHelper")}
+                      : t(language, "openaiOAuthNotForApi")}
                   </p>
                 </div>
                 {!isOAuthProvider ? (
                   <label className={fieldClassName}>
-                    {credentialLabel(language, authType, providerType)}
+                    {credentialLabel(language, authType)}
                     <Input
                       name="credential"
                       autoComplete="off"
                       type="password"
                       value={credential}
-                      placeholder={providerType === "MINIO" ? "accessKey:secretKey" : "sk-…"}
+                      placeholder="sk-…"
                       onChange={(event) => setCredential(event.target.value)}
                     />
                     <p className={helperClassName}>{t(language, "credentialStoredOnly")}</p>
@@ -774,63 +705,7 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
                 ) : null}
               </div>
 
-              {providerType === "MINIO" ? (
-                <div className="space-y-3">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className={fieldClassName}>
-                      {t(language, "minioEndpoint")}
-                      <Input
-                        name="minioEndpoint"
-                        autoComplete="url"
-                        value={minioEndpoint}
-                        placeholder={t(language, "minioEndpointPlaceholder")}
-                        onChange={(event) => setMinioEndpoint(event.target.value)}
-                      />
-                    </label>
-                    <label className={fieldClassName}>
-                      {t(language, "minioBucket")}
-                      <Input
-                        name="minioBucket"
-                        autoComplete="off"
-                        value={minioBucket}
-                        placeholder={t(language, "minioBucketPlaceholder")}
-                        onChange={(event) => setMinioBucket(event.target.value)}
-                      />
-                    </label>
-                    <label className={fieldClassName}>
-                      {t(language, "minioPrefix")}
-                      <Input
-                        name="minioPrefix"
-                        autoComplete="off"
-                        value={minioPrefix}
-                        placeholder={t(language, "minioPrefixPlaceholder")}
-                        onChange={(event) => setMinioPrefix(event.target.value)}
-                      />
-                    </label>
-                    <label className={fieldClassName}>
-                      {t(language, "minioRegion")}
-                      <Input
-                        name="minioRegion"
-                        autoComplete="off"
-                        value={minioRegion}
-                        onChange={(event) => setMinioRegion(event.target.value)}
-                      />
-                    </label>
-                  </div>
-                  <label className="flex items-center gap-3 rounded-xl border border-[#d8d3c7] bg-white/60 p-3 text-sm font-medium text-[#28241f]">
-                    <input
-                      name="minioUseSsl"
-                      type="checkbox"
-                      checked={minioUseSsl}
-                      onChange={(event) => setMinioUseSsl(event.target.checked)}
-                    />
-                    {t(language, "minioUseSsl")}
-                  </label>
-                  <p className="rounded-xl border border-[#d8d3c7] bg-[#f6f3ec] p-3 text-xs leading-5 text-[#514c44]">
-                    {t(language, "minioPlacementHint")}
-                  </p>
-                </div>
-              ) : providerType === "OPENAI_CODEX" ? (
+              {providerType === "OPENAI_CODEX" ? (
                 <p className="rounded-xl border border-[#d8d3c7] bg-white/60 p-3 text-xs leading-5 text-[#514c44]">
                   {t(language, "oauthNoBrowserToken")}
                 </p>
@@ -870,11 +745,9 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs leading-5 text-[#6f6a60]">
-                  {providerType === "MINIO"
-                    ? t(language, "minioRequiredFields")
-                    : providerType === "OPENAI_CODEX"
-                      ? t(language, "codexOneClickHint")
-                      : t(language, "openaiApiKeyRequired")}
+                  {providerType === "OPENAI_CODEX"
+                    ? t(language, "codexOneClickHint")
+                    : t(language, "openaiApiKeyRequired")}
                 </p>
                 <Button type="submit" disabled={isSavingProvider}>
                   {isSavingProvider
@@ -970,7 +843,7 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
                       <div>
                         <p className="font-medium text-[#111111]">{provider.name}</p>
                         <p className="mt-1 text-xs uppercase tracking-[0.2em] text-[#6f6a60]">
-                          {provider.providerType} · {credentialLabel(language, provider.authType, provider.providerType)}
+                          {provider.providerType} · {credentialLabel(language, provider.authType)}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -1330,71 +1203,6 @@ export function SettingsClient({ section }: { section: SettingsSection }) {
 
         ) : null}
 
-        {section === "library" ? (
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle>{t(language, "minioImportTitle")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col gap-3 rounded-xl border border-[#d8d3c7] bg-[#f6f3ec] p-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="font-medium text-[#111111]">{t(language, "minioImportHeading")}</p>
-                <p className="mt-1 text-sm leading-6 text-[#514c44]">
-                  {t(language, "minioImportDescription")}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void importCandidatesQuery.refetch()}
-                  disabled={!hasEnabledMinioProvider || importCandidatesQuery.isFetching}
-                >
-                  {importCandidatesQuery.isFetching ? t(language, "scanning") : t(language, "scanMinio")}
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => importArchiveMutation.mutate()}
-                  disabled={!hasEnabledMinioProvider || importArchiveMutation.isPending}
-                >
-                  {importArchiveMutation.isPending ? t(language, "importing") : t(language, "importMinio")}
-                </Button>
-              </div>
-            </div>
-            {!hasEnabledMinioProvider ? (
-              <p className="text-sm text-[#6f6a60]">{t(language, "minioImportNeedsProvider")}</p>
-            ) : importCandidatesQuery.isError ? (
-              <p className="text-sm text-[#8f5037]">{t(language, "minioImportScanFailed")}</p>
-            ) : importCandidatesQuery.data?.length ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {importCandidatesQuery.data.slice(0, 4).map((candidate) => (
-                  <div key={candidate.id} className="rounded-xl border border-[#d8d3c7] bg-white/60 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-[#111111]">{candidate.title}</p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-bronze">
-                          {candidate.itemType} · {candidate.bucket}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-[#d8d3c7] px-2 py-1 text-xs text-[#514c44]">
-                        {Math.round(candidate.confidence * 100)}%
-                      </span>
-                    </div>
-                    <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#514c44]">
-                      {candidate.summary}
-                    </p>
-                    <p className="mt-2 truncate text-xs text-[#6f6a60]">{candidate.objectKey}</p>
-                  </div>
-                ))}
-              </div>
-            ) : importCandidatesQuery.data ? (
-              <p className="text-sm text-[#514c44]">{t(language, "minioImportNoCandidates")}</p>
-            ) : (
-              <p className="text-sm text-[#6f6a60]">{t(language, "minioImportNotScanned")}</p>
-            )}
-          </CardContent>
-        </Card>
-        ) : null}
         </section>
       ) : null}
 

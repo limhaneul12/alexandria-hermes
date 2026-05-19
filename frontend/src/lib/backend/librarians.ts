@@ -114,26 +114,11 @@ function toSafeProviderConfig(
   providerType: ProviderType,
 ): Record<string, unknown> {
   const safeConfig: Record<string, unknown> = {};
-  if (providerType === "MINIO") {
-    if (typeof config.endpoint === "string" && config.endpoint.trim()) {
-      safeConfig.endpoint = config.endpoint.trim();
-    }
-    if (typeof config.bucket === "string" && config.bucket.trim()) {
-      safeConfig.bucket = config.bucket.trim();
-    }
-    if (typeof config.prefix === "string") {
-      safeConfig.prefix = config.prefix.trim();
-    }
-    if (typeof config.region === "string" && config.region.trim()) {
-      safeConfig.region = config.region.trim();
-    }
-    if (typeof config.use_ssl === "boolean") {
-      safeConfig.use_ssl = config.use_ssl;
-    }
-  } else if (providerType === "OPENAI_CODEX") {
+  if (providerType === "OPENAI_CODEX") {
     for (const key of ["device_authorization_url", "device_token_url", "issuer", "redirect_uri", "token_url", "verification_uri", "client_id", "scope"] as const) {
-      if (typeof config[key] === "string" && config[key].trim()) {
-        safeConfig[key] = config[key].trim();
+      const rawValue = config[key];
+      if (typeof rawValue === "string" && rawValue.trim()) {
+        safeConfig[key] = rawValue.trim();
       }
     }
   } else {

@@ -114,11 +114,6 @@ def provider_create_body(command: LibrarianProviderCreateCommand) -> JSONObject:
         api_key = cli_secret_value(command.api_key_env)
         if api_key:
             body["api_key"] = api_key
-    if command.access_key_env is not None and command.secret_key_env is not None:
-        access_key = cli_secret_value(command.access_key_env)
-        secret_key = cli_secret_value(command.secret_key_env)
-        if access_key and secret_key:
-            body["api_key"] = f"{access_key}:{secret_key}"
     return body
 
 

@@ -68,7 +68,7 @@ const rightRailLinks = [
   ["04", "keyFeatures", "/library"],
   ["05", "librarianRecommendations", "/settings/librarians"],
   ["06", "settingsProviders", "/settings"],
-] as const satisfies readonly [string, TranslationKey, string][];
+] as const satisfies readonly (readonly [string, TranslationKey, string])[];
 
 function formatCompact(language: Language, value: number) {
   return new Intl.NumberFormat(language === "ko" ? "ko-KR" : "en-US", {

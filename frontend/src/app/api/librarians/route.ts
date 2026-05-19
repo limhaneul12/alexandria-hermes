@@ -20,22 +20,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function safeConfig(value: unknown, providerType: ProviderType): Record<string, unknown> {
   if (!isRecord(value)) return {};
   const config: Record<string, unknown> = {};
-  if (providerType === "MINIO") {
-    if (typeof value.endpoint === "string" && value.endpoint.trim()) {
-      config.endpoint = value.endpoint.trim();
-    }
-    if (typeof value.bucket === "string" && value.bucket.trim()) {
-      config.bucket = value.bucket.trim();
-    }
-    if (typeof value.prefix === "string") config.prefix = value.prefix.trim();
-    if (typeof value.region === "string" && value.region.trim()) {
-      config.region = value.region.trim();
-    }
-    if (typeof value.use_ssl === "boolean") config.use_ssl = value.use_ssl;
-  } else if (providerType === "OPENAI_CODEX") {
+  if (providerType === "OPENAI_CODEX") {
     for (const key of ["device_authorization_url", "device_token_url", "issuer", "redirect_uri", "token_url", "verification_uri", "client_id", "scope"] as const) {
-      if (typeof value[key] === "string" && value[key].trim()) {
-        config[key] = value[key].trim();
+      const rawValue = value[key];
+      if (typeof rawValue === "string" && rawValue.trim()) {
+        config[key] = rawValue.trim();
       }
     }
   } else {

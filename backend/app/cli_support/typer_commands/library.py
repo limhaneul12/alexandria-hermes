@@ -11,7 +11,6 @@ from app.cli_support.contracts.command_contracts import (
     ItemIdCommand,
     LibraryListCommand,
     LibrarySearchCommand,
-    MinioCommand,
     SkillsListCommand,
     SkillsSearchCommand,
 )
@@ -22,8 +21,6 @@ from app.cli_support.handlers.library import (
     handle_folders_list,
     handle_library_list,
     handle_library_search,
-    handle_minio_import,
-    handle_minio_scan,
     handle_skills_delete,
     handle_skills_get,
     handle_skills_list,
@@ -38,7 +35,6 @@ from app.cli_support.typer_commands.typer_runtime import run_client, values
 skills_app = typer.Typer(help="Manage skill records")
 folders_app = typer.Typer(help="Manage library folders")
 library_app = typer.Typer(help="Browse library items")
-minio_app = typer.Typer(help="Sync external MINIO archive")
 
 
 @skills_app.command("list")
@@ -278,50 +274,4 @@ def library_search(
             content_mode=content_mode,
         ),
         handle_library_search,
-    )
-
-
-@minio_app.command("scan")
-def minio_scan(
-    ctx: typer.Context,
-    limit: int = typer.Option(24, "--limit"),
-    item_type: LibraryItemType | None = typer.Option(None, "--type"),
-) -> None:
-    """Preview import candidates.
-
-    Args:
-        ctx: Typer context.
-        limit: Maximum number of candidates.
-        item_type: Optional item type filter.
-
-    Returns:
-        None.
-    """
-    run_client(
-        ctx,
-        MinioCommand(limit=limit, item_type=item_type),
-        handle_minio_scan,
-    )
-
-
-@minio_app.command("import")
-def minio_import(
-    ctx: typer.Context,
-    limit: int = typer.Option(48, "--limit"),
-    item_type: LibraryItemType | None = typer.Option(None, "--type"),
-) -> None:
-    """Import linked candidates.
-
-    Args:
-        ctx: Typer context.
-        limit: Maximum number of candidates.
-        item_type: Optional item type filter.
-
-    Returns:
-        None.
-    """
-    run_client(
-        ctx,
-        MinioCommand(limit=limit, item_type=item_type),
-        handle_minio_import,
     )

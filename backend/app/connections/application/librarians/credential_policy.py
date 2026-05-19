@@ -26,7 +26,6 @@ class ProviderAuthPolicy:
     _SUPPORTED_AUTH_TYPES: ClassVar[Mapping[ProviderType, frozenset[AuthType]]] = {
         ProviderType.OPENAI: frozenset({AuthType.API_KEY}),
         ProviderType.OPENAI_CODEX: frozenset({AuthType.OAUTH}),
-        ProviderType.MINIO: frozenset({AuthType.API_KEY}),
     }
 
     @classmethod

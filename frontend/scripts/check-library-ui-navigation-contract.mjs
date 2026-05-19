@@ -9,6 +9,8 @@ const librarianChat = readFileSync(new URL("../src/components/librarian/libraria
 const librarianChatBackend = readFileSync(new URL("../src/lib/backend/librarian-chat.ts", import.meta.url), "utf8");
 const contextRoute = readFileSync(new URL("../src/app/api/library/contexts/route.ts", import.meta.url), "utf8");
 const backendContexts = readFileSync(new URL("../src/lib/backend/contexts.ts", import.meta.url), "utf8");
+const backendArchive = readFileSync(new URL("../src/lib/backend/archive.ts", import.meta.url), "utf8");
+const settingsClient = readFileSync(new URL("../src/components/settings/settings-client.tsx", import.meta.url), "utf8");
 const libraryTypes = readFileSync(new URL("../src/types/library.ts", import.meta.url), "utf8");
 
 for (const route of ["/library/skills", "/library/prompts", "/librarian/chat"]) {
@@ -37,6 +39,8 @@ for (const file of [
   "../src/app/library/skills/new/page.tsx",
   "../src/app/library/prompts/new/page.tsx",
   "../src/app/capture-review/page.tsx",
+  "../src/app/api/storage/minio/import-candidates/route.ts",
+  "../src/app/api/storage/minio/import/route.ts",
 ]) {
   assert.equal(existsSync(new URL(file, import.meta.url)), false, `${file} must stay deleted`);
 }
@@ -47,6 +51,9 @@ assert.doesNotMatch(librarianChat, /@\/components\/ui\/select/, "librarian chat 
 assert.doesNotMatch(librarianChatBackend, /\/library\/items\//, "librarian chat source refs must use existing library detail routes");
 assert.doesNotMatch(contextRoute, /export async function POST/, "frontend context list route must not expose removed manual context save");
 assert.doesNotMatch(backendContexts, /\/memory\/contexts\/lint|saveContextInBackend|lintContextInBackend/, "frontend backend client must not call removed manual context lint/save routes");
+for (const [label, source] of [["settings", settingsClient], ["archive adapter", backendArchive]]) {
+  assert.doesNotMatch(source, /MINIO|minio|MinIO|Object Storage|object storage/, `${label} must not expose removed object-storage import UI`);
+}
 assert.match(libraryTypes, /"HARNESS"/, "frontend context types must include read-only HARNESS context kind");
 assert.match(
   librarianChatBackend,

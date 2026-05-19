@@ -17,7 +17,6 @@ class DependencyStatusStore:
 
     redis_status: DependencyHealthStatus = DependencyHealthStatus.DISABLED
     database_status: DependencyHealthStatus = DependencyHealthStatus.DISABLED
-    minio_status: DependencyHealthStatus = DependencyHealthStatus.DISABLED
 
     def mark_all_draining(self) -> None:
         """Move all healthy dependencies to draining state.
@@ -32,7 +31,6 @@ class DependencyStatusStore:
         self.database_status = dependency_status_when_lifecycle_drains(
             self.database_status,
         )
-        self.minio_status = dependency_status_when_lifecycle_drains(self.minio_status)
 
     def mark_redis_starting(self) -> None:
         """Set Redis dependency status to starting.
@@ -149,60 +147,3 @@ class DependencyStatusStore:
             None.
         """
         self.database_status = DependencyHealthStatus.DISABLED
-
-    def mark_minio_starting(self) -> None:
-        """Set MINIO dependency status to starting.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        self.minio_status = DependencyHealthStatus.STARTING
-
-    def mark_minio_healthy(self, *, lifecycle_accepts_traffic: bool) -> None:
-        """Set MINIO dependency status from a healthy report.
-
-        Args:
-            lifecycle_accepts_traffic: Whether lifecycle may accept traffic.
-
-        Returns:
-            None.
-        """
-        self.minio_status = dependency_status_when_marked_healthy(
-            lifecycle_accepts_traffic=lifecycle_accepts_traffic,
-        )
-
-    def mark_minio_unavailable(self) -> None:
-        """Set MINIO dependency status to unavailable.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        self.minio_status = DependencyHealthStatus.UNAVAILABLE
-
-    def mark_minio_draining(self) -> None:
-        """Move healthy MINIO status to draining state.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        self.minio_status = dependency_status_when_lifecycle_drains(self.minio_status)
-
-    def mark_minio_disabled(self) -> None:
-        """Set MINIO dependency status to disabled.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        self.minio_status = DependencyHealthStatus.DISABLED

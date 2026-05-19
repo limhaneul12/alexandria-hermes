@@ -20,7 +20,6 @@ class LifecycleSnapshot:
     status: LifecycleStatus
     redis_status: DependencyHealthStatus
     database_status: DependencyHealthStatus
-    minio_status: DependencyHealthStatus
     started_at: datetime
     drain_started_at: datetime | None
     drain_reason: str | None
@@ -53,7 +52,6 @@ class LifecycleSnapshot:
             dependencies=DependencyStatusStore(
                 redis_status=self.redis_status,
                 database_status=self.database_status,
-                minio_status=self.minio_status,
             ),
         )
         return ready
@@ -93,6 +91,5 @@ def lifecycle_is_ready(
         status is LifecycleStatus.RUNNING
         and dependency_is_ready(dependencies.redis_status)
         and dependency_is_ready(dependencies.database_status)
-        and dependency_is_ready(dependencies.minio_status)
     )
     return ready

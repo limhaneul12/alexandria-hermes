@@ -229,8 +229,6 @@ class LibrarianProviderCreateCommand:
     enabled: bool
     config: dict[str, str | int | bool]
     api_key_env: str | None
-    access_key_env: str | None = None
-    secret_key_env: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -303,14 +301,6 @@ class LibrarianOAuthCommand:
     """Parameters for librarian OAuth lifecycle commands."""
 
     provider_id: str
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class MinioCommand:
-    """Parameters for MINIO scan/import operations."""
-
-    limit: int
-    item_type: ItemType | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

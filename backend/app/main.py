@@ -7,7 +7,6 @@ from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 from typing import cast
 
-from app.archive.interface.routers.minio_archive_router import router as minio_router
 from app.connections.interface.routers.librarian_oauth_router import (
     router as librarian_oauth_router,
 )
@@ -91,7 +90,6 @@ def create_app(app_config: AppConfig) -> FastAPI:
             lifecycle.mark_database_healthy()
         else:
             lifecycle.mark_database_unavailable()
-        lifecycle.mark_minio_disabled()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -111,7 +109,6 @@ def create_app(app_config: AppConfig) -> FastAPI:
             lifecycle.mark_database_healthy()
         else:
             lifecycle.mark_database_unavailable()
-        lifecycle.mark_minio_disabled()
         lifecycle.mark_running()
         try:
             yield
@@ -143,7 +140,6 @@ def create_app(app_config: AppConfig) -> FastAPI:
 
     container.wire(
         packages=[
-            "app.archive.interface.routers",
             "app.connections.interface.routers",
             "app.librarian.interface.routers",
             "app.library.interface.routers",
@@ -176,7 +172,6 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(librarian_oauth_router)
     app.include_router(librarian_ops_router)
     app.include_router(librarian_brief_router)
-    app.include_router(minio_router)
 
     @app.get("/")
     def root() -> dict[str, str]:

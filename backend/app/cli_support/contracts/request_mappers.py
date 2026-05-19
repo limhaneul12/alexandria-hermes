@@ -5,14 +5,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from app.archive.interface.schemas.minio_archive.minio_archive_schema import (
-    MinioImportRequest,
-)
 from app.cli_support.argument_values import bounded_limit, optional_text
 from app.cli_support.contracts.command_contracts import (
     ContextRecallCommand,
     FoldersCreateCommand,
-    MinioCommand,
     PromptsUseCommand,
 )
 from app.cli_support.json_payloads import schema_payload
@@ -90,20 +86,6 @@ def folder_create_payload(command: FoldersCreateCommand) -> JSONObject:
         name=command.name,
         parent_id=optional_text(command.parent_id),
     )
-    payload = schema_payload(request)
-    return payload
-
-
-def minio_import_payload(command: MinioCommand) -> JSONObject:
-    """Map a MINIO import command to the backend import contract.
-
-    Args:
-        command: CLI command contract for MINIO archive import.
-
-    Returns:
-        JSON-compatible MINIO import request payload.
-    """
-    request = MinioImportRequest(limit=command.limit)
     payload = schema_payload(request)
     return payload
 

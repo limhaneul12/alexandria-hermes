@@ -37,7 +37,6 @@ class ReadyHealthChecksPayload(HealthPayloadModel):
     app: StrictStr
     redis: StrictStr
     database: StrictStr
-    minio: StrictStr
 
 
 class ReadyHealthPayload(HealthPayloadModel):
@@ -54,7 +53,6 @@ class HeartbeatDetailsPayload(HealthPayloadModel):
     app: StrictStr
     redis: StrictStr
     database: StrictStr
-    minio: StrictStr
     lifecycle: StrictStr
     draining: StrictBool
     drain_reason: StrictStr | None
@@ -106,7 +104,6 @@ def ready_payload_from_snapshot(snapshot: LifecycleSnapshot) -> ReadyHealthPaylo
     app_check = app_check_from_status(snapshot.status)
     redis_check = dependency_check_from_status(snapshot.redis_status)
     database_check = dependency_check_from_status(snapshot.database_status)
-    minio_check = dependency_check_from_status(snapshot.minio_status)
     if snapshot.ready:
         return ReadyHealthPayload(
             status="ok",
@@ -114,7 +111,6 @@ def ready_payload_from_snapshot(snapshot: LifecycleSnapshot) -> ReadyHealthPaylo
                 app=app_check,
                 redis=redis_check,
                 database=database_check,
-                minio=minio_check,
             ),
             reason=None,
         )
@@ -129,7 +125,6 @@ def ready_payload_from_snapshot(snapshot: LifecycleSnapshot) -> ReadyHealthPaylo
             app=app_check,
             redis=redis_check,
             database=database_check,
-            minio=minio_check,
         ),
         reason=reason,
     )
@@ -151,7 +146,6 @@ def heartbeat_payload_from_snapshot(
             app=app_check_from_status(snapshot.status),
             redis=dependency_check_from_status(snapshot.redis_status),
             database=dependency_check_from_status(snapshot.database_status),
-            minio=dependency_check_from_status(snapshot.minio_status),
             lifecycle=snapshot.status.value,
             draining=snapshot.draining,
             drain_reason=snapshot.drain_reason,
@@ -170,6 +164,4 @@ def _dependency_unavailable_reason(snapshot: LifecycleSnapshot) -> str | None:
         return "database_unavailable"
     if snapshot.redis_status is DependencyHealthStatus.UNAVAILABLE:
         return "redis_unavailable"
-    if snapshot.minio_status is DependencyHealthStatus.UNAVAILABLE:
-        return "minio_unavailable"
     return None

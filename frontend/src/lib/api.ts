@@ -13,8 +13,6 @@ import type {
   ContextPrepareCompactDTO,
   ContextSearchDTO,
   DashboardDTO,
-  ExternalArchiveCandidateDTO,
-  ExternalArchiveImportResultDTO,
   LibrarianOAuthStartDTO,
   LibrarianOAuthStatusDTO,
   LibrarianAskRequestDTO,
@@ -157,20 +155,6 @@ export function chatWithLibrarian(payload: LibrarianChatRequestDTO) {
   );
 }
 
-export function fetchExternalArchiveCandidates(limit = 48) {
-  const boundedLimit = Math.min(Math.max(limit, 1), 1000);
-  return fetchJson<ExternalArchiveCandidateDTO[]>(
-    `/api/storage/minio/import-candidates?limit=${boundedLimit}`,
-  );
-}
-
-export function importExternalArchiveCandidates(limit = 48) {
-  const boundedLimit = Math.min(Math.max(limit, 1), 1000);
-  return fetchJson<ExternalArchiveImportResultDTO>(
-    "/api/storage/minio/import",
-    jsonInit("POST", { limit: boundedLimit }),
-  );
-}
 
 export function fetchAgents() {
   return fetchJson<AgentDTO[]>("/api/agents");

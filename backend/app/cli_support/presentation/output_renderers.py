@@ -191,26 +191,6 @@ def print_folder_tree_row(item: JSONObject, stdout: TextIO, depth: int) -> None:
             print_folder_tree_row(child, stdout, depth + 1)
 
 
-def print_candidate_table(payload: JSONValue, stdout: TextIO) -> None:
-    """Print MINIO import candidate rows.
-
-    Args:
-        payload: Backend candidate response payload.
-        stdout: Destination stream.
-    """
-    rows = json_list(payload)
-    if len(rows) == 0:
-        print("No MINIO import candidates found.", file=stdout)
-        return
-    print("ID\tTYPE\tCONFIDENCE\tOBJECT", file=stdout)
-    for item in rows:
-        item_id = text_field(item, "id")
-        item_type = text_field(item, "item_type")
-        confidence = text_field(item, "confidence")
-        object_key = text_field(item, "object_key")
-        print(f"{item_id}\t{item_type}\t{confidence}\t{object_key}", file=stdout)
-
-
 def json_list(payload: JSONValue) -> list[JSONObject]:
     """Normalize a dynamic payload into JSON object rows.
 

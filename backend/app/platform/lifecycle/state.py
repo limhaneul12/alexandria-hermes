@@ -197,68 +197,6 @@ class LifecycleState:
         with self._lock:
             self._dependencies.mark_database_disabled()
 
-    def mark_minio_starting(self) -> None:
-        """Set MINIO dependency status to ``starting``.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        with self._lock:
-            self._dependencies.mark_minio_starting()
-
-    def mark_minio_healthy(self) -> None:
-        """Set MINIO dependency status to healthy.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        with self._lock:
-            self._dependencies.mark_minio_healthy(
-                lifecycle_accepts_traffic=self._lifecycle_accepts_traffic(),
-            )
-
-    def mark_minio_unavailable(self) -> None:
-        """Set MINIO dependency status to ``unavailable``.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        with self._lock:
-            self._dependencies.mark_minio_unavailable()
-
-    def mark_minio_draining(self) -> None:
-        """Set MINIO dependency status to ``draining``.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        with self._lock:
-            self._dependencies.mark_minio_draining()
-
-    def mark_minio_disabled(self) -> None:
-        """Set MINIO dependency status to ``disabled``.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        with self._lock:
-            self._dependencies.mark_minio_disabled()
-
     def start_draining(self, *, reason: str, now: datetime | None = None) -> bool:
         """Start draining state.
 
@@ -313,7 +251,6 @@ class LifecycleState:
                 status=self._status,
                 redis_status=self._dependencies.redis_status,
                 database_status=self._dependencies.database_status,
-                minio_status=self._dependencies.minio_status,
                 started_at=self._started_at,
                 drain_started_at=self._drain_started_at,
                 drain_reason=self._drain_reason,

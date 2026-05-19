@@ -17,9 +17,6 @@ from app.connections.infrastructure.librarians.contracts import (
     ProviderClientTestResult,
     SecretResolver,
 )
-from app.connections.infrastructure.librarians.minio_validation import (
-    test_minio_provider,
-)
 from app.connections.infrastructure.librarians.openai_adapter import (
     OpenAIClientBuilder,
     OpenAIStyleSDKAdapter,
@@ -127,10 +124,6 @@ class LibrarianClientFactory(LibrarianProviderClientFactory):
                 message="api_key missing",
             )
             return result
-        if provider_type is ProviderType.MINIO:
-            result = test_minio_provider(provider=provider, api_key=api_key)
-            return result
-
         credential = ApiKeyCredential(api_key)
         try:
             adapter = self._build_adapter(provider_type, provider.config, credential)

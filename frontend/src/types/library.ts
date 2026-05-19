@@ -18,7 +18,7 @@ export type SelectionSource =
   | "CONTEXT_RECALL"
   | "SELF_ACQUISITION"
   | "LIBRARIAN_DELEGATION";
-export type ProviderType = "OPENAI" | "OPENAI_CODEX" | "MINIO";
+export type ProviderType = "OPENAI" | "OPENAI_CODEX";
 export type AuthType = "API_KEY" | "OAUTH" | "NONE";
 export type LibrarianProfileRole =
   | "DEFAULT_SEARCH"
@@ -70,7 +70,7 @@ export const PROMPT_CONTENT_FORMATS = ["MARKDOWN", "XML", "JSON", "TEXT"] as con
 export const PROMPT_KINDS = ["SYSTEM", "DEVELOPER", "USER_TEMPLATE", "EVAL", "TOOL_GUIDE", "CHAIN"] as const satisfies readonly PromptKind[];
 export const PROMPT_DOMAINS = ["DEVELOPMENT", "DESIGN", "WRITING", "RESEARCH", "ANALYSIS", "PLANNING", "REVIEW", "TESTING", "DEBUGGING", "OPERATIONS", "DATA", "EDUCATION", "MARKETING", "PRODUCT", "SECURITY", "GENERAL"] as const satisfies readonly PromptDomain[];
 export const PROMPT_TASK_TYPES = ["CODE_GENERATION", "CODE_REVIEW", "TEST_GENERATION", "BUG_DIAGNOSIS", "FEATURE_PLANNING", "UI_COPYWRITING", "DOCUMENT_SUMMARY", "DOCUMENT_CREATION", "REQUIREMENTS_ANALYSIS", "RESEARCH_SYNTHESIS", "IMAGE_PROMPTING", "AGENT_INSTRUCTION", "TOOL_USAGE_GUIDE", "EVALUATION", "GENERAL_TASK"] as const satisfies readonly PromptTaskType[];
-export const PROVIDER_TYPES = ["OPENAI", "OPENAI_CODEX", "MINIO"] as const satisfies readonly ProviderType[];
+export const PROVIDER_TYPES = ["OPENAI", "OPENAI_CODEX"] as const satisfies readonly ProviderType[];
 export const LIBRARIAN_AUTH_TYPES = ["API_KEY", "OAUTH"] as const satisfies readonly AuthType[];
 
 export function isItemType(value: string): value is VisibleItemType {
@@ -330,26 +330,6 @@ export type LibrarianOAuthStatusDTO = {
   message: string | null;
 };
 
-export type ExternalArchiveCandidateDTO = {
-  id: string;
-  providerId: string;
-  bucket: string;
-  objectKey: string;
-  title: string;
-  summary: string;
-  contentPreview: string;
-  itemType: ItemType;
-  tags: string[];
-  details: Record<string, unknown>;
-  confidence: number;
-  needsReview: boolean;
-};
-
-export type ExternalArchiveImportResultDTO = {
-  importedCount: number;
-  skippedCount: number;
-  itemIds: string[];
-};
 
 export type AgentDTO = {
   id: string;

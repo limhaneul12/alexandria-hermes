@@ -36,58 +36,10 @@ def _transport(
     return fake_transport, calls
 
 
-def test_cli_scans_minio_candidates_as_json_when_requested() -> None:
-    """MINIO scan exposes import candidates for agents without opening the UI."""
-    transport, calls = _transport(
-        [
-            {
-                "id": "candidate-1",
-                "item_type": "SKILL",
-                "object_key": "skills/a.md",
-            }
-        ]
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["--json", "minio", "scan", "--limit", "5"],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "GET"
-    assert (
-        calls[0][1] == "http://localhost:8000/archive/minio/import-candidates?limit=5"
-    )
-    assert json.loads(stdout.getvalue())[0]["id"] == "candidate-1"
-
-
-def test_cli_imports_minio_candidates_with_bounded_request_body() -> None:
-    """MINIO import sends a linked-import request and prints the sync summary."""
-    transport, calls = _transport(
-        {"imported_count": 2, "skipped_count": 1, "item_ids": ["a", "b"]}
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["minio", "import", "--limit", "2000"],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/archive/minio/import"
-    assert json.loads((calls[0][2] or b"{}").decode()) == {"limit": 1000}
-    assert "2 imported, 1 skipped" in stdout.getvalue()
-
-
 @pytest.mark.parametrize(
     ("argv", "invalid_value"),
     [
         (["library", "list", "--type", "INVALID"], "INVALID"),
-        (["minio", "scan", "--type", "BAD"], "BAD"),
     ],
 )
 def test_cli_rejects_invalid_choice_before_http_request(

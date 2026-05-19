@@ -189,7 +189,7 @@ export function SkillDetailClient({ skillId }: { skillId: string }) {
   });
 
   useEffect(() => {
-    if (!data || viewRecordedRef.current || data.id.startsWith("minio:")) return;
+    if (!data || viewRecordedRef.current) return;
     viewRecordedRef.current = true;
     void recordLibraryUsage({
       itemId: data.id,

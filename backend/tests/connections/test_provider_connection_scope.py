@@ -52,14 +52,11 @@ def _provider(
     )
 
 
-def test_provider_type_enum_keeps_only_openai_agent_connection_and_minio_storage() -> (
-    None
-):
-    """Provider enum should keep official API, Codex OAuth, and object storage."""
+def test_provider_type_enum_keeps_only_librarian_connection_types() -> None:
+    """Provider enum should only expose agent/librarian connection providers."""
     assert {provider_type.value for provider_type in ProviderType} == {
         "OPENAI",
         "OPENAI_CODEX",
-        "MINIO",
     }
 
 

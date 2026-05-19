@@ -297,8 +297,6 @@ def handle_librarian_provider_connect_codex_oauth(
         enabled=command.enabled,
         config=command.config,
         api_key_env=None,
-        access_key_env=None,
-        secret_key_env=None,
     )
     provider = client.post(
         "/settings/connections", provider_create_body(provider_payload)

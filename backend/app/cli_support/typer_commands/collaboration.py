@@ -320,8 +320,6 @@ def providers_create_codex_oauth(
             enabled=enabled,
             config=_codex_oauth_config(),
             api_key_env=None,
-            access_key_env=None,
-            secret_key_env=None,
         ),
         handle_librarian_provider_create,
     )
@@ -371,50 +369,6 @@ def providers_create_openai(
             enabled=enabled,
             config={"model": model},
             api_key_env=api_key_env,
-            access_key_env=None,
-            secret_key_env=None,
-        ),
-        handle_librarian_provider_create,
-    )
-
-
-@providers_app.command("create-minio")
-def providers_create_minio(
-    ctx: typer.Context,
-    name: str = typer.Option(..., "--name"),
-    endpoint: str = typer.Option(..., "--endpoint"),
-    bucket: str = typer.Option(..., "--bucket"),
-    access_key_env: str = typer.Option(..., "--access-key-env"),
-    secret_key_env: str = typer.Option(..., "--secret-key-env"),
-    prefix: str = typer.Option("", "--prefix"),
-    region: str | None = typer.Option(None, "--region"),
-    use_ssl: bool = typer.Option(True, "--use-ssl/--no-use-ssl"),
-    enabled: bool = typer.Option(True, "--enabled/--disabled"),
-) -> None:
-    """Create a MINIO provider using credential environment variables.
-
-    Args:
-        ctx: Typer callback context and command-line option values.
-    """
-    config: dict[str, str | int | bool] = {
-        "endpoint": endpoint,
-        "bucket": bucket,
-        "prefix": prefix,
-        "use_ssl": use_ssl,
-    }
-    if region is not None:
-        config["region"] = region
-    run_client(
-        ctx,
-        LibrarianProviderCreateCommand(
-            name=name,
-            provider_type="MINIO",
-            auth_type="API_KEY",
-            enabled=enabled,
-            config=config,
-            api_key_env=None,
-            access_key_env=access_key_env,
-            secret_key_env=secret_key_env,
         ),
         handle_librarian_provider_create,
     )

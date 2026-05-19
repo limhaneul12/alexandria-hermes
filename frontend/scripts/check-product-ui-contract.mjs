@@ -73,9 +73,9 @@ const requiredPageCopy = [
 const requiredFeatureContracts = [
   ["folder CRUD", `${api}\n${library}`, ["createCategory", "deleteCategory", "createCategoryMutation", "deleteCategoryMutation", "pendingCategoryDelete"]],
   [
-    "OpenAI and MINIO librarian providers",
+    "OpenAI librarian providers",
     `${settings}\n${api}\n${store}\n${archiveAdapter}`,
-    ["OPENAI", "OPENAI_CODEX", "MINIO", "oauthDeviceCodeTitle", "librarianAgentProfiles", "minioPlacementHint"],
+    ["OPENAI", "OPENAI_CODEX", "oauthDeviceCodeTitle", "librarianAgentProfiles"],
   ],
   [
     "settings information architecture",
@@ -99,6 +99,9 @@ for (const forbidden of [
   ["library client", library, ["/library/skills/new", "/library/prompts/new", "?create=", "Add"]],
   ["library forms", forms, ["LibraryItemCreatePanel", "SkillCreateForm", "PromptFields", "uploadSkillFile"]],
   ["api client", api, ["createSkill(", "createPrompt(", "captureContext(", "lintContext(", "saveContext("]],
+  ["settings", settings, ["MINIO", "minio", "MinIO", "Object Storage", "object storage"]],
+  ["api/storage archive adapter", `${api}\n${archiveAdapter}`, ["MINIO", "minio", "MinIO", "Object Storage", "object storage"]],
+  ["i18n", i18n, ["MINIO", "minio", "MinIO", "Object Storage", "object storage"]],
 ]) {
   const [name, content, forbiddenValues] = forbidden;
   for (const value of forbiddenValues) {

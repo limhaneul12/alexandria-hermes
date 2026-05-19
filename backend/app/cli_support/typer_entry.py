@@ -21,7 +21,6 @@ from app.cli_support.typer_commands.hermes import hermes_app
 from app.cli_support.typer_commands.library import (
     folders_app,
     library_app,
-    minio_app,
     skills_app,
 )
 from app.cli_support.typer_commands.library_prompts import prompts_app
@@ -44,7 +43,6 @@ typer_app.add_typer(skills_app, name="skills")
 typer_app.add_typer(prompts_app, name="prompts")
 typer_app.add_typer(folders_app, name="folders")
 typer_app.add_typer(library_app, name="library")
-typer_app.add_typer(minio_app, name="minio")
 typer_app.add_typer(context_app, name="context")
 typer_app.add_typer(memory_compact_app, name="memory-compacts")
 typer_app.add_typer(setup_app, name="setup")

@@ -24,10 +24,6 @@ ALLOWED_INIT_FILES = {
 
 MODULE_LINE_BUDGET = 450
 OVERSIZED_MODULE_ALLOWLIST = {
-    "archive/application/minio/use_cases/import_archive_items.py": (
-        "Archive import use case still coordinates object reads, mapping, and writes; "
-        "split into provider config/content reader/import persister next."
-    ),
     "cli_support/contracts/command_contracts.py": (
         "CLI command dataclass catalog is intentionally centralized until command "
         "groups receive package-local contract modules."
@@ -35,10 +31,6 @@ OVERSIZED_MODULE_ALLOWLIST = {
     "cli_support/handlers/collaboration.py": (
         "Collaboration CLI remains a route-handler facade after helper extraction; "
         "split provider/profile/oauth handlers by command group next."
-    ),
-    "cli_support/handlers/library.py": (
-        "Library CLI handler combines legacy folders/items/skills flows; split by "
-        "resource family when touching those commands."
     ),
     "cli_support/hermes/integration_files.py": (
         "Hermes install-file generation owns several template renderers; split into "

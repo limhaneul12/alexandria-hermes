@@ -109,10 +109,10 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
     assert speculative_tables == set()
 
 
-def test_alembic_upgrade_removes_legacy_default_minio_provider_when_present(
+def test_alembic_upgrade_removes_legacy_minio_providers_when_present(
     tmp_path: Path,
 ) -> None:
-    """Alembic should clean old smoke MINIO credentials without touching real providers."""
+    """Alembic should remove legacy MINIO providers and their stored secrets."""
 
     database_path = tmp_path / "legacy-minio.db"
     previous_revision = "202605141904_add_context_vault"
@@ -160,16 +160,16 @@ def test_alembic_upgrade_removes_legacy_default_minio_provider_when_present(
         remaining_providers = connection.execute(
             "SELECT id, name FROM librarian_providers ORDER BY id"
         ).fetchall()
-        remaining_legacy_secrets = connection.execute(
+        remaining_minio_secrets = connection.execute(
             """
             SELECT COUNT(*)
             FROM librarian_provider_secrets
-            WHERE provider_id = 'legacy-smoke-provider'
+            WHERE provider_id IN ('legacy-smoke-provider', 'real-minio-provider')
             """
         ).fetchone()[0]
 
-    assert remaining_providers == [("real-minio-provider", "team-minio")]
-    assert remaining_legacy_secrets == 0
+    assert remaining_providers == []
+    assert remaining_minio_secrets == 0
 
 
 def test_alembic_upgrade_removes_legacy_workflow_library_items(

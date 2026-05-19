@@ -1,4 +1,4 @@
-"""Handlers for library, skill, folder, and MINIO CLI commands."""
+"""Handlers for library, skill, and folder CLI commands."""
 
 from __future__ import annotations
 
@@ -14,19 +14,16 @@ from app.cli_support.contracts.command_contracts import (
     ItemIdCommand,
     LibraryListCommand,
     LibrarySearchCommand,
-    MinioCommand,
     SkillsListCommand,
     SkillsSearchCommand,
 )
 from app.cli_support.contracts.request_mappers import (
     folder_create_payload,
-    minio_import_payload,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
 from app.cli_support.json_payloads import schema_payload
 from app.cli_support.presentation.output_renderers import (
     json_list,
-    print_candidate_table,
     print_folder_table,
     print_item_table,
     print_json,
@@ -421,68 +418,5 @@ def handle_library_search(
     else:
         print_item_table(
             payload, context.stdout, empty_message="No matching items found."
-        )
-    return 0
-
-
-def handle_minio_scan(
-    command: MinioCommand,
-    context: CommandContext,
-    client: CliBackendApiClient,
-) -> int:
-    """Run the minio scan CLI command.
-
-    Args:
-        command: Typed CLI command contract for the operation.
-        context: CLI runtime context with output settings.
-        client: Backend API client used for HTTP requests.
-
-    Returns:
-        Process-style exit code.
-    """
-    limit = bounded_limit(command.limit, default=24)
-    payload = client.get(f"/archive/minio/import-candidates?limit={limit}")
-    if command.item_type is not None:
-        rows = [
-            row
-            for row in json_list(payload)
-            if text_field(row, "item_type") == command.item_type.value
-        ]
-        payload = rows
-    if context.json_output:
-        print_json(payload, context.stdout)
-    else:
-        print_candidate_table(payload, context.stdout)
-    return 0
-
-
-def handle_minio_import(
-    command: MinioCommand,
-    context: CommandContext,
-    client: CliBackendApiClient,
-) -> int:
-    """Run the minio import CLI command.
-
-    Args:
-        command: Typed CLI command contract for the operation.
-        context: CLI runtime context with output settings.
-        client: Backend API client used for HTTP requests.
-
-    Returns:
-        Process-style exit code.
-    """
-    limit = bounded_limit(command.limit, default=48)
-    payload = client.post(
-        "/archive/minio/import",
-        minio_import_payload(MinioCommand(limit=limit, item_type=command.item_type)),
-    )
-    if context.json_output:
-        print_json(payload, context.stdout)
-    else:
-        imported = text_field(payload, "imported_count")
-        skipped = text_field(payload, "skipped_count")
-        print(
-            f"MINIO sync complete: {imported} imported, {skipped} skipped",
-            file=context.stdout,
         )
     return 0

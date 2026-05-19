@@ -13,35 +13,11 @@ from app.platform.lifecycle.state import LifecycleState
 from app.platform.lifecycle.status import LifecycleStatus
 
 
-def test_lifecycle_ready_includes_minio_dependency_when_enabled() -> None:
-    """Readiness turns false when enabled MINIO integration is unavailable."""
-    lifecycle = LifecycleState()
-    lifecycle.mark_database_healthy()
-    lifecycle.mark_minio_unavailable()
-    lifecycle.mark_running()
-
-    snapshot = lifecycle.snapshot()
-
-    assert snapshot.ready is False
-    assert snapshot.minio_status is DependencyHealthStatus.UNAVAILABLE
-
-
-def test_lifecycle_draining_marks_healthy_minio_as_draining() -> None:
-    """MINIO dependency enters drain state with the rest of lifecycle dependencies."""
-    lifecycle = LifecycleState()
-    lifecycle.mark_minio_healthy()
-
-    lifecycle.start_draining(reason="shutdown")
-
-    assert lifecycle.snapshot().minio_status is DependencyHealthStatus.DRAINING
-
-
 def test_dependency_status_store_marks_all_healthy_dependencies_draining() -> None:
     """Dependency status store drains only dependencies currently ready for traffic."""
     dependencies = DependencyStatusStore(
         redis_status=DependencyHealthStatus.OK,
         database_status=DependencyHealthStatus.DISABLED,
-        minio_status=DependencyHealthStatus.UNAVAILABLE,
     )
 
     dependencies.mark_all_draining()
@@ -49,7 +25,6 @@ def test_dependency_status_store_marks_all_healthy_dependencies_draining() -> No
     assert dependencies == DependencyStatusStore(
         redis_status=DependencyHealthStatus.DRAINING,
         database_status=DependencyHealthStatus.DISABLED,
-        minio_status=DependencyHealthStatus.UNAVAILABLE,
     )
 
 

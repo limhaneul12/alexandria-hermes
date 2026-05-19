@@ -37,7 +37,6 @@ Hermes is one client of the archive, not the archive itself:
 - humans use the web UI or CLI to browse, create, import, and review records
 - agents use HTTP, CLI, or MCP to search library/context material and submit reusable candidates
 - optional librarian providers can classify, summarize, and delegate when explicitly configured
-- MINIO can hold original external files while Alexandria stores searchable metadata and placement
 - Context Vault preserves handoffs, decisions, compact summaries, chunks, and access history for later recall
 
 Current implementation focus:
@@ -47,7 +46,6 @@ Current implementation focus:
 - Context Vault linting, save/read, chunking, recall, access tracking, archive, and RAG health checks
 - durable Memory Compact storage, current/history lookup, CLI/MCP exposure, and UI pages
 - librarian brief compilation, librarian chat bridge, provider settings, and OpenAI/Codex provider flows
-- optional MINIO scan/import for existing external archives
 - Typer CLI and MCP server access for agent/tool clients
 - typed FastAPI/Pydantic contracts backed by SQLite, SQLAlchemy Core/ORM, and Alembic
 - Next.js document-style UI for dashboard, library, context, memory compacts, librarian chat, and settings
@@ -111,7 +109,7 @@ Working surfaces include:
 - SQLite-backed local storage with Alembic migrations under `backend/migrations/`
 - Next.js frontend pages for dashboard, library browsing/creation/detail, Context Vault, Memory Compacts, librarian chat, settings, providers, capture review, and RAG inspection
 - native Typer CLI command tree:
-  - `health`, `folders`, `library`, `skills`, `prompts`, `minio`, `context`, `memory-compacts`, `hermes`, `librarian`, `usage`, `mcp`
+  - `health`, `folders`, `library`, `skills`, `prompts`, `context`, `memory-compacts`, `hermes`, `librarian`, `usage`, `mcp`
 - MCP server tooling over the same backend contracts
 - SQL injection hardening on search paths through ORM/Core statements, bound parameters, and constrained FTS query normalization
 - backend architecture guardrails for module boundaries, route mappings, app `__init__.py` usage, and rule compliance
@@ -217,7 +215,7 @@ During the active npm supply-chain hold, avoid rebuilding the frontend image unl
 
 ## CLI
 
-The CLI is a Typer command tree over the backend HTTP API. It does not bypass backend permissions, validation, duplicate handling, Context Vault rules, provider safety checks, or MINIO safety rules.
+The CLI is a Typer command tree over the backend HTTP API. It does not bypass backend permissions, validation, duplicate handling, Context Vault rules, or provider safety checks.
 
 Install shell links once:
 
@@ -251,7 +249,6 @@ alexandria-hermes context doctor-rag
 alexandria-hermes --json memory-compacts current
 alexandria-hermes memory-compacts list --limit 10
 alexandria-hermes --json librarian ask "Find reusable FastAPI dependency-injection context"
-alexandria-hermes --json minio scan --limit 24
 alexandria-hermes mcp serve
 ```
 
@@ -315,7 +312,7 @@ Primary surfaces:
 
 ---
 
-## OpenAI, MINIO, and MCP
+## OpenAI, Codex OAuth, and MCP
 
 ### OpenAI / Codex providers
 
@@ -327,17 +324,6 @@ Supported provider paths:
 - `OPENAI_CODEX` provider with ChatGPT/Codex OAuth device authorization
 
 Provider secrets are stored only in backend provider-secret storage. Browser state and public config examples do not contain access tokens or refresh tokens. Live provider calls require configured credentials and an operator key.
-
-### MINIO
-
-MINIO is optional. It is intended for teams that already keep skills, prompts, or source files in object storage.
-
-Recommended model:
-
-- MINIO keeps originals
-- Alexandria DB stores searchable metadata, classification, folder placement, and object location
-- users scan candidates before importing
-- imports remain reviewable and idempotent
 
 ### MCP
 

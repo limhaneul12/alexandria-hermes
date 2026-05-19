@@ -10,7 +10,6 @@ class ProviderType(StrEnum):
 
     OPENAI = "OPENAI"
     OPENAI_CODEX = "OPENAI_CODEX"
-    MINIO = "MINIO"
 
 
 class AuthType(StrEnum):

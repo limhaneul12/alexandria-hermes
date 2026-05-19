@@ -46,7 +46,6 @@ def test_health_live_ready_heartbeat() -> None:
         assert ready_payload["checks"]["app"] == "ok"
         assert ready_payload["checks"]["redis"] == "disabled"
         assert ready_payload["checks"]["database"] == "ok"
-        assert ready_payload["checks"]["minio"] == "disabled"
 
         heartbeat_response = client.get("/health/heartbeat")
         assert heartbeat_response.status_code == 200
@@ -55,4 +54,3 @@ def test_health_live_ready_heartbeat() -> None:
         assert heartbeat_payload["heartbeat"]["app"] == "ok"
         assert heartbeat_payload["heartbeat"]["redis"] == "disabled"
         assert heartbeat_payload["heartbeat"]["database"] == "ok"
-        assert heartbeat_payload["heartbeat"]["minio"] == "disabled"

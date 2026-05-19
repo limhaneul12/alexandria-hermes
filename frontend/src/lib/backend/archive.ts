@@ -6,8 +6,6 @@ import type {
   CategoryNode,
   CreatedByType,
   DashboardDTO,
-  ExternalArchiveCandidateDTO,
-  ExternalArchiveImportResultDTO,
   ItemStatus,
   ItemType,
   LibraryDTO,
@@ -97,26 +95,6 @@ type BackendCategoryPopularity = {
   count: number;
 };
 
-type BackendExternalArchiveCandidate = {
-  id: string;
-  provider_id: string;
-  bucket: string;
-  object_key: string;
-  title: string;
-  summary: string;
-  content_preview: string;
-  item_type: ItemType;
-  tags: string[];
-  details: Record<string, unknown>;
-  confidence: number;
-  needs_review: boolean;
-};
-
-type BackendExternalArchiveImportResult = {
-  imported_count: number;
-  skipped_count: number;
-  item_ids: string[];
-};
 
 const VISIBLE_ITEM_TYPES = new Set<ItemType>(["SKILL", "PROMPT"]);
 
@@ -310,34 +288,6 @@ function toCategoryDTO(category: BackendCategory & { created_at?: string; update
   };
 }
 
-function toExternalArchiveCandidateDTO(
-  candidate: BackendExternalArchiveCandidate,
-): ExternalArchiveCandidateDTO {
-  return {
-    id: candidate.id,
-    providerId: candidate.provider_id,
-    bucket: candidate.bucket,
-    objectKey: candidate.object_key,
-    title: candidate.title,
-    summary: candidate.summary,
-    contentPreview: candidate.content_preview,
-    itemType: candidate.item_type,
-    tags: candidate.tags,
-    details: candidate.details,
-    confidence: candidate.confidence,
-    needsReview: candidate.needs_review,
-  };
-}
-
-function toExternalArchiveImportResultDTO(
-  result: BackendExternalArchiveImportResult,
-): ExternalArchiveImportResultDTO {
-  return {
-    importedCount: result.imported_count,
-    skippedCount: result.skipped_count,
-    itemIds: result.item_ids,
-  };
-}
 
 function toUsageRecordDTO(usage: BackendUsage): LibraryUsageRecordDTO {
   return {
@@ -433,19 +383,13 @@ function usageTrend(usages: BackendUsage[]) {
 }
 
 async function loadArchiveContext() {
-  const [dbItems, minioItems, categories, popular, recent] = await Promise.all([
+  const [dbItems, categories, popular, recent] = await Promise.all([
     backendFetch<BackendItem[]>("/library/items?limit=200"),
-    backendFetch<BackendItem[]>("/archive/minio/library/items?limit=200").catch(
-      (error: unknown) => {
-        if (error instanceof BackendRequestError) return [];
-        throw error;
-      },
-    ),
     backendFetch<BackendCategory[]>("/library/categories/tree"),
     backendFetch<BackendPopular[]>("/library/usage/popular?limit=100"),
     backendFetch<BackendUsage[]>("/library/usage/recent?limit=200"),
   ]);
-  const items = [...dbItems, ...minioItems].filter(isVisibleItem);
+  const items = dbItems.filter(isVisibleItem);
   const categoriesById = buildCategoryLookup(categories);
   const usageCounts = new Map(popular.map((entry) => [entry.item_id, entry.count]));
   const recentUsage = new Map(recent.map((entry) => [entry.item_id, entry.used_at]));
@@ -546,30 +490,6 @@ function isVisibleSearchHit(item: BackendSearchHit): boolean {
   return item.item_type === "SKILL" || item.item_type === "PROMPT";
 }
 
-export async function loadExternalArchiveCandidatesFromBackend(
-  limit = 48,
-): Promise<ExternalArchiveCandidateDTO[]> {
-  const boundedLimit = Math.min(Math.max(limit, 1), 1000);
-  const candidates = await backendFetch<BackendExternalArchiveCandidate[]>(
-    `/archive/minio/import-candidates?limit=${boundedLimit}`,
-  );
-  return candidates.map(toExternalArchiveCandidateDTO);
-}
-
-export async function importExternalArchiveCandidatesInBackend(
-  limit = 48,
-): Promise<ExternalArchiveImportResultDTO> {
-  const boundedLimit = Math.min(Math.max(limit, 1), 1000);
-  const result = await backendFetch<BackendExternalArchiveImportResult>(
-    "/archive/minio/import",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ limit: boundedLimit }),
-    },
-  );
-  return toExternalArchiveImportResultDTO(result);
-}
 
 export async function loadDashboardFromBackend(): Promise<DashboardDTO> {
   const [
@@ -629,16 +549,6 @@ async function loadItemCategory(item: BackendItem): Promise<BackendCategory | nu
   });
 }
 
-async function loadMinioItemById(skillId: string): Promise<BackendItem | null> {
-  if (!skillId.startsWith("minio:")) return null;
-  const minioItems = await backendFetch<BackendItem[]>("/archive/minio/library/items?limit=1000").catch(
-    (error: unknown) => {
-      if (error instanceof BackendRequestError) return [];
-      throw error;
-    },
-  );
-  return minioItems.find((item) => item.id === skillId) ?? null;
-}
 
 export async function loadLibraryItemDetailFromBackend(skillId: string): Promise<LibraryItemDetailDTO | null> {
   const encodedSkillId = encodeURIComponent(skillId);
@@ -646,11 +556,9 @@ export async function loadLibraryItemDetailFromBackend(skillId: string): Promise
     if (error instanceof BackendRequestError && error.status === 404) return null;
     throw error;
   });
-  const item = persistedItem ?? await loadMinioItemById(skillId);
+  const item = persistedItem;
   if (!item) return null;
-  const usagePromise = item.id.startsWith("minio:")
-    ? Promise.resolve<BackendUsage[]>([])
-    : backendFetch<BackendUsage[]>(`/library/usage/library/items/${encodedSkillId}`);
+  const usagePromise = backendFetch<BackendUsage[]>(`/library/usage/library/items/${encodedSkillId}`);
   const [usage, category] = await Promise.all([
     usagePromise,
     loadItemCategory(item),

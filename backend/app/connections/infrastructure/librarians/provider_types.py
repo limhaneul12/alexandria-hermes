@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
 
-SUPPORTED_SDK_PROVIDER_TYPES = frozenset({ProviderType.OPENAI, ProviderType.MINIO})
+SUPPORTED_SDK_PROVIDER_TYPES = frozenset({ProviderType.OPENAI})
 
 
 def parse_provider_type(value: ProviderType | str) -> ProviderType | None:
