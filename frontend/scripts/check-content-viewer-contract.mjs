@@ -5,9 +5,12 @@ const viewer = readFileSync(new URL("../src/components/content/content-viewer.ts
 const markdown = readFileSync(new URL("../src/components/content/markdown-content.tsx", import.meta.url), "utf8");
 const contextDetail = readFileSync(new URL("../src/components/context/context-detail-client.tsx", import.meta.url), "utf8");
 const skillDetail = readFileSync(new URL("../src/components/skill/skill-detail-client.tsx", import.meta.url), "utf8");
+const i18n = readFileSync(new URL("../src/lib/i18n.ts", import.meta.url), "utf8");
 
-assert.match(viewer, /원본보기 Raw/, "ContentViewer must expose raw source label");
-assert.match(viewer, /보기/, "ContentViewer must expose rendered label");
+assert.match(viewer, /rawView/, "ContentViewer must expose raw source label");
+assert.match(viewer, /renderedView/, "ContentViewer must expose rendered label");
+assert.match(i18n, /rawView:\s*"원본 보기"/, "Korean copy must include raw source label");
+assert.match(i18n, /rawView:\s*"Raw view"/, "English copy must include raw source label");
 assert.doesNotMatch(`${viewer}\n${markdown}`, /dangerouslySetInnerHTML/, "ContentViewer must not use unsafe HTML injection");
 assert.match(markdown, /```/, "MarkdownContent must parse fenced code blocks");
 assert.match(markdown, /role|list-disc|list-decimal/, "MarkdownContent must render list-like markdown structures");
