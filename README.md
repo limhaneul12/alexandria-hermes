@@ -77,15 +77,15 @@ If an agent is installing this for you, it should ask which runtime mode you wan
 
 ### Product demo media
 
-These demo assets use safe local demo records to show populated Context Vault, Memory Compact, RAG Inspector, and Librarian Chat flows.
+These demo assets use safe local demo records to show populated Context Vault, Memory Compact, and Librarian Chat flows.
 
 | Context Vault flow | Memory Compacts flow |
 | --- | --- |
 | ![Context Vault flow](./docs/assets/demo/context-vault-flow.gif) | ![Memory Compacts flow](./docs/assets/demo/memory-compacts-flow.gif) |
 
-| RAG Inspector flow | Librarian Chat flow |
-| --- | --- |
-| ![RAG Inspector flow](./docs/assets/demo/rag-inspector-flow.gif) | ![Librarian Chat flow](./docs/assets/demo/librarian-chat-flow.gif) |
+| Librarian Chat flow |
+| --- |
+| ![Librarian Chat flow](./docs/assets/demo/librarian-chat-flow.gif) |
 
 To refresh real browser recordings for these flows, run the backend/frontend with safe demo data, install the pinned Playwright browser once, then record from the frontend package:
 
@@ -107,7 +107,7 @@ Working surfaces include:
 
 - FastAPI backend modules for archive, connections/providers, librarian, library, memory, retrieval, MCP, and platform runtime
 - SQLite-backed local storage with Alembic migrations under `backend/migrations/`
-- Next.js frontend pages for dashboard, library browsing/creation/detail, Context Vault, Memory Compacts, librarian chat, settings, providers, capture review, and RAG inspection
+- Next.js frontend pages for dashboard, library browsing/detail, Context Vault, Memory Compacts, librarian chat, settings, and provider/librarian configuration
 - native Typer CLI command tree:
   - `health`, `folders`, `library`, `skills`, `prompts`, `context`, `memory-compacts`, `hermes`, `librarian`, `usage`, `mcp`
 - MCP server tooling over the same backend contracts
@@ -192,7 +192,7 @@ MD
   --limit 3
 ```
 
-Expected result: the recall response includes a Context Pack referencing the saved context. In the UI, check `/contexts` for the saved entry and `/rag-inspector` for retrieval health.
+Expected result: the recall response includes a Context Pack referencing the saved context. In the UI, check `/contexts` for the saved entry; use `context doctor-rag` for retrieval health diagnostics.
 
 ### Full Stack
 
@@ -306,7 +306,7 @@ Supported behaviors:
 Primary surfaces:
 
 - backend routes under `/memory/contexts` and `/memory/compacts` plus frontend proxy routes under `/api/library/contexts` and `/api/library/compacts`
-- frontend pages `/contexts`, `/contexts/{contextId}`, `/memory-compacts`, `/memory-compacts/{compactId}`, `/rag-inspector`
+- frontend pages `/contexts`, `/contexts/{contextId}`, `/memory-compacts`, and `/memory-compacts/{compactId}`
 - CLI commands under `alexandria-hermes context ...` and `alexandria-hermes memory-compacts ...`
 - MCP server via `alexandria-hermes mcp serve`
 

@@ -33,7 +33,6 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_librarian_oauth_status,
     alexandria_librarian_route_preview,
     alexandria_list_memory_compact_artifacts,
-    alexandria_list_memory_compacts,
     alexandria_rag_status,
     alexandria_record_usage,
     alexandria_search,
@@ -119,7 +118,6 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
     assert iscoroutinefunction(alexandria_librarian_oauth_refresh)
     assert iscoroutinefunction(alexandria_librarian_route_preview)
     assert iscoroutinefunction(alexandria_list_memory_compact_artifacts)
-    assert iscoroutinefunction(alexandria_list_memory_compacts)
     assert iscoroutinefunction(alexandria_search_library)
     assert iscoroutinefunction(alexandria_search_skills)
     assert iscoroutinefunction(alexandria_search_prompts)
@@ -487,7 +485,7 @@ def test_mcp_memory_compact_tools_map_to_selected_artifact_endpoints() -> None:
     client, calls = _client()
 
     async def run_tools() -> None:
-        await alexandria_list_memory_compacts(
+        await alexandria_list_memory_compact_artifacts(
             client,
             project="alexandria-hermes",
             status=MemoryCompactStatus.CURRENT,
@@ -682,7 +680,6 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_capture_context",
         "alexandria_capture_harness",
         "alexandria_list_memory_compact_artifacts",
-        "alexandria_list_memory_compacts",
         "alexandria_get_current_memory_compact",
         "alexandria_get_memory_compact",
         "alexandria_prepare_compact",
@@ -703,3 +700,4 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_rag_status",
     } <= names
     assert "alexandria_request_skill_acquisition" not in names
+    assert "alexandria_list_memory_compacts" not in names

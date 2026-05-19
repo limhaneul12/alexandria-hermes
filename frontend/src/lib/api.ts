@@ -9,9 +9,7 @@ import type {
   ContextAccessEventCreateDTO,
   ContextAccessEventDTO,
   ContextListDTO,
-  ContextPackDTO,
   ContextPrepareCompactDTO,
-  ContextSearchDTO,
   DashboardDTO,
   LibrarianOAuthStartDTO,
   LibrarianOAuthStatusDTO,
@@ -201,13 +199,6 @@ export function fetchContextChunks(contextId: string) {
 export function prepareCompact(payload: ContextPrepareCompactDTO) {
   return fetchJson<ContextDTO>(
     "/api/library/contexts/prepare-compact",
-    jsonInit("POST", payload),
-  );
-}
-
-export function searchContexts(payload: ContextSearchDTO) {
-  return fetchJson<ContextPackDTO>(
-    "/api/library/contexts/search",
     jsonInit("POST", payload),
   );
 }

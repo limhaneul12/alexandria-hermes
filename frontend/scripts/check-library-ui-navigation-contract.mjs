@@ -20,9 +20,10 @@ const backendLibraryDoc = readFileSync(new URL("../../docs/backend_lib.md", impo
 for (const route of ["/library/skills", "/library/prompts", "/librarian/chat"]) {
   assert.match(sidebar, new RegExp(route.replaceAll("/", "\\/")), `sidebar must expose ${route}`);
 }
-for (const route of ["/library/skills/new", "/library/prompts/new", "/capture-review"]) {
+for (const route of ["/library/skills/new", "/library/prompts/new", "/capture-review", "/rag-inspector"]) {
   assert.doesNotMatch(sidebar, new RegExp(route.replaceAll("/", "\\/")), `sidebar must not expose removed route ${route}`);
 }
+assert.doesNotMatch(sidebar, /ragInspector|active:\s*["']rag["']/, "sidebar must not expose removed RAG Inspector UI");
 assert.match(sidebar, /librarianChat/, "sidebar must expose 사서와 얘기하기 via i18n key");
 for (const removed of ["favorites", "recommendations", "categories", "recent"]) {
   assert.doesNotMatch(sidebar, new RegExp(`labelKey:\\s*["']${removed}["']`), `${removed} must not remain as a top-level library nav entry`);
@@ -43,8 +44,12 @@ for (const file of [
   "../src/app/library/skills/new/page.tsx",
   "../src/app/library/prompts/new/page.tsx",
   "../src/app/capture-review/page.tsx",
+  "../src/app/rag-inspector/page.tsx",
+  "../src/components/context/rag-inspector-client.tsx",
   "../src/app/api/storage/minio/import-candidates/route.ts",
   "../src/app/api/storage/minio/import/route.ts",
+  "../../docs/plans/2026-05-18-harness-contract.md",
+  "../../docs/plans/2026-05-18-workflow-removal-harness-and-async-librarian-skill-acquisition.md",
 ]) {
   assert.equal(existsSync(new URL(file, import.meta.url)), false, `${file} must stay deleted`);
 }
@@ -73,7 +78,7 @@ for (const [label, source, removedValues] of [
   [
     "context recall guide",
     contextRecallGuide,
-    ["/capture-review"],
+    ["/capture-review", "/rag-inspector"],
   ],
   [
     "backend library docs",

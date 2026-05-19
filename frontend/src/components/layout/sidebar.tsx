@@ -8,7 +8,6 @@ import {
   BookOpen,
   Bot,
   Code2,
-  Gauge,
   Home,
   Library,
   ScrollText,
@@ -28,8 +27,7 @@ type ActiveTarget =
   | "librarians"
   | "settings"
   | "contexts"
-  | "memory-compacts"
-  | "rag";
+  | "memory-compacts";
 
 type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active: ActiveTarget };
 type NavSection = { titleKey: TranslationKey | "libraryStatic" | "memoryStatic"; items: NavItem[] };
@@ -49,7 +47,6 @@ const sections: NavSection[] = [
     items: [
       { labelKey: "contextVault", href: "/contexts", icon: ScrollText, active: "contexts" },
       { labelKey: "memoryCompacts", href: "/memory-compacts", icon: BookOpen, active: "memory-compacts" },
-      { labelKey: "ragInspector", href: "/rag-inspector", icon: Gauge, active: "rag" },
     ],
   },
   {
@@ -84,7 +81,6 @@ function isActive(pathname: string, active: ActiveTarget) {
   if (active === "librarians") return pathname === "/settings/librarians";
   if (active === "contexts") return pathname.startsWith("/contexts");
   if (active === "memory-compacts") return pathname.startsWith("/memory-compacts");
-  if (active === "rag") return pathname === "/rag-inspector";
   return false;
 }
 

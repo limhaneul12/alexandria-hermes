@@ -402,18 +402,6 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             api_client, project, status, limit, offset
         )
 
-    @server.tool(name="alexandria_list_memory_compacts")
-    async def _tool_list_memory_compacts(
-        project: str | None = None,
-        status: MemoryCompactStatus | None = None,
-        limit: int = 20,
-        offset: int = 0,
-    ) -> JSONValue:
-        """Deprecated compatibility alias for listing Memory Compact artifacts."""
-        return await backend_tool_gateway.alexandria_list_memory_compacts(
-            api_client, project, status, limit, offset
-        )
-
     @server.tool(name="alexandria_get_current_memory_compact")
     async def _tool_get_current_memory_compact(
         project: str | None = None,

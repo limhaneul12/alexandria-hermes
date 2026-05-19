@@ -100,23 +100,6 @@ const flows = [
     },
   },
   {
-    name: "rag-inspector-flow",
-    path: "/rag-inspector",
-    steps: async (page) => {
-      await fillFirstVisible(page, "main input[name='rag-query']", "populated OSS screenshots Alexandria-Hermes demo");
-      await clickFirstVisible(page, [
-        "main button:has-text('Inspect')",
-        "main button:has-text('Run')",
-        "main button:has-text('Search')",
-        "main button:has-text('실행')",
-        "main button:has-text('검색')",
-        "main button[type='submit']",
-      ]);
-      await page.waitForLoadState("networkidle").catch(() => undefined);
-      await page.waitForTimeout(2_000);
-    },
-  },
-  {
     name: "librarian-chat-flow",
     path: "/librarian/chat",
     steps: async (page) => {

@@ -28,7 +28,7 @@ from app.mcp_server.mcp_protocol_enums import McpContextTag
 from app.mcp_server.tools.memory_compact_tools import (
     alexandria_get_current_memory_compact as _alexandria_get_current_memory_compact,
     alexandria_get_memory_compact as _alexandria_get_memory_compact,
-    alexandria_list_memory_compact_artifacts,
+    alexandria_list_memory_compact_artifacts as _alexandria_list_memory_compact_artifacts,
 )
 from app.memory.domain.event_enum.context_enums import (
     ContextImportance,
@@ -36,9 +36,6 @@ from app.memory.domain.event_enum.context_enums import (
     ContextScope,
     ContextSourceType,
     RagStrategy,
-)
-from app.memory.domain.event_enum.memory_compact_enums import (
-    MemoryCompactStatus,
 )
 from app.memory.interface.schemas.context.context_schema import (
     ContextCaptureRequest,
@@ -61,6 +58,7 @@ DEFAULT_LIBRARY_SEARCH_LIMIT = 20
 
 alexandria_get_current_memory_compact = _alexandria_get_current_memory_compact
 alexandria_get_memory_compact = _alexandria_get_memory_compact
+alexandria_list_memory_compact_artifacts = _alexandria_list_memory_compact_artifacts
 
 
 async def alexandria_search(
@@ -306,35 +304,6 @@ async def alexandria_capture_harness(
     )
     payload = _schema_payload(request)
     response = await client.post("/memory/contexts/harnesses/capture", payload)
-    return response
-
-
-async def alexandria_list_memory_compacts(
-    client: AlexandriaApiClient,
-    project: str | None = None,
-    status: MemoryCompactStatus | None = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> JSONValue:
-    """Deprecated compatibility alias for listing Memory Compact artifacts.
-
-    Args:
-        client: Backend HTTP client.
-        project: Optional project filter.
-        status: Optional lifecycle status filter.
-        limit: Maximum number of rows to return.
-        offset: Number of rows to skip.
-
-    Returns:
-        Backend Memory Compact list response.
-    """
-    response = await alexandria_list_memory_compact_artifacts(
-        client=client,
-        project=project,
-        status=status,
-        limit=limit,
-        offset=offset,
-    )
     return response
 
 
