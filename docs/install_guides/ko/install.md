@@ -152,7 +152,7 @@ alexandria-hermes --base-url "$ALEXANDRIA_API_URL" --json health
 alexandria-hermes --json hermes doctor --hermes-home "$HERMES_HOME" --api-url "$ALEXANDRIA_API_URL"
 ```
 
-그 다음 Hermes 세션에서 Alexandria MCP tool이 보이는지 확인한다. 보통 `mcp_alexandria_*` 형태로 노출된다.
+그 다음 Hermes 세션에서 Alexandria MCP tool이 보이는지 확인한다. 보통 `mcp_alexandria_*` 형태로 노출된다. 이전 프로젝트 기억이 필요하면 Hermes는 로컬/현재 컨텍스트를 먼저 보고, 그다음 current Memory Compact, Context Vault recall/RAG 순서로 탐색해야 한다.
 
 ## 7. Policy on/off
 

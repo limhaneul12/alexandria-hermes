@@ -107,4 +107,5 @@ class ApplicationContainer(containers.DeclarativeContainer):
         provider_secret_repo=connections.provider_secret_repo,
         skill_service=library.skill_service,
         context_service=memory.context_service,
+        memory_compact_service=memory.memory_compact_service,
     )

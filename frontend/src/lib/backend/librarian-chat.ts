@@ -1,25 +1,24 @@
 import { backendFetch } from "@/lib/backend/client";
 import { askLibrarianInBackend } from "@/lib/backend/librarians";
 import {
-  createMemoryCompactInBackend,
+  loadCurrentMemoryCompactFromBackend,
   loadMemoryCompactsFromBackend,
 } from "@/lib/backend/memory-compacts";
 import {
   loadContextsFromBackend,
-  prepareCompactInBackend,
   searchContextsInBackend,
 } from "@/lib/backend/contexts";
 import type {
-  ContextDTO,
   ItemStatus,
   ItemType,
   LibrarianChatRequestDTO,
   LibrarianChatResponseDTO,
   LibrarianDirectHitDTO,
   LibrarianSourceRefDTO,
-  MemoryCompactCreateSourceRefDTO,
   MemoryCompactDTO,
 } from "@/types/library";
+
+type LibrarianChatTarget = NonNullable<LibrarianChatRequestDTO["targets"]>[number];
 
 type BackendSearchHit = {
   id: string;
@@ -52,6 +51,7 @@ type BackendCategory = {
 type DirectSearchBucket = {
   hits: LibrarianDirectHitDTO[];
   totalCount: number;
+  compacts?: MemoryCompactDTO[];
 };
 
 const EMPTY_DIRECT_SEARCH_BUCKET: DirectSearchBucket = {
@@ -60,17 +60,31 @@ const EMPTY_DIRECT_SEARCH_BUCKET: DirectSearchBucket = {
 };
 
 const LIBRARIAN_ACTION_PROJECT = "alexandria-hermes";
+const DEFAULT_LIBRARIAN_CHAT_MODE = "SEARCH_AND_DELEGATE";
+const DEFAULT_LIBRARIAN_CHAT_TARGETS: LibrarianChatTarget[] = [
+  "SKILL",
+  "PROMPT",
+  "CONTEXT",
+  "MEMORY_COMPACT",
+];
 
 const PLATFORM_TOOL_INSTRUCTIONS = [
   "You are connected to Alexandria-Hermes.",
   "Use the provided direct search hits and source refs first.",
+  "The backend injects the current Memory Compact into the librarian knowledge packet when available; prefer it before broad recall.",
   "If a user asks count/list/inventory questions, answer with the total count first and show only the top 5 representative items by default.",
   "Do not expose raw API routes, backend endpoints, frontend paths, headers, or implementation-only identifiers unless the user explicitly asks for API details.",
   "Guide continuation in natural product language, such as asking to show more results or opening the relevant library view.",
   "If additional lookup is needed, use available Alexandria CLI/MCP/search tools where exposed by the runtime.",
   "Do not claim there is no platform access unless a tool/search call failed.",
-  "Report which search targets and queries were used without exposing raw routes.",
+  "Do not claim a durable platform action was saved unless a completed action result is provided.",
+  "Report automatic evidence collection in natural product language without exposing raw routes.",
 ].join("\n");
+
+const INVENTORY_QUESTION_PATTERN =
+  /몇\s*개|몇\s*건|개수|건수|총\s*몇|전체\s*몇|목록|리스트|대표\s*목록|얼마나|현황|상태|inventory|count|how many|list|status/;
+const MEMORY_STATUS_TERM_PATTERN =
+  /장기\s*기억|기억|메모리|memory|memory\s*compact|compact|compacts|컨텍스트|context\s*vault/i;
 
 function clampLimit(value: number) {
   return Math.min(Math.max(Math.trunc(value || 5), 1), 10);
@@ -90,6 +104,20 @@ function sourceRefFromHit(hit: LibrarianDirectHitDTO): LibrarianSourceRefDTO {
     detailPath: hit.detailPath,
     preview: hit.preview,
   };
+}
+
+function directHitKey(hit: Pick<LibrarianDirectHitDTO, "id" | "sourceType">): string {
+  return `${hit.sourceType}:${hit.id}`;
+}
+
+function uniqueDirectHits(hits: LibrarianDirectHitDTO[]): LibrarianDirectHitDTO[] {
+  const seen = new Set<string>();
+  return hits.filter((hit) => {
+    const key = directHitKey(hit);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function slugify(value: string): string {
@@ -119,7 +147,7 @@ async function categorySlugForHit(
 
 async function searchLibraryTargets(
   prompt: string,
-  targets: LibrarianChatRequestDTO["targets"],
+  targets: LibrarianChatTarget[],
   limit: number,
 ): Promise<DirectSearchBucket> {
   const itemTypes = targets.filter((target) => target === "SKILL" || target === "PROMPT");
@@ -151,12 +179,16 @@ async function searchLibraryTargets(
 
 function isInventoryQuestion(prompt: string): boolean {
   const normalized = prompt.toLowerCase();
-  return /몇\s*개|개수|총\s*몇|전체\s*몇|목록|리스트|대표\s*목록|inventory|count|how many|list/.test(normalized);
+  return INVENTORY_QUESTION_PATTERN.test(normalized);
+}
+
+function isMemoryStatusQuestion(prompt: string): boolean {
+  return MEMORY_STATUS_TERM_PATTERN.test(prompt) && isInventoryQuestion(prompt);
 }
 
 async function searchContextTargets(
   prompt: string,
-  targets: LibrarianChatRequestDTO["targets"],
+  targets: LibrarianChatTarget[],
   limit: number,
   inventoryMode: boolean,
 ): Promise<DirectSearchBucket> {
@@ -192,7 +224,7 @@ async function searchContextTargets(
 }
 
 async function searchMemoryCompactTargets(
-  targets: LibrarianChatRequestDTO["targets"],
+  targets: LibrarianChatTarget[],
   limit: number,
 ): Promise<DirectSearchBucket> {
   if (!targets.includes("MEMORY_COMPACT")) return EMPTY_DIRECT_SEARCH_BUCKET;
@@ -205,7 +237,7 @@ async function searchMemoryCompactTargets(
     detailPath: `/memory/compacts/${compact.id}`,
     score: compact.status === "CURRENT" ? 1 : 0.5,
   }));
-  return { hits, totalCount: compacts.total };
+  return { hits, totalCount: compacts.total, compacts: compacts.items };
 }
 
 function sourceTypeLabel(sourceType: LibrarianDirectHitDTO["sourceType"]): string {
@@ -216,7 +248,7 @@ function sourceTypeLabel(sourceType: LibrarianDirectHitDTO["sourceType"]): strin
   return "라이브러리 항목";
 }
 
-function targetLabel(target: LibrarianChatRequestDTO["targets"][number]): string {
+function targetLabel(target: LibrarianChatTarget): string {
   if (target === "SKILL") return "스킬";
   if (target === "PROMPT") return "프롬프트";
   if (target === "CONTEXT") return "컨텍스트";
@@ -224,7 +256,7 @@ function targetLabel(target: LibrarianChatRequestDTO["targets"][number]): string
   return "라이브러리 항목";
 }
 
-function modeLabel(mode: LibrarianChatRequestDTO["mode"]): string {
+function modeLabel(mode: NonNullable<LibrarianChatRequestDTO["mode"]>): string {
   if (mode === "DIRECT_SEARCH") return "직접 검색";
   if (mode === "DELEGATE") return "사서 위임";
   return "검색 후 사서 위임";
@@ -256,7 +288,7 @@ function summarizeHitCounts(hits: LibrarianDirectHitDTO[]): string {
 
 function directSearchAnswer(hits: LibrarianDirectHitDTO[], totalCount: number, prompt: string) {
   if (totalCount === 0) {
-    return `# 사서 검색 결과\n\n질문: ${prompt}\n\n직접 검색 후보를 찾지 못했습니다. 검색어를 바꾸거나 사서 위임 모드를 사용하세요.`;
+    return `# 사서 검색 결과\n\n질문: ${prompt}\n\n직접 검색 후보를 찾지 못했습니다. 사서에게 더 넓은 근거 수집을 맡겨 보세요.`;
   }
   const visibleHits = hits.slice(0, 5);
   const hiddenCount = Math.max(totalCount - visibleHits.length, 0);
@@ -272,6 +304,99 @@ function directSearchAnswer(hits: LibrarianDirectHitDTO[], totalCount: number, p
     "## 목록",
     ...visibleHits.map((hit, index) => `${index + 1}. **${hit.title}** (${sourceTypeLabel(hit.sourceType)}) — ${hit.preview}`),
     ...(hiddenCount > 0 ? ["", `나머지 ${hiddenCount}개는 관련 라이브러리에서 검색 결과를 더 펼쳐 확인할 수 있어요. 원하면 “전체 목록 보여줘”라고 말해 주세요.`] : []),
+  ].join("\n");
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Seoul",
+  }).format(new Date(value));
+}
+
+function relativeAge(value: string): string {
+  const diffMs = Math.max(Date.now() - new Date(value).getTime(), 0);
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  if (diffMs < hourMs) return `${Math.max(Math.floor(diffMs / minuteMs), 0)}분 전`;
+  if (diffMs < dayMs) return `${Math.floor(diffMs / hourMs)}시간 전`;
+  return `${Math.floor(diffMs / dayMs)}일 전`;
+}
+
+function compactStatusLabel(status: MemoryCompactDTO["status"]): string {
+  if (status === "CURRENT") return "현재 사용 중";
+  if (status === "ARCHIVED") return "보관됨";
+  return "이전 버전";
+}
+
+function compactSummaryLine(compact: MemoryCompactDTO): string {
+  const project = compact.project ?? "default";
+  return [
+    `- 현재 compact: ${compactStatusLabel(compact.status)} · ${project}`,
+    `- coverage: ${formatDateTime(compact.coveredFrom)} ~ ${formatDateTime(compact.coveredTo)}`,
+    `- 마지막 업데이트: ${formatDateTime(compact.updatedAt)} (${relativeAge(compact.updatedAt)})`,
+    `- source refs: ${compact.sourceRefs.length}개`,
+  ].join("\n");
+}
+
+function representativeCurrentCompact(
+  currentCompact: MemoryCompactDTO | null,
+  compactBucket: DirectSearchBucket,
+): MemoryCompactDTO | null {
+  return currentCompact
+    ?? compactBucket.compacts?.find((compact) => compact.status === "CURRENT")
+    ?? compactBucket.compacts?.[0]
+    ?? null;
+}
+
+function platformInventoryAnswer(
+  prompt: string,
+  libraryBucket: DirectSearchBucket,
+  contextBucket: DirectSearchBucket,
+  compactBucket: DirectSearchBucket,
+  currentCompact: MemoryCompactDTO | null,
+  directHits: LibrarianDirectHitDTO[],
+): string {
+  const visibleHits = directHits.slice(0, 5);
+  const hiddenCount = Math.max(
+    libraryBucket.totalCount + contextBucket.totalCount + compactBucket.totalCount
+      - visibleHits.length,
+    0,
+  );
+  const compact = representativeCurrentCompact(currentCompact, compactBucket);
+  return [
+    "# 사서 답변",
+    "",
+    `질문: ${prompt}`,
+    "",
+    "플랫폼에서 바로 확인한 기억 현황입니다.",
+    "",
+    "## 현재 기억 현황",
+    `- Context Vault 장기기억: ${contextBucket.totalCount}건`,
+    `- Memory Compacts: ${compactBucket.totalCount}건`,
+    `- Library skill/prompt 후보: ${libraryBucket.totalCount}건`,
+    "",
+    "## Current Memory Compact",
+    compact
+      ? compactSummaryLine(compact)
+      : "- 현재 compact를 찾지 못했습니다. 아직 CURRENT compact가 없을 수 있습니다.",
+    ...(visibleHits.length
+      ? [
+          "",
+          "## 대표 항목",
+          ...visibleHits.map(
+            (hit, index) => `${index + 1}. **${hit.title}** (${sourceTypeLabel(hit.sourceType)}) — ${hit.preview}`,
+          ),
+        ]
+      : []),
+    ...(hiddenCount > 0
+      ? [
+          "",
+          `나머지 ${hiddenCount}개는 관련 기억/라이브러리 화면에서 더 펼쳐 확인할 수 있어요.`,
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -296,32 +421,6 @@ function delegateInventoryContext(hits: LibrarianDirectHitDTO[], totalCount: num
   return lines.join("\n");
 }
 
-function isMemoryCompactAction(prompt: string): boolean {
-  const normalized = prompt.toLowerCase();
-  const mentionsCompact = /(?:memory|메모리|장기기억)(?:\s*(?:memory|메모리))?\s*comp(?:act|ect)|메모리\s*(?:컴팩트|컴팩|압축|요약)|장기기억\s*(?:컴팩트|컴팩|압축|요약)/.test(normalized);
-  const hasActionVerb = /해줘|해주세요|만들|생성|저장|압축|요약|create|save|prepare|run|execute/.test(normalized);
-  return mentionsCompact && hasActionVerb;
-}
-
-function compactCoverageWindow() {
-  const coveredTo = new Date();
-  const coveredFrom = new Date(coveredTo.getTime() - 60_000);
-  return {
-    coveredFrom: coveredFrom.toISOString(),
-    coveredTo: coveredTo.toISOString(),
-  };
-}
-
-function sourceRefFromContext(context: ContextDTO): LibrarianSourceRefDTO {
-  return {
-    sourceType: "CONTEXT",
-    sourceId: context.id,
-    title: context.title,
-    detailPath: `/memory/contexts/${context.id}`,
-    preview: context.summary,
-  };
-}
-
 function sourceRefFromCompact(compact: MemoryCompactDTO): LibrarianSourceRefDTO {
   return {
     sourceType: "MEMORY_COMPACT",
@@ -332,154 +431,65 @@ function sourceRefFromCompact(compact: MemoryCompactDTO): LibrarianSourceRefDTO 
   };
 }
 
-function directHitFromCompact(compact: MemoryCompactDTO): LibrarianDirectHitDTO {
-  const ref = sourceRefFromCompact(compact);
-  return {
-    id: compact.id,
-    sourceType: "MEMORY_COMPACT",
-    title: ref.title,
-    preview: ref.preview ?? "Memory Compact created by AI Librarian action.",
-    detailPath: ref.detailPath,
-    score: 1,
-  };
-}
-
-function compactCreateSourceRefs(
-  sourceRefs: LibrarianSourceRefDTO[],
-): MemoryCompactCreateSourceRefDTO[] {
-  const uniqueRefs = new Map<string, MemoryCompactCreateSourceRefDTO>();
-  for (const ref of sourceRefs) {
-    const key = `${ref.sourceType}:${ref.sourceId}`;
-    if (uniqueRefs.has(key)) continue;
-    uniqueRefs.set(key, {
-      sourceType: ref.sourceType,
-      sourceId: ref.sourceId,
-      title: ref.title,
-      detailPath: ref.detailPath,
-    });
+function toLibrarianSourceType(
+  sourceType: string,
+): LibrarianSourceRefDTO["sourceType"] | null {
+  if (
+    sourceType === "CONTEXT" ||
+    sourceType === "MEMORY_COMPACT" ||
+    sourceType === "LIBRARY_ITEM" ||
+    sourceType === "SKILL" ||
+    sourceType === "PROMPT"
+  ) {
+    return sourceType;
   }
-  return [...uniqueRefs.values()];
+  return null;
 }
 
-function memoryCompactActionAnswer({
-  prompt,
-  compact,
-  compactContext,
-  totalCount,
-  visibleHits,
-}: {
-  prompt: string;
-  compact: MemoryCompactDTO;
-  compactContext: ContextDTO;
-  totalCount: number;
-  visibleHits: LibrarianDirectHitDTO[];
-}) {
-  return [
-    "# 사서 작업 완료",
-    "",
-    `질문/명령: ${prompt}`,
-    "",
-    "## 수행한 기능",
-    "- 장기기억 Compact Context를 생성했습니다.",
-    "- 생성된 내용을 Memory Compact로 저장했습니다.",
-    `- Memory Compact 상태를 **${compact.status}**로 설정했습니다.`,
-    "",
-    "## 생성 결과",
-    `- Memory Compact: **${compact.project ? `Memory Compact · ${compact.project}` : "Memory Compact · default"}**`,
-    `- 연결된 source refs: **${compact.sourceRefs.length}개**`,
-    `- Compact Context: **${compactContext.title}**`,
-    "",
-    "## 포함한 근거",
-    `직접 검색으로 확인한 후보 총계는 ${totalCount}개입니다.`,
-    ...(visibleHits.length
-      ? [
-          "",
-          "상위 근거:",
-          ...visibleHits.map(
-            (hit, index) => `${index + 1}. **${hit.title}** (${sourceTypeLabel(hit.sourceType)}) — ${hit.preview}`,
-          ),
-        ]
-      : ["", "직접 검색 후보가 없어 이번 실행 기록 자체를 source ref로 묶었습니다."]),
-    "",
-    "이제 Memory Compacts 화면에서 방금 만든 요약본을 열어 확인할 수 있어요.",
-  ].join("\n");
-}
-
-function memoryCompactActionFailureAnswer(prompt: string) {
-  return [
-    "# 사서 작업 실패",
-    "",
-    `질문/명령: ${prompt}`,
-    "",
-    "Memory Compact 생성 작업을 실행했지만 저장까지 완료하지 못했습니다.",
-    "잠시 후 다시 실행하거나, 장기기억/Memory Compact 저장소 상태를 확인해 주세요.",
-  ].join("\n");
-}
-
-async function runMemoryCompactAction({
-  prompt,
-  directHits,
-  sourceRefs,
-  totalCount,
-}: {
-  prompt: string;
-  directHits: LibrarianDirectHitDTO[];
-  sourceRefs: LibrarianSourceRefDTO[];
-  totalCount: number;
-}) {
-  const visibleHits = directHits.slice(0, 5);
-  const compactContext = await prepareCompactInBackend({
-    project: LIBRARIAN_ACTION_PROJECT,
-    sourceAgent: "Alexandria UI Librarian",
-    currentGoal: `사서 실행형 요청: ${prompt}`,
-    completed: [
-      "사용자 요청을 실행형 Memory Compact 작업으로 분류했습니다.",
-      `직접 검색 후보 ${totalCount}개를 확인했습니다.`,
-      ...visibleHits.map(
-        (hit, index) => `근거 ${index + 1}: ${hit.title} (${sourceTypeLabel(hit.sourceType)})`,
-      ),
-    ],
-    inProgress: ["AI Librarian chat action에서 Memory Compact 저장을 수행했습니다."],
-    keyDecisions: [
-      "사서는 단순 답변뿐 아니라 명시적 실행형 요청을 안전한 플랫폼 작업으로 수행합니다.",
-      "생성된 Compact Context를 Memory Compact의 source ref로 연결합니다.",
-    ],
-    nextActions: ["Memory Compacts 화면에서 생성된 요약본을 검토합니다."],
-    risks: visibleHits.length
-      ? []
-      : ["직접 검색 후보가 없어 실행 기록 Context만 source ref로 연결했습니다."],
-  });
-  const compactContextRef = sourceRefFromContext(compactContext);
-  const sourceRefPayload = compactCreateSourceRefs([
-    compactContextRef,
-    ...sourceRefs,
-  ]);
-  const coverage = compactCoverageWindow();
-  const compact = await createMemoryCompactInBackend({
-    project: LIBRARIAN_ACTION_PROJECT,
-    coveredFrom: coverage.coveredFrom,
-    coveredTo: coverage.coveredTo,
-    markdownBody: compactContext.content,
-    status: "CURRENT",
-    sourceRefs: sourceRefPayload,
-  });
+function sourceRefFromCompactSourceRef(
+  ref: MemoryCompactDTO["sourceRefs"][number],
+): LibrarianSourceRefDTO | null {
+  const sourceType = toLibrarianSourceType(ref.sourceType);
+  if (!sourceType) return null;
   return {
-    answer: memoryCompactActionAnswer({
-      prompt,
-      compact,
-      compactContext,
-      totalCount,
-      visibleHits,
-    }),
-    compact,
-    compactContext,
-    directHit: directHitFromCompact(compact),
-    sourceRefs: [sourceRefFromCompact(compact), compactContextRef],
-    executionSummary: [
-      "작업 실행: Memory Compact 생성 완료",
-      `생성된 Memory Compact source refs: ${compact.sourceRefs.length}개`,
-    ],
+    sourceType,
+    sourceId: ref.sourceId,
+    title: ref.title,
+    detailPath: ref.detailPath,
+    preview: null,
   };
+}
+
+async function loadCurrentMemoryCompactForLibrarian(): Promise<MemoryCompactDTO | null> {
+  try {
+    return await loadCurrentMemoryCompactFromBackend(LIBRARIAN_ACTION_PROJECT);
+  } catch {
+    return null;
+  }
+}
+
+function currentCompactSourceRefs(
+  compact: MemoryCompactDTO,
+  sourceRefs: LibrarianSourceRefDTO[],
+): LibrarianSourceRefDTO[] {
+  return [
+    sourceRefFromCompact(compact),
+    ...compact.sourceRefs.flatMap((ref) => {
+      const sourceRef = sourceRefFromCompactSourceRef(ref);
+      return sourceRef ? [sourceRef] : [];
+    }),
+    ...sourceRefs,
+  ];
+}
+
+function uniqueSourceRefs(sourceRefs: LibrarianSourceRefDTO[]): LibrarianSourceRefDTO[] {
+  const seen = new Set<string>();
+  return sourceRefs.filter((ref) => {
+    const key = `${ref.sourceType}:${ref.sourceId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function delegationCompleted(response: NonNullable<LibrarianChatResponseDTO["askResponse"]>) {
@@ -487,18 +497,25 @@ function delegationCompleted(response: NonNullable<LibrarianChatResponseDTO["ask
     && response.delegates.some((delegate) => delegate.status === "COMPLETED");
 }
 
+function delegateStatusLabel(status: string): string {
+  if (status === "COMPLETED") return "완료";
+  if (status === "SKIPPED") return "건너뜀";
+  if (status === "FAILED") return "실패";
+  return "확인 필요";
+}
+
 function delegateFailureAnswer(response: NonNullable<LibrarianChatResponseDTO["askResponse"]>) {
   const delegateEvidence = response.delegates.length
     ? response.delegates
-        .map((delegate) => `- ${delegate.status}: ${delegate.summary}`)
+        .map((delegate) => `- ${delegateStatusLabel(delegate.status)}: ${delegate.summary}`)
         .join("\n")
-    : "- No delegate lanes returned.";
+    : "- 완료된 사서 위임 결과가 없습니다. 필요한 플랫폼 기억 조회는 직접 검색 결과로 답할 수 있습니다.";
   return [
-    "# 사서 delegate 미완료",
+    "# 사서 위임 결과 없음",
     "",
     response.recommendation,
     "",
-    "## Delegate evidence",
+    "## 확인한 내용",
     delegateEvidence,
   ].join("\n");
 }
@@ -553,33 +570,41 @@ export async function chatWithLibrarianInBackend(
   request: LibrarianChatRequestDTO,
 ): Promise<LibrarianChatResponseDTO> {
   const limit = clampLimit(request.limit);
-  const targets: LibrarianChatRequestDTO["targets"] = request.targets.length
+  const mode = request.mode ?? DEFAULT_LIBRARIAN_CHAT_MODE;
+  const targets = request.targets?.length
     ? request.targets
-    : ["SKILL", "PROMPT", "CONTEXT"];
+    : DEFAULT_LIBRARIAN_CHAT_TARGETS;
   const executionSummary = [
     `질문: ${request.prompt}`,
-    `실행 방식: ${modeLabel(request.mode)}`,
-    `검색 대상: ${targets.map(targetLabel).join(", ")}`,
+    `실행 방식: ${modeLabel(mode)}`,
+    `근거 수집: 자동 (${targets.map(targetLabel).join(", ")})`,
     selectedLibrarianLabel(request),
   ];
   const inventoryMode = isInventoryQuestion(request.prompt);
-  const searchBuckets = await Promise.all([
+  const memoryStatusMode = isMemoryStatusQuestion(request.prompt);
+  const [libraryBucket, contextBucket, memoryCompactBucket] = await Promise.all([
     searchLibraryTargets(request.prompt, targets, limit),
     searchContextTargets(request.prompt, targets, limit, inventoryMode),
     searchMemoryCompactTargets(targets, limit),
   ]);
+  const searchBuckets = [libraryBucket, contextBucket, memoryCompactBucket];
   const directTotalCount = searchBuckets.reduce(
     (total, bucket) => total + bucket.totalCount,
     0,
   );
-  let directHits = searchBuckets
-    .flatMap((bucket) => bucket.hits)
-    .slice(0, limit * Math.max(1, targets.length));
+  const directHits = uniqueDirectHits(
+    searchBuckets.flatMap((bucket) => bucket.hits),
+  ).slice(0, limit * Math.max(1, targets.length));
   executionSummary.push(`표시 후보: ${directHits.length}개`);
   executionSummary.push(`검색된 후보 총계: ${directTotalCount}개`);
-  let sourceRefs = directHits.map(sourceRefFromHit);
+  let sourceRefs = uniqueSourceRefs(directHits.map(sourceRefFromHit));
+  const currentCompact = await loadCurrentMemoryCompactForLibrarian();
+  if (currentCompact) {
+    executionSummary.push("현재 Memory Compact를 사서 knowledge packet에 포함했습니다.");
+    sourceRefs = uniqueSourceRefs(currentCompactSourceRefs(currentCompact, sourceRefs));
+  }
 
-  if (request.mode === "DIRECT_SEARCH") {
+  if (mode === "DIRECT_SEARCH") {
     return {
       answer: directSearchAnswer(directHits, directTotalCount, request.prompt),
       directHits,
@@ -590,42 +615,23 @@ export async function chatWithLibrarianInBackend(
     };
   }
 
-  if (isMemoryCompactAction(request.prompt)) {
-    try {
-      const actionResult = await runMemoryCompactAction({
-        prompt: request.prompt,
+  if (memoryStatusMode || inventoryMode) {
+    executionSummary.push("플랫폼 기억 현황 질문으로 직접 답변했습니다.");
+    return {
+      answer: platformInventoryAnswer(
+        request.prompt,
+        libraryBucket,
+        contextBucket,
+        memoryCompactBucket,
+        currentCompact,
         directHits,
-        sourceRefs,
-        totalCount: directTotalCount,
-      });
-      directHits = [
-        actionResult.directHit,
-        ...directHits,
-      ].slice(0, limit * Math.max(1, targets.length) + 1);
-      sourceRefs = [
-        ...actionResult.sourceRefs,
-        ...sourceRefs,
-      ];
-      executionSummary.push(...actionResult.executionSummary);
-      return {
-        answer: actionResult.answer,
-        directHits,
-        delegatedJobId: null,
-        sourceRefs,
-        executionSummary,
-        askResponse: null,
-      };
-    } catch {
-      executionSummary.push("작업 실행 실패: Memory Compact 생성");
-      return {
-        answer: memoryCompactActionFailureAnswer(request.prompt),
-        directHits,
-        delegatedJobId: null,
-        sourceRefs,
-        executionSummary,
-        askResponse: null,
-      };
-    }
+      ),
+      directHits,
+      delegatedJobId: null,
+      sourceRefs,
+      executionSummary,
+      askResponse: null,
+    };
   }
 
   const inventoryContext = delegateInventoryContext(directHits, directTotalCount);
@@ -640,6 +646,12 @@ export async function chatWithLibrarianInBackend(
     taskSummary: `${request.prompt}\n\n${inventoryContext}`,
     librarianRolePrompt: selectedLibrarianRolePrompt(request),
     sourceRefs,
+    contextCompact: currentCompact
+      ? {
+          markdownBody: currentCompact.markdownBody,
+          sourceRefs: currentCompactSourceRefs(currentCompact, []),
+        }
+      : null,
   });
   if (!delegationCompleted(askResponse)) {
     executionSummary.push("사서 위임이 완료되지 않았습니다.");

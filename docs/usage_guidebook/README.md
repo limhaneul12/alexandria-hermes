@@ -54,7 +54,9 @@ docs/usage_guidebook/install_onboard/install_onboard_guide_01.md
 
 ```text
 local Hermes skill/prompt/context
-→ Alexandria search/recall
+→ current Memory Compact
+→ Context Vault recall/RAG
+→ Alexandria library search
 → Hermes self-acquisition
 → optional librarian collaboration
 → immediate agent/MCP save or skill-acquisition result

@@ -104,7 +104,10 @@ def _ask_command(
         else request.context_compact.to_entity(),
         source_refs=[source_ref.to_entity() for source_ref in request.source_refs],
     )
-    command = request.to_command(librarian_brief=brief.packet_markdown)
+    command = request.to_command(
+        librarian_brief=brief.packet_markdown,
+        source_refs=brief.source_refs,
+    )
     return command
 
 

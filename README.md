@@ -290,6 +290,9 @@ This installs Alexandria-Hermes Hermes guidance, policy files, and an MCP config
 ## Context, Memory Compacts, and RAG
 
 Context Vault stores agent working context as first-class library material.
+For continuation or uncertain prior-state questions, Hermes should use local/current
+context first, then read the current Memory Compact, then use Context Vault
+recall/RAG for the specific gap.
 
 Supported behaviors:
 

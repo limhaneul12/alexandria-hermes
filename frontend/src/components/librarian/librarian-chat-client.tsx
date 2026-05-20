@@ -2,32 +2,17 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Bot, Loader2, Search, Send, SlidersHorizontal } from "lucide-react";
+import { Bot, Loader2, Send, SlidersHorizontal } from "lucide-react";
 
 import { ContentViewer } from "@/components/content/content-viewer";
 import { Button } from "@/components/ui/button";
 import { chatWithLibrarian, fetchAgents, fetchLibrarianProviders } from "@/lib/api";
 import type {
   AgentDTO,
-  LibrarianChatMode,
   LibrarianChatResponseDTO,
-  LibrarianChatTarget,
   LibrarianProviderDTO,
   LibrarianSourceRefDTO,
 } from "@/types/library";
-
-const TARGETS: Array<{ value: LibrarianChatTarget; label: string; description: string }> = [
-  { value: "SKILL", label: "스킬", description: "실행 가능한 agent capability" },
-  { value: "PROMPT", label: "프롬프트", description: "재사용 가능한 지시문" },
-  { value: "CONTEXT", label: "장기기억", description: "Context Vault recall" },
-  { value: "MEMORY_COMPACT", label: "Memory Compact", description: "요약된 durable memory" },
-];
-
-function modeLabel(mode: LibrarianChatMode) {
-  if (mode === "DIRECT_SEARCH") return "직접 검색 먼저";
-  if (mode === "DELEGATE") return "사서에게 위임";
-  return "둘 다";
-}
 
 function sourceRefLabel(sourceType: LibrarianSourceRefDTO["sourceType"]) {
   if (sourceType === "SKILL") return "스킬";
@@ -55,17 +40,9 @@ function librarianOptionLabel(
 
 export function LibrarianChatClient() {
   const [prompt, setPrompt] = useState("");
-  const [mode, setMode] = useState<LibrarianChatMode>("SEARCH_AND_DELEGATE");
   const [selectedLibrarianId, setSelectedLibrarianId] = useState("");
-  const [targets, setTargets] = useState<LibrarianChatTarget[]>(["SKILL", "PROMPT", "CONTEXT", "MEMORY_COMPACT"]);
   const [response, setResponse] = useState<LibrarianChatResponseDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const allTargets = useMemo(() => TARGETS.map((target) => target.value), []);
-
-  const modeOptions = useMemo(
-    () => (["SEARCH_AND_DELEGATE", "DIRECT_SEARCH", "DELEGATE"] as const).map((item) => ({ value: item, label: modeLabel(item) })),
-    [],
-  );
 
   const agentsQuery = useQuery({
     queryKey: ["agents", "librarian-chat"],
@@ -98,17 +75,13 @@ export function LibrarianChatClient() {
       null,
     [librarianProfiles, selectedLibrarianId],
   );
-  const activeFilterCount = [
-    mode !== "SEARCH_AND_DELEGATE",
+  const activeSelectionCount = [
     selectedLibrarianId !== "",
-    targets.length !== TARGETS.length,
   ].filter(Boolean).length;
 
   const chatMutation = useMutation({
     mutationFn: () => chatWithLibrarian({
       prompt: prompt.trim(),
-      mode,
-      targets,
       limit: 5,
       providerId: selectedLibrarian?.preferredLibrarianProvider ?? null,
       librarianProfileId: selectedLibrarian?.id ?? null,
@@ -122,23 +95,11 @@ export function LibrarianChatClient() {
       setError(null);
     },
     onSuccess: setResponse,
-    onError: () => setError("사서 대화를 처리하지 못했습니다. 직접 검색 결과가 필요하면 모드를 바꿔 다시 시도하세요."),
+    onError: () => setError("사서 대화를 처리하지 못했습니다. 잠시 후 다시 시도하세요."),
   });
 
-  function toggleTarget(target: LibrarianChatTarget) {
-    setTargets((current) => {
-      if (current.includes(target)) {
-        const next = current.filter((item) => item !== target);
-        return next.length ? next : current;
-      }
-      return [...current, target];
-    });
-  }
-
-  function resetFilters() {
-    setMode("SEARCH_AND_DELEGATE");
+  function resetSelection() {
     setSelectedLibrarianId("");
-    setTargets(allTargets);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -153,7 +114,7 @@ export function LibrarianChatClient() {
         <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#161616]">AI Librarian</p>
         <h1 className="mt-4 text-balance font-serif text-6xl tracking-[-0.04em] text-[#070707] md:text-7xl">사서와 얘기하기</h1>
         <p className="mt-5 max-w-3xl text-sm leading-7 text-[#36322d]">
-          질문이나 실행 명령을 입력하면 Alexandria가 먼저 직접 검색 후보와 source ref를 구성하고, 필요하면 사서 delegate 또는 안전한 플랫폼 작업으로 실행합니다.
+          질문이나 실행 명령을 입력하면 Alexandria가 먼저 플랫폼 기억과 근거를 확인하고, 필요하면 선택한 사서에게 위임하거나 안전한 플랫폼 작업으로 실행합니다.
         </p>
       </section>
 
@@ -167,49 +128,37 @@ export function LibrarianChatClient() {
                 onChange={(event) => setPrompt(event.target.value)}
                 rows={5}
                 className="mt-2 w-full rounded-xl border border-[#cfc8b8] bg-white/80 px-4 py-3 text-sm leading-6 text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15"
-                placeholder="예: OAuth 검토에 맞는 스킬을 찾아줘 / 장기기억 메모리 compact 해줘"
+                placeholder="예: OAuth 검토에 맞는 사서를 찾아줘 / Summarize today's project memory"
               />
             </label>
             <section
-              aria-label="사서 필터링"
+              aria-label="사서 선택"
               className="mt-4 rounded-2xl border border-[#d8d3c7] bg-[#fbfaf6]/75 p-4"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="flex items-center gap-2 text-sm font-semibold text-[#111111]">
                     <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-                    필터링
+                    사서 선택
                     <span className="rounded-full bg-[#eee9df] px-2 py-0.5 text-xs text-[#625c52]">
-                      {activeFilterCount}
+                      {activeSelectionCount}
                     </span>
                   </p>
                   <p className="mt-1 text-xs leading-5 text-[#6f6a60]">
-                    실행 방식, 위임할 사서, 검색 대상을 한 곳에서 조정합니다.
+                    필요하면 특정 사서만 고르세요.
                   </p>
                 </div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={resetFilters}
-                  disabled={activeFilterCount === 0}
+                  onClick={resetSelection}
+                  disabled={activeSelectionCount === 0}
                 >
-                  필터 초기화
+                  선택 초기화
                 </Button>
               </div>
-              <div className="mt-4 grid gap-4 xl:grid-cols-[220px_320px_minmax(0,1fr)] xl:items-start">
-                <label className="block text-sm font-semibold text-[#28241f]">
-                  실행 모드
-                  <select
-                    value={mode}
-                    onChange={(event) => setMode(event.target.value as LibrarianChatMode)}
-                    className="mt-2 w-full rounded-xl border border-[#cfc8b8] bg-white/85 px-3 py-2 text-sm text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15"
-                  >
-                    {modeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
+              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)] xl:items-start">
                 <label className="block text-sm font-semibold text-[#28241f]">
                   사서 선택
                   <select
@@ -229,26 +178,10 @@ export function LibrarianChatClient() {
                     {agentsQuery.isLoading
                       ? "사서 목록을 불러오는 중입니다."
                       : librarianProfiles.length
-                        ? "특정 사서를 고르면 해당 profile/provider로 위임합니다."
-                        : "저장된 사서 profile이 없으면 자동 라우팅을 사용합니다."}
+                        ? "특정 사서를 고르면 해당 사서에게 우선 답변을 요청합니다."
+                        : "저장된 사서가 없으면 자동으로 가능한 답변 경로를 사용합니다."}
                   </span>
                 </label>
-                <fieldset>
-                  <legend className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#6f6a60]">
-                    검색 대상
-                  </legend>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {TARGETS.map((target) => (
-                      <label key={target.value} className="flex cursor-pointer gap-3 rounded-xl border border-[#d8d3c7] bg-white/70 p-3 text-sm text-[#36322d]">
-                        <input type="checkbox" checked={targets.includes(target.value)} onChange={() => toggleTarget(target.value)} className="mt-1 h-4 w-4 accent-black" />
-                        <span>
-                          <span className="block font-semibold text-[#111111]">{target.label}</span>
-                          <span className="block text-xs leading-5 text-[#6f6a60]">{target.description}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
               </div>
             </section>
             <div className="mt-5 flex justify-end">
@@ -290,15 +223,7 @@ export function LibrarianChatClient() {
 
         <aside className="space-y-5">
           <section className="rounded-xl border border-[#d8d3c7] bg-white/62 p-4">
-            <h2 className="flex items-center gap-2 font-serif text-2xl font-bold text-[#111111]"><Search className="h-5 w-5" /> 실행/CLI 요약</h2>
-            {response?.executionSummary.length ? (
-              <ul className="mt-4 space-y-2 text-sm text-[#514c44]">
-                {response.executionSummary.map((item) => <li key={item} className="rounded-lg border border-[#d8d3c7] bg-white/70 px-3 py-2">{item}</li>)}
-              </ul>
-            ) : <p className="mt-3 text-sm text-[#625c52]">검색 대상과 실행 모드가 기록됩니다.</p>}
-          </section>
-          <section className="rounded-xl border border-[#d8d3c7] bg-white/62 p-4">
-            <h2 className="font-serif text-2xl font-bold text-[#111111]">Source refs</h2>
+            <h2 className="font-serif text-2xl font-bold text-[#111111]">근거</h2>
             {response?.sourceRefs.length ? (
               <ul className="mt-4 space-y-2 text-sm text-[#514c44]">
                 {response.sourceRefs.map((ref) => (
@@ -309,7 +234,7 @@ export function LibrarianChatClient() {
                   </li>
                 ))}
               </ul>
-            ) : <p className="mt-3 text-sm text-[#625c52]">답변에 사용할 source ref가 여기에 표시됩니다.</p>}
+            ) : null}
           </section>
         </aside>
       </div>

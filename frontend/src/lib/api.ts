@@ -332,6 +332,13 @@ export function fetchMemoryCompact(compactId: string) {
   );
 }
 
+export function archiveMemoryCompact(compactId: string) {
+  return fetchJson<MemoryCompactDTO>(
+    `/api/library/compacts/${encodeURIComponent(compactId)}/archive`,
+    jsonInit("POST", {}),
+  );
+}
+
 export function accessContext(contextId: string) {
   return fetchJson<ContextDTO>(
     `/api/library/contexts/${encodeURIComponent(contextId)}/access`,

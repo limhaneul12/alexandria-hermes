@@ -35,11 +35,17 @@ const emptyDraft: HarnessCaptureDTO = {
 };
 
 function lines(value: string): string[] {
-  return value.split("\n").map((line) => line.trim()).filter(Boolean);
+  return value.split("\n").flatMap((line) => {
+    const trimmed = line.trim();
+    return trimmed ? [trimmed] : [];
+  });
 }
 
 function keywordTokens(value: string): string[] {
-  return value.split(/[\n,]/u).map((token) => token.trim()).filter(Boolean);
+  return value.split(/[\n,]/u).flatMap((token) => {
+    const trimmed = token.trim();
+    return trimmed ? [trimmed] : [];
+  });
 }
 
 function nullableText(value: string): string | null {

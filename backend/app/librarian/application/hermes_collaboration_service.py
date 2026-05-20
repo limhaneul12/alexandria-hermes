@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable
-from datetime import datetime
+from dataclasses import replace
+from datetime import datetime, timedelta
 
 from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.repositories.librarian_repository import (
@@ -47,10 +48,19 @@ from app.librarian.domain.types.hermes_collaboration_payload_types import (
     LibrarianDelegatePayload,
     LibrarianJobStatusPayload,
 )
+from app.memory.application.memory_compact_service import MemoryCompactService
+from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
+from app.memory.domain.repositories.memory_compact_repository import (
+    MemoryCompactCreate,
+    MemoryCompactSourceRefCreate,
+)
 from app.shared.exceptions import LibrarianResourceNotFoundError
 from app.shared.types.types_convert_utils import now_utc
 
 _JOB_PREFIX = "librarian-job-"
+_DAILY_MEMORY_COMPACT_MARKER = "ACTION: DAILY_MEMORY_COMPACT"
+_LIBRARIAN_ACTION_SOURCE_TYPE = "LIBRARIAN_ACTION"
+_DAILY_MEMORY_COMPACT_WINDOW = timedelta(days=1)
 _SELF_RESEARCH_RECOMMENDATION = (
     "적절한 skill이 없다면 Hermes가 먼저 공식 문서나 웹 근거를 조사해 "
     "skill candidate를 제출할 수 있습니다. 바쁘면 사서에게 위임하세요."
@@ -75,6 +85,7 @@ class HermesCollaborationService:
         secret_repo: IProviderSecretRepository,
         now_provider: Callable[[], datetime] = now_utc,
         delegate_executor: LibrarianDelegateExecutor | None = None,
+        memory_compact_service: MemoryCompactService | None = None,
     ) -> None:
         """Initialize collaboration service dependencies.
 
@@ -84,11 +95,14 @@ class HermesCollaborationService:
             secret_repo: Provider secret repository used for execution readiness.
             now_provider: Clock boundary for deterministic job ids.
             delegate_executor: Optional provider-backed delegate executor.
+            memory_compact_service: Optional durable Memory Compact service for
+                backend-validated librarian action execution.
         """
         self.provider_repo = provider_repo
         self.secret_repo = secret_repo
         self.now_provider = now_provider
         self.delegate_executor = delegate_executor
+        self.memory_compact_service = memory_compact_service
         self.profile_router = LibrarianProfileRouter(agent_repo)
 
     async def ask_librarian(
@@ -125,12 +139,22 @@ class HermesCollaborationService:
             command=command,
             executor=self.delegate_executor,
         )
+        action_preview: list[str] = []
+        if should_delegate and self.memory_compact_service is not None:
+            delegates, action_preview = await _run_librarian_actions(
+                delegates=delegates,
+                command=command,
+                memory_compact_service=self.memory_compact_service,
+                covered_to=self.now_provider(),
+                job_id=job_id,
+            )
         route_preview = build_route_preview(
             representative_plan=representative_plan,
             routing=routing,
             delegated=should_delegate,
             executable_count=_completed_delegate_count(delegates),
         )
+        route_preview.extend(action_preview)
         result = HermesLibrarianAskResult(
             job_id=job_id,
             status=status,
@@ -247,6 +271,87 @@ def _completed_delegate_count(delegates: list[LibrarianDelegateResult]) -> int:
         if delegate.status is LibrarianDelegateStatus.COMPLETED
     )
     return completed_count
+
+
+async def _run_librarian_actions(
+    *,
+    delegates: list[LibrarianDelegateResult],
+    command: HermesLibrarianAskCommand,
+    memory_compact_service: MemoryCompactService,
+    covered_to: datetime,
+    job_id: str,
+) -> tuple[list[LibrarianDelegateResult], list[str]]:
+    updated: list[LibrarianDelegateResult] = []
+    action_preview: list[str] = []
+    action_source_refs = _memory_compact_source_refs(command, job_id)
+    for delegate in delegates:
+        compact_body = _daily_memory_compact_body(delegate.summary)
+        if (
+            delegate.status is not LibrarianDelegateStatus.COMPLETED
+            or compact_body is None
+        ):
+            updated.append(delegate)
+            continue
+        compact = await memory_compact_service.create(
+            MemoryCompactCreate(
+                project=command.project,
+                covered_from=covered_to - _DAILY_MEMORY_COMPACT_WINDOW,
+                covered_to=covered_to,
+                markdown_body=compact_body,
+                status=MemoryCompactStatus.CURRENT,
+                source_refs=action_source_refs,
+            )
+        )
+        updated.append(
+            replace(
+                delegate,
+                summary="\n\n".join(
+                    [
+                        "# Memory Compact saved",
+                        f"- compact_id: {compact.id}",
+                        f"- project: {compact.project or 'default'}",
+                        "- coverage: last 24 hours",
+                        "",
+                        compact_body,
+                    ]
+                ),
+            )
+        )
+        action_preview.append(f"Saved daily Memory Compact: {compact.id}")
+    return updated, action_preview
+
+
+def _daily_memory_compact_body(summary: str) -> str | None:
+    stripped = summary.strip()
+    if not stripped.startswith(_DAILY_MEMORY_COMPACT_MARKER):
+        return None
+    compact_body = stripped[len(_DAILY_MEMORY_COMPACT_MARKER) :].lstrip()
+    return compact_body if compact_body else None
+
+
+def _memory_compact_source_refs(
+    command: HermesLibrarianAskCommand,
+    job_id: str,
+) -> list[MemoryCompactSourceRefCreate]:
+    refs = [
+        MemoryCompactSourceRefCreate(
+            source_type=source_ref.source_type.value,
+            source_id=source_ref.source_id,
+            title=source_ref.title,
+            detail_path=source_ref.detail_path,
+        )
+        for source_ref in command.source_refs
+    ]
+    if refs:
+        return refs
+    return [
+        MemoryCompactSourceRefCreate(
+            source_type=_LIBRARIAN_ACTION_SOURCE_TYPE,
+            source_id=job_id,
+            title="Librarian daily Memory Compact action",
+            detail_path=f"/librarians/jobs/{job_id}",
+        )
+    ]
 
 
 def _ask_payload(result: HermesLibrarianAskResult) -> HermesLibrarianAskPayload:

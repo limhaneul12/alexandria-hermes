@@ -210,10 +210,17 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
             "or weak; when the user continues previous work; when START_HERE, "
             "project-state, decisions, handoffs, bug root causes, prompts, or "
             "skills may matter; or when durable/shared context should be saved.\n"
-            "3. If local skill/prompt coverage is insufficient, call "
+            "3. For durable project memory, read the current Memory Compact "
+            "before broader Context Vault recall/RAG.\n"
+            "4. If local skill/prompt coverage is insufficient, call "
             "`alexandria_search` for Alexandria-Hermes skills and prompts.\n"
-            "4. Use matching items and call `alexandria_record_usage`.\n"
-            "5. If no matching item exists, follow `request-skill-acquisition.md`.\n"
+            "5. Use matching items and call `alexandria_record_usage`.\n"
+            "6. If no matching item exists, follow `request-skill-acquisition.md`.\n"
+            "7. MCP fallback order: `alexandria_get_current_memory_compact`, "
+            "`alexandria_recall_context`, `alexandria_rag_context`, then "
+            "`alexandria_search`; CLI fallback starts with "
+            "`alexandria-hermes memory-compacts current` before "
+            "`alexandria-hermes context recall`.\n"
         ),
         "request-skill-acquisition.md": (
             "# Request Skill Acquisition\n\n"
@@ -274,15 +281,25 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
                 "weak; when continuing prior work; when START_HERE, project-state, "
                 "decisions, handoffs, bug root causes, prompts, or skills may matter; "
                 "or when durable/shared context should be saved.\n"
+                "- Long-term memory lookup order: current conversation and Hermes "
+                "local memory first, then current Memory Compact, then Context Vault "
+                "recall/RAG, then library skill/prompt search, then Hermes "
+                "self-acquisition.\n"
                 "- For a new or unfamiliar agent, search Alexandria for `START_HERE` "
                 "before asking the user to restate known project background only when "
                 "local/current context does not already answer the question.\n"
+                "- Prefer `alexandria_get_current_memory_compact` before broader "
+                "`alexandria_recall_context` / `alexandria_rag_context` when the "
+                "question is about prior project state or durable memory.\n"
                 "- Prefer local Hermes assets, then Alexandria recall/search when "
                 "needed, then Hermes self-acquisition.\n"
                 "- Librarian collaboration is optional and should require an explicit "
                 "user request unless a separate policy says otherwise; when no "
                 "librarian is configured or appropriate, continue with direct "
                 "self-acquisition and submit draft candidates.\n"
+                "- Treat librarian delegation as separate from memory lookup: normal "
+                "Memory Compact and Context Vault recall do not require asking the "
+                "user to delegate to a librarian.\n"
                 "- Keep this recall quiet: mention only the relevant context actually "
                 "used, and avoid exposing internal reasoning.\n"
             ),
@@ -305,7 +322,9 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
                 "`alexandria-hermes hermes policy disable`. Use local/current "
                 "conversation, Hermes memory, and local skills first. Use Alexandria "
                 "when local context is insufficient, prior project memory may matter, "
-                "or durable/shared context should be saved. Treat START_HERE as the "
+                "or durable/shared context should be saved. For durable-memory lookup, "
+                "read the current Memory Compact before broader Context Vault "
+                "recall/RAG. Treat START_HERE as the "
                 "library entrance for unfamiliar agents, not a mandatory first call "
                 "for every task. Prefer local Hermes assets, then Alexandria when "
                 "needed, then Hermes self-acquisition. If no librarian is available, "
@@ -374,9 +393,10 @@ def first_conversation_prompt() -> str:
         "확인합니다. 그것으로 충분하면 Alexandria를 호출하지 않고 바로 "
         "작업합니다. 로컬 정보가 부족하거나 이전 작업을 이어가거나 "
         "durable/shared project memory가 필요하면 ~/.hermes/alexandria-hermes/"
-        "policy.yaml을 확인하고, enabled일 때 START_HERE, project-state, "
-        "decision/handoff/bug-root-cause, relevant skill/prompt context를 "
-        "recall/search한 뒤 작업합니다. 사용자에게 Alexandria 사용 여부를 "
+        "policy.yaml을 확인하고, enabled일 때 current Memory Compact를 먼저 "
+        "읽은 뒤 START_HERE, project-state, decision/handoff/bug-root-cause, "
+        "relevant skill/prompt context를 recall/search한 뒤 작업합니다. "
+        "사용자에게 Alexandria 사용 여부를 "
         "매번 묻지 말고, 사용한 핵심 context만 간단히 보고하세요."
     )
 
@@ -395,7 +415,7 @@ Use this prompt when Hermes is developing software, continuing a project, notici
 
 Alexandria-Hermes is Hermes's default-on but user-controlled library layer for:
 
-- long-term project memory through Context Vault;
+- long-term project memory through current Memory Compacts and Context Vault;
 - reusable skills and prompt assets;
 - skill/prompt discovery before recreating work;
 - self-acquisition when a missing reusable capability is found;
@@ -409,7 +429,7 @@ Default policy: **local/current context first, Alexandria when needed, Hermes se
 
 Do not call Alexandria just because a task starts. First use the current conversation, loaded instructions, Hermes local memory, and local/built-in skills. If that local/current context is sufficient, proceed without Alexandria.
 
-When policy allows it, quietly call Alexandria recall/retrieval/search only when local/current context is missing, stale, weak, or not shareable enough for the task. Use narrow bootstrap queries such as `START_HERE`, the user's working-style card, the current project-state card, and relevant operating packs when an unfamiliar agent is entering a project or when the task signals prior context.
+When policy allows it, quietly call Alexandria recall/retrieval/search only when local/current context is missing, stale, weak, or not shareable enough for the task. Use the current Memory Compact as the first durable-memory summary, then narrow bootstrap queries such as `START_HERE`, the user's working-style card, the current project-state card, and relevant operating packs when an unfamiliar agent is entering a project or when the task signals prior context.
 
 Call Alexandria especially when any trigger applies:
 
@@ -420,6 +440,7 @@ Call Alexandria especially when any trigger applies:
 
 Preferred MCP tools when available:
 
+- `mcp_alexandria_alexandria_get_current_memory_compact`
 - `mcp_alexandria_alexandria_recall_context`
 - `mcp_alexandria_alexandria_rag_context`
 - `mcp_alexandria_alexandria_search`
@@ -427,11 +448,24 @@ Preferred MCP tools when available:
 If native MCP tools are not exposed in the current session, use the local CLI fallback:
 
 ```bash
+alexandria-hermes memory-compacts current --project <project> --json
 alexandria-hermes context recall "<query>" --project <project> --strategy FTS_ONLY --json
 alexandria-hermes library search "<query>" --json
 ```
 
 Use only relevant Context Pack entries. If recalled memory conflicts with the user's current instruction, follow the current instruction and save an updated DECISION when appropriate.
+
+## Long-term memory lookup order
+
+When the task needs prior project state, memory, or continuation context, use this order:
+
+1. Current conversation, loaded instructions, Hermes local memory, and local files.
+2. Current Memory Compact for the project. This is the durable-memory headline and should be checked before broad recall.
+3. Context Vault recall/RAG with a narrow query for the missing fact, decision, handoff, bug root cause, or compact detail.
+4. Library skill/prompt search only when a reusable capability or prompt asset may matter.
+5. Hermes self-acquisition when local assets and Alexandria records are insufficient.
+
+Memory lookup is normal Alexandria use when policy is enabled; librarian delegation is separate and still requires explicit user request unless a stricter local policy says otherwise.
 
 ## Skill / prompt resolution
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
 )
+from app.librarian.domain.entities.source_ref import SourceRef
 from app.librarian.domain.event_enum.collaboration_enums import (
     AcquisitionDecision,
     LibrarianDelegateKind,
@@ -58,11 +59,17 @@ class AskLibrarianRequest(StrictSchemaModel):
     context_compact: ContextPackCompactSchema | None = None
     source_refs: list[SourceRefSchema] = Field(default_factory=list)
 
-    def to_command(self, *, librarian_brief: str | None) -> HermesLibrarianAskCommand:
+    def to_command(
+        self,
+        *,
+        librarian_brief: str | None,
+        source_refs: tuple[SourceRef, ...] = (),
+    ) -> HermesLibrarianAskCommand:
         """Return an application command for the collaboration service.
 
         Args:
             librarian_brief: Precompiled delegate brief from the application layer.
+            source_refs: Selected source references included in the delegate brief.
 
         Returns:
             HermesLibrarianAskCommand: Internal command DTO.
@@ -79,6 +86,7 @@ class AskLibrarianRequest(StrictSchemaModel):
             librarian_role_prompt=self.librarian_role_prompt,
             max_librarian_agents=self.max_librarian_agents,
             routing_specialties=self.routing_specialties,
+            source_refs=source_refs,
             librarian_brief=librarian_brief,
         )
         return command

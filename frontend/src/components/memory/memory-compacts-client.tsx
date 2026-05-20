@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { BookMarked, CalendarRange, ScrollText, SlidersHorizontal } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BookMarked, CalendarRange, ScrollText, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterChipGroup } from "@/components/ui/filter-chip-group";
 import { Input } from "@/components/ui/input";
-import { fetchCurrentMemoryCompact, fetchMemoryCompacts } from "@/lib/api";
+import { archiveMemoryCompact, fetchCurrentMemoryCompact, fetchMemoryCompacts } from "@/lib/api";
 import {
   countFilterChoices,
   humanizeFilterLabel,
@@ -27,7 +27,24 @@ function previewMarkdown(markdown: string) {
   return markdown.replace(/[#>*_`-]/g, "").split("\n").filter(Boolean).slice(0, 3).join(" ");
 }
 
-function MemoryCompactCard({ compact }: { compact: MemoryCompactDTO }) {
+function MemoryCompactCard({
+  compact,
+  onArchive,
+}: {
+  compact: MemoryCompactDTO;
+  onArchive: (compactId: string) => void;
+}) {
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
+
+  function requestArchive() {
+    if (!confirmingArchive) {
+      setConfirmingArchive(true);
+      return;
+    }
+    setConfirmingArchive(false);
+    onArchive(compact.id);
+  }
+
   return (
     <Card className="archive-paper-card overflow-hidden">
       <CardHeader className="space-y-3">
@@ -58,15 +75,29 @@ function MemoryCompactCard({ compact }: { compact: MemoryCompactDTO }) {
             <Badge key={ref.id}>{ref.sourceType}: {ref.title}</Badge>
           ))}
         </div>
-        <Button asChild size="sm">
-          <Link href={`/memory-compacts/${encodeURIComponent(compact.id)}`}>Open Compact</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm">
+            <Link href={`/memory-compacts/${encodeURIComponent(compact.id)}`}>Open Compact</Link>
+          </Button>
+          {compact.status !== "ARCHIVED" && !compact.archivedAt ? (
+            <Button type="button" size="sm" variant="outline" onClick={requestArchive}>
+              <Trash2 className="h-4 w-4" aria-hidden="true" /> {confirmingArchive ? "Confirm Delete" : "Delete Compact"}
+            </Button>
+          ) : null}
+        </div>
+        {confirmingArchive ? (
+          <div className="archive-inline-confirm" role="status" aria-live="polite">
+            <p className="text-sm text-[#8f5037]">Delete this Memory Compact from active views? It will be archived for safety.</p>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setConfirmingArchive(false)}>Cancel</Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
 }
 
 export function MemoryCompactsClient() {
+  const queryClient = useQueryClient();
   const [project, setProject] = useState("");
   const [status, setStatus] = useState<MemoryCompactStatus | "ALL">("ALL");
   const [dateFrom, setDateFrom] = useState("");
@@ -110,6 +141,14 @@ export function MemoryCompactsClient() {
     queryFn: () => fetchCurrentMemoryCompact(currentProject),
     enabled: currentProject !== null,
     retry: false,
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: archiveMemoryCompact,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["memory-compacts"] });
+      void queryClient.invalidateQueries({ queryKey: ["memory-compact-current"] });
+    },
   });
 
   function loadCurrentCompact() {
@@ -270,7 +309,7 @@ export function MemoryCompactsClient() {
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#161616]">
             Current Compact
           </p>
-          <MemoryCompactCard compact={currentCompact} />
+          <MemoryCompactCard compact={currentCompact} onArchive={archiveMutation.mutate} />
         </section>
       ) : null}
 
@@ -283,7 +322,7 @@ export function MemoryCompactsClient() {
       ) : compactsQuery.data?.items.length ? (
         <section className="grid gap-5 xl:grid-cols-2">
           {compactsQuery.data.items.map((compact) => (
-            <MemoryCompactCard key={compact.id} compact={compact} />
+            <MemoryCompactCard key={compact.id} compact={compact} onArchive={archiveMutation.mutate} />
           ))}
         </section>
       ) : (

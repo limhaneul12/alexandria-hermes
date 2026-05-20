@@ -9,6 +9,8 @@ Use Alexandria as an optional local-first knowledge library for Hermes.
 
 ## When to use
 - Search local/current context before asking the user to repeat prior decisions.
+- When local/current context is insufficient, read the current Memory Compact
+  before deeper Context Vault recall/RAG.
 - Recall project decisions, compact handoffs, skill candidates, prompts, and usage notes.
 - Acquire a missing skill through Hermes-alone fallback first; ask a librarian only on explicit user request.
 
@@ -21,9 +23,16 @@ Use Alexandria as an optional local-first knowledge library for Hermes.
 ## Status/diagnostics
 - Use `alexandria-hermes hermes doctor` for local status/diagnostics.
 - Prefer MCP tools named `mcp_alexandria_*` when available.
-- If MCP is unavailable, fall back to CLI commands such as `alexandria-hermes context recall` or backend API calls.
+- If MCP is unavailable, fall back to CLI commands such as
+  `alexandria-hermes memory-compacts current`,
+  `alexandria-hermes context recall`, or backend API calls.
 
 ## Operating style
 - Treat Alexandria as a helper, not an obligation.
+- Long-term memory lookup order: current conversation and Hermes local memory
+  first, then current Memory Compact, then Context Vault recall/RAG, then
+  library skill/prompt search, then Hermes self-acquisition.
+- Treat librarian delegation as separate from memory lookup; use a librarian only
+  on explicit user request or stricter local policy.
 - Keep writes compact and durable: decisions, root causes, reusable plans, and skill candidates.
 - Do not store secrets, transient task logs, or private credentials.

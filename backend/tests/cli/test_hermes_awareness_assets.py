@@ -19,6 +19,7 @@ def test_alexandria_awareness_skill_source_teaches_policy_and_local_first() -> N
 
     assert "name: alexandria-library" in skill
     assert "local/current context" in skill
+    assert "current Memory Compact" in skill
     assert "enabled: false" in skill
     assert "status/diagnostics" in skill
     assert "explicit user request" in skill
@@ -32,6 +33,8 @@ def test_alexandria_prompt_sources_include_operating_loop_and_fallbacks() -> Non
     assert "use-alexandria-library.md" in prompts
     all_prompt_text = "\n".join(prompts.values())
     assert "mcp_alexandria" in all_prompt_text
+    assert "current Memory Compact" in all_prompt_text
+    assert "alexandria-hermes memory-compacts current" in all_prompt_text
     assert "alexandria-hermes context recall" in all_prompt_text
     assert "enabled: false" in all_prompt_text
 

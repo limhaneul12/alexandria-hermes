@@ -428,8 +428,8 @@ export type LibrarianChatTarget = "SKILL" | "PROMPT" | "CONTEXT" | "MEMORY_COMPA
 
 export type LibrarianChatRequestDTO = {
   prompt: string;
-  mode: LibrarianChatMode;
-  targets: LibrarianChatTarget[];
+  mode?: LibrarianChatMode;
+  targets?: LibrarianChatTarget[];
   limit: number;
   providerId?: string | null;
   librarianProfileId?: string | null;

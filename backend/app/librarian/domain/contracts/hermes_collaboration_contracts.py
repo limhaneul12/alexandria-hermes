@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.librarian.domain.entities.source_ref import SourceRef
 from app.librarian.domain.event_enum.collaboration_enums import (
     AcquisitionDecision,
     LibrarianDelegateKind,
@@ -27,6 +28,7 @@ class HermesLibrarianAskCommand:
     librarian_role_prompt: str | None
     max_librarian_agents: int | None
     routing_specialties: list[str]
+    source_refs: tuple[SourceRef, ...] = ()
     librarian_brief: str | None = None
 
 

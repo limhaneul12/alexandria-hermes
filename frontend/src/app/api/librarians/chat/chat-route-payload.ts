@@ -42,14 +42,16 @@ function optionalText(value: unknown): string | null | undefined {
   return trimmed ? trimmed : null;
 }
 
-function chatMode(value: unknown): LibrarianChatMode | null {
+function chatMode(value: unknown): LibrarianChatMode | null | undefined {
+  if (value === undefined || value === null) return undefined;
   if (typeof value !== "string") return null;
   return chatModes.has(value as LibrarianChatMode)
     ? value as LibrarianChatMode
     : null;
 }
 
-function targetList(value: unknown): LibrarianChatTarget[] | null {
+function targetList(value: unknown): LibrarianChatTarget[] | null | undefined {
+  if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value)) return null;
   const targets: LibrarianChatTarget[] = [];
   for (const item of value) {
@@ -59,7 +61,7 @@ function targetList(value: unknown): LibrarianChatTarget[] | null {
     const target = item as LibrarianChatTarget;
     if (!targets.includes(target)) targets.push(target);
   }
-  return targets.length ? targets : null;
+  return targets.length ? targets : undefined;
 }
 
 function chatLimit(value: unknown): number | null {
@@ -93,7 +95,7 @@ export function parseLibrarianChatBody(rawBody: unknown): LibrarianChatParseResu
   }
 
   const mode = chatMode(rawBody.mode);
-  if (!mode) {
+  if (mode === null) {
     return {
       ok: false,
       code: "INVALID_LIBRARIAN_CHAT_MODE",
@@ -102,7 +104,7 @@ export function parseLibrarianChatBody(rawBody: unknown): LibrarianChatParseResu
   }
 
   const targets = targetList(rawBody.targets);
-  if (!targets) {
+  if (targets === null) {
     return {
       ok: false,
       code: "INVALID_LIBRARIAN_CHAT_TARGETS",
@@ -119,7 +121,9 @@ export function parseLibrarianChatBody(rawBody: unknown): LibrarianChatParseResu
     };
   }
 
-  const payload: LibrarianChatRequestDTO = { prompt, mode, targets, limit };
+  const payload: LibrarianChatRequestDTO = { prompt, limit };
+  if (mode !== undefined) payload.mode = mode;
+  if (targets !== undefined) payload.targets = targets;
   const providerId = optionalText(rawBody.providerId);
   if (providerId !== undefined) payload.providerId = providerId;
   const librarianProfileId = optionalText(rawBody.librarianProfileId);

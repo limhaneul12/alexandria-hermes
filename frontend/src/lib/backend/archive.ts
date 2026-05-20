@@ -120,14 +120,21 @@ function detailStringList(details: Record<string, unknown>, key: string): string
 function toPromptMetadata(details: Record<string, unknown>) {
   const rawVariables = details.input_variables;
   const inputVariables = Array.isArray(rawVariables)
-    ? rawVariables.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item)).map((item) => ({
-        name: typeof item.name === "string" ? item.name : "variable",
-        required: typeof item.required === "boolean" ? item.required : true,
-        description: typeof item.description === "string" ? item.description : null,
-        defaultValue: typeof item.default_value === "string" ? item.default_value : null,
-        example: typeof item.example === "string" ? item.example : null,
-        inputType: typeof item.input_type === "string" ? item.input_type : "text",
-      }))
+    ? rawVariables.flatMap((item) => {
+        if (!isRecord(item)) return [];
+        return [
+          {
+            name: typeof item.name === "string" ? item.name : "variable",
+            required: typeof item.required === "boolean" ? item.required : true,
+            description:
+              typeof item.description === "string" ? item.description : null,
+            defaultValue:
+              typeof item.default_value === "string" ? item.default_value : null,
+            example: typeof item.example === "string" ? item.example : null,
+            inputType: typeof item.input_type === "string" ? item.input_type : "text",
+          },
+        ];
+      })
     : [];
   return {
     contentFormat: (detailString(details, "content_format") ?? "MARKDOWN") as PromptContentFormat,
@@ -466,7 +473,6 @@ export async function loadLibraryFromBackend(searchParams: URLSearchParams): Pro
   const categorySlugParam = searchParams.get("category");
   const sort = searchParams.get("sort") ?? "recent";
   const filtered = items.filter(isVisibleSearchHit);
-
   filtered.sort((left, right) => {
     if (sort === "title") return left.title.localeCompare(right.title);
     if (sort === "popular") {

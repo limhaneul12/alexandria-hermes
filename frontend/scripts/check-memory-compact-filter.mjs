@@ -20,6 +20,19 @@ const compactRepository = readFileSync(
   ),
   "utf8",
 );
+const compactApi = readFileSync(new URL("../src/lib/api.ts", import.meta.url), "utf8");
+const compactBackend = readFileSync(
+  new URL("../src/lib/backend/memory-compacts.ts", import.meta.url),
+  "utf8",
+);
+const compactArchiveRoute = readFileSync(
+  new URL("../src/app/api/library/compacts/[compactId]/archive/route.ts", import.meta.url),
+  "utf8",
+);
+const compactDetail = readFileSync(
+  new URL("../src/components/memory/memory-compact-detail-client.tsx", import.meta.url),
+  "utf8",
+);
 
 for (const required of [
   "FilterChipGroup",
@@ -35,9 +48,17 @@ for (const required of [
   "covered_after",
   "covered_before",
   "Clear Filters",
+  "archiveMemoryCompact",
+  "Delete Compact",
 ]) {
   assert.match(memoryCompacts, new RegExp(required), `Memory Compact filters are missing ${required}`);
 }
+
+assert.match(compactApi, /export function archiveMemoryCompact/, "Memory Compact archive must be exposed through the frontend API client.");
+assert.match(compactBackend, /archiveMemoryCompactInBackend/, "Memory Compact archive must call the backend archive endpoint.");
+assert.match(compactArchiveRoute, /archiveMemoryCompactInBackend/, "Memory Compact archive route must delegate to the backend adapter.");
+assert.match(compactDetail, /archiveMemoryCompact/, "Memory Compact detail view must expose the archive action.");
+assert.match(compactDetail, /Delete Compact/, "Memory Compact detail view must expose the safe delete action.");
 
 assert.match(memoryCompacts, /type="date"/, "Memory Compact date controls must use browser date inputs.");
 assert.match(memoryCompacts, /toUtcDateBoundaryIso/, "Memory Compact filters must use the shared UTC date boundary helper.");

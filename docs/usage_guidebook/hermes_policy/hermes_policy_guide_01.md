@@ -41,9 +41,10 @@ alexandria-hermes --json hermes policy status --hermes-home "$HOME/.hermes"
 
 1. 현재 대화, local memory, loaded/local/built-in skill을 먼저 확인한다.
 2. 그 정보가 충분하면 Alexandria를 쓰지 않는다.
-3. 로컬 정보가 부족하거나 이전 작업/결정/핸드오프/버그 원인/장기기억이 필요하면 Alexandria search/recall을 사용한다.
-4. 중요한 decision, handoff, bug root cause, reusable workflow는 Alexandria에 저장한다.
-5. librarian delegation은 optional이며 기본적으로 명시 요청이 있을 때만 사용한다.
+3. 로컬 정보가 부족하거나 이전 작업/결정/핸드오프/버그 원인/장기기억이 필요하면 current Memory Compact를 먼저 읽는다.
+4. 그래도 부족하면 Context Vault recall/RAG로 좁게 찾고, reusable capability가 필요할 때 library skill/prompt search를 사용한다.
+5. 중요한 decision, handoff, bug root cause, reusable workflow는 Alexandria에 저장한다.
+6. librarian delegation은 optional이며 기본적으로 명시 요청이 있을 때만 사용한다. Memory Compact/Context Vault 조회는 librarian delegation이 아니다.
 
 ## 끄기
 

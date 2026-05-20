@@ -823,8 +823,11 @@ def test_hermes_install_writes_local_first_library_when_needed_skill(tmp_path) -
     assert "local-first" in skill
     assert "Alexandria-when-needed" in skill
     assert "START_HERE" in skill
+    assert "current Memory Compact" in skill
     assert "START_HERE" in operating_loop
     assert "local/current context first" in operating_loop
+    assert "Long-term memory lookup order" in operating_loop
+    assert "alexandria_get_current_memory_compact" in operating_loop
     assert "Do not call Alexandria just because a task starts" in operating_loop
 
 
@@ -835,6 +838,7 @@ def test_hermes_first_prompt_describes_local_first_onboarding_not_user_coaching(
     prompt = first_conversation_prompt()
 
     assert "로컬/현재 컨텍스트" in prompt
+    assert "current Memory Compact" in prompt
     assert "부족하거나" in prompt
     assert "START_HERE" in prompt
     assert "먼저 RAG status" not in prompt
@@ -851,6 +855,17 @@ def test_hermes_operating_loop_documents_compact_window_policy() -> None:
     assert "covered_from" in prompt
     assert "covered_to" in prompt
     assert "7-day weekly rollup" in prompt
+
+
+def test_hermes_operating_loop_teaches_long_term_memory_lookup_order() -> None:
+    """Operating-loop prompt should make current compacts the first durable-memory stop."""
+    prompt = alexandria_operating_loop_prompt()
+
+    assert "Long-term memory lookup order" in prompt
+    assert "current Memory Compact" in prompt
+    assert "mcp_alexandria_alexandria_get_current_memory_compact" in prompt
+    assert "alexandria-hermes memory-compacts current" in prompt
+    assert "librarian delegation is separate" in prompt
 
 
 def test_hermes_install_writes_default_enabled_policy_contract(tmp_path) -> None:

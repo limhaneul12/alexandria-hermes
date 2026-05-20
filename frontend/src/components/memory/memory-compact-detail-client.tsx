@@ -1,20 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Clipboard, ScrollText } from "lucide-react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Clipboard, ScrollText, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchMemoryCompact } from "@/lib/api";
+import { archiveMemoryCompact, fetchMemoryCompact } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
 export function MemoryCompactDetailClient({ compactId }: { compactId: string }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const compactQuery = useQuery({
     queryKey: ["memory-compact", compactId],
     queryFn: () => fetchMemoryCompact(compactId),
   });
+  const archiveMutation = useMutation({
+    mutationFn: archiveMemoryCompact,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["memory-compacts"] });
+      void queryClient.invalidateQueries({ queryKey: ["memory-compact", compactId] });
+      router.push("/memory-compacts");
+    },
+  });
+
+  function requestArchive() {
+    if (!confirmingArchive) {
+      setConfirmingArchive(true);
+      return;
+    }
+    archiveMutation.mutate(compactId);
+  }
 
   if (compactQuery.isLoading) {
     return (
@@ -74,7 +95,23 @@ export function MemoryCompactDetailClient({ compactId }: { compactId: string }) 
             >
               <Clipboard className="h-4 w-4" aria-hidden="true" /> Copy Markdown
             </Button>
+            {compact.status !== "ARCHIVED" && !compact.archivedAt ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={archiveMutation.isPending}
+                onClick={requestArchive}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" /> {confirmingArchive ? "Confirm Delete" : "Delete Compact"}
+              </Button>
+            ) : null}
           </div>
+          {confirmingArchive ? (
+            <div className="archive-inline-confirm mt-4" role="status" aria-live="polite">
+              <p className="text-sm text-[#8f5037]">Delete this Memory Compact from active views? It will be archived for safety.</p>
+              <Button type="button" size="sm" variant="secondary" onClick={() => setConfirmingArchive(false)}>Cancel</Button>
+            </div>
+          ) : null}
         </Card>
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
           <Card>

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
@@ -36,6 +36,13 @@ from app.librarian.domain.event_enum.collaboration_enums import (
 )
 from app.librarian.domain.repositories.agent_repository import IAgentRepository
 from app.main import app
+from app.memory.application.memory_compact_service import MemoryCompactService
+from app.memory.domain.entities.memory_compact import (
+    MemoryCompact,
+    MemoryCompactSourceRef,
+)
+from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
+from app.memory.domain.repositories.memory_compact_repository import MemoryCompactCreate
 from app.shared.types.extra_types import JSONObject
 from fastapi.testclient import TestClient
 from tests.shared.provider_overrides import override_library_provider
@@ -157,6 +164,67 @@ class SkippingDelegateExecutor(LibrarianDelegateExecutor):
         )
 
 
+class ActionDelegateExecutor(LibrarianDelegateExecutor):
+    """Fake executor that returns a backend-action candidate."""
+
+    async def execute(
+        self,
+        *,
+        command: HermesLibrarianAskCommand,
+        plan: LibrarianExecutionPlan,
+        fallback: LibrarianDelegateResult,
+    ) -> LibrarianDelegateResult:
+        """Return a daily Memory Compact candidate from the librarian lane."""
+        return LibrarianDelegateResult(
+            profile_id=fallback.profile_id,
+            provider_id=fallback.provider_id,
+            status=LibrarianDelegateStatus.COMPLETED,
+            delegate_type=fallback.delegate_type,
+            summary=(
+                "ACTION: DAILY_MEMORY_COMPACT\n\n"
+                "# Daily Memory Compact\n\n"
+                "## Summary\n"
+                "The librarian compacted today's durable project memory."
+            ),
+            matched_specialties=fallback.matched_specialties,
+        )
+
+
+class RecordingMemoryCompactService(MemoryCompactService):
+    """Record Memory Compact creation payloads without touching persistence."""
+
+    def __init__(self) -> None:
+        """Initialize the in-memory recording service."""
+        self.payloads: list[MemoryCompactCreate] = []
+
+    async def create(self, payload: MemoryCompactCreate) -> MemoryCompact:
+        """Record the payload and return a compact read model."""
+        self.payloads.append(payload)
+        compact_id = f"compact-{len(self.payloads)}"
+        return MemoryCompact(
+            id=compact_id,
+            project=payload.project,
+            covered_from=payload.covered_from,
+            covered_to=payload.covered_to,
+            markdown_body=payload.markdown_body,
+            status=payload.status,
+            source_refs=tuple(
+                MemoryCompactSourceRef(
+                    id=f"ref-{index}",
+                    compact_id=compact_id,
+                    source_type=source_ref.source_type,
+                    source_id=source_ref.source_id,
+                    title=source_ref.title,
+                    detail_path=source_ref.detail_path,
+                )
+                for index, source_ref in enumerate(payload.source_refs, start=1)
+            ),
+            created_at=FIXED_NOW,
+            updated_at=FIXED_NOW,
+            archived_at=None,
+        )
+
+
 def _provider(
     provider_id: str = "00000000-0000-4000-8000-000000000701",
     *,
@@ -208,6 +276,7 @@ def _service(
     profiles: list[AgentProfile] | None = None,
     secrets: dict[tuple[str, str], str] | None = None,
     delegate_executor: LibrarianDelegateExecutor | None = None,
+    memory_compact_service: MemoryCompactService | None = None,
 ) -> HermesCollaborationService:
     """Create collaboration service with deterministic clock."""
     return HermesCollaborationService(
@@ -216,6 +285,7 @@ def _service(
         secret_repo=CollaborationSecretRepository(secrets),
         now_provider=lambda: FIXED_NOW,
         delegate_executor=delegate_executor,
+        memory_compact_service=memory_compact_service,
     )
 
 
@@ -345,6 +415,76 @@ def test_ask_librarian_delegates_when_provider_is_available() -> None:
             }
         ],
     }
+
+
+def test_ask_librarian_saves_daily_memory_compact_from_delegate_action() -> None:
+    """POST /librarians/ask should persist delegate-approved compact actions."""
+    profile = _profile()
+    memory_service = RecordingMemoryCompactService()
+    service = _service(
+        [_provider()],
+        [profile],
+        _oauth_execution_secrets(),
+        delegate_executor=ActionDelegateExecutor(),
+        memory_compact_service=memory_service,
+    )
+
+    with (
+        override_library_provider("hermes_collaboration_service", service),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.post(
+            "/librarians/ask",
+            json={
+                "prompt": "Please summarize today's long-term project memory.",
+                "project": "alexandria-hermes",
+                "delegate_to_librarian": True,
+                "librarian_profile_id": profile.id,
+                "source_refs": [
+                    {
+                        "source_type": "CONTEXT",
+                        "source_id": "context-1",
+                        "title": "Today's context",
+                        "detail_path": "/memory/contexts/context-1",
+                        "preview": "Relevant project memory.",
+                    }
+                ],
+            },
+        )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert len(memory_service.payloads) == 1
+    compact_payload = memory_service.payloads[0]
+    assert compact_payload.project == "alexandria-hermes"
+    assert compact_payload.covered_from == FIXED_NOW - timedelta(days=1)
+    assert compact_payload.covered_to == FIXED_NOW
+    assert compact_payload.status is MemoryCompactStatus.CURRENT
+    assert compact_payload.markdown_body == (
+        "# Daily Memory Compact\n\n"
+        "## Summary\n"
+        "The librarian compacted today's durable project memory."
+    )
+    assert [
+        {
+            "source_type": source_ref.source_type,
+            "source_id": source_ref.source_id,
+            "title": source_ref.title,
+            "detail_path": source_ref.detail_path,
+        }
+        for source_ref in compact_payload.source_refs
+    ] == [
+        {
+            "source_type": "CONTEXT",
+            "source_id": "context-1",
+            "title": "Today's context",
+            "detail_path": "/memory/contexts/context-1",
+        }
+    ]
+    assert body["status"] == "COMPLETED"
+    assert body["route_preview"][-1] == "Saved daily Memory Compact: compact-1"
+    assert body["delegates"][0]["summary"].startswith("# Memory Compact saved")
+    assert "ACTION: DAILY_MEMORY_COMPACT" not in body["delegates"][0]["summary"]
 
 
 def test_ask_librarian_reports_guidance_when_provider_delegate_is_skipped() -> None:

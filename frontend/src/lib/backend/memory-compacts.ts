@@ -131,3 +131,13 @@ export async function createMemoryCompactInBackend(
   });
   return toMemoryCompactDTO(result);
 }
+
+export async function archiveMemoryCompactInBackend(
+  compactId: string,
+): Promise<MemoryCompactDTO> {
+  const result = await backendFetch<BackendMemoryCompact>(
+    `/memory/compacts/${encodeURIComponent(compactId)}/archive`,
+    { method: "POST" },
+  );
+  return toMemoryCompactDTO(result);
+}

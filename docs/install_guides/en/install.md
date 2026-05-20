@@ -152,7 +152,7 @@ alexandria-hermes --base-url "$ALEXANDRIA_API_URL" --json health
 alexandria-hermes --json hermes doctor --hermes-home "$HERMES_HOME" --api-url "$ALEXANDRIA_API_URL"
 ```
 
-Then start a fresh Hermes session and confirm Alexandria tools are visible, usually with names such as `mcp_alexandria_*`.
+Then start a fresh Hermes session and confirm Alexandria tools are visible, usually with names such as `mcp_alexandria_*`. For prior-project memory, Hermes should use local/current context first, then current Memory Compact, then Context Vault recall/RAG.
 
 ## 7. Policy on/off
 

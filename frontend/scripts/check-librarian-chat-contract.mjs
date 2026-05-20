@@ -53,6 +53,11 @@ assert.match(
 );
 assert.match(
   chatBackend,
+  /function isMemoryStatusQuestion/,
+  "chat orchestration must distinguish memory status questions from delegate requests",
+);
+assert.match(
+  chatBackend,
   /if \(inventoryMode\) \{[\s\S]*loadContextsFromBackend\(new URLSearchParams/,
   "context inventory/count answers must preserve the backend context list total",
 );
@@ -76,6 +81,36 @@ assert.match(
   /return \{ hits, totalCount: contextList\.total \};/,
   "context inventory/count answers must derive totals from the list response total",
 );
+assert.match(
+  chatBackend,
+  /function platformInventoryAnswer/,
+  "librarian chat must answer platform inventory questions directly",
+);
+assert.match(
+  chatBackend,
+  /if \(memoryStatusMode \|\| inventoryMode\)/,
+  "inventory and memory-status questions must bypass librarian delegation",
+);
+assert.match(
+  chatBackend,
+  /Context Vault 장기기억: \$\{contextBucket\.totalCount\}건/,
+  "memory inventory answers must report Context Vault totals",
+);
+assert.match(
+  chatBackend,
+  /Memory Compacts: \$\{compactBucket\.totalCount\}건/,
+  "memory inventory answers must report Memory Compact totals",
+);
+assert.match(
+  chatBackend,
+  /current Memory Compact/,
+  "memory inventory answers must include current compact context",
+);
+assert.doesNotMatch(
+  chatBackend,
+  /No delegate lanes returned|사서 delegate 미완료|Delegate evidence/,
+  "librarian chat must not expose raw delegate failure wording",
+);
 assert.doesNotMatch(
   chatBackend,
   /direct_total_count|direct_hits|delegated_job|delegation_status|query=|targets=/,
@@ -85,6 +120,21 @@ assert.match(
   chatBackend,
   /directTotalCount = searchBuckets\.reduce/,
   "direct librarian search answers must aggregate real total counts across buckets",
+);
+assert.match(
+  chatBackend,
+  /function uniqueDirectHits/,
+  "librarian chat must collapse duplicate direct hits before the UI renders React keys",
+);
+assert.match(
+  chatBackend,
+  /const directHits = uniqueDirectHits\([\s\S]*flatMap\(\(bucket\) => bucket\.hits\)[\s\S]*\)\.slice/,
+  "direct librarian search visible hits must be deduplicated before slicing",
+);
+assert.match(
+  chatBackend,
+  /sourceRefs = uniqueSourceRefs\(directHits\.map\(sourceRefFromHit\)\)/,
+  "source refs must be deduplicated even when no current compact is available",
 );
 assert.match(
   chatBackend,
@@ -168,18 +218,33 @@ assert.match(
 );
 assert.match(
   chatClient,
-  /aria-label="사서 필터링"/,
-  "librarian chat execution mode, librarian selector, and targets must be grouped as filters",
+  /플랫폼 기억과 근거/,
+  "librarian chat UI must describe the librarian as using platform memory",
+);
+assert.match(
+  chatClient,
+  /aria-label="사서 선택"/,
+  "librarian chat UI must keep only the librarian selector as the user-facing control",
 );
 assert.match(
   chatClient,
   /SlidersHorizontal/,
-  "librarian chat filter group must use the shared filter affordance icon",
+  "librarian chat selector group must use the shared selection affordance icon",
 );
 assert.match(
   chatClient,
-  /필터 초기화/,
-  "librarian chat filters must support resetting execution and target filters together",
+  /선택 초기화/,
+  "librarian chat selector must support resetting the selected librarian",
+);
+assert.doesNotMatch(
+  chatClient,
+  /검색 대상|실행 모드|필터링|필터 초기화|targets:/,
+  "librarian chat UI must not expose mode or search-target filters",
+);
+assert.doesNotMatch(
+  chatClient,
+  /실행\/CLI 요약|executionSummary\.map|backend orchestration/,
+  "librarian chat UI must not expose internal execution summaries",
 );
 assert.match(
   chatClient,
@@ -196,30 +261,30 @@ assert.match(
   /selectedLibrarianRolePrompt/,
   "chat orchestration must preserve selected profile role prompt while appending platform guardrails",
 );
-assert.match(
+assert.doesNotMatch(
   chatBackend,
   /function isMemoryCompactAction/,
-  "librarian chat must detect explicit memory compact action requests",
+  "librarian chat must not use frontend/server-adapter regexes for memory compact action detection",
 );
-assert.match(
+assert.doesNotMatch(
   chatBackend,
   /prepareCompactInBackend/,
-  "memory compact actions must prepare a durable compact context before saving the compact artifact",
+  "memory compact actions must not create compact contexts in the frontend server adapter",
 );
-assert.match(
+assert.doesNotMatch(
   chatBackend,
   /createMemoryCompactInBackend/,
-  "memory compact actions must save a first-class Memory Compact artifact",
+  "memory compact actions must not save artifacts from the frontend server adapter",
 );
 assert.match(
   chatBackend,
-  /작업 실행: Memory Compact 생성 완료/,
-  "memory compact actions must report completed execution in user-visible CLI summary",
+  /contextCompact:\s*currentCompact/,
+  "librarian chat must pass current Memory Compact through the backend librarian knowledge packet",
 );
 assert.match(
   chatBackend,
-  /status:\s*"CURRENT"/,
-  "explicit memory compact actions must create a current compact rather than only answering the question",
+  /loadCurrentMemoryCompactForLibrarian/,
+  "librarian chat must load the current compact as evidence instead of compacting locally",
 );
 
 assert.doesNotMatch(

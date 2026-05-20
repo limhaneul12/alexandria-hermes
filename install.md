@@ -13,6 +13,7 @@
 
 목표는 Hermes runtime이 Alexandria-Hermes를 **CLI와 native MCP tool**로 사용할 수 있게 만들고,
 처음 설치한 사용자도 Hermes가 **로컬/현재 컨텍스트를 먼저 사용한 뒤, 부족할 때 Alexandria를 자연스럽게 쓰고** 원하면 명확히 끌 수 있게 하는 것이다.
+장기기억 탐색은 현재 대화/Hermes local memory 다음에 **current Memory Compact → Context Vault recall/RAG** 순서로 이어진다.
 
 ## 핵심 주의점
 

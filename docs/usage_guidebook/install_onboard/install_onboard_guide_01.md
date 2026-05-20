@@ -56,9 +56,10 @@ alexandria-hermes --json hermes policy status --hermes-home "$HERMES_HOME"
 
 1. 현재 대화, Hermes local memory, loaded/local/built-in skill을 먼저 사용한다.
 2. 충분하면 Alexandria를 호출하지 않는다.
-3. 부족하거나 이전 작업을 이어가거나 durable/shared context가 필요하면 Alexandria search/recall을 사용한다.
-4. START_HERE는 unfamiliar agent가 로컬 맥락이 부족할 때 보는 도서관 입구다.
-5. librarian은 optional이며 기본적으로 사용자의 명시 요청이 있을 때만 사용한다.
+3. 부족하거나 이전 작업을 이어가거나 durable/shared context가 필요하면 current Memory Compact를 먼저 읽는다.
+4. 그래도 빈틈이 있으면 Context Vault recall/RAG로 필요한 결정/핸드오프/버그 원인/compact detail만 좁게 찾는다.
+5. START_HERE는 unfamiliar agent가 로컬 맥락이 부족할 때 보는 도서관 입구다.
+6. librarian은 optional이며 기본적으로 사용자의 명시 요청이 있을 때만 사용한다. Memory Compact/Context Vault 조회는 사서 위임과 별개다.
 
 ## Hermes MCP runtime 등록
 
@@ -79,6 +80,7 @@ hermes mcp test alexandria
 - operator key는 OAuth token이 아니다. protected librarian/settings route에는 operator header가 필요하다.
 - 사서가 없어도 설치는 성공할 수 있다. Hermes self-acquisition이 fallback이다.
 - Alexandria는 local memory 대체물이 아니다. local-first, Alexandria-when-needed가 기본 계약이다.
+- 장기기억 조회는 사서 호출이 아니다. 사서는 사용자가 위임을 요청했거나 별도 정책이 있을 때만 쓴다.
 
 ## 선택 사항: 외부 사서 provider / GPT-Codex OAuth
 
