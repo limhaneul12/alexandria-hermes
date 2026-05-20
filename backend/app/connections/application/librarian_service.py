@@ -19,6 +19,7 @@ from app.connections.domain.contracts.librarian_provider_contracts import (
     LibrarianProviderCreate,
     LibrarianProviderUpdate,
 )
+from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.event_enum.provider_enums import (
     AuthType,
     ProviderSecretKey,
@@ -35,7 +36,11 @@ from app.connections.domain.types.librarian_provider_payload_types import (
     LibrarianProviderTestPayload,
     LibrarianProviderUpdateValues,
 )
-from app.shared.exceptions import NotFoundError, UnsupportedProviderError
+from app.shared.exceptions import (
+    BoundaryValidationError,
+    ConnectionsProviderUnsupportedError,
+    ConnectionsResourceNotFoundError,
+)
 from app.shared.types.extra_types import JSONObject
 from app.shared.types.types_convert_utils import enum_value, now_utc
 
@@ -50,6 +55,25 @@ _OAUTH_PROVIDER_SECRET_KEYS = (
     ProviderSecretKey.OAUTH_DEVICE_EXPIRES_AT,
     ProviderSecretKey.OAUTH_POLL_INTERVAL_SECONDS,
 )
+
+
+def _provider_identity(row: LibrarianProvider) -> tuple[ProviderType, AuthType]:
+    """Parse persisted provider identity without ad-hoc runtime type checks.
+
+    Args:
+        row: Provider read model loaded from the repository.
+
+    Returns:
+        tuple[ProviderType, AuthType]: Parsed provider/auth identity.
+    """
+    try:
+        provider_type = enum_value(row.provider_type, ProviderType, "provider_type")
+        auth_type = enum_value(row.auth_type, AuthType, "auth_type")
+    except BoundaryValidationError as exc:
+        raise ConnectionsProviderUnsupportedError(
+            f"Provider type {row.provider_type} is unsupported"
+        ) from exc
+    return provider_type, auth_type
 
 
 def _provider_update_values(
@@ -189,7 +213,7 @@ class LibrarianService:
         """
         row = await self.provider_repo.get(provider_id)
         if row is None:
-            raise NotFoundError(f"Provider not found: {provider_id}")
+            raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
         return build_provider_payload(row)
 
     async def update_provider(
@@ -208,21 +232,14 @@ class LibrarianService:
         """
         row = await self.provider_repo.get(provider_id)
         if row is None:
-            raise NotFoundError(f"Provider not found: {provider_id}")
+            raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
 
         if "config" in payload:
             ensure_provider_config_has_no_credentials(payload["config"])
 
         api_key = payload.get("api_key")
         oauth_access_token = payload.get("oauth_access_token")
-        if not isinstance(row.provider_type, ProviderType) or not isinstance(
-            row.auth_type, AuthType
-        ):
-            raise UnsupportedProviderError(
-                f"Provider type {row.provider_type} is unsupported"
-            )
-        current_provider_type = row.provider_type
-        current_auth_type = row.auth_type
+        current_provider_type, current_auth_type = _provider_identity(row)
         provider_type = enum_value(
             payload.get("provider_type", current_provider_type),
             ProviderType,
@@ -250,13 +267,17 @@ class LibrarianService:
 
         if auth_type is AuthType.API_KEY and api_key is None:
             if identity_changed:
-                raise UnsupportedProviderError("API_KEY auth requires api_key")
+                raise ConnectionsProviderUnsupportedError(
+                    "API_KEY auth requires api_key"
+                )
             existing_api_key = await self.secret_repo.resolve(
                 provider_id,
                 ProviderSecretKey.API_KEY.value,
             )
             if not existing_api_key:
-                raise UnsupportedProviderError("API_KEY auth requires api_key")
+                raise ConnectionsProviderUnsupportedError(
+                    "API_KEY auth requires api_key"
+                )
 
         if (
             current_provider_type is ProviderType.OPENAI_CODEX
@@ -270,7 +291,7 @@ class LibrarianService:
             )
             and await self._oauth_secret_exists(provider_id)
         ):
-            raise UnsupportedProviderError(
+            raise ConnectionsProviderUnsupportedError(
                 "OAuth endpoint config cannot change while OAuth tokens are stored"
             )
 
@@ -319,7 +340,7 @@ class LibrarianService:
         """
         row = await self.provider_repo.get(provider_id)
         if row is None:
-            raise NotFoundError(f"Provider not found: {provider_id}")
+            raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
         await self._delete_all_provider_secrets(provider_id)
         await self.provider_repo.delete(provider_id)
 
@@ -339,7 +360,7 @@ class LibrarianService:
         """
         model = await self.provider_repo.get(provider_id)
         if model is None:
-            raise NotFoundError(f"Provider not found: {provider_id}")
+            raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
         result = await self.client_factory.test_connection(
             provider=model,
             secret_resolver=self.secret_repo,

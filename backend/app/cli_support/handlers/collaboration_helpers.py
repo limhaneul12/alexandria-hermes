@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from os import environ as process_environment
 from pathlib import Path
 from typing import cast
 
-from app.cli_support.contracts.command_contracts import (
+from app.cli_support.contracts.librarian_command_contracts import (
     LibrarianAskCommand,
     LibrarianProfileCreateCommand,
     LibrarianProfileUpdateCommand,
@@ -14,95 +15,132 @@ from app.cli_support.contracts.command_contracts import (
     UsageRecordCliCommand,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
-from app.cli_support.environment import cli_secret_value
 from app.cli_support.presentation.output_renderers import print_json, text_field
+from app.cli_support.schemas.collaboration_payload_schemas import (
+    LibrarianAskBody,
+    LibrarianProfilePatchBody,
+    UsageRecordBody,
+)
 from app.cli_support.url_paths import quote_path
+from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
+from app.shared.utils.usage_feedback import usage_feedback_value
+
+
+def cli_secret_value(env_name: str) -> str | None:
+    """Return one CLI-provided secret environment value.
+
+    Args:
+        env_name: Environment variable name supplied by an operator CLI option.
+
+    Returns:
+        Non-empty environment value, or None.
+    """
+    value = process_environment.get(env_name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def usage_record_body(command: UsageRecordCliCommand) -> JSONObject:
-    body: JSONObject = {
-        "item_id": command.item_id,
-        "item_type": command.item_type,
-        "agent_name": command.agent_name,
-        "selection_source": command.selection_source.value,
-        "success": command.success,
-    }
-    if command.query is not None:
-        body["query"] = command.query
-    if command.librarian_provider is not None:
-        body["librarian_provider"] = command.librarian_provider
-    feedback = usage_feedback(command)
-    if feedback is not None:
-        body["feedback"] = feedback
-    return body
+    """Build the backend usage-record body from a CLI command.
+
+    Args:
+        command: Typed CLI usage-record command.
+
+    Returns:
+        JSONObject: Backend request body with empty optionals omitted.
+    """
+    body = UsageRecordBody(
+        item_id=command.item_id,
+        item_type=command.item_type,
+        agent_name=command.agent_name,
+        selection_source=command.selection_source.value,
+        success=command.success,
+        query=command.query,
+        librarian_provider=command.librarian_provider,
+        feedback=usage_feedback(command),
+    )
+    return schema_payload(body, exclude_none=True)
 
 
 def usage_feedback(command: UsageRecordCliCommand) -> JSONObject | str | None:
-    if command.project is None and command.task_summary is None:
-        return command.feedback
-    payload: JSONObject = {}
-    if command.project is not None:
-        payload["project"] = command.project
-    if command.task_summary is not None:
-        payload["task_summary"] = command.task_summary
-    if command.feedback is not None:
-        payload["comment"] = command.feedback
-    return payload
+    """Build usage feedback for the backend usage endpoint.
+
+    Args:
+        command: Typed CLI usage-record command.
+
+    Returns:
+        JSONObject | str | None: Plain feedback, structured feedback, or none.
+    """
+    return usage_feedback_value(
+        project=command.project,
+        task_summary=command.task_summary,
+        feedback=command.feedback,
+    )
 
 
 def librarian_ask_body(command: LibrarianAskCommand) -> JSONObject:
-    body: JSONObject = {
-        "prompt": command.prompt,
-        "agent_name": command.agent_name,
-        "delegate_to_librarian": command.delegate_to_librarian,
-    }
-    if command.provider_id is not None:
-        body["provider_id"] = command.provider_id
-    if command.librarian_profile_id is not None:
-        body["librarian_profile_id"] = command.librarian_profile_id
-    if command.librarian_model is not None:
-        body["librarian_model"] = command.librarian_model
-    if command.librarian_role_prompt is not None:
-        body["librarian_role_prompt"] = command.librarian_role_prompt
-    if command.max_librarian_agents is not None:
-        body["max_librarian_agents"] = command.max_librarian_agents
-    if command.routing_specialties:
-        body["routing_specialties"] = command.routing_specialties
-    if command.project is not None:
-        body["project"] = command.project
-    if command.task_summary is not None:
-        body["task_summary"] = command.task_summary
-    return body
+    """Build the ask-librarian backend body from a CLI command.
+
+    Args:
+        command: Typed CLI ask command.
+
+    Returns:
+        JSONObject: Backend request body with empty optionals omitted.
+    """
+    body = LibrarianAskBody(
+        prompt=command.prompt,
+        agent_name=command.agent_name,
+        delegate_to_librarian=command.delegate_to_librarian,
+        provider_id=command.provider_id,
+        librarian_profile_id=command.librarian_profile_id,
+        librarian_model=command.librarian_model,
+        librarian_role_prompt=command.librarian_role_prompt,
+        max_librarian_agents=command.max_librarian_agents,
+        routing_specialties=command.routing_specialties or None,
+        project=command.project,
+        task_summary=command.task_summary,
+    )
+    return schema_payload(body, exclude_none=True)
 
 
 def librarian_route_body(command: LibrarianRoutePreviewCommand) -> JSONObject:
-    body: JSONObject = {
-        "prompt": command.prompt,
-        "agent_name": command.agent_name,
-        "delegate_to_librarian": False,
-    }
-    if command.provider_id is not None:
-        body["provider_id"] = command.provider_id
-    if command.librarian_profile_id is not None:
-        body["librarian_profile_id"] = command.librarian_profile_id
-    if command.librarian_model is not None:
-        body["librarian_model"] = command.librarian_model
-    if command.librarian_role_prompt is not None:
-        body["librarian_role_prompt"] = command.librarian_role_prompt
-    if command.max_librarian_agents is not None:
-        body["max_librarian_agents"] = command.max_librarian_agents
-    if command.routing_specialties:
-        body["routing_specialties"] = command.routing_specialties
-    if command.project is not None:
-        body["project"] = command.project
-    if command.task_summary is not None:
-        body["task_summary"] = command.task_summary
-    return body
+    """Build the route-preview backend body from a CLI command.
+
+    Args:
+        command: Typed CLI route-preview command.
+
+    Returns:
+        JSONObject: Backend request body with delegation disabled.
+    """
+    body = LibrarianAskBody(
+        prompt=command.prompt,
+        agent_name=command.agent_name,
+        delegate_to_librarian=False,
+        provider_id=command.provider_id,
+        librarian_profile_id=command.librarian_profile_id,
+        librarian_model=command.librarian_model,
+        librarian_role_prompt=command.librarian_role_prompt,
+        max_librarian_agents=command.max_librarian_agents,
+        routing_specialties=command.routing_specialties or None,
+        project=command.project,
+        task_summary=command.task_summary,
+    )
+    return schema_payload(body, exclude_none=True)
 
 
 def provider_create_body(command: LibrarianProviderCreateCommand) -> JSONObject:
+    """Build the provider-create backend body from a CLI command.
+
+    Args:
+        command: Typed CLI provider-create command.
+
+    Returns:
+        JSONObject: Backend request body with secret material read from env.
+    """
     body: JSONObject = {
         "name": command.name,
         "provider_type": command.provider_type,
@@ -118,6 +156,14 @@ def provider_create_body(command: LibrarianProviderCreateCommand) -> JSONObject:
 
 
 def profile_create_body(command: LibrarianProfileCreateCommand) -> JSONObject:
+    """Build the profile-create backend body from a CLI command.
+
+    Args:
+        command: Typed CLI profile-create command.
+
+    Returns:
+        JSONObject: Backend request body for a new librarian profile.
+    """
     role_prompt = role_prompt_text(command.role_prompt, command.role_prompt_file)
     specialties = command.specialties
     body: JSONObject = {
@@ -141,36 +187,50 @@ def profile_update_body(
     command: LibrarianProfileUpdateCommand,
     current: JSONObject | None,
 ) -> JSONObject:
-    body: JSONObject = {}
-    if command.name is not None:
-        body["name"] = command.name
-    if command.role is not None:
-        body["librarian_role"] = command.role
-    if command.provider_id is not None:
-        body["preferred_librarian_provider"] = command.provider_id
-    if command.model is not None:
-        body["preferred_librarian_model"] = command.model
-    if command.delegate_limit is not None:
-        body["max_librarian_agents"] = command.delegate_limit
-    if command.routing_priority is not None:
-        body["librarian_routing_priority"] = command.routing_priority
-    if command.enabled is not None:
-        body["librarian_enabled"] = command.enabled
+    """Build the profile-patch backend body from a CLI command.
+
+    Args:
+        command: Typed CLI profile-update command.
+        current: Current backend profile payload used for specialty diffs.
+
+    Returns:
+        JSONObject: Backend patch body with empty optionals omitted.
+    """
     role_prompt = role_prompt_text(command.role_prompt, command.role_prompt_file)
-    if role_prompt is not None:
-        body["description"] = role_prompt
-        body["librarian_role_prompt"] = role_prompt
-    if command.add_specialties or command.remove_specialties:
-        specialties = updated_specialties(command, current)
-        body["capabilities"] = specialties
-        body["librarian_specialties"] = specialties
-    return body
+    specialties = (
+        updated_specialties(command, current)
+        if command.add_specialties or command.remove_specialties
+        else None
+    )
+    body = LibrarianProfilePatchBody(
+        name=command.name,
+        librarian_role=command.role,
+        preferred_librarian_provider=command.provider_id,
+        preferred_librarian_model=command.model,
+        max_librarian_agents=command.delegate_limit,
+        librarian_routing_priority=command.routing_priority,
+        librarian_enabled=command.enabled,
+        description=role_prompt,
+        librarian_role_prompt=role_prompt,
+        capabilities=specialties,
+        librarian_specialties=specialties,
+    )
+    return schema_payload(body, exclude_none=True)
 
 
 def updated_specialties(
     command: LibrarianProfileUpdateCommand,
     current: JSONObject | None,
 ) -> list[str]:
+    """Apply CLI add/remove specialty edits to the current profile payload.
+
+    Args:
+        command: Typed CLI profile-update command.
+        current: Current backend profile payload.
+
+    Returns:
+        list[str]: Updated specialty list preserving existing order.
+    """
     specialties: list[str] = []
     if current is not None:
         raw_specialties = current.get("librarian_specialties")
@@ -188,6 +248,15 @@ def role_prompt_text(
     role_prompt: str | None,
     role_prompt_file: str | None,
 ) -> str | None:
+    """Resolve inline or file-backed role prompt text.
+
+    Args:
+        role_prompt: Inline prompt text.
+        role_prompt_file: Optional file path containing prompt text.
+
+    Returns:
+        str | None: Resolved role prompt text, or none when omitted.
+    """
     if role_prompt_file is not None:
         return Path(role_prompt_file).read_text(encoding="utf-8").strip()
     if role_prompt is not None:
@@ -195,23 +264,16 @@ def role_prompt_text(
     return None
 
 
-def print_json_or_summary(
-    payload: JSONValue,
-    context: CommandContext,
-    label: str,
-) -> None:
-    if context.json_output:
-        print_json(payload, context.stdout)
-        return
-    if isinstance(payload, list):
-        print(f"{label}: {len(payload)}", file=context.stdout)
-        return
-    item_id = text_field(payload, "id")
-    suffix = f" {item_id}" if item_id else ""
-    print(f"{label}{suffix}", file=context.stdout)
-
-
 def oauth_path(provider_id: str, action: str) -> str:
+    """Build a provider OAuth action path.
+
+    Args:
+        provider_id: Provider identifier.
+        action: OAuth lifecycle action.
+
+    Returns:
+        str: URL path for the provider OAuth action.
+    """
     return f"/settings/connections/{quote_path(provider_id)}/oauth/{action}"
 
 
@@ -220,6 +282,13 @@ def print_oauth_status(
     payload: JSONValue,
     context: CommandContext,
 ) -> None:
+    """Print a redacted OAuth status response.
+
+    Args:
+        provider_id: Provider identifier.
+        payload: Backend OAuth status response.
+        context: CLI runtime context.
+    """
     safe_payload = without_oauth_sensitive_fields(payload)
     if context.json_output:
         print_json(safe_payload, context.stdout)

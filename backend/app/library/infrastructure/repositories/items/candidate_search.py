@@ -15,6 +15,7 @@ from app.library.infrastructure.repositories.items.fts import (
     build_item_candidate_fts_query,
 )
 from app.shared.types.extra_types import JSONObject, JSONValue
+from app.shared.types.types_convert_utils import aware_utc_datetime
 from sqlalchemy import Select, bindparam, column, exists, func, literal, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.sql.elements import ColumnElement
@@ -330,9 +331,9 @@ def _json_object(value: CandidateRowValue) -> JSONObject:
 
 def _datetime_value(value: CandidateRowValue) -> datetime:
     if isinstance(value, datetime):
-        return value
+        return aware_utc_datetime(value)
     if isinstance(value, str):
-        return datetime.fromisoformat(value)
+        return aware_utc_datetime(datetime.fromisoformat(value))
     message = "candidate updated_at must be a datetime"
     raise TypeError(message)
 

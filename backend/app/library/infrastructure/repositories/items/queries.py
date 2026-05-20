@@ -35,13 +35,11 @@ def build_items_by_type_statement(
 def build_items_filtered_statement(
     *,
     category_id: str | None = None,
-    search_query: str | None = None,
 ) -> Select[tuple[LibraryItemORM]]:
-    """Build the base filtered item listing statement before ordering/pagination.
+    """Build the base item listing statement before ordering/pagination.
 
     Args:
         category_id [str | None]: Value supplied to build_items_filtered_statement.
-        search_query [str | None]: Value supplied to build_items_filtered_statement.
 
     Returns:
         Select[tuple[LibraryItemORM]]: Value produced by build_items_filtered_statement.
@@ -49,13 +47,6 @@ def build_items_filtered_statement(
     statement = select(LibraryItemORM)
     if category_id is not None:
         statement = statement.where(LibraryItemORM.category_id == category_id)
-    if search_query:
-        pattern = f"%{search_query.strip().lower()}%"
-        statement = statement.where(
-            func.lower(LibraryItemORM.title).like(pattern)
-            | func.lower(LibraryItemORM.summary).like(pattern)
-            | func.lower(LibraryItemORM.content).like(pattern),
-        )
     filtered_statement = statement
     return filtered_statement
 

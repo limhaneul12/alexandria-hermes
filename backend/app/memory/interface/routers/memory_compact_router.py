@@ -16,6 +16,7 @@ from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import (
     MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING,
 )
+from app.shared.schemas.datetime_schemas import AwareTimestamp
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
@@ -34,6 +35,8 @@ router = APIRouter(prefix="/memory/compacts", tags=["memory-compacts"])
 async def list_memory_compacts(
     project: str | None = Query(default=None),
     compact_status: MemoryCompactStatus | None = Query(default=None, alias="status"),
+    covered_after: AwareTimestamp | None = Query(default=None),
+    covered_before: AwareTimestamp | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     service: MemoryCompactService = Depends(
@@ -43,8 +46,10 @@ async def list_memory_compacts(
     """List Memory Compact artifacts.
 
     Args:
-        project: Optional project filter.
-        compact_status: Optional lifecycle status filter.
+        project: Project filter.
+        compact_status: Lifecycle status filter.
+        covered_after: Coverage-overlap lower bound.
+        covered_before: Coverage-overlap upper bound.
         limit: Maximum number of rows to return.
         offset: Number of rows to skip.
         service: Memory Compact application service.
@@ -55,6 +60,8 @@ async def list_memory_compacts(
     items, total = await service.list_compacts(
         project=project,
         status=compact_status,
+        covered_after=covered_after,
+        covered_before=covered_before,
         limit=limit,
         offset=offset,
     )

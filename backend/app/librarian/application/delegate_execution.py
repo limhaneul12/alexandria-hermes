@@ -125,6 +125,14 @@ async def execute_delegates(
     semaphore = asyncio.Semaphore(limit)
 
     async def execute_one(plan: LibrarianExecutionPlan) -> LibrarianDelegateResult:
+        """Execute one delegate plan behind the local concurrency gate.
+
+        Args:
+            plan: Delegate execution plan selected for this request.
+
+        Returns:
+            LibrarianDelegateResult: Provider result or inline fallback result.
+        """
         async with semaphore:
             fallback = _delegate_result(plan)
             if executor is None or command is None:

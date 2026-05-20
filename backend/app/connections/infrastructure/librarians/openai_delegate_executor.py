@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import base64
-import json
 import logging
 from dataclasses import replace
-from datetime import UTC, datetime
-from typing import cast
 
-import anyio
 from app.connections.domain.event_enum.provider_enums import (
     AuthType,
     ProviderSecretKey,
@@ -22,6 +17,11 @@ from app.connections.infrastructure.librarians.openai_adapter import (
     OpenAIClientBuilder,
     OpenAIClientConfig,
     build_openai_client,
+)
+from app.connections.infrastructure.librarians.openai_execution_support import (
+    OpenAICodexClientConfigBuilder,
+    OpenAIResponseSummaryFetcher,
+    string_config_value,
 )
 from app.connections.infrastructure.librarians.provider_types import (
     parse_auth_type,
@@ -36,9 +36,8 @@ from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     LibrarianDelegateResult,
 )
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianDelegateStatus
-from app.shared.types.extra_types import JSONValue
-from openai import OpenAI, OpenAIError
-from openai.types.responses import ResponseTextDeltaEvent
+from asyncer import asyncify
+from openai import OpenAIError
 
 _DEFAULT_MODEL = "gpt-5.5"
 _LIBRARIAN_SYSTEM_RULE = """
@@ -72,10 +71,8 @@ Operating rules:
   is required before the count can be trusted.
 """.strip()
 _DEFAULT_INSTRUCTIONS = "Return concise implementation guidance."
-_CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
-_CODEX_USER_AGENT = "codex_cli_rs/0.0.0 (Alexandria Hermes)"
-_CODEX_ORIGINATOR = "codex_cli_rs"
 logger = logging.getLogger(__name__)
+_SUMMARY_FETCHER = OpenAIResponseSummaryFetcher(strip_text_response=True)
 
 
 class OpenAIProviderDelegateExecutor(LibrarianDelegateExecutor):
@@ -94,6 +91,7 @@ class OpenAIProviderDelegateExecutor(LibrarianDelegateExecutor):
             openai_client_builder: SDK client constructor boundary.
         """
         self.secret_repo = secret_repo
+        self._codex_config_builder = OpenAICodexClientConfigBuilder(secret_repo)
         self.openai_client_builder = openai_client_builder
 
     async def execute(
@@ -128,22 +126,28 @@ class OpenAIProviderDelegateExecutor(LibrarianDelegateExecutor):
         client = self.openai_client_builder(client_config)
         model = _model_for_plan(plan)
         instructions = _instructions_for_plan(plan)
+        prompt = _delegate_prompt(command)
         try:
             if provider_type is ProviderType.OPENAI_CODEX:
-                summary = await anyio.to_thread.run_sync(
-                    _create_codex_stream_summary,
+                summary = await asyncify(
+                    _SUMMARY_FETCHER.fetch_codex_stream_summary,
+                    abandon_on_cancel=True,
+                )(
                     client,
                     model,
-                    _delegate_prompt(command),
+                    prompt,
                     instructions,
                 )
             else:
-                response = client.responses.create(
-                    model=model,
-                    input=_delegate_prompt(command),
-                    instructions=instructions,
+                summary = await asyncify(
+                    _SUMMARY_FETCHER.fetch_openai_summary,
+                    abandon_on_cancel=True,
+                )(
+                    client,
+                    model,
+                    prompt,
+                    instructions,
                 )
-                summary = response.output_text.strip()
         except OpenAIError as error:
             _log_provider_execution_failure(
                 provider_id=plan.provider.id,
@@ -179,50 +183,23 @@ class OpenAIProviderDelegateExecutor(LibrarianDelegateExecutor):
         return None
 
     async def _codex_client_config(self, provider_id: str) -> OpenAIClientConfig | None:
-        access_token = await self.secret_repo.resolve(
-            provider_id,
-            ProviderSecretKey.OAUTH_ACCESS_TOKEN.value,
-        )
-        expires_at_value = await self.secret_repo.resolve(
-            provider_id,
-            ProviderSecretKey.OAUTH_EXPIRES_AT.value,
-        )
-        if not access_token:
-            return None
-        expires_at = _parse_expires_at(expires_at_value)
-        if expires_at is not None and expires_at <= datetime.now(UTC):
-            return None
-        return OpenAIClientConfig(
-            api_key=access_token,
-            base_url=_CODEX_BASE_URL,
-            default_headers=_codex_default_headers(access_token),
-        )
+        client_config = await self._codex_config_builder.build(provider_id=provider_id)
+        return client_config
 
 
 def _delegate_prompt(command: HermesLibrarianAskCommand) -> str:
     packet = command.librarian_brief
-    if packet is None or not packet.strip():
-        return command.prompt
-    return packet
-
-
-def _create_codex_stream_summary(
-    client: OpenAI,
-    model: str,
-    prompt: str,
-    instructions: str,
-) -> str:
-    stream = client.responses.create(
-        model=model,
-        input=[{"role": "user", "content": prompt}],
-        instructions=instructions,
-        store=False,
-        stream=True,
+    prompt = command.prompt if packet is None or not packet.strip() else packet.strip()
+    if command.task_summary is None or not command.task_summary.strip():
+        return prompt
+    return "\n\n".join(
+        [
+            "# Hermes Task Summary",
+            command.task_summary.strip(),
+            "# Librarian Request Packet",
+            prompt,
+        ]
     )
-    text_parts = [
-        event.delta for event in stream if isinstance(event, ResponseTextDeltaEvent)
-    ]
-    return "".join(text_parts).strip()
 
 
 def _log_provider_execution_failure(
@@ -242,7 +219,7 @@ def _log_provider_execution_failure(
 
 
 def _instructions_for_plan(plan: LibrarianExecutionPlan) -> str:
-    role_prompt = _string_config_value(plan.resolution.librarian_role_prompt)
+    role_prompt = string_config_value(plan.resolution.librarian_role_prompt)
     if role_prompt is None:
         role_prompt = _DEFAULT_INSTRUCTIONS
     return f"{_LIBRARIAN_SYSTEM_RULE}\n\nTask-specific librarian role guidance:\n{role_prompt}"
@@ -253,73 +230,10 @@ def _model_for_plan(plan: LibrarianExecutionPlan) -> str:
         return plan.resolution.librarian_model
     if plan.provider is None:
         return _DEFAULT_MODEL
-    model = _string_config_value(plan.provider.config.get("model"))
+    model = string_config_value(plan.provider.config.get("model"))
     if model is None:
         return _DEFAULT_MODEL
     return model
-
-
-def _string_config_value(value: JSONValue | None) -> str | None:
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    return stripped
-
-
-def _codex_default_headers(access_token: str) -> dict[str, str]:
-    headers = {
-        "User-Agent": _CODEX_USER_AGENT,
-        "originator": _CODEX_ORIGINATOR,
-    }
-    account_id = _chatgpt_account_id(access_token)
-    if account_id is not None:
-        headers["ChatGPT-Account-ID"] = account_id
-    return headers
-
-
-def _chatgpt_account_id(access_token: str) -> str | None:
-    parts = access_token.split(".")
-    if len(parts) < 2:
-        return None
-    payload = _decode_jwt_payload(parts[1])
-    if payload is None:
-        return None
-    auth_claim = payload.get("https://api.openai.com/auth")
-    if not isinstance(auth_claim, dict):
-        return None
-    account_id = auth_claim.get("chatgpt_account_id")
-    if not isinstance(account_id, str):
-        return None
-    stripped = account_id.strip()
-    if not stripped:
-        return None
-    return stripped
-
-
-def _decode_jwt_payload(payload: str) -> dict[str, JSONValue] | None:
-    try:
-        padded = payload + "=" * (-len(payload) % 4)
-        raw_payload = base64.urlsafe_b64decode(padded.encode())
-        decoded = json.loads(raw_payload)
-    except (ValueError, json.JSONDecodeError):
-        return None
-    if not isinstance(decoded, dict):
-        return None
-    return cast(dict[str, JSONValue], decoded)
-
-
-def _parse_expires_at(value: str | None) -> datetime | None:
-    if value is None:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed
 
 
 def _skipped_result(

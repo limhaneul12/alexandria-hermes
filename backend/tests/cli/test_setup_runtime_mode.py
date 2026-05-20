@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import io
-import json
 from pathlib import Path
 
 from app.cli import run
+from app.shared.serialization.orjson_codec import dumps_json, loads_json
 
 
 def _json_stdout(argv: list[str]) -> tuple[int, dict[str, object], str]:
@@ -15,7 +15,7 @@ def _json_stdout(argv: list[str]) -> tuple[int, dict[str, object], str]:
 
     exit_code = run(["--json", *argv], stdout=stdout, stderr=stderr)
 
-    payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
+    payload = loads_json(stdout.getvalue()) if stdout.getvalue().strip() else {}
     return exit_code, payload, stderr.getvalue()
 
 
@@ -57,7 +57,7 @@ def test_setup_backend_daemon_dry_run_reports_sqlite_local_state(
         hermes_home / "alexandria-hermes" / "data" / "alexandria_hermes.db"
     )
     assert str(payload["database_url"]).startswith("sqlite+aiosqlite:////")
-    assert "postgres" not in json.dumps(payload).lower()
+    assert "postgres" not in dumps_json(payload).decode().lower()
     assert not (hermes_home / "alexandria-hermes" / ".env").exists()
 
 

@@ -5,9 +5,9 @@ from __future__ import annotations
 from app.library.domain.entities.read_models import Category
 from app.library.domain.repositories.category_repository import ICategoryRepository
 from app.shared.exceptions import (
-    CircularCategoryError,
-    NotFoundError,
-    ValidationError,
+    LibraryCategoryCycleError,
+    LibraryResourceNotFoundError,
+    LibraryValidationError,
 )
 
 
@@ -38,7 +38,7 @@ class CategoryService:
             Created category row.
         """
         if parent_id is not None and await self.category_repo.get(parent_id) is None:
-            raise ValidationError(f"Parent category does not exist: {parent_id}")
+            raise LibraryValidationError(f"Parent category does not exist: {parent_id}")
         return await self.category_repo.create(name=name, parent_id=parent_id)
 
     async def list_categories(self) -> list[Category]:
@@ -93,24 +93,26 @@ class CategoryService:
             Updated category row.
         """
         if category_id == parent_id:
-            raise CircularCategoryError("Category cannot be moved under itself")
+            raise LibraryCategoryCycleError("Category cannot be moved under itself")
 
         if parent_id is not None:
             if parent_id == category_id:
-                raise CircularCategoryError("Category cannot move under itself")
+                raise LibraryCategoryCycleError("Category cannot move under itself")
 
             if await self.category_repo.has_descendant(category_id, parent_id):
-                raise CircularCategoryError("Category move creates cycle")
+                raise LibraryCategoryCycleError("Category move creates cycle")
 
             if await self.category_repo.get(parent_id) is None:
-                raise ValidationError(f"Parent category does not exist: {parent_id}")
+                raise LibraryValidationError(
+                    f"Parent category does not exist: {parent_id}"
+                )
 
         max_depth = await self._max_depth_after_move(
             category_id=category_id,
             parent_id=parent_id,
         )
         if max_depth > self.max_depth:
-            raise ValidationError("Category depth exceeds allowed maximum")
+            raise LibraryValidationError("Category depth exceeds allowed maximum")
 
         return await self.category_repo.move(
             category_id,
@@ -142,7 +144,7 @@ class CategoryService:
             None.
         """
         if await self.category_repo.get(category_id) is None:
-            raise NotFoundError(f"Category not found: {category_id}")
+            raise LibraryResourceNotFoundError(f"Category not found: {category_id}")
         await self.category_repo.delete(category_id)
 
     async def tree(self) -> list[Category]:

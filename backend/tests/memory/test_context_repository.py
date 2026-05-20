@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
+from threading import Event
 
 import anyio
 import pytest
 from app.memory.application.context_service import ContextService
+from app.memory.domain.entities.context_read_models import ContextPack
 from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
@@ -18,12 +21,17 @@ from app.memory.domain.event_enum.context_enums import (
     RagHealthState,
     RagStrategy,
 )
+from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
 from app.retrieval.application.embedding_provider import EmbeddingProvider
-from app.shared.exceptions import NotFoundError, ValidationError
+from app.shared.exceptions import (
+    MemoryContextNotFoundError,
+    MemoryContextValidationError,
+)
 from app.shared.infrastructure.database import Database
+from sqlalchemy import select
 
 
 def _handoff_content(extra: str = "") -> str:
@@ -73,6 +81,73 @@ class KeywordEmbeddingProvider(EmbeddingProvider):
         if "distractor" in text:
             return [0.0, 1.0, 0.0]
         return [0.0, 0.0, 1.0]
+
+
+class MeanPoolingUpgradeEmbeddingProvider(EmbeddingProvider):
+    """Provider stand-in for same model/dimensions after a pooling upgrade."""
+
+    @property
+    def provider_name(self) -> str:
+        return "KEYWORD_TEST"
+
+    @property
+    def model_name(self) -> str:
+        return "keyword-test-model"
+
+    @property
+    def dimensions(self) -> int:
+        return 3
+
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        return [[0.0, 1.0, 0.0] for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return [0.0, 1.0, 0.0]
+
+
+class BlockingEmbeddingProvider(EmbeddingProvider):
+    """Embedding provider fake that blocks until an async task releases it."""
+
+    def __init__(self) -> None:
+        self.documents_started = Event()
+        self.query_started = Event()
+        self._documents_release = Event()
+        self._query_release = Event()
+        self.documents_released_by_async_task = False
+        self.query_released_by_async_task = False
+
+    @property
+    def provider_name(self) -> str:
+        return "BLOCKING_TEST"
+
+    @property
+    def model_name(self) -> str:
+        return "keyword-test-model"
+
+    @property
+    def dimensions(self) -> int:
+        return 3
+
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        self.documents_started.set()
+        self.documents_released_by_async_task = self._documents_release.wait(
+            timeout=0.2
+        )
+        return [[1.0, 0.0, 0.0] for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        _ = text
+        self.query_started.set()
+        self.query_released_by_async_task = self._query_release.wait(timeout=0.2)
+        return [1.0, 0.0, 0.0]
+
+    def release_documents(self) -> None:
+        """Release the blocked document embedding call."""
+        self._documents_release.set()
+
+    def release_query(self) -> None:
+        """Release the blocked query embedding call."""
+        self._query_release.set()
 
 
 @asynccontextmanager
@@ -171,7 +246,9 @@ def test_context_repository_raises_not_found_when_archive_target_is_missing(
             )
             missing_id = "00000000-0000-4000-8000-000000000000"
 
-            with pytest.raises(NotFoundError, match=f"Context not found: {missing_id}"):
+            with pytest.raises(
+                MemoryContextNotFoundError, match=f"Context not found: {missing_id}"
+            ):
                 await service.archive(missing_id)
 
     anyio.run(scenario)
@@ -191,7 +268,7 @@ def test_context_service_blocks_private_key_contexts_before_persistence(
                 repository=SqlAlchemyContextRepository(session=session)
             )
 
-            with pytest.raises(ValidationError, match="high-risk secret"):
+            with pytest.raises(MemoryContextValidationError, match="high-risk secret"):
                 await service.save(
                     kind=ContextKind.HANDOFF,
                     title="Unsafe handoff",
@@ -357,6 +434,117 @@ distractor should rank behind the semantic target.
         assert vector_pack.matches[0].score == vector_pack.matches[0].vector_score
         assert [match.context.id for match in hybrid_pack.matches] == [target.id]
         assert hybrid_pack.matches[0].vector_score is not None
+
+    anyio.run(scenario)
+
+
+def test_context_save_offloads_blocking_document_embedding_from_event_loop(
+    tmp_path: Path,
+) -> None:
+    """Context save should not block the event loop while embedding chunks."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "rag-save-embedding-offload.db") as database,
+            database.session() as session,
+        ):
+            provider = BlockingEmbeddingProvider()
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                embedding_provider=provider,
+                vector_retrieval_enabled=True,
+            )
+            saved: list[str] = []
+
+            async def save_context() -> None:
+                context = await service.save(
+                    kind=ContextKind.RESEARCH,
+                    title="Blocking embedding target",
+                    summary="Save waits on document embeddings.",
+                    content="""# Blocking embedding target
+
+## Summary
+semantic-target should embed without blocking the event loop.
+""",
+                )
+                saved.append(context.id)
+
+            async def release_when_embedding_starts() -> None:
+                while not provider.documents_started.is_set():
+                    await anyio.sleep(0)
+                provider.release_documents()
+
+            with anyio.fail_after(1):
+                async with anyio.create_task_group() as task_group:
+                    task_group.start_soon(save_context)
+                    task_group.start_soon(release_when_embedding_starts)
+
+        assert provider.documents_released_by_async_task is True
+        assert len(saved) == 1
+
+    anyio.run(scenario)
+
+
+def test_context_vector_search_offloads_blocking_query_embedding_from_event_loop(
+    tmp_path: Path,
+) -> None:
+    """Vector search should not block the event loop while embedding the query."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(
+                tmp_path / "rag-query-embedding-offload.db"
+            ) as database,
+            database.session() as session,
+        ):
+            repository = SqlAlchemyContextRepository(session=session)
+            save_service = ContextService(
+                repository=repository,
+                embedding_provider=KeywordEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            target = await save_service.save(
+                kind=ContextKind.RESEARCH,
+                title="Semantic target",
+                summary="Stored with keyword embeddings.",
+                content="""# Semantic target
+
+## Summary
+semantic-target carries vector meaning.
+""",
+            )
+            await session.commit()
+
+            provider = BlockingEmbeddingProvider()
+            search_service = ContextService(
+                repository=repository,
+                embedding_provider=provider,
+                vector_retrieval_enabled=True,
+            )
+            packs: list[ContextPack] = []
+
+            async def search_contexts() -> None:
+                pack = await search_service.search(
+                    query="query-alias",
+                    strategy=RagStrategy.VECTOR_ONLY,
+                    limit=1,
+                )
+                packs.append(pack)
+
+            async def release_when_query_embedding_starts() -> None:
+                while not provider.query_started.is_set():
+                    await anyio.sleep(0)
+                provider.release_query()
+
+            with anyio.fail_after(1):
+                async with anyio.create_task_group() as task_group:
+                    task_group.start_soon(search_contexts)
+                    task_group.start_soon(release_when_query_embedding_starts)
+
+        assert provider.query_released_by_async_task is True
+        assert [[match.context.id for match in pack.matches] for pack in packs] == [
+            [target.id]
+        ]
 
     anyio.run(scenario)
 
@@ -569,6 +757,58 @@ semantic-target was stored without an embedding.
     anyio.run(scenario)
 
 
+def test_context_reindex_can_force_rebuild_for_pooling_changes(tmp_path: Path) -> None:
+    """Force reindex should rebuild vectors even when model name and dimensions match."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "rag-force-reindex.db") as database,
+            database.session() as session,
+        ):
+            repository = SqlAlchemyContextRepository(session=session)
+            legacy_service = ContextService(
+                repository=repository,
+                embedding_provider=KeywordEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            saved = await legacy_service.save(
+                kind=ContextKind.RESEARCH,
+                title="Pooling upgrade target",
+                summary="Existing vectors should rebuild under the new pooling behavior.",
+                content="""# Pooling upgrade target
+
+## Summary
+semantic-target was embedded before the pooling change.
+""",
+            )
+            await session.commit()
+
+            before_chunk = await session.scalar(
+                select(ContextChunkORM).where(ContextChunkORM.context_id == saved.id)
+            )
+            assert before_chunk is not None
+            assert before_chunk.embedding == "[0,0,1]"
+
+            upgraded_service = ContextService(
+                repository=repository,
+                embedding_provider=MeanPoolingUpgradeEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            unchanged = await upgraded_service.reindex_embeddings(limit=10)
+            assert unchanged.scanned == 0
+            assert unchanged.updated == 0
+
+            rebuilt = await upgraded_service.reindex_embeddings(limit=10, force=True)
+            await session.refresh(before_chunk)
+
+        assert rebuilt.scanned >= 1
+        assert rebuilt.updated >= 1
+        assert rebuilt.skipped == 0
+        assert before_chunk.embedding == "[0,1,0]"
+
+    anyio.run(scenario)
+
+
 def test_context_list_filters_tags_by_exact_membership(tmp_path: Path) -> None:
     """Tag filtering should not match substrings inside other tag names."""
 
@@ -637,5 +877,72 @@ def test_context_list_treats_sql_like_tag_filter_as_data(tmp_path: Path) -> None
 
         assert total == 1
         assert [item.id for item in listed] == [exact.id]
+
+    anyio.run(scenario)
+
+
+def test_context_list_filters_created_and_updated_date_ranges(tmp_path: Path) -> None:
+    """Context Vault list filters should constrain created and updated date ranges."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "date-filters.db") as database,
+            database.session() as session,
+        ):
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session)
+            )
+            older = await service.save(
+                kind=ContextKind.HANDOFF,
+                title="Older handoff",
+                summary="Older context outside the requested date window.",
+                content=_handoff_content("Older context."),
+            )
+            inside = await service.save(
+                kind=ContextKind.HANDOFF,
+                title="Inside handoff",
+                summary="Context inside the requested date window.",
+                content=_handoff_content("Inside context."),
+            )
+            newer = await service.save(
+                kind=ContextKind.HANDOFF,
+                title="Newer handoff",
+                summary="Newer context outside the requested date window.",
+                content=_handoff_content("Newer context."),
+            )
+            rows = {
+                older.id: (
+                    datetime(2026, 5, 17, 10, 0, tzinfo=UTC),
+                    datetime(2026, 5, 17, 11, 0, tzinfo=UTC),
+                ),
+                inside.id: (
+                    datetime(2026, 5, 18, 10, 0, tzinfo=UTC),
+                    datetime(2026, 5, 18, 11, 0, tzinfo=UTC),
+                ),
+                newer.id: (
+                    datetime(2026, 5, 19, 10, 0, tzinfo=UTC),
+                    datetime(2026, 5, 19, 11, 0, tzinfo=UTC),
+                ),
+            }
+            for context_id, (created_at, updated_at) in rows.items():
+                model = await session.get(ContextORM, context_id)
+                assert model is not None
+                model.created_at = created_at
+                model.updated_at = updated_at
+            await session.commit()
+
+            created_listed, created_total = await service.list_contexts(
+                created_after=datetime(2026, 5, 18, 0, 0, tzinfo=UTC),
+                created_before=datetime(2026, 5, 18, 23, 59, 59, tzinfo=UTC),
+            )
+            updated_listed, updated_total = await service.list_contexts(
+                updated_after=datetime(2026, 5, 18, 0, 0, tzinfo=UTC),
+                updated_before=datetime(2026, 5, 18, 23, 59, 59, tzinfo=UTC),
+            )
+
+        assert created_total == 1
+        assert [item.id for item in created_listed] == [inside.id]
+        assert updated_total == 1
+        assert [item.id for item in updated_listed] == [inside.id]
 
     anyio.run(scenario)

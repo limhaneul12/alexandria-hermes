@@ -74,7 +74,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
             "app.librarian.interface.routers",
             "app.library.interface.routers",
             "app.memory.interface.routers",
-            "app.retrieval.interface.routers",
         ],
     )
 

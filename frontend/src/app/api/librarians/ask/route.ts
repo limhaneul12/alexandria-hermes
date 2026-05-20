@@ -2,11 +2,9 @@ import { NextResponse } from "next/server";
 
 import { askLibrarianInBackend } from "@/lib/backend/librarians";
 import { backendFailureResponse } from "../../_shared/backend-error-response";
+import { routeErrorPayload } from "@/lib/backend/route-errors";
+import { isRecord } from "../../_shared/request-parsing";
 import type { LibrarianAskRequestDTO } from "@/types/library";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function optionalString(value: unknown): string | null | undefined {
   if (value === null) return null;
@@ -35,14 +33,14 @@ export async function POST(request: Request) {
   try {
     rawBody = await request.json();
   } catch {
-    return NextResponse.json({ message: "질문 내용을 다시 확인하세요." }, { status: 400 });
+    return NextResponse.json(routeErrorPayload("INVALID_LIBRARIAN_ASK_PAYLOAD", "Invalid librarian ask payload."), { status: 400 });
   }
   if (!isRecord(rawBody)) {
-    return NextResponse.json({ message: "질문 내용을 다시 확인하세요." }, { status: 400 });
+    return NextResponse.json(routeErrorPayload("INVALID_LIBRARIAN_ASK_PAYLOAD", "Invalid librarian ask payload."), { status: 400 });
   }
   const prompt = typeof rawBody.prompt === "string" ? rawBody.prompt.trim() : "";
   if (!prompt) {
-    return NextResponse.json({ message: "질문 내용을 입력하세요." }, { status: 400 });
+    return NextResponse.json(routeErrorPayload("REQUIRED_LIBRARIAN_ASK_PROMPT", "Prompt is required."), { status: 400 });
   }
 
   const payload: LibrarianAskRequestDTO = {
@@ -81,6 +79,6 @@ export async function POST(request: Request) {
   try {
     return NextResponse.json(await askLibrarianInBackend(payload));
   } catch (error) {
-    return backendFailureResponse(error, "사서가 질문을 처리하지 못했습니다.");
+    return backendFailureResponse(error, "Librarian ask failed", "LIBRARIAN_ASK_FAILED");
   }
 }

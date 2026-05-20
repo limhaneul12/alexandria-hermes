@@ -4,27 +4,27 @@ from __future__ import annotations
 
 from app.cli_support.argument_values import bounded_limit
 from app.cli_support.backend_api_client import CliBackendApiClient
-from app.cli_support.contracts.command_contracts import (
+from app.cli_support.contracts.memory_command_contracts import (
     ContextCompactCommand,
     ContextCurateCommand,
     ContextIdCommand,
     ContextMemoryMapCommand,
     ContextRecallCommand,
+    ContextReindexCommand,
 )
 from app.cli_support.contracts.request_mappers import (
     context_search_payload,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
-from app.cli_support.json_payloads import schema_payload
 from app.cli_support.presentation.output_renderers import (
     print_context_payload,
-    print_json,
 )
 from app.cli_support.schemas.context_command_schemas import (
     LocalContextCommandStatus,
     UnsupportedContextOperationResult,
 )
 from app.cli_support.url_paths import quote_path
+from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 
@@ -129,10 +129,8 @@ def handle_context_memory_map(
     if command.project is not None:
         query = f"{query}&project={quote_path(command.project)}"
     payload = client.get(f"/memory/contexts?{query}")
-    if context.json_output:
-        print_json(_memory_map_payload(payload), context.stdout)
-    else:
-        print_context_payload(_memory_map_payload(payload), context)
+    result = _memory_map_payload(payload)
+    print_context_payload(result, context)
     return 0
 
 
@@ -161,10 +159,7 @@ def handle_context_curate(
         "stale_after_days": command.stale_after_days,
         "candidates": _curation_candidates(payload),
     }
-    if context.json_output:
-        print_json(result, context.stdout)
-    else:
-        print_context_payload(result, context)
+    print_context_payload(result, context)
     return 0
 
 
@@ -233,19 +228,22 @@ def _curation_candidates(payload: JSONValue) -> list[JSONValue]:
 
 
 def handle_context_reindex(
+    command: ContextReindexCommand,
     context: CommandContext,
     client: CliBackendApiClient,
 ) -> int:
     """Run the context reindex CLI command.
 
     Args:
+        command: Typed CLI command contract for the operation.
         context: CLI runtime context with output settings.
         client: Backend API client used for HTTP requests.
 
     Returns:
         Process-style exit code.
     """
-    payload = client.post("/memory/contexts/retrieval/reindex", {})
+    query = f"limit={command.limit}&force={str(command.force).lower()}"
+    payload = client.post(f"/memory/contexts/retrieval/reindex?{query}", {})
     print_context_payload(payload, context)
     return 0
 

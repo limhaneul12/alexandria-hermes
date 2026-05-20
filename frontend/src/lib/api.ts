@@ -11,6 +11,10 @@ import type {
   ContextListDTO,
   ContextPrepareCompactDTO,
   DashboardDTO,
+  ContextLintDTO,
+  HarnessCaptureDTO,
+  HarnessContextDTO,
+  HarnessListDTO,
   LibrarianOAuthStartDTO,
   LibrarianOAuthStatusDTO,
   LibrarianAskRequestDTO,
@@ -31,11 +35,81 @@ import type {
   SkillDetailDTO,
 } from "@/types/library";
 
+export class FrontendRequestError extends Error {
+  public readonly code: string | null;
+
+  constructor(
+    public readonly status: number,
+    public readonly payload: unknown,
+  ) {
+    super(errorMessageFromPayload(payload) ?? `Request failed: ${status}`);
+    this.name = "FrontendRequestError";
+    this.code = errorCodeFromPayload(payload);
+  }
+}
+
 async function fetchJson<T>(url: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(url, { headers: { Accept: "application/json" }, ...init });
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  if (!response.ok) {
+    throw new FrontendRequestError(response.status, await readErrorPayload(response));
+  }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+async function readErrorPayload(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return undefined;
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+}
+
+function errorMessageFromPayload(payload: unknown): string | null {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  if (typeof record.message === "string" && record.message.trim()) {
+    return record.message;
+  }
+  if (typeof record.detail === "string" && record.detail.trim()) {
+    return record.detail;
+  }
+  return null;
+}
+
+function errorCodeFromPayload(payload: unknown): string | null {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  return typeof record.code === "string" && record.code.trim()
+    ? record.code
+    : null;
+}
+
+export function requestErrorMessage(
+  error: unknown,
+  fallback: string,
+  messages: Partial<Record<string, string>> = {},
+): string {
+  if (error instanceof FrontendRequestError) {
+    const mappedMessage = error.code ? messages[error.code] : undefined;
+    if (mappedMessage) {
+      return mappedMessage;
+    }
+    if (error.code) {
+      return fallback;
+    }
+    return error.message || fallback;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
 }
 
 function jsonInit(method: "POST" | "PATCH", body: unknown): RequestInit {
@@ -183,6 +257,36 @@ export function deleteAgent(agentId: string) {
 export function fetchContexts(params: URLSearchParams) {
   const query = params.toString();
   return fetchJson<ContextListDTO>(`/api/library/contexts${query ? `?${query}` : ""}`);
+}
+
+export function fetchHarnesses(params: URLSearchParams) {
+  const query = params.toString();
+  return fetchJson<HarnessListDTO>(`/api/library/harnesses${query ? `?${query}` : ""}`);
+}
+
+export function fetchHarness(contextId: string) {
+  return fetchJson<HarnessContextDTO>(`/api/library/harnesses/${encodeURIComponent(contextId)}`);
+}
+
+export function captureHarness(payload: HarnessCaptureDTO) {
+  return fetchJson<HarnessContextDTO>(
+    "/api/library/harnesses",
+    jsonInit("POST", payload),
+  );
+}
+
+export function checkHarness(payload: HarnessCaptureDTO) {
+  return fetchJson<ContextLintDTO>(
+    "/api/library/harnesses/check",
+    jsonInit("POST", payload),
+  );
+}
+
+export function archiveHarness(contextId: string) {
+  return fetchJson<HarnessContextDTO>(
+    `/api/library/harnesses/${encodeURIComponent(contextId)}/archive`,
+    jsonInit("POST", {}),
+  );
 }
 
 export function fetchContext(contextId: string) {

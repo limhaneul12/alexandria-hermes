@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from app.memory.domain.entities.memory_compact import (
     MemoryCompact,
     MemoryCompactSourceRef,
@@ -16,17 +14,8 @@ from app.memory.domain.repositories.memory_compact_repository import (
     MemoryCompactSourceRefCreate,
 )
 from app.shared.schemas.common_schemas import StrictSchemaModel
-from app.shared.types.extra_types import JSONValue
-from pydantic import Field, field_validator
-
-
-def _parse_datetime(value: JSONValue) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    if not isinstance(value, str):
-        raise ValueError("datetime value must be an ISO-8601 string")
-    normalized = value.replace("Z", "+00:00")
-    return datetime.fromisoformat(normalized)
+from app.shared.schemas.datetime_schemas import AwareTimestamp
+from pydantic import Field
 
 
 class MemoryCompactSourceRefRequest(StrictSchemaModel):
@@ -55,24 +44,11 @@ class MemoryCompactCreateRequest(StrictSchemaModel):
     """Request schema for creating a Memory Compact."""
 
     project: str | None = None
-    covered_from: datetime
-    covered_to: datetime
+    covered_from: AwareTimestamp
+    covered_to: AwareTimestamp
     markdown_body: str = Field(min_length=1)
     status: MemoryCompactStatus = MemoryCompactStatus.DRAFT
     source_refs: list[MemoryCompactSourceRefRequest] = Field(default_factory=list)
-
-    @field_validator("covered_from", "covered_to", mode="before")
-    @classmethod
-    def parse_datetime_value(cls, value: JSONValue) -> datetime:
-        """Parse ISO datetime values from public JSON.
-
-        Args:
-            value: JSON-compatible datetime input.
-
-        Returns:
-            Parsed datetime value.
-        """
-        return _parse_datetime(value)
 
     def to_create(self) -> MemoryCompactCreate:
         """Convert request schema to service contract.
@@ -127,14 +103,14 @@ class MemoryCompactResponse(StrictSchemaModel):
 
     id: str
     project: str | None
-    covered_from: datetime
-    covered_to: datetime
+    covered_from: AwareTimestamp
+    covered_to: AwareTimestamp
     markdown_body: str
     status: MemoryCompactStatus
     source_refs: list[MemoryCompactSourceRefResponse]
-    created_at: datetime
-    updated_at: datetime
-    archived_at: datetime | None
+    created_at: AwareTimestamp
+    updated_at: AwareTimestamp
+    archived_at: AwareTimestamp | None
 
     @classmethod
     def from_entity(cls, compact: MemoryCompact) -> MemoryCompactResponse:

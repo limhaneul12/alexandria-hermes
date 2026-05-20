@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import io
-import json
 from collections.abc import Callable
 
 import pytest
 from app.cli import HttpHeaders, run
-from app.cli_support.hermes.integration_files import (
+from app.cli_support.support.hermes.install.integration_files import (
     alexandria_operating_loop_prompt,
     first_conversation_prompt,
 )
+from app.shared.serialization.orjson_codec import dumps_json, loads_json
 
 RecordedCall = tuple[str, str, bytes | None, HttpHeaders, float]
 TEST_OPERATOR_API_KEY = "test-operator-api-key-for-route-contracts-000000000000"
@@ -30,7 +30,7 @@ def _transport(
         timeout: float,
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
-        response = json.dumps(response_payload).encode()
+        response = dumps_json(response_payload)
         return 200, response
 
     return fake_transport, calls
@@ -98,7 +98,7 @@ def test_cli_creates_folder_with_parent_id() -> None:
     assert exit_code == 0
     assert calls[0][0] == "POST"
     assert calls[0][1] == "http://localhost:8000/library/categories"
-    assert json.loads((calls[0][2] or b"{}").decode()) == {
+    assert loads_json((calls[0][2] or b"{}").decode()) == {
         "name": "Backend",
         "parent_id": "root-1",
     }
@@ -118,7 +118,7 @@ def test_cli_ensures_nested_folder_path_without_duplicate_parent_names() -> None
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
         if method == "GET":
-            return 200, json.dumps(
+            return 200, dumps_json(
                 [
                     {
                         "id": "root-1",
@@ -127,19 +127,19 @@ def test_cli_ensures_nested_folder_path_without_duplicate_parent_names() -> None
                         "children": [],
                     }
                 ]
-            ).encode()
-        request_body = json.loads((body or b"{}").decode())
+            )
+        request_body = loads_json((body or b"{}").decode())
         if request_body["name"] == "FastAPI":
-            return 200, json.dumps(
+            return 200, dumps_json(
                 {
                     "id": "folder-2",
                     "name": "FastAPI",
                     "parent_id": "root-1",
                 }
-            ).encode()
-        return 200, json.dumps(
+            )
+        return 200, dumps_json(
             {"id": "folder-3", "name": "OAuth", "parent_id": "folder-2"}
-        ).encode()
+        )
 
     stdout = io.StringIO()
 
@@ -152,15 +152,15 @@ def test_cli_ensures_nested_folder_path_without_duplicate_parent_names() -> None
     assert exit_code == 0
     assert [call[0] for call in calls] == ["GET", "POST", "POST"]
     assert calls[0][1] == "http://localhost:8000/library/categories/tree"
-    assert json.loads((calls[1][2] or b"{}").decode()) == {
+    assert loads_json((calls[1][2] or b"{}").decode()) == {
         "name": "FastAPI",
         "parent_id": "root-1",
     }
-    assert json.loads((calls[2][2] or b"{}").decode()) == {
+    assert loads_json((calls[2][2] or b"{}").decode()) == {
         "name": "OAuth",
         "parent_id": "folder-2",
     }
-    assert json.loads(stdout.getvalue()) == {
+    assert loads_json(stdout.getvalue()) == {
         "path": "Backend/FastAPI/OAuth",
         "created": ["FastAPI", "OAuth"],
         "existing": ["Backend"],
@@ -206,7 +206,7 @@ def test_cli_mkdir_alias_reuses_existing_nested_folder_path() -> None:
     assert len(calls) == 1
     assert calls[0][0] == "GET"
     assert calls[0][1] == "http://localhost:8000/library/categories/tree"
-    assert json.loads(stdout.getvalue()) == {
+    assert loads_json(stdout.getvalue()) == {
         "path": "Backend/FastAPI/OAuth",
         "created": [],
         "existing": ["Backend", "FastAPI", "OAuth"],
@@ -238,7 +238,7 @@ def test_cli_lists_folder_tree_as_json_for_agents() -> None:
     assert exit_code == 0
     assert calls[0][0] == "GET"
     assert calls[0][1] == "http://localhost:8000/library/categories/tree"
-    assert json.loads(stdout.getvalue())[0]["name"] == "Backend"
+    assert loads_json(stdout.getvalue())[0]["name"] == "Backend"
 
 
 def test_cli_deletes_folder_by_id() -> None:
@@ -285,8 +285,9 @@ def test_cli_lists_library_items_with_ui_filters() -> None:
     assert exit_code == 0
     assert calls[0][0] == "GET"
     assert calls[0][1] == (
-        "http://localhost:8000/library/items?limit=5&offset=0&item_type=SKILL"
-        "&category_id=folder-1&q=fastapi"
+        "http://localhost:8000/library/search?limit=5&offset=0&item_type=SKILL"
+        "&category_id=folder-1&q=fastapi&content_mode=candidate"
+        "&search_fields=title&search_fields=summary&search_fields=content"
     )
     assert "skill-1" in stdout.getvalue()
 
@@ -399,8 +400,8 @@ def test_cli_uses_prompt_and_records_usage() -> None:
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
         if method == "GET":
-            return 200, json.dumps({"id": "prompt-1", "content": "Use me"}).encode()
-        return 200, json.dumps({"id": "usage-1"}).encode()
+            return 200, dumps_json({"id": "prompt-1", "content": "Use me"})
+        return 200, dumps_json({"id": "usage-1"})
 
     stdout = io.StringIO()
 
@@ -415,7 +416,7 @@ def test_cli_uses_prompt_and_records_usage() -> None:
     assert calls[0][1] == "http://localhost:8000/library/prompts/prompt-1"
     assert calls[1][0] == "POST"
     assert calls[1][1] == "http://localhost:8000/library/usage"
-    assert json.loads((calls[1][2] or b"{}").decode())["item_type"] == "PROMPT"
+    assert loads_json((calls[1][2] or b"{}").decode())["item_type"] == "PROMPT"
     assert "Use me" in stdout.getvalue()
 
 
@@ -432,11 +433,11 @@ def test_prompt_cli_search_version_deprecate_and_diff() -> None:
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
         if "/library/items" in url:
-            return 200, json.dumps(
+            return 200, dumps_json(
                 [{"id": "prompt-1", "item_type": "PROMPT", "title": "FastAPI"}]
-            ).encode()
+            )
         if "/library/search" in url:
-            return 200, json.dumps(
+            return 200, dumps_json(
                 {
                     "items": [
                         {
@@ -449,13 +450,11 @@ def test_prompt_cli_search_version_deprecate_and_diff() -> None:
                     "limit": 3,
                     "offset": 0,
                 }
-            ).encode()
+            )
         if method == "PATCH":
-            return 200, json.dumps({"id": url.rsplit("/", 1)[-1]}).encode()
+            return 200, dumps_json({"id": url.rsplit("/", 1)[-1]})
         content = "old\n" if url.endswith("prompt-old") else "new\n"
-        return 200, json.dumps(
-            {"id": url.rsplit("/", 1)[-1], "content": content}
-        ).encode()
+        return 200, dumps_json({"id": url.rsplit("/", 1)[-1], "content": content})
 
     stdout = io.StringIO()
 
@@ -505,8 +504,8 @@ def test_prompt_cli_search_version_deprecate_and_diff() -> None:
         stdout=stdout,
     )
 
-    version_body = json.loads((calls[1][2] or b"{}").decode())
-    deprecate_body = json.loads((calls[2][2] or b"{}").decode())
+    version_body = loads_json((calls[1][2] or b"{}").decode())
+    deprecate_body = loads_json((calls[2][2] or b"{}").decode())
     output = stdout.getvalue()
     assert search_exit == 0
     assert version_exit == 0
@@ -538,21 +537,54 @@ def test_cli_context_reindex_calls_backend_embedding_reindex() -> None:
         timeout: float,
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
-        return 200, json.dumps({"scanned": 2, "updated": 2, "skipped": 0}).encode()
+        return 200, dumps_json({"scanned": 2, "updated": 2, "skipped": 0})
 
     stdout = io.StringIO()
 
     exit_code = run(
-        ["--json", "context", "reindex"],
+        ["--json", "context", "reindex", "--limit", "250"],
         transport=fake_transport,
         stdout=stdout,
     )
 
     assert exit_code == 0
     assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/memory/contexts/retrieval/reindex"
-    assert json.loads(calls[0][2] or b"{}") == {}
-    assert json.loads(stdout.getvalue())["updated"] == 2
+    assert calls[0][1] == (
+        "http://localhost:8000/memory/contexts/retrieval/reindex?limit=250&force=false"
+    )
+    assert loads_json(calls[0][2] or b"{}") == {}
+    assert loads_json(stdout.getvalue())["updated"] == 2
+
+
+def test_cli_context_reindex_can_force_embedding_rebuild() -> None:
+    """Context reindex --force should request a full active chunk rebuild."""
+    calls: list[RecordedCall] = []
+
+    def fake_transport(
+        method: str,
+        url: str,
+        body: bytes | None,
+        headers: HttpHeaders,
+        timeout: float,
+    ) -> tuple[int, bytes]:
+        calls.append((method, url, body, headers, timeout))
+        return 200, dumps_json({"scanned": 3, "updated": 3, "skipped": 0})
+
+    stdout = io.StringIO()
+
+    exit_code = run(
+        ["--json", "context", "reindex", "--force"],
+        transport=fake_transport,
+        stdout=stdout,
+    )
+
+    assert exit_code == 0
+    assert calls[0][0] == "POST"
+    assert calls[0][1] == (
+        "http://localhost:8000/memory/contexts/retrieval/reindex?limit=100&force=true"
+    )
+    assert loads_json(calls[0][2] or b"{}") == {}
+    assert loads_json(stdout.getvalue())["updated"] == 3
 
 
 def test_cli_reports_rag_status_and_context_chunks_as_json() -> None:
@@ -568,8 +600,8 @@ def test_cli_reports_rag_status_and_context_chunks_as_json() -> None:
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
         if url.endswith("/rag/status"):
-            return 200, json.dumps({"fts": "HEALTHY", "vector": "DEGRADED"}).encode()
-        return 200, json.dumps([{"id": "chunk-1", "context_id": "ctx-1"}]).encode()
+            return 200, dumps_json({"fts": "HEALTHY", "vector": "DEGRADED"})
+        return 200, dumps_json([{"id": "chunk-1", "context_id": "ctx-1"}])
 
     stdout = io.StringIO()
 
@@ -617,7 +649,7 @@ def test_cli_context_recall_sends_scope_filters_for_memory_routing() -> None:
         stdout=stdout,
     )
 
-    request_body = json.loads((calls[0][2] or b"{}").decode())
+    request_body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert calls[0][0] == "POST"
     assert calls[0][1] == "http://localhost:8000/memory/contexts/retrieval/search"
@@ -644,8 +676,8 @@ def test_cli_context_compact_memory_map_and_curate_use_memory_routes() -> None:
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
         if method == "POST":
-            return 201, json.dumps({"id": "compact-1", "kind": "COMPACT"}).encode()
-        return 200, json.dumps(
+            return 201, dumps_json({"id": "compact-1", "kind": "COMPACT"})
+        return 200, dumps_json(
             {
                 "items": [
                     {
@@ -656,7 +688,7 @@ def test_cli_context_compact_memory_map_and_curate_use_memory_routes() -> None:
                 ],
                 "total": 1,
             }
-        ).encode()
+        )
 
     stdout = io.StringIO()
 
@@ -704,7 +736,7 @@ def test_cli_context_compact_memory_map_and_curate_use_memory_routes() -> None:
         stdout=stdout,
     )
 
-    compact_body = json.loads((calls[0][2] or b"{}").decode())
+    compact_body = loads_json((calls[0][2] or b"{}").decode())
     assert compact_exit == 0
     assert memory_map_exit == 0
     assert curate_exit == 0
@@ -745,7 +777,7 @@ def test_hermes_onboard_dry_run_plans_prompts_skill_and_mcp_config(tmp_path) -> 
         stdout=stdout,
     )
 
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     assert exit_code == 0
     assert payload["dry_run"] is True
     assert payload["hermes_home"] == str(hermes_home)
@@ -784,7 +816,7 @@ def test_hermes_install_writes_local_first_library_when_needed_skill(tmp_path) -
     operating_loop = (
         hermes_home / "alexandria-hermes" / "prompts" / "alexandria-operating-loop.md"
     ).read_text(encoding="utf-8")
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     assert exit_code == 0
     assert "skills/alexandria-hermes/alexandria-library/SKILL.md" in payload["written"]
     assert skill.startswith("---\nname: alexandria-library")
@@ -844,7 +876,7 @@ def test_hermes_install_writes_default_enabled_policy_contract(tmp_path) -> None
     policy = (hermes_home / "alexandria-hermes" / "policy.yaml").read_text(
         encoding="utf-8"
     )
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     assert exit_code == 0
     assert "alexandria-hermes/policy.yaml" in payload["written"]
     assert "enabled: true" in policy
@@ -897,9 +929,9 @@ def test_hermes_policy_cli_toggles_usage_contract(tmp_path) -> None:
         stdout=enable_stdout,
     )
 
-    disabled_payload = json.loads(disable_stdout.getvalue())
-    status_payload = json.loads(status_stdout.getvalue())
-    enabled_payload = json.loads(enable_stdout.getvalue())
+    disabled_payload = loads_json(disable_stdout.getvalue())
+    status_payload = loads_json(status_stdout.getvalue())
+    enabled_payload = loads_json(enable_stdout.getvalue())
     policy_path = hermes_home / "alexandria-hermes" / "policy.yaml"
     assert disable_exit == 0
     assert status_exit == 0
@@ -962,8 +994,8 @@ librarian:
         stdout=enable_stdout,
     )
 
-    disabled_payload = json.loads(disable_stdout.getvalue())
-    enabled_payload = json.loads(enable_stdout.getvalue())
+    disabled_payload = loads_json(disable_stdout.getvalue())
+    enabled_payload = loads_json(enable_stdout.getvalue())
     policy = policy_path.read_text(encoding="utf-8")
     assert disable_exit == 0
     assert enable_exit == 0
@@ -1002,7 +1034,7 @@ def test_hermes_install_apply_restart_hint_prints_first_prompt(tmp_path) -> None
         stdout=stdout,
     )
 
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     assert exit_code == 0
     assert payload["dry_run"] is False
     assert "restart" in payload["restart_hint"].lower()
@@ -1031,7 +1063,7 @@ def test_hermes_doctor_deep_reports_readiness_checks(tmp_path) -> None:
         stdout=stdout,
     )
 
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     assert exit_code == 0
     assert payload["deep"] is True
     assert payload["checks"]["operating_loop_prompt"] == "OK"
@@ -1062,7 +1094,7 @@ def test_hermes_json_output_redacts_mcp_operator_key(tmp_path) -> None:
     )
 
     output = stdout.getvalue()
-    payload = json.loads(output)
+    payload = loads_json(output)
     assert exit_code == 0
     assert "secret-token" not in output
     assert (
@@ -1094,7 +1126,7 @@ def test_hermes_install_mcp_uses_api_env_defaults(monkeypatch, tmp_path) -> None
     )
 
     output = stdout.getvalue()
-    payload = json.loads(output)
+    payload = loads_json(output)
     env = payload["mcp_config"]["mcpServers"]["alexandria"]["env"]
     assert exit_code == 0
     assert env["ALEXANDRIA_API_URL"] == "http://env-backend:8000"
@@ -1121,7 +1153,7 @@ def test_hermes_install_prompts_skips_existing_file_without_overwrite(tmp_path) 
         stdout=stdout,
     )
 
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     assert exit_code == 0
     assert existing.read_text(encoding="utf-8") == "custom"
     assert "alexandria-hermes/prompts/save-context.md" in payload["skipped"]
@@ -1194,7 +1226,7 @@ def test_hermes_install_mcp_overwrite_creates_backup(tmp_path) -> None:
         stdout=stdout,
     )
 
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     assert exit_code == 0
     assert "alexandria-hermes/mcp-config.json" in payload["written"]
     assert payload["backups"] == ["alexandria-hermes/mcp-config.json.bak"]
@@ -1202,7 +1234,7 @@ def test_hermes_install_mcp_overwrite_creates_backup(tmp_path) -> None:
         '{"old": true}'
     )
     assert (
-        json.loads(config.read_text(encoding="utf-8"))["mcpServers"]["alexandria"][
+        loads_json(config.read_text(encoding="utf-8"))["mcpServers"]["alexandria"][
             "env"
         ]["ALEXANDRIA_API_URL"]
         == "http://backend:8000"
@@ -1262,7 +1294,7 @@ def test_cli_asks_librarian_for_delegated_work_as_json() -> None:
         stdout=stdout,
     )
 
-    request_body = json.loads((calls[0][2] or b"{}").decode())
+    request_body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert calls[0][0] == "POST"
     assert calls[0][1] == "http://localhost:8000/librarians/ask"
@@ -1276,7 +1308,7 @@ def test_cli_asks_librarian_for_delegated_work_as_json() -> None:
         "librarian_role_prompt": "Use project memory first.",
         "max_librarian_agents": 2,
     }
-    assert json.loads(stdout.getvalue())["job_id"] == "librarian-job-abc123"
+    assert loads_json(stdout.getvalue())["job_id"] == "librarian-job-abc123"
 
 
 def test_cli_previews_librarian_brief_packet() -> None:
@@ -1301,7 +1333,7 @@ def test_cli_previews_librarian_brief_packet() -> None:
         stdout=stdout,
     )
 
-    request_body = json.loads((calls[0][2] or b"{}").decode())
+    request_body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert calls[0][0] == "POST"
     assert calls[0][1] == "http://localhost:8000/librarians/brief-preview"
@@ -1310,7 +1342,7 @@ def test_cli_previews_librarian_brief_packet() -> None:
         "budget": {"max_input_chars": 3000, "max_source_refs": 4},
         "project": "alexandria-hermes",
     }
-    assert json.loads(stdout.getvalue())["packet_markdown"] == "# Packet"
+    assert loads_json(stdout.getvalue())["packet_markdown"] == "# Packet"
 
 
 def test_cli_lists_memory_compacts_with_project_and_status_filters() -> None:
@@ -1389,7 +1421,7 @@ def test_cli_reads_current_and_selected_memory_compacts() -> None:
     assert calls[1][0] == "GET"
     assert calls[1][1] == "http://localhost:8000/memory/compacts/compact%2F1"
     assert "CURRENT compact/1 alexandria-hermes" in current_stdout.getvalue()
-    assert json.loads(get_stdout.getvalue())["id"] == "compact/1"
+    assert loads_json(get_stdout.getvalue())["id"] == "compact/1"
 
 
 def test_cli_previews_librarian_route_without_delegation() -> None:
@@ -1421,7 +1453,7 @@ def test_cli_previews_librarian_route_without_delegation() -> None:
         stdout=stdout,
     )
 
-    request_body = json.loads((calls[0][2] or b"{}").decode())
+    request_body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert calls[0][0] == "POST"
     assert calls[0][1] == "http://localhost:8000/librarians/route-preview"
@@ -1433,7 +1465,7 @@ def test_cli_previews_librarian_route_without_delegation() -> None:
         "librarian_profile_id": "profile-1",
         "max_librarian_agents": 2,
     }
-    assert json.loads(stdout.getvalue())["route_preview"] == [
+    assert loads_json(stdout.getvalue())["route_preview"] == [
         "Hermes direct search first"
     ]
 
@@ -1481,7 +1513,7 @@ def test_cli_starts_librarian_oauth_with_user_instructions_without_token_fields(
     assert calls[0][3]["X-Alexandria-Operator-Key"] == TEST_OPERATOR_API_KEY
     assert "oauth_access_token" not in printed
     assert "device_code" not in printed
-    assert json.loads(printed) == {
+    assert loads_json(printed) == {
         "provider_id": "provider-1",
         "status": "pending",
         "user_code": "SECRET-CODE",
@@ -1599,7 +1631,7 @@ def test_cli_creates_codex_oauth_provider_with_safe_payload() -> None:
         stdout=stdout,
     )
 
-    body = json.loads((calls[0][2] or b"{}").decode())
+    body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert calls[0][0] == "POST"
     assert calls[0][1] == "http://localhost:8000/settings/connections"
@@ -1632,7 +1664,7 @@ def test_cli_connects_codex_oauth_after_creating_provider_without_token_leak() -
                 "verification_uri": "https://auth.openai.com/codex/device",
                 "oauth_access_token": "secret-token",
             }
-        return 200, json.dumps(payload).encode()
+        return 200, dumps_json(payload)
 
     stdout = io.StringIO()
 
@@ -1655,10 +1687,10 @@ def test_cli_connects_codex_oauth_after_creating_provider_without_token_leak() -
         ("POST", "http://localhost:8000/settings/connections"),
         ("POST", "http://localhost:8000/settings/connections/provider-1/oauth/start"),
     ]
-    provider_body = json.loads((calls[0][2] or b"{}").decode())
+    provider_body = loads_json((calls[0][2] or b"{}").decode())
     assert "client_id" not in provider_body["config"]
     assert "secret-token" not in printed
-    assert json.loads(printed)["oauth"]["user_code"] == "USER-CODE"
+    assert loads_json(printed)["oauth"]["user_code"] == "USER-CODE"
 
 
 def test_cli_creates_openai_provider_from_env_without_printing_secret(
@@ -1684,7 +1716,7 @@ def test_cli_creates_openai_provider_from_env_without_printing_secret(
         stdout=stdout,
     )
 
-    body = json.loads((calls[0][2] or b"{}").decode())
+    body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert body["api_key"] == "sk-test-secret"
     assert "sk-test-secret" not in stdout.getvalue()
@@ -1728,7 +1760,7 @@ def test_cli_creates_librarian_profile_with_role_specialties_and_delegate_limit(
         stdout=stdout,
     )
 
-    body = json.loads((calls[0][2] or b"{}").decode())
+    body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert calls[0][1] == "http://localhost:8000/librarians/profiles"
     assert body["librarian_role"] == "SPECIALIST"
@@ -1761,7 +1793,7 @@ def test_cli_updates_librarian_profile_specialties_by_reading_current_profile() 
                 "id": "profile-1",
                 "librarian_specialties": ["oauth", "security"],
             }
-        return 200, json.dumps(payload).encode()
+        return 200, dumps_json(payload)
 
     stdout = io.StringIO()
 
@@ -1783,7 +1815,7 @@ def test_cli_updates_librarian_profile_specialties_by_reading_current_profile() 
         stdout=stdout,
     )
 
-    patch_body = json.loads((calls[1][2] or b"{}").decode())
+    patch_body = loads_json((calls[1][2] or b"{}").decode())
     assert exit_code == 0
     assert [(method, url) for method, url, *_ in calls] == [
         ("GET", "http://localhost:8000/librarians/profiles/profile-1"),
@@ -1817,7 +1849,7 @@ def test_cli_ask_delegate_aliases_map_to_backend_contract() -> None:
         stdout=stdout,
     )
 
-    body = json.loads((calls[0][2] or b"{}").decode())
+    body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert body["delegate_to_librarian"] is True
     assert body["max_librarian_agents"] == 2
@@ -1853,7 +1885,7 @@ def test_cli_records_usage_with_project_feedback_as_json() -> None:
         stdout=stdout,
     )
 
-    request_body = json.loads((calls[0][2] or b"{}").decode())
+    request_body = loads_json((calls[0][2] or b"{}").decode())
     assert exit_code == 0
     assert calls[0][0] == "POST"
     assert calls[0][1] == "http://localhost:8000/library/usage"
@@ -1870,4 +1902,4 @@ def test_cli_records_usage_with_project_feedback_as_json() -> None:
             "comment": "useful",
         },
     }
-    assert json.loads(stdout.getvalue())["id"] == "usage-1"
+    assert loads_json(stdout.getvalue())["id"] == "usage-1"

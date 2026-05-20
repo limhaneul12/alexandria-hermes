@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import base64
-import json
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from typing import cast
 
 import anyio
@@ -34,6 +34,7 @@ from app.shared.exceptions.librarian_exceptions import (
     LibrarianSkillAcquisitionExecutionError,
     LibrarianSkillAcquisitionProviderError,
 )
+from app.shared.serialization.orjson_codec import dumps_json
 from app.shared.types.extra_types import JSONValue
 from openai import OpenAIError
 from openai.types.responses import ResponseTextDeltaEvent
@@ -139,6 +140,45 @@ class FakeOpenAIClient:
         self.responses = FakeResponsesResource(output_text)
 
 
+class BlockingResponsesResource(FakeResponsesResource):
+    """SDK responses fake that blocks until the test releases the boundary call."""
+
+    def __init__(self, output_text: str) -> None:
+        super().__init__(output_text)
+        self.started = Event()
+        self._release = Event()
+
+    def create(
+        self,
+        *,
+        model: str,
+        input: str | list[dict[str, JSONValue]],
+        instructions: str,
+        store: bool | None = None,
+        stream: bool = False,
+    ) -> FakeResponse | list[ResponseTextDeltaEvent]:
+        self.started.set()
+        self._release.wait()
+        return super().create(
+            model=model,
+            input=input,
+            instructions=instructions,
+            store=store,
+            stream=stream,
+        )
+
+    def release(self) -> None:
+        """Release the blocked fake SDK call."""
+        self._release.set()
+
+
+class BlockingOpenAIClient:
+    """SDK client fake for timeout regression coverage."""
+
+    def __init__(self, output_text: str) -> None:
+        self.responses = BlockingResponsesResource(output_text)
+
+
 class FailingResponsesResource:
     """SDK responses fake that raises a provider error."""
 
@@ -167,8 +207,9 @@ def _provider(
     auth_type: AuthType,
     *,
     model: str | None = None,
+    config_values: dict[str, JSONValue] | None = None,
 ) -> LibrarianProvider:
-    config: dict[str, JSONValue] = {}
+    config: dict[str, JSONValue] = {} if config_values is None else dict(config_values)
     if model is not None:
         config["model"] = model
     return LibrarianProvider(
@@ -211,8 +252,32 @@ def _fake_oauth_jwt(*, account_id: str) -> str:
 
 
 def _base64_url_json(value: dict[str, str | dict[str, str]]) -> str:
-    raw = json.dumps(value, separators=(",", ":")).encode()
+    raw = dumps_json(value)
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _skill_response_json(
+    *,
+    title: str = "Generated skill",
+    summary: str = "Generated deterministic response.",
+) -> str:
+    return dumps_json(
+        {
+            "title": title,
+            "purpose": "Exercise provider-backed skill acquisition.",
+            "content": "Use the provider response to build a skill artifact.",
+            "summary": summary,
+            "tags": [],
+            "required_tools": [],
+            "evidence_urls": [],
+            "source_summary": "Test source.",
+            "next_steps": [],
+            "risk_level": "LOW",
+            "version": "1.0.0",
+            "activate": False,
+            "status": "DRAFT",
+        }
+    ).decode()
 
 
 def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None:
@@ -222,7 +287,7 @@ def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None
         secret_repo = FakeSecretRepository(
             {("openai-main", ProviderSecretKey.API_KEY.value): "sk-secret-value"}
         )
-        responses_payload = json.dumps(
+        responses_payload = dumps_json(
             {
                 "title": "Browser automation skill",
                 "purpose": "Drive browser interactions deterministically.",
@@ -237,9 +302,8 @@ def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None
                 "version": "1.1.0",
                 "activate": True,
                 "status": "ACTIVE",
-            },
-            separators=(",", ":"),
-        )
+            }
+        ).decode()
         fenced = f"```json\n{responses_payload}\n```"
         response_text = fenced
         client = FakeOpenAIClient(response_text)
@@ -264,6 +328,7 @@ def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None
         assert configs[0].api_key == "sk-secret-value"
         assert configs[0].base_url is None
         assert configs[0].default_headers is None
+        assert configs[0].timeout == 120.0
         assert artifact.title == "Browser automation skill"
         assert artifact.purpose == "Drive browser interactions deterministically."
         assert artifact.content == "Use Playwright with stable selectors."
@@ -308,7 +373,7 @@ def test_openai_skill_executor_uses_codex_oauth_and_streaming_response() -> None
                 ): (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
             }
         )
-        response_text = json.dumps(
+        response_text = dumps_json(
             {
                 "title": "Codex test skill",
                 "purpose": "Use Codex path through OAuth.",
@@ -323,9 +388,8 @@ def test_openai_skill_executor_uses_codex_oauth_and_streaming_response() -> None
                 "version": "1.0.0",
                 "activate": False,
                 "status": "DRAFT",
-            },
-            separators=(",", ":"),
-        )
+            }
+        ).decode()
         client = FakeOpenAIClient(response_text)
 
         def build_client(config: OpenAIClientConfig) -> FakeOpenAIClient:
@@ -351,11 +415,216 @@ def test_openai_skill_executor_uses_codex_oauth_and_streaming_response() -> None
             "originator": "codex_cli_rs",
             "ChatGPT-Account-ID": "acct-test-123",
         }
+        assert configs[0].timeout == 120.0
         call = client.responses.calls[0]
         assert call["input"] == [{"role": "user", "content": "Use codex path"}]
         assert call["store"] is False
         assert call["stream"] is True
         assert artifact.status.value == "DRAFT"
+
+    anyio.run(run_case)
+
+
+def test_openai_skill_executor_uses_configured_timeout_for_api_key_provider() -> None:
+    async def run_case() -> None:
+        configs: list[OpenAIClientConfig] = []
+        provider = _provider(
+            "openai-main",
+            ProviderType.OPENAI,
+            AuthType.API_KEY,
+            config_values={"skill_acquisition_timeout_seconds": 7.5},
+        )
+        secret_repo = FakeSecretRepository(
+            {("openai-main", ProviderSecretKey.API_KEY.value): "sk-secret-value"}
+        )
+        client = FakeOpenAIClient(_skill_response_json(title="Configured timeout"))
+
+        def build_client(config: OpenAIClientConfig) -> FakeOpenAIClient:
+            configs.append(config)
+            return client
+
+        executor = OpenAISkillAcquisitionExecutor(
+            provider_repo=cast(
+                ILibrarianProviderRepository, FakeProviderRepository([provider])
+            ),
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+
+        artifact = await executor.acquire_skill(
+            _request("Use configured timeout.", provider_id="openai-main")
+        )
+
+        assert artifact.title == "Configured timeout"
+        assert len(configs) == 1
+        assert configs[0].timeout == 7.5
+
+    anyio.run(run_case)
+
+
+@pytest.mark.parametrize(
+    "config_values",
+    [
+        None,
+        {"skill_acquisition_timeout_seconds": False},
+        {"skill_acquisition_timeout_seconds": 0},
+        {"skill_acquisition_timeout_seconds": -1},
+        {"skill_acquisition_timeout_seconds": "slow"},
+    ],
+)
+def test_openai_skill_executor_defaults_invalid_timeout_config_values(
+    config_values: dict[str, JSONValue] | None,
+) -> None:
+    async def run_case() -> None:
+        configs: list[OpenAIClientConfig] = []
+        provider = _provider(
+            "openai-main",
+            ProviderType.OPENAI,
+            AuthType.API_KEY,
+            config_values=config_values,
+        )
+        secret_repo = FakeSecretRepository(
+            {("openai-main", ProviderSecretKey.API_KEY.value): "sk-secret-value"}
+        )
+        client = FakeOpenAIClient(_skill_response_json())
+
+        def build_client(config: OpenAIClientConfig) -> FakeOpenAIClient:
+            configs.append(config)
+            return client
+
+        executor = OpenAISkillAcquisitionExecutor(
+            provider_repo=cast(
+                ILibrarianProviderRepository, FakeProviderRepository([provider])
+            ),
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+
+        await executor.acquire_skill(
+            _request("Default invalid timeout.", provider_id="openai-main")
+        )
+
+        assert len(configs) == 1
+        assert configs[0].timeout == 120.0
+
+    anyio.run(run_case)
+
+
+def test_openai_skill_executor_times_out_hung_openai_response_without_leaking_prompt_or_secret(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def run_case() -> None:
+        configs: list[OpenAIClientConfig] = []
+        provider = _provider(
+            "openai-main",
+            ProviderType.OPENAI,
+            AuthType.API_KEY,
+            config_values={"skill_acquisition_timeout_seconds": 0.01},
+        )
+        secret_repo = FakeSecretRepository(
+            {("openai-main", ProviderSecretKey.API_KEY.value): "SECRET-TOKEN"}
+        )
+        client = BlockingOpenAIClient(_skill_response_json(title="Late OpenAI skill"))
+
+        def build_client(config: OpenAIClientConfig) -> BlockingOpenAIClient:
+            configs.append(config)
+            return client
+
+        executor = OpenAISkillAcquisitionExecutor(
+            provider_repo=cast(
+                ILibrarianProviderRepository, FakeProviderRepository([provider])
+            ),
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+
+        with pytest.raises(
+            LibrarianSkillAcquisitionExecutionError,
+            match="Skill acquisition execution timed out",
+        ) as exc_info:
+            try:
+                await executor.acquire_skill(
+                    _request(
+                        "Prompt includes SECRET-PROMPT",
+                        provider_id="openai-main",
+                    )
+                )
+            finally:
+                client.responses.release()
+
+        assert len(configs) == 1
+        assert configs[0].timeout == 0.01
+        assert "SECRET-TOKEN" not in str(exc_info.value)
+        assert "SECRET-PROMPT" not in str(exc_info.value)
+        assert "SECRET-TOKEN" not in caplog.text
+        assert "SECRET-PROMPT" not in caplog.text
+
+    anyio.run(run_case)
+
+
+def test_openai_skill_executor_times_out_hung_codex_streams_without_leaking_prompt_or_token(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def run_case() -> None:
+        configs: list[OpenAIClientConfig] = []
+        provider = _provider(
+            "codex-main",
+            ProviderType.OPENAI_CODEX,
+            AuthType.OAUTH,
+            model="gpt-5.5",
+            config_values={"skill_acquisition_timeout_seconds": 0.01},
+        )
+        secret_repo = FakeSecretRepository(
+            {
+                (
+                    "codex-main",
+                    ProviderSecretKey.OAUTH_ACCESS_TOKEN.value,
+                ): _fake_oauth_jwt(account_id="acct-test-123"),
+                (
+                    "codex-main",
+                    ProviderSecretKey.OAUTH_EXPIRES_AT.value,
+                ): (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            }
+        )
+        client = BlockingOpenAIClient(
+            _skill_response_json(
+                title="Late Codex skill",
+                summary="This response arrives after the timeout.",
+            )
+        )
+
+        def build_client(config: OpenAIClientConfig) -> BlockingOpenAIClient:
+            configs.append(config)
+            return client
+
+        executor = OpenAISkillAcquisitionExecutor(
+            provider_repo=cast(
+                ILibrarianProviderRepository, FakeProviderRepository([provider])
+            ),
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+
+        with pytest.raises(
+            LibrarianSkillAcquisitionExecutionError,
+            match="Skill acquisition execution timed out",
+        ) as exc_info:
+            try:
+                await executor.acquire_skill(
+                    _request(
+                        "Use codex path with SECRET-PROMPT",
+                        provider_id="codex-main",
+                    )
+                )
+            finally:
+                client.responses.release()
+
+        assert len(configs) == 1
+        assert configs[0].timeout == 0.01
+        assert "acct-test-123" not in str(exc_info.value)
+        assert "SECRET-PROMPT" not in str(exc_info.value)
+        assert "acct-test-123" not in caplog.text
+        assert "SECRET-PROMPT" not in caplog.text
 
     anyio.run(run_case)
 

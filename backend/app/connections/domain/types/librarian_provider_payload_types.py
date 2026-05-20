@@ -58,8 +58,8 @@ class LibrarianProviderPatchPayload(TypedDict, total=False, closed=True):
     """Service-layer provider patch payload including optional secret inputs."""
 
     name: str
-    provider_type: ProviderType
-    auth_type: AuthType
+    provider_type: ProviderType | str
+    auth_type: AuthType | str
     enabled: bool
     config: JSONObject
     api_key: str

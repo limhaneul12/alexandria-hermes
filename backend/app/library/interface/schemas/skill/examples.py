@@ -61,20 +61,3 @@ LIBRARIAN_SKILL_EXAMPLE: JsonDict = {
     "tags": ["fastapi"],
     "created_by_name": "alex",
 }
-
-SKILL_RESPONSE_EXAMPLE: JsonDict = {
-    "id": "00000000-0000-4000-8000-000000000010",
-    "item_type": "SKILL",
-    "title": "FastAPI dependency override",
-    "summary": "Override narrow route dependencies in tests.",
-    "content": "Use app.dependency_overrides with a fake service.",
-    "details": {
-        "purpose": "Test API routes without broad container coupling.",
-        "risk_level": "LOW",
-    },
-    "category_id": "00000000-0000-4000-8000-000000000002",
-    "status": "ACTIVE",
-    "source_type": "USER_CREATED",
-    "created_by_type": "USER",
-    "created_by_name": "alex",
-}

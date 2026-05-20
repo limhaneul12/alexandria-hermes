@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 
 from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.event_enum.provider_enums import (
@@ -14,7 +14,13 @@ from app.connections.domain.event_enum.provider_enums import (
 from app.connections.domain.repositories.librarian_repository import (
     IProviderSecretRepository,
 )
-from app.shared.types.types_convert_utils import now_utc
+from app.shared.exceptions import BoundaryValidationError
+from app.shared.types.types_convert_utils import (
+    aware_utc_datetime,
+    enum_value,
+    now_utc,
+    optional_iso_utc_datetime,
+)
 
 
 async def provider_can_execute(
@@ -64,7 +70,7 @@ async def _has_oauth_execution_secret(
     )
     if access_token is None:
         return False
-    expires_at = _parse_datetime(
+    expires_at = optional_iso_utc_datetime(
         await _resolve_secret(
             secret_repo,
             provider.id,
@@ -100,27 +106,16 @@ async def _resolve_secret(
 def _provider_shape(
     provider: LibrarianProvider,
 ) -> tuple[ProviderType, AuthType] | None:
-    if not isinstance(provider.provider_type, ProviderType) or not isinstance(
-        provider.auth_type, AuthType
-    ):
-        return None
-    return provider.provider_type, provider.auth_type
-
-
-def _parse_datetime(value: str | None) -> datetime | None:
-    if value is None:
-        return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+        provider_type = enum_value(
+            provider.provider_type, ProviderType, "provider_type"
+        )
+        auth_type = enum_value(provider.auth_type, AuthType, "auth_type")
+    except BoundaryValidationError:
         return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed
+    return provider_type, auth_type
 
 
 def _aware_now(now_provider: Callable[[], datetime]) -> datetime:
     current = now_provider()
-    if current.tzinfo is None:
-        return current.replace(tzinfo=UTC)
-    return current
+    return aware_utc_datetime(current)

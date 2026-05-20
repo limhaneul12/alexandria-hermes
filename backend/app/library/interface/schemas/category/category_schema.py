@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from app.library.domain.entities.read_models import Category
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
+from app.shared.schemas.datetime_schemas import AwareTimestamp
 from pydantic import ConfigDict, Field
 
 
@@ -69,8 +68,8 @@ class CategoryResponse(StrictSchemaModel):
     name: str
     parent_id: str | None
     position: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: AwareTimestamp
+    updated_at: AwareTimestamp
 
 
 class CategoryResponseList(StrictRootSchemaModel[list[CategoryResponse]]):

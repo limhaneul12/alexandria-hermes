@@ -16,8 +16,6 @@ def parse_provider_type(value: ProviderType | str) -> ProviderType | None:
     Returns:
         ProviderType | None: Supported provider type, otherwise ``None``.
     """
-    if isinstance(value, ProviderType):
-        return value
     try:
         return ProviderType(value)
     except ValueError:
@@ -25,14 +23,12 @@ def parse_provider_type(value: ProviderType | str) -> ProviderType | None:
 
 
 def parse_auth_type(value: AuthType | str) -> AuthType:
-    """Parse auth type with a clear unsupported fallback.
+    """Parse auth type from a persisted provider row.
 
     Args:
         value: Persisted auth type value.
 
     Returns:
-        AuthType: Parsed auth type or ``AuthType.NONE`` for stale values.
+        AuthType: Parsed auth type.
     """
-    if isinstance(value, AuthType):
-        return value
     return AuthType(value)

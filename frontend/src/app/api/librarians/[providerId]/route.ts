@@ -5,44 +5,14 @@ import {
   updateLibrarianProviderInBackend,
 } from "@/lib/backend/librarians";
 import { backendFailureResponse } from "../../_shared/backend-error-response";
+import { routeErrorPayload } from "@/lib/backend/route-errors";
 import {
-  LIBRARIAN_AUTH_TYPES,
-  PROVIDER_TYPES,
-  type LibrarianProviderCredentialMode,
-  type LibrarianProviderUpdateDTO,
-  type ProviderType,
-} from "@/types/library";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function safeConfig(value: unknown, providerType: ProviderType): Record<string, unknown> {
-  if (!isRecord(value)) return {};
-  const config: Record<string, unknown> = {};
-  if (providerType === "OPENAI_CODEX") {
-    for (const key of ["device_authorization_url", "device_token_url", "issuer", "redirect_uri", "token_url", "verification_uri", "client_id", "scope"] as const) {
-      const rawValue = value[key];
-      if (typeof rawValue === "string" && rawValue.trim()) {
-        config[key] = rawValue.trim();
-      }
-    }
-  } else {
-    if (typeof value.model === "string" && value.model.trim()) config.model = value.model.trim();
-    if (typeof value.base_url === "string" && value.base_url.trim()) {
-      config.base_url = value.base_url.trim();
-    }
-  }
-  return config;
-}
-
-function isProviderType(value: unknown): value is ProviderType {
-  return typeof value === "string" && (PROVIDER_TYPES as readonly string[]).includes(value);
-}
-
-function isCredentialMode(value: unknown): value is LibrarianProviderCredentialMode {
-  return typeof value === "string" && (LIBRARIAN_AUTH_TYPES as readonly string[]).includes(value);
-}
+  isCredentialMode,
+  isProviderType,
+  isRecord,
+  safeLibrarianProviderConfig,
+} from "../../_shared/request-parsing";
+import type { LibrarianProviderUpdateDTO } from "@/types/library";
 
 export async function PATCH(
   request: Request,
@@ -53,10 +23,10 @@ export async function PATCH(
   try {
     rawBody = await request.json();
   } catch {
-    return NextResponse.json({ message: "사서 인증 정보를 다시 확인하세요." }, { status: 400 });
+    return NextResponse.json(routeErrorPayload("INVALID_LIBRARIAN_PROVIDER_PAYLOAD", "Invalid librarian provider payload."), { status: 400 });
   }
   if (!isRecord(rawBody)) {
-    return NextResponse.json({ message: "사서 인증 정보를 다시 확인하세요." }, { status: 400 });
+    return NextResponse.json(routeErrorPayload("INVALID_LIBRARIAN_PROVIDER_PAYLOAD", "Invalid librarian provider payload."), { status: 400 });
   }
   const body = rawBody;
   const payload: LibrarianProviderUpdateDTO = {};
@@ -71,7 +41,7 @@ export async function PATCH(
       : isRecord(body.config) && ("device_authorization_url" in body.config || "device_token_url" in body.config || "token_url" in body.config || "issuer" in body.config)
         ? "OPENAI_CODEX"
         : "OPENAI";
-    payload.config = safeConfig(body.config, configProviderType);
+    payload.config = safeLibrarianProviderConfig(body.config, configProviderType);
   }
   if (payload.authType === "API_KEY" && typeof body.credential === "string" && body.credential.trim()) {
     payload.credential = body.credential.trim();
@@ -79,7 +49,7 @@ export async function PATCH(
 
   if (Object.keys(payload).length === 0) {
     return NextResponse.json(
-      { message: "변경할 사서 인증 정보가 없습니다." },
+      routeErrorPayload("EMPTY_LIBRARIAN_PROVIDER_UPDATE", "No librarian provider changes were supplied."),
       { status: 400 },
     );
   }
@@ -87,7 +57,7 @@ export async function PATCH(
   try {
     return NextResponse.json(await updateLibrarianProviderInBackend(providerId, payload));
   } catch (error) {
-    return backendFailureResponse(error, "사서 인증을 업데이트하지 못했습니다.");
+    return backendFailureResponse(error, "Librarian provider update failed", "LIBRARIAN_PROVIDER_UPDATE_FAILED");
   }
 }
 
@@ -100,6 +70,6 @@ export async function DELETE(
     await deleteLibrarianProviderInBackend(providerId);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    return backendFailureResponse(error, "사서 인증을 삭제하지 못했습니다.");
+    return backendFailureResponse(error, "Librarian provider delete failed", "LIBRARIAN_PROVIDER_DELETE_FAILED");
   }
 }

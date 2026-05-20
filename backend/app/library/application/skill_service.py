@@ -23,7 +23,7 @@ from app.library.domain.types.item_payload_types import (
     LibraryItemPayload,
 )
 from app.library.domain.types.skill_payload_types import SkillSchemaPayload
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibraryValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 
@@ -231,7 +231,7 @@ class SkillService:
         """
         item = await self.item_service.get_item(item_id)
         if item["item_type"] != ItemType.SKILL:
-            raise ValidationError("Not a skill item")
+            raise LibraryValidationError("Not a skill item")
 
         update_payload = shape_skill_patch_payload(item=item, payload=payload)
         updated = await self.item_service.update_item(

@@ -39,6 +39,35 @@ class LibrarianProfileRole(StrEnum):
     ARCHIVIST_CURATOR = "ARCHIVIST_CURATOR"
 
 
+class QualityReviewRoutingToken(StrEnum):
+    """Prompt token that can request a quality-review librarian profile."""
+
+    SECURITY = "security"
+    OAUTH = "oauth"
+    AUTH = "auth"
+    TOKEN = "token"
+    SECRET = "secret"
+    PRODUCTION = "production"
+    DEPLOY = "deploy"
+    RISK = "risk"
+    DANGEROUS = "dangerous"
+    REVIEW = "review"
+    VALIDATE = "validate"
+    VERIFY = "verify"
+    CANDIDATE = "candidate"
+    PROMPT = "prompt"
+
+
+class ArchiveRoutingToken(StrEnum):
+    """Prompt token that can request an archive-curator librarian profile."""
+
+    ARCHIVE = "archive"
+    CURATE = "curate"
+    STALE = "stale"
+    DUPLICATE = "duplicate"
+    HYGIENE = "hygiene"
+
+
 class LibrarianDelegateStatus(StrEnum):
     """Status for one synchronous librarian delegate lane."""
 

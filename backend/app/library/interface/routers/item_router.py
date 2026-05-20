@@ -11,6 +11,7 @@ from app.library.interface.schemas.item.item_schema import (
     ItemResponseList,
     ItemUpdateRequest,
 )
+from app.shared.exceptions import LibraryValidationError
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
 from dependency_injector.wiring import Provide, inject
@@ -80,7 +81,10 @@ async def patch_item(
 @router.get(
     "",
     response_model=ItemResponseList,
-    description="Library API operation.",
+    description=(
+        "List library items. Text search is intentionally handled by "
+        "/library/search so list routes never run LIKE scans over item content."
+    ),
     status_code=status.HTTP_200_OK,
     summary="List items",
 )
@@ -107,12 +111,13 @@ async def list_items(
     Returns:
         ItemResponseList: Value produced by list_items.
     """
+    if q is not None and q.strip():
+        raise LibraryValidationError("Use /library/search for text search.")
     payloads, _ = await service.list_items(
         item_type=item_type,
         limit=limit,
         offset=offset,
         category_id=category_id,
-        search_query=q,
     )
     validation = ItemResponseList.model_validate(payloads)
     return validation

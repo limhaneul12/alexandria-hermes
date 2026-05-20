@@ -45,7 +45,11 @@ from app.library.infrastructure.repositories.item_repository import (
 from app.library.infrastructure.repositories.usage_repository import (
     SqlAlchemyUsageRepository,
 )
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import (
+    ConnectionsResourceNotFoundError,
+    LibrarianResourceNotFoundError,
+    LibraryResourceNotFoundError,
+)
 from app.shared.infrastructure.database import Database
 from sqlalchemy import select
 
@@ -171,7 +175,7 @@ def test_category_repository_orders_hierarchy_and_reports_missing_mutations(
             missing_id = "00000000-0000-4000-8000-000000000404"
 
             with pytest.raises(
-                NotFoundError, match=f"Category not found: {missing_id}"
+                LibraryResourceNotFoundError, match=f"Category not found: {missing_id}"
             ):
                 await repository.update_name(missing_id, name="Missing")
 
@@ -228,7 +232,9 @@ def test_agent_repository_persists_updates_and_reports_missing_deletes(
 
             missing_id = "00000000-0000-4000-8000-000000000404"
 
-            with pytest.raises(NotFoundError, match=f"Agent not found: {missing_id}"):
+            with pytest.raises(
+                LibrarianResourceNotFoundError, match=f"Agent not found: {missing_id}"
+            ):
                 await repository.delete(missing_id)
 
     anyio.run(scenario)
@@ -338,7 +344,8 @@ def test_librarian_provider_repository_replaces_and_resolves_secrets(
             )
 
             assert raw_created_secret is not None
-            assert raw_created_secret.startswith("enc:v1:")
+            assert not raw_created_secret.startswith("enc:v1:")
+            assert ":" not in raw_created_secret
             assert "first-secret" not in raw_created_secret
             assert (
                 await secret_repository.resolve(provider.id, "api_key")
@@ -369,7 +376,8 @@ def test_librarian_provider_repository_replaces_and_resolves_secrets(
                 )
             )
             assert raw_updated_secret is not None
-            assert raw_updated_secret.startswith("enc:v1:")
+            assert not raw_updated_secret.startswith("enc:v1:")
+            assert ":" not in raw_updated_secret
             assert "second-secret" not in raw_updated_secret
             assert (
                 await secret_repository.resolve(provider.id, "api_key")
@@ -380,8 +388,38 @@ def test_librarian_provider_repository_replaces_and_resolves_secrets(
             missing_id = "00000000-0000-4000-8000-000000000404"
 
             with pytest.raises(
-                NotFoundError, match=f"Provider not found: {missing_id}"
+                ConnectionsResourceNotFoundError,
+                match=f"Provider not found: {missing_id}",
             ):
                 await provider_repository.update(missing_id, {"enabled": True})
+
+    anyio.run(scenario)
+
+
+def test_provider_secret_repository_treats_corrupt_stored_secret_as_missing(
+    tmp_path: Path,
+) -> None:
+    """Provider secret resolution should fail closed when stored values are corrupt."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "corrupt-provider-secret.db") as database,
+            database.session() as session,
+        ):
+            provider_repository = SqlAlchemyLibrarianProviderRepository(session=session)
+            secret_repository = ProviderSecretRepository(session=session)
+            provider = await provider_repository.create(_provider_payload())
+            session.add(
+                ProviderSecretORM(
+                    provider_id=provider.id,
+                    key_name="api_key",
+                    value="legacy-plaintext-secret",
+                )
+            )
+            await session.flush()
+
+            resolved = await secret_repository.resolve(provider.id, "api_key")
+
+            assert resolved is None
 
     anyio.run(scenario)

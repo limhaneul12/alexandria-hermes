@@ -2,18 +2,31 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from typing import Final, cast
 
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
+from app.librarian.domain.types.agent_payload_types import AgentUpdatePayload
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
+from app.shared.schemas.datetime_schemas import AwareTimestamp
+from app.shared.serialization.model_codec import schema_payload
 from pydantic import ConfigDict, Field, field_validator, model_validator
+
+_NON_NULLABLE_PATCH_FIELDS: Final[tuple[str, ...]] = (
+    "name",
+    "provider",
+    "capabilities",
+    "max_librarian_agents",
+    "librarian_role",
+    "librarian_specialties",
+    "librarian_routing_priority",
+    "librarian_enabled",
+)
 
 
 class AgentCreateRequest(StrictSchemaModel):
     """Payload for registering an agent profile."""
 
     model_config = ConfigDict(
-        from_attributes=True,
         json_schema_extra={
             "examples": [
                 {
@@ -90,29 +103,21 @@ class AgentPatchRequest(StrictSchemaModel):
         Returns:
             AgentPatchRequest: Validated patch request.
         """
-        fields = self.model_fields_set
-        if not fields:
+        patch_values = schema_payload(self, exclude_unset=True)
+        if not patch_values:
             raise ValueError("At least one agent field is required")
-        if "name" in fields and self.name is None:
-            raise ValueError("name cannot be null")
-        if "provider" in fields and self.provider is None:
-            raise ValueError("provider cannot be null")
-        if "capabilities" in fields and self.capabilities is None:
-            raise ValueError("capabilities cannot be null")
-        if "max_librarian_agents" in fields and self.max_librarian_agents is None:
-            raise ValueError("max_librarian_agents cannot be null")
-        if "librarian_role" in fields and self.librarian_role is None:
-            raise ValueError("librarian_role cannot be null")
-        if "librarian_specialties" in fields and self.librarian_specialties is None:
-            raise ValueError("librarian_specialties cannot be null")
-        if (
-            "librarian_routing_priority" in fields
-            and self.librarian_routing_priority is None
-        ):
-            raise ValueError("librarian_routing_priority cannot be null")
-        if "librarian_enabled" in fields and self.librarian_enabled is None:
-            raise ValueError("librarian_enabled cannot be null")
+        for field_name in _NON_NULLABLE_PATCH_FIELDS:
+            if field_name in patch_values and patch_values[field_name] is None:
+                raise ValueError(f"{field_name} cannot be null")
         return self
+
+    def to_payload(self) -> AgentUpdatePayload:
+        """Return explicitly supplied patch fields for the application layer.
+
+        Returns:
+            AgentUpdatePayload: Patch payload preserving nullable clear requests.
+        """
+        return cast(AgentUpdatePayload, schema_payload(self, exclude_unset=True))
 
 
 class AgentResponse(StrictSchemaModel):
@@ -156,25 +161,24 @@ class AgentResponse(StrictSchemaModel):
     librarian_specialties: list[str]
     librarian_routing_priority: int
     librarian_enabled: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: AwareTimestamp
+    updated_at: AwareTimestamp
 
     @field_validator("librarian_specialties", mode="before")
     @classmethod
-    def parse_librarian_specialties(cls, value: list[str] | None) -> list[str]:
+    # Broad type justified: Pydantic before validators receive raw boundary input.
+    def parse_librarian_specialties(cls, value: object) -> object:
         """Normalize legacy null specialties to an empty list.
 
         Args:
-            value: Persisted specialties or legacy null.
+            value: Raw Pydantic boundary value from persisted specialties.
 
         Returns:
-            list[str]: Normalized specialties list.
+            Raw value for Pydantic list validation, or an empty list for legacy nulls.
         """
         if value is None:
             return []
-        if isinstance(value, list) and all(isinstance(item, str) for item in value):
-            return value
-        raise ValueError("librarian_specialties must be a list of strings")
+        return value
 
 
 class AgentResponseList(StrictRootSchemaModel[list[AgentResponse]]):

@@ -21,7 +21,7 @@ from app.library.domain.event_enum.item_enums import (
 )
 from app.library.domain.event_enum.skill_enums import RiskLevel
 from app.library.domain.types.item_payload_types import LibraryItemPayload
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibraryValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 
@@ -219,7 +219,7 @@ def test_shape_skill_patch_payload_rejects_empty_effective_updates(
     payload: dict[str, JSONValue],
 ) -> None:
     """Patch shaping should reject payloads with no supported patch fields."""
-    with pytest.raises(ValidationError, match="No fields provided"):
+    with pytest.raises(LibraryValidationError, match="No fields provided"):
         shape_skill_patch_payload(
             item=_skill_item_payload({"purpose": "Old purpose"}),
             payload=payload,

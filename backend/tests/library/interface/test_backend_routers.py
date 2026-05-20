@@ -21,3 +21,12 @@ def test_list_items_rejects_invalid_item_type_value() -> None:
         response = client.get("/library/items?item_type=INVALID")
 
     assert response.status_code == 422
+
+
+def test_list_items_rejects_text_query_to_avoid_full_scan() -> None:
+    """Text search should use the FTS-backed candidate search endpoint."""
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/library/items?q=fastapi")
+
+    assert response.status_code == 400
+    assert "/library/search" in response.json()["detail"]

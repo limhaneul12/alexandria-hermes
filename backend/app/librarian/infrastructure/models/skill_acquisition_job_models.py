@@ -8,8 +8,9 @@ from app.librarian.domain.event_enum.collaboration_enums import (
     SkillAcquisitionJobStatus,
 )
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH
-from sqlalchemy import JSON, CheckConstraint, DateTime, String, Text
+from sqlalchemy import JSON, CheckConstraint, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -33,15 +34,9 @@ class SkillAcquisitionJobORM(Base):
     result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     evidence_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
     __table_args__ = (
         CheckConstraint(

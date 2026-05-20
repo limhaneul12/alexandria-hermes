@@ -6,14 +6,20 @@ from urllib.parse import urlencode
 
 from app.cli_support.argument_values import bounded_limit
 from app.cli_support.backend_api_client import CliBackendApiClient
-from app.cli_support.contracts.command_contracts import (
+from app.cli_support.contracts.memory_command_contracts import (
     MemoryCompactIdCommand,
     MemoryCompactListCommand,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
-from app.cli_support.presentation.output_renderers import print_json, text_field
+from app.cli_support.presentation.output_renderers import (
+    json_list,
+    print_json,
+    text_field,
+)
+from app.cli_support.schemas.list_filter_schemas import MemoryCompactListQuery
 from app.cli_support.url_paths import quote_path
-from app.shared.types.extra_types import JSONObject, JSONValue
+from app.shared.serialization.model_codec import schema_payload
+from app.shared.types.extra_types import JSONValue
 
 
 def handle_memory_compact_list(
@@ -31,14 +37,15 @@ def handle_memory_compact_list(
     Returns:
         Process-style exit code.
     """
-    query: dict[str, str | int] = {
-        "limit": bounded_limit(command.limit, default=20),
-        "offset": max(0, int(command.offset)),
-    }
-    if command.project is not None:
-        query["project"] = command.project
-    if command.status is not None:
-        query["status"] = command.status.value
+    query = schema_payload(
+        MemoryCompactListQuery(
+            limit=bounded_limit(command.limit, default=20),
+            offset=max(0, int(command.offset)),
+            project=command.project,
+            status=command.status.value if command.status else None,
+        ),
+        exclude_none=True,
+    )
     payload = client.get(f"/memory/compacts?{urlencode(query)}")
     _print_memory_compact_list(payload, context)
     return 0
@@ -92,7 +99,7 @@ def _print_memory_compact_list(payload: JSONValue, context: CommandContext) -> N
     if context.json_output:
         print_json(payload, context.stdout)
         return
-    rows = _compact_rows(payload)
+    rows = json_list(payload)
     if len(rows) == 0:
         print("No Memory Compacts found.", file=context.stdout)
         return
@@ -123,12 +130,3 @@ def _print_memory_compact(payload: JSONValue, context: CommandContext) -> None:
         print(f"{status} {compact_id} {project}", file=context.stdout)
         return
     print_json(payload, context.stdout)
-
-
-def _compact_rows(payload: JSONValue) -> list[JSONObject]:
-    if not isinstance(payload, dict):
-        return []
-    items = payload.get("items")
-    if not isinstance(items, list):
-        return []
-    return [item for item in items if isinstance(item, dict)]

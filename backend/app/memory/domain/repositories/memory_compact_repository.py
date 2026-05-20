@@ -65,14 +65,18 @@ class IMemoryCompactRepository(ABC):
         *,
         project: str | None = None,
         status: MemoryCompactStatus | None = None,
+        covered_after: datetime | None = None,
+        covered_before: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[MemoryCompact], int]:
         """List compacts and total count.
 
         Args:
-            project: Optional project filter.
-            status: Optional lifecycle status filter.
+            project: Project filter.
+            status: Lifecycle status filter.
+            covered_after: Coverage-overlap lower bound.
+            covered_before: Coverage-overlap upper bound.
             limit: Maximum number of rows to return.
             offset: Number of rows to skip.
 

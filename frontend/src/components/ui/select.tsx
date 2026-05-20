@@ -63,7 +63,7 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={`${id}-listbox`}
-        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-[#d8d3c7] bg-white/80 px-3 py-2 text-left text-sm font-semibold text-[#111111] outline-none transition hover:bg-white focus-visible:ring-2 focus-visible:ring-black/15"
+        className="flex h-9 w-full items-center justify-between gap-2 rounded-full border border-[#cfc8b8] bg-[#fbfaf6] px-3 text-left text-sm font-semibold text-[#36322d] outline-none transition hover:bg-[#eee9df] focus-visible:ring-2 focus-visible:ring-black/15"
         onClick={() => setOpen((current) => !current)}
       >
         <span className={selected ? "truncate" : "truncate text-[#6f6a60]"}>
@@ -76,7 +76,7 @@ export function Select({
           id={`${id}-listbox`}
           role="listbox"
           aria-label={label}
-          className="absolute z-50 mt-2 max-h-72 w-full overflow-auto rounded-xl border border-[#cfc8b8] bg-[#fbfaf6] p-1 shadow-xl shadow-black/15"
+          className="absolute z-50 mt-2 max-h-64 w-full overflow-auto rounded-xl border border-[#cfc8b8] bg-[#fbfaf6] p-1 shadow-xl shadow-black/15"
         >
           {options.map((option) => {
             const active = option.value === value;
@@ -86,7 +86,7 @@ export function Select({
                 type="button"
                 role="option"
                 aria-selected={active}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 ${
+                className={`w-full rounded-lg px-3 py-1.5 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15 ${
                   active ? "bg-[#111111] text-white" : "text-[#28241f] hover:bg-[#eee9df]"
                 }`}
                 onClick={() => choose(option.value)}

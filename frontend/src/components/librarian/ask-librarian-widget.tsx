@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Bot, Loader2, Search, Send, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip-group";
 import { askLibrarian } from "@/lib/api";
 import {
   OPEN_LIBRARIAN_ASK_EVENT,
@@ -177,14 +178,11 @@ export function AskLibrarianWidget() {
 
           <div className="mt-4 flex flex-wrap gap-2">
             {copy.quickPrompts.map((quickPrompt) => (
-              <button
+              <FilterChip
                 key={quickPrompt.label}
-                type="button"
-                className="rounded-full border border-[#d8d3c7] bg-white px-3 py-1.5 text-xs font-semibold text-[#28241f] transition hover:bg-[#f6f3ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/15"
+                label={quickPrompt.label}
                 onClick={() => setPrompt(quickPrompt.prompt)}
-              >
-                {quickPrompt.label}
-              </button>
+              />
             ))}
           </div>
 

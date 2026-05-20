@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import anyio
+import pytest
 from app.librarian.application.skill_acquisition_runner import (
     SkillAcquisitionExecutionRequest,
     SkillAcquisitionRunner,
@@ -15,6 +16,11 @@ from app.librarian.domain.contracts.skill_acquisition_contracts import (
 from app.librarian.domain.entities.skill_acquisition_job import SkillAcquisitionJob
 from app.librarian.domain.event_enum.collaboration_enums import (
     SkillAcquisitionJobStatus,
+)
+from app.shared.exceptions.librarian_exceptions import (
+    LibrarianSkillAcquisitionArtifactError,
+    LibrarianSkillAcquisitionExecutionError,
+    LibrarianSkillAcquisitionProviderError,
 )
 
 _NOW = datetime(2026, 5, 19, 18, 25, tzinfo=UTC)
@@ -120,6 +126,22 @@ class FailingExecutor:
         self.called = True
         _ = request
         raise RuntimeError("provider failed with api_key=SECRET-KEY token=SECRET")
+
+
+class DomainFailingExecutor:
+    """Executor fake that raises a known skill-acquisition domain failure."""
+
+    def __init__(self, error: Exception) -> None:
+        """Initialize fake executor state."""
+        self.error = error
+
+    async def acquire_skill(
+        self,
+        request: SkillAcquisitionExecutionRequest,
+    ) -> SkillAcquisitionArtifact:
+        """Raise a known domain failure for runner mapping."""
+        _ = request
+        raise self.error
 
 
 def _accepted_job() -> SkillAcquisitionJob:
@@ -249,3 +271,41 @@ def test_runner_fails_job_with_sanitized_error_when_executor_raises() -> None:
     assert "SECRET" not in serialized
     assert "api_key" not in serialized
     assert "token" not in serialized
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_message"),
+    [
+        (
+            LibrarianSkillAcquisitionProviderError("provider unavailable"),
+            "Skill acquisition provider failed",
+        ),
+        (
+            LibrarianSkillAcquisitionExecutionError("provider execution failed"),
+            "Skill acquisition execution failed",
+        ),
+        (
+            LibrarianSkillAcquisitionArtifactError("strict JSON required"),
+            "Skill acquisition artifact invalid",
+        ),
+    ],
+)
+def test_runner_records_domain_failure_message_when_executor_raises_known_error(
+    error: Exception,
+    expected_message: str,
+) -> None:
+    """Known executor domain failures should keep distinct persisted messages."""
+
+    async def run_case() -> tuple[SkillAcquisitionJob, str | None]:
+        service = FakeSkillAcquisitionService(_accepted_job())
+        executor = DomainFailingExecutor(error)
+        runner = SkillAcquisitionRunner(service=service, executor=executor)
+
+        failed = await runner.run_job("skill-acquisition-1")
+
+        return failed, service.failure_message
+
+    failed, failure_message = anyio.run(run_case)
+
+    assert failed.status is SkillAcquisitionJobStatus.FAILED
+    assert failure_message == expected_message

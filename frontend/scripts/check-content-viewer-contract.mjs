@@ -13,6 +13,7 @@ assert.match(i18n, /rawView:\s*"원본 보기"/, "Korean copy must include raw s
 assert.match(i18n, /rawView:\s*"Raw view"/, "English copy must include raw source label");
 assert.doesNotMatch(`${viewer}\n${markdown}`, /dangerouslySetInnerHTML/, "ContentViewer must not use unsafe HTML injection");
 assert.match(markdown, /```/, "MarkdownContent must parse fenced code blocks");
+assert.match(markdown, /<strong/, "MarkdownContent must render bold markdown instead of showing literal ** markers");
 assert.match(markdown, /role|list-disc|list-decimal/, "MarkdownContent must render list-like markdown structures");
 assert.match(contextDetail, /<ContentViewer content=\{context\.content\}/, "Context detail must use ContentViewer");
 assert.match(skillDetail, /<ContentViewer content=\{item\.content\}/, "Skill detail must use ContentViewer");

@@ -73,16 +73,9 @@ class FakeItemRepository(IItemRepository):
         limit: int | None = None,
         offset: int = 0,
         category_id: str | None = None,
-        search_query: str | None = None,
     ) -> tuple[list[LibraryItem], int]:
         """List all is unused by these tests."""
         return [], 0
-
-    async def search(
-        self, query: str, item_type: ItemType | None = None
-    ) -> list[LibraryItem]:
-        """Search is unused by these tests."""
-        return []
 
     async def search_candidates(
         self,

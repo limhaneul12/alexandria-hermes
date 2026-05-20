@@ -28,7 +28,7 @@ from app.library.domain.types.skill_payload_types import (
     SkillItemUpdatePayload,
     SkillSchemaPayload,
 )
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibraryValidationError
 from app.shared.types.extra_types import JSONValue
 from app.shared.types.types_convert_utils import (
     enum_value,
@@ -112,21 +112,21 @@ def _skill_candidate_harness_payload(
         SkillCandidateHarnessPayload: Validated harness details payload.
 
     Raises:
-        ValidationError: When the stored harness shape is invalid.
+        LibraryValidationError: When the stored harness shape is invalid.
     """
     if not isinstance(value, dict):
-        raise ValidationError("harness must be an object")
+        raise LibraryValidationError("harness must be an object")
     status = required_string_value(value.get("status"), "harness.status")
     checks_value = value.get("checks")
     if not isinstance(checks_value, list):
-        raise ValidationError("harness.checks must be a list")
+        raise LibraryValidationError("harness.checks must be a list")
     checks: list[SkillCandidateHarnessCheckPayload] = []
     for check_value in checks_value:
         if not isinstance(check_value, dict):
-            raise ValidationError("harness.checks items must be objects")
+            raise LibraryValidationError("harness.checks items must be objects")
         passed_value = check_value.get("passed")
         if not isinstance(passed_value, bool):
-            raise ValidationError("harness.checks.passed must be a boolean")
+            raise LibraryValidationError("harness.checks.passed must be a boolean")
         checks.append(
             SkillCandidateHarnessCheckPayload(
                 name=required_string_value(
@@ -305,7 +305,7 @@ def shape_skill_patch_payload(
         Item-service update payload.
 
     Raises:
-        ValidationError: When no supported fields are provided.
+        LibraryValidationError: When no supported fields are provided.
     """
     shaped_payload = SkillItemUpdatePayload()
     if "title" in payload:
@@ -330,6 +330,6 @@ def shape_skill_patch_payload(
         shaped_payload["details"] = _skill_details_patch_payload(details)
 
     if not shaped_payload:
-        raise ValidationError("No fields provided")
+        raise LibraryValidationError("No fields provided")
 
     return shaped_payload

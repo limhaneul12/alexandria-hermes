@@ -18,7 +18,8 @@ from app.librarian.domain.repositories.skill_acquisition_job_repository import (
 from app.librarian.infrastructure.models.skill_acquisition_job_models import (
     SkillAcquisitionJobORM,
 )
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import LibrarianResourceNotFoundError
+from app.shared.types.types_convert_utils import aware_utc_datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -45,9 +46,11 @@ def _to_read_model(row: SkillAcquisitionJobORM) -> SkillAcquisitionJob:
         result_summary=row.result_summary,
         evidence_urls=list(row.evidence_urls),
         error_message=row.error_message,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-        completed_at=row.completed_at,
+        created_at=aware_utc_datetime(row.created_at),
+        updated_at=aware_utc_datetime(row.updated_at),
+        completed_at=aware_utc_datetime(row.completed_at)
+        if row.completed_at is not None
+        else None,
     )
 
 
@@ -123,7 +126,9 @@ class SqlAlchemySkillAcquisitionJobRepository(ISkillAcquisitionJobRepository):
         """
         model = await self._session.get(SkillAcquisitionJobORM, job_id)
         if model is None:
-            raise NotFoundError(f"Skill acquisition job not found: {job_id}")
+            raise LibrarianResourceNotFoundError(
+                f"Skill acquisition job not found: {job_id}"
+            )
         model.status = payload.status.value
         model.result_summary = payload.result_summary
         model.evidence_urls = cast(list[str], list(payload.evidence_urls))

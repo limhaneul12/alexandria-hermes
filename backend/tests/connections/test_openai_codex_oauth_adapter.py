@@ -19,7 +19,7 @@ from app.connections.infrastructure.librarians.openai_codex_oauth_adapter import
     OpenAICodexOAuthClient,
     OpenAICodexOAuthSettings,
 )
-from app.shared.exceptions import UnsupportedProviderError
+from app.shared.exceptions import ConnectionsProviderUnsupportedError
 from app.shared.types.extra_types import JSONObject
 
 PROVIDER_ID = "00000000-0000-4000-8000-000000000888"
@@ -106,7 +106,7 @@ def test_openai_codex_oauth_rejects_unapproved_endpoint_before_http() -> None:
             "token_url": "https://auth.openai.com/oauth/token",
             "client_id": "codex-client",
         }
-        with pytest.raises(UnsupportedProviderError) as exc_info:
+        with pytest.raises(ConnectionsProviderUnsupportedError) as exc_info:
             await client.start_device_authorization(_provider(unsafe_config))
 
         assert str(exc_info.value) == (
@@ -126,7 +126,7 @@ def test_openai_codex_oauth_rejects_allowed_host_wrong_path_before_http() -> Non
             "token_url": "https://auth.openai.com/oauth/token",
             "client_id": "codex-client",
         }
-        with pytest.raises(UnsupportedProviderError) as exc_info:
+        with pytest.raises(ConnectionsProviderUnsupportedError) as exc_info:
             await client.start_device_authorization(_provider(unsafe_config))
 
         assert str(exc_info.value) == (
@@ -148,7 +148,7 @@ def test_openai_codex_oauth_rejects_unapproved_configured_issuer_before_http() -
         )
         client = OpenAICodexOAuthClient(settings=unsafe_settings)
 
-        with pytest.raises(UnsupportedProviderError) as exc_info:
+        with pytest.raises(ConnectionsProviderUnsupportedError) as exc_info:
             await client.start_device_authorization(_provider({}))
 
         assert str(exc_info.value) == (

@@ -50,7 +50,7 @@ from app.memory.infrastructure.repositories.contexts.mapping import (
 from app.memory.infrastructure.repositories.contexts.vector_search import (
     search_context_vectors,
 )
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import MemoryContextNotFoundError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -175,6 +175,10 @@ class SqlAlchemyContextRepository(IContextRepository):
         session_id: str | None = None,
         source_agent: str | None = None,
         tag: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         include_archived: bool = False,
     ) -> tuple[list[ContextRecord], int]:
         """List contexts with simple filters.
@@ -191,6 +195,10 @@ class SqlAlchemyContextRepository(IContextRepository):
             session_id: Optional session filter.
             source_agent: Optional source-agent filter.
             tag: Optional tag filter.
+            created_after: Optional inclusive created-at lower bound.
+            created_before: Optional inclusive created-at upper bound.
+            updated_after: Optional inclusive updated-at lower bound.
+            updated_before: Optional inclusive updated-at upper bound.
             include_archived: Whether archived entries are included.
 
         Returns:
@@ -206,6 +214,10 @@ class SqlAlchemyContextRepository(IContextRepository):
             session_id=session_id,
             source_agent=source_agent,
             tag=tag,
+            created_after=created_after,
+            created_before=created_before,
+            updated_after=updated_after,
+            updated_before=updated_before,
             include_archived=include_archived,
         )
         count = await self._session.scalar(
@@ -390,22 +402,25 @@ class SqlAlchemyContextRepository(IContextRepository):
         model_name: str,
         dimensions: int,
         limit: int,
+        force: bool = False,
     ) -> list[ContextChunkRecord]:
-        """Return chunks missing embeddings for the current model.
+        """Return chunks missing embeddings or selected for forced rebuild.
 
         Args:
             model_name: Current embedding model name.
             dimensions: Current embedding dimensions.
             limit: Maximum chunks to scan.
+            force: Whether to rebuild existing embeddings even if model metadata matches.
 
         Returns:
-            Chunks requiring embedding backfill.
+            Chunks requiring embedding backfill or forced rebuild.
         """
         chunks = await chunks_missing_embeddings(
             session=self._session,
             model_name=model_name,
             dimensions=dimensions,
             limit=limit,
+            force=force,
         )
         return chunks
 
@@ -430,5 +445,5 @@ class SqlAlchemyContextRepository(IContextRepository):
     async def _require_context(self, context_id: str) -> ContextORM:
         model = await self._session.get(ContextORM, context_id)
         if model is None:
-            raise NotFoundError(f"Context not found: {context_id}")
+            raise MemoryContextNotFoundError(f"Context not found: {context_id}")
         return model

@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -26,12 +27,8 @@ class CategoryORM(Base):
         nullable=True,
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
 
     parent: Mapped[CategoryORM | None] = relationship(
         "CategoryORM",

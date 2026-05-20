@@ -47,7 +47,7 @@ from app.librarian.domain.types.hermes_collaboration_payload_types import (
     LibrarianDelegatePayload,
     LibrarianJobStatusPayload,
 )
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import LibrarianResourceNotFoundError
 from app.shared.types.types_convert_utils import now_utc
 
 _JOB_PREFIX = "librarian-job-"
@@ -163,7 +163,7 @@ class HermesCollaborationService:
             LibrarianJobStatusPayload: Public job status.
         """
         if not job_id.startswith(_JOB_PREFIX):
-            raise NotFoundError(f"Librarian job not found: {job_id}")
+            raise LibrarianResourceNotFoundError(f"Librarian job not found: {job_id}")
         result = LibrarianJobStatusResult(
             job_id=job_id,
             status=LibrarianDelegationStatus.GUIDANCE_ONLY,

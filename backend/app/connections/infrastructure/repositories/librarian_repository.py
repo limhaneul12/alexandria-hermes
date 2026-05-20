@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from app.connections.domain.contracts.librarian_provider_contracts import (
@@ -18,10 +19,13 @@ from app.connections.infrastructure.models.librarian_provider_models import (
     LibrarianProviderORM,
     ProviderSecretORM,
 )
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import ConnectionsResourceNotFoundError
 from app.shared.security.secret_cipher import SecretCipher, SecretCipherSettings
+from app.shared.types.types_convert_utils import aware_utc_datetime
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 
 def _to_read_model(row: LibrarianProviderORM) -> LibrarianProvider:
@@ -33,8 +37,8 @@ def _to_read_model(row: LibrarianProviderORM) -> LibrarianProvider:
         auth_type=AuthType(row.auth_type),
         enabled=row.enabled,
         config=row.config,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
+        created_at=aware_utc_datetime(row.created_at),
+        updated_at=aware_utc_datetime(row.updated_at),
     )
 
 
@@ -108,7 +112,7 @@ class SqlAlchemyLibrarianProviderRepository(ILibrarianProviderRepository):
         """
         model = await self._session.get(LibrarianProviderORM, provider_id)
         if model is None:
-            raise NotFoundError(f"Provider not found: {provider_id}")
+            raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
 
         values = payload.to_record()
         if "name" in values:
@@ -134,7 +138,7 @@ class SqlAlchemyLibrarianProviderRepository(ILibrarianProviderRepository):
         """
         model = await self._session.get(LibrarianProviderORM, provider_id)
         if model is None:
-            raise NotFoundError(f"Provider not found: {provider_id}")
+            raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
 
         await self._session.execute(
             delete(LibrarianProviderORM).where(LibrarianProviderORM.id == provider_id)
@@ -176,7 +180,16 @@ class ProviderSecretRepository(IProviderSecretRepositoryPort):
             ProviderSecretORM.key_name == key_name,
         )
         value = await self._session.scalar(query)
-        return None if value is None else self._secret_cipher.decrypt(value)
+        if value is None:
+            return None
+        try:
+            return self._secret_cipher.decrypt(value)
+        except ValueError:
+            logger.warning(
+                "Provider secret failed decryption and will be treated as missing",
+                extra={"provider_id": provider_id, "key_name": key_name},
+            )
+            return None
 
     async def set_secret(self, *, provider_id: str, key_name: str, value: str) -> None:
         """Upsert one provider secret by key.
@@ -192,16 +205,17 @@ class ProviderSecretRepository(IProviderSecretRepositoryPort):
                 ProviderSecretORM.key_name == key_name,
             )
         )
-        if isinstance(existing, ProviderSecretORM):
-            existing.value = self._secret_cipher.encrypt(value)
-        else:
+        encrypted_value = self._secret_cipher.encrypt(value)
+        if existing is None:
             self._session.add(
                 ProviderSecretORM(
                     provider_id=provider_id,
                     key_name=key_name,
-                    value=self._secret_cipher.encrypt(value),
+                    value=encrypted_value,
                 )
             )
+        else:
+            existing.value = encrypted_value
         await self._session.flush()
 
     async def delete_for_provider(self, provider_id: str, key_name: str) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Final
 
 from app.connections.application.librarians.oauth_client import OAuthProviderClient
@@ -28,8 +28,17 @@ from app.connections.domain.types.librarian_oauth_payload_types import (
     LibrarianOAuthStartPayload,
     LibrarianOAuthStatusPayload,
 )
-from app.shared.exceptions import NotFoundError, UnsupportedProviderError
-from app.shared.types.types_convert_utils import now_utc
+from app.shared.exceptions import (
+    BoundaryValidationError,
+    ConnectionsProviderUnsupportedError,
+    ConnectionsResourceNotFoundError,
+)
+from app.shared.types.types_convert_utils import (
+    aware_utc_datetime,
+    enum_value,
+    now_utc,
+    optional_iso_utc_datetime,
+)
 
 OAUTH_REFRESH_SKEW: Final[timedelta] = timedelta(seconds=120)
 _DEVICE_FLOW_SECRET_KEYS: Final[tuple[ProviderSecretKey, ...]] = (
@@ -103,7 +112,9 @@ class LibrarianOAuthService:
             ProviderSecretKey.OAUTH_DEVICE_CODE,
         )
         if device_code is None:
-            raise UnsupportedProviderError("OAuth device flow has not been started")
+            raise ConnectionsProviderUnsupportedError(
+                "OAuth device flow has not been started"
+            )
 
         device_expires_at = await self._device_expires_at(provider.id)
         if device_expires_at is not None and device_expires_at <= self._now():
@@ -201,21 +212,24 @@ class LibrarianOAuthService:
     async def _load_codex_oauth_provider(self, provider_id: str) -> LibrarianProvider:
         row = await self.provider_repo.get(provider_id)
         if row is None:
-            raise NotFoundError(f"Provider not found: {provider_id}")
+            raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
 
-        if not isinstance(row.provider_type, ProviderType) or not isinstance(
-            row.auth_type, AuthType
-        ):
-            raise UnsupportedProviderError(
-                f"Provider type {row.provider_type} does not support OAuth lifecycle"
+        try:
+            provider_type = enum_value(
+                row.provider_type,
+                ProviderType,
+                "provider_type",
             )
-        provider_type = row.provider_type
-        auth_type = row.auth_type
+            auth_type = enum_value(row.auth_type, AuthType, "auth_type")
+        except BoundaryValidationError as exc:
+            raise ConnectionsProviderUnsupportedError(
+                f"Provider type {row.provider_type} does not support OAuth lifecycle"
+            ) from exc
         if (
             provider_type is not ProviderType.OPENAI_CODEX
             or auth_type is not AuthType.OAUTH
         ):
-            raise UnsupportedProviderError(
+            raise ConnectionsProviderUnsupportedError(
                 f"Provider type {provider_type.value} does not support OAuth lifecycle"
             )
         return row
@@ -248,7 +262,9 @@ class LibrarianOAuthService:
     ) -> LibrarianOAuthStatusPayload:
         if poll_result.status is OAuthPollStatus.CONNECTED:
             if poll_result.token_set is None:
-                raise UnsupportedProviderError("OAuth provider did not return tokens")
+                raise ConnectionsProviderUnsupportedError(
+                    "OAuth provider did not return tokens"
+                )
             await self._store_token_set(provider.id, poll_result.token_set)
             await self._delete_secrets(provider.id, _DEVICE_FLOW_SECRET_KEYS)
             return self._status_payload(
@@ -435,14 +451,14 @@ class LibrarianOAuthService:
             provider_id,
             ProviderSecretKey.OAUTH_EXPIRES_AT,
         )
-        return self._parse_datetime(value)
+        return optional_iso_utc_datetime(value)
 
     async def _device_expires_at(self, provider_id: str) -> datetime | None:
         value = await self._resolve_secret(
             provider_id,
             ProviderSecretKey.OAUTH_DEVICE_EXPIRES_AT,
         )
-        return self._parse_datetime(value)
+        return optional_iso_utc_datetime(value)
 
     async def _resolve_secret(
         self,
@@ -474,25 +490,10 @@ class LibrarianOAuthService:
 
     def _now(self) -> datetime:
         current = self.now_provider()
-        if current.tzinfo is None:
-            return current.replace(tzinfo=UTC)
-        return current
-
-    def _parse_datetime(self, value: str | None) -> datetime | None:
-        if value is None:
-            return None
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=UTC)
-        return parsed
+        return aware_utc_datetime(current)
 
     def _format_datetime(self, value: datetime) -> str:
-        if value.tzinfo is None:
-            return value.replace(tzinfo=UTC).isoformat()
-        return value.isoformat()
+        return aware_utc_datetime(value).isoformat()
 
     def _status_payload(
         self,

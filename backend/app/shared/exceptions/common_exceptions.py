@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from logging import Logger
 from typing import Literal
 
+
+class BoundaryValidationError(RuntimeError):
+    """Raised when a shared boundary contract value is invalid."""
+
+
 type RedisExceptionAction = Literal["drop", "retry"]
 type RedisJSONValue = (
     str
@@ -65,6 +70,7 @@ type RedisExceptionHandler = Callable[..., Awaitable[RedisExceptionResult]]
 type RedisExceptionDecorator = Callable[[RedisExceptionHandler], RedisExceptionHandler]
 
 __all__ = [
+    "BoundaryValidationError",
     "RedisExceptionAction",
     "RedisExceptionArgValue",
     "RedisExceptionAware",

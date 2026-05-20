@@ -431,6 +431,12 @@ export type LibrarianChatRequestDTO = {
   mode: LibrarianChatMode;
   targets: LibrarianChatTarget[];
   limit: number;
+  providerId?: string | null;
+  librarianProfileId?: string | null;
+  librarianProfileName?: string | null;
+  librarianModel?: string | null;
+  librarianRolePrompt?: string | null;
+  maxLibrarianAgents?: number | null;
 };
 
 export type LibrarianDirectHitDTO = {
@@ -463,6 +469,7 @@ export type ContextKind =
   | "HARNESS";
 export type ContextSourceType = "AGENT" | "USER" | "SYSTEM" | "IMPORTED";
 export type ContextImportance = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type ContextScope = "GLOBAL" | "PROJECT" | "AGENT" | "SESSION" | "USER";
 export type ContextStorageStatus =
   | "SAVED"
   | "SAVED_WITH_WARNINGS"
@@ -548,6 +555,61 @@ export type ContextListDTO = {
   total: number;
 };
 
+export type HarnessExecutionMetadataDTO = {
+  taskGoal: string | null;
+  environment: string | null;
+  triggerContext: string | null;
+  steps: string[];
+  commands: string[];
+  tests: string[];
+  failures: string[];
+  fixes: string[];
+  artifacts: string[];
+  reusableProcedure: string | null;
+  recallKeywords: string[];
+  safetyNotes: string[];
+};
+
+export type HarnessContextDTO = ContextDTO & {
+  kind: "HARNESS";
+  harness: HarnessExecutionMetadataDTO;
+};
+
+export type HarnessListDTO = {
+  items: HarnessContextDTO[];
+  total: number;
+};
+
+export type HarnessCaptureDTO = {
+  taskGoal: string;
+  reusableProcedure: string;
+  summary: string | null;
+  project: string | null;
+  scope: ContextScope;
+  sourceAgent: string;
+  environment: string | null;
+  triggerContext: string | null;
+  steps: string[];
+  commands: string[];
+  tests: string[];
+  failures: string[];
+  fixes: string[];
+  artifacts: string[];
+  recallKeywords: string[];
+  safetyNotes: string[];
+};
+
+export type ContextLintDTO = {
+  ok: boolean;
+  status: ContextStorageStatus;
+  score: number;
+  errors: string[];
+  warnings: string[];
+  suggestions: string[];
+  redactedContent: string;
+  redactionReport: string[];
+};
+
 export type ContextSearchDTO = {
   query: string;
   strategy: RagStrategy;
@@ -611,6 +673,22 @@ export type MemoryCompactSourceRefDTO = {
   sourceId: string;
   title: string;
   detailPath: string;
+};
+
+export type MemoryCompactCreateSourceRefDTO = {
+  sourceType: string;
+  sourceId: string;
+  title: string;
+  detailPath: string;
+};
+
+export type MemoryCompactCreateDTO = {
+  project: string | null;
+  coveredFrom: string;
+  coveredTo: string;
+  markdownBody: string;
+  status: MemoryCompactStatus;
+  sourceRefs: MemoryCompactCreateSourceRefDTO[];
 };
 
 export type MemoryCompactDTO = {

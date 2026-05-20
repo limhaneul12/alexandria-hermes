@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { createCategoryInBackend } from "@/lib/backend/archive";
+import { isRecord } from "../_shared/request-parsing";
 import type { CategoryCreateDTO } from "@/types/library";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export async function POST(request: Request) {
   try {

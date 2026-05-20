@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 import sqlite3
 import subprocess
@@ -109,13 +110,157 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
     assert speculative_tables == set()
 
 
-def test_alembic_upgrade_removes_legacy_minio_providers_when_present(
+def test_alembic_upgrade_rejects_removed_legacy_library_item_types(
     tmp_path: Path,
 ) -> None:
-    """Alembic should remove legacy MINIO providers and their stored secrets."""
+    """Baseline schema should reject legacy library item families."""
 
-    database_path = tmp_path / "legacy-minio.db"
-    previous_revision = "202605141904_add_context_vault"
+    database_path = tmp_path / "removed-item-types.db"
+    result = _run_alembic(database_path, "head")
+    assert result.returncode == 0, result.stderr
+
+    rejected_item_types: list[str] = []
+    with sqlite3.connect(database_path) as connection:
+        for item_type in ("WORKFLOW", "KNOWLEDGE"):
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO library_items (
+                        id,
+                        item_type,
+                        title,
+                        summary,
+                        content,
+                        category_id,
+                        tags,
+                        status,
+                        source_type,
+                        created_by_type,
+                        created_by_name,
+                        created_at,
+                        updated_at,
+                        details,
+                        is_archived
+                    )
+                    VALUES (
+                        ?,
+                        ?,
+                        'Rejected legacy item',
+                        NULL,
+                        'Should fail',
+                        NULL,
+                        '[]',
+                        'ACTIVE',
+                        'USER_CREATED',
+                        'USER',
+                        'Hermes',
+                        '2026-05-19 00:00:00',
+                        '2026-05-19 00:00:00',
+                        '{}',
+                        0
+                    )
+                    """,
+                    (f"legacy-{item_type.lower()}", item_type),
+                )
+            except sqlite3.IntegrityError:
+                rejected_item_types.append(item_type)
+
+    assert rejected_item_types == ["WORKFLOW", "KNOWLEDGE"]
+
+
+def test_alembic_upgrade_marks_legacy_sqlite_datetimes_as_utc(
+    tmp_path: Path,
+) -> None:
+    """Alembic should mark existing naive SQLite timestamp rows as UTC."""
+
+    database_path = tmp_path / "legacy-naive-datetimes.db"
+    previous_revision = "202605192115_remove_knowledge_library_item_type"
+    result = _run_alembic(database_path, previous_revision)
+    assert result.returncode == 0, result.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            INSERT INTO agent_profiles (
+                id,
+                name,
+                provider,
+                capabilities,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                'agent-with-naive-datetime',
+                'Agent With Naive Datetime',
+                'OPENAI',
+                '[]',
+                '2026-05-16 04:32:36.331519',
+                '2026-05-16 04:32:52+09:00'
+            );
+            INSERT INTO skill_acquisition_jobs (
+                id,
+                prompt,
+                agent_name,
+                status,
+                evidence_urls,
+                created_at,
+                updated_at,
+                completed_at
+            )
+            VALUES (
+                'job-with-naive-datetime',
+                'Acquire skill',
+                'Hermes',
+                'COMPLETED',
+                '[]',
+                '2026-05-18 17:20:00',
+                '2026-05-18 17:20:01Z',
+                '2026-05-18 17:21:00'
+            );
+            """
+        )
+
+    result = _run_alembic(database_path, "head")
+    assert result.returncode == 0, result.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        agent_created_at, agent_updated_at = connection.execute(
+            """
+            SELECT created_at, updated_at
+            FROM agent_profiles
+            WHERE id = 'agent-with-naive-datetime'
+            """
+        ).fetchone()
+        job_created_at, job_updated_at, job_completed_at = connection.execute(
+            """
+            SELECT created_at, updated_at, completed_at
+            FROM skill_acquisition_jobs
+            WHERE id = 'job-with-naive-datetime'
+            """
+        ).fetchone()
+
+    assert {
+        "agent_created_at": agent_created_at,
+        "agent_updated_at": agent_updated_at,
+        "job_created_at": job_created_at,
+        "job_updated_at": job_updated_at,
+        "job_completed_at": job_completed_at,
+    } == {
+        "agent_created_at": "2026-05-16 04:32:36.331519+00:00",
+        "agent_updated_at": "2026-05-16 04:32:52+09:00",
+        "job_created_at": "2026-05-18 17:20:00+00:00",
+        "job_updated_at": "2026-05-18 17:20:01Z",
+        "job_completed_at": "2026-05-18 17:21:00+00:00",
+    }
+
+
+def test_alembic_upgrade_rejects_legacy_plaintext_provider_secrets(
+    tmp_path: Path,
+) -> None:
+    """Alembic should fail closed when old plaintext provider secrets remain."""
+
+    database_path = tmp_path / "legacy-provider-secret.db"
+    previous_revision = "202605201020_normalize_legacy_sqlite_datetimes"
     result = _run_alembic(database_path, previous_revision)
     assert result.returncode == 0, result.stderr
 
@@ -123,321 +268,226 @@ def test_alembic_upgrade_removes_legacy_minio_providers_when_present(
         connection.executescript(
             """
             INSERT INTO librarian_providers (
-                id, name, provider_type, auth_type, enabled, config, created_at, updated_at
+                id,
+                name,
+                provider_type,
+                auth_type,
+                enabled,
+                config,
+                created_at,
+                updated_at
             )
             VALUES (
-                'legacy-smoke-provider',
-                'default-minio',
-                'MINIO',
+                'provider-with-legacy-secret',
+                'Legacy secret provider',
+                'OPENAI',
                 'API_KEY',
-                0,
-                '{"endpoint":"http://localhost:9000","bucket":"alexandria-smoke"}',
-                '2026-05-15 00:00:00',
-                '2026-05-15 00:00:00'
+                1,
+                '{}',
+                '2026-05-20 00:00:00+00:00',
+                '2026-05-20 00:00:00+00:00'
             );
-            INSERT INTO librarian_provider_secrets (id, provider_id, key_name, value)
-            VALUES ('legacy-smoke-secret', 'legacy-smoke-provider', 'api_key', 'redacted');
+            INSERT INTO librarian_provider_secrets (
+                id,
+                provider_id,
+                key_name,
+                value
+            )
+            VALUES (
+                'legacy-secret-row',
+                'provider-with-legacy-secret',
+                'api_key',
+                'plain-secret'
+            );
+            """
+        )
+
+    result = _run_alembic(database_path, "head")
+
+    assert result.returncode != 0
+    assert "Legacy plaintext or old-version provider secrets" in result.stderr
+
+
+def test_alembic_upgrade_rejects_old_version_opaque_provider_secrets(
+    tmp_path: Path,
+) -> None:
+    """Alembic should fail closed when opaque provider secrets use an old version."""
+
+    database_path = tmp_path / "old-version-provider-secret.db"
+    previous_revision = "202605201020_normalize_legacy_sqlite_datetimes"
+    result = _run_alembic(database_path, previous_revision)
+    assert result.returncode == 0, result.stderr
+    old_version_payload = base64.urlsafe_b64encode(bytes([2]) + b"x" * 28).decode(
+        "ascii"
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            f"""
             INSERT INTO librarian_providers (
-                id, name, provider_type, auth_type, enabled, config, created_at, updated_at
+                id,
+                name,
+                provider_type,
+                auth_type,
+                enabled,
+                config,
+                created_at,
+                updated_at
             )
             VALUES (
-                'real-minio-provider',
-                'team-minio',
-                'MINIO',
+                'provider-with-old-secret',
+                'Old secret provider',
+                'OPENAI',
                 'API_KEY',
-                0,
-                '{"endpoint":"http://localhost:9000","bucket":"team-archive"}',
-                '2026-05-15 00:00:00',
-                '2026-05-15 00:00:00'
+                1,
+                '{{}}',
+                '2026-05-20 00:00:00+00:00',
+                '2026-05-20 00:00:00+00:00'
+            );
+            INSERT INTO librarian_provider_secrets (
+                id,
+                provider_id,
+                key_name,
+                value
+            )
+            VALUES (
+                'old-version-secret-row',
+                'provider-with-old-secret',
+                'api_key',
+                '{old_version_payload}'
             );
             """
         )
 
     result = _run_alembic(database_path, "head")
-    assert result.returncode == 0, result.stderr
 
-    with sqlite3.connect(database_path) as connection:
-        remaining_providers = connection.execute(
-            "SELECT id, name FROM librarian_providers ORDER BY id"
-        ).fetchall()
-        remaining_minio_secrets = connection.execute(
-            """
-            SELECT COUNT(*)
-            FROM librarian_provider_secrets
-            WHERE provider_id IN ('legacy-smoke-provider', 'real-minio-provider')
-            """
-        ).fetchone()[0]
-
-    assert remaining_providers == []
-    assert remaining_minio_secrets == 0
+    assert result.returncode != 0
+    assert "Legacy plaintext or old-version provider secrets" in result.stderr
 
 
-def test_alembic_upgrade_removes_legacy_workflow_library_items(
+def test_alembic_upgrade_deletes_legacy_plaintext_oauth_provider_secrets(
     tmp_path: Path,
 ) -> None:
-    """Alembic should delete legacy WORKFLOW rows and reject new workflow items."""
+    """Alembic should clear invalid OAuth material instead of blocking upgrade."""
 
-    database_path = tmp_path / "workflow-item-type.db"
-    previous_revision = "202605172010_add_context_access_events"
+    database_path = tmp_path / "legacy-oauth-secret.db"
+    previous_revision = "202605201020_normalize_legacy_sqlite_datetimes"
     result = _run_alembic(database_path, previous_revision)
     assert result.returncode == 0, result.stderr
 
     with sqlite3.connect(database_path) as connection:
         connection.executescript(
             """
-            INSERT INTO library_items (
+            INSERT INTO librarian_providers (
                 id,
-                item_type,
-                title,
-                summary,
-                content,
-                category_id,
-                tags,
-                status,
-                source_type,
-                created_by_type,
-                created_by_name,
+                name,
+                provider_type,
+                auth_type,
+                enabled,
+                config,
                 created_at,
-                updated_at,
-                details,
-                is_archived
+                updated_at
             )
             VALUES (
-                'workflow-item',
-                'WORKFLOW',
-                'Legacy workflow item',
-                NULL,
-                'Legacy workflow content',
-                NULL,
-                '[]',
-                'ACTIVE',
-                'USER_CREATED',
-                'USER',
-                'Hermes',
-                '2026-05-18 00:00:00',
-                '2026-05-18 00:00:00',
-                '{}',
-                0
-            );
-            INSERT INTO usage_histories (
-                id,
-                item_id,
-                item_type,
-                agent_name,
-                librarian_provider,
-                query,
-                selection_source,
-                used_at,
-                success,
-                feedback
-            )
-            VALUES (
-                'workflow-usage',
-                'workflow-item',
-                'WORKFLOW',
-                'Hermes',
-                NULL,
-                NULL,
-                'MANUAL_BROWSE',
-                '2026-05-18 00:00:00',
+                'provider-with-legacy-oauth-secret',
+                'Legacy OAuth provider',
+                'OPENAI_CODEX',
+                'OAUTH',
                 1,
-                NULL
+                '{}',
+                '2026-05-20 00:00:00+00:00',
+                '2026-05-20 00:00:00+00:00'
+            );
+            INSERT INTO librarian_provider_secrets (
+                id,
+                provider_id,
+                key_name,
+                value
+            )
+            VALUES (
+                'legacy-oauth-secret-row',
+                'provider-with-legacy-oauth-secret',
+                'oauth_access_token',
+                'plain-oauth-token'
             );
             """
         )
 
     result = _run_alembic(database_path, "head")
+
     assert result.returncode == 0, result.stderr
-
     with sqlite3.connect(database_path) as connection:
-        workflow_count = connection.execute(
-            "SELECT COUNT(*) FROM library_items WHERE item_type = 'WORKFLOW'"
+        remaining = connection.execute(
+            """
+            SELECT COUNT(*) FROM librarian_provider_secrets
+            WHERE provider_id = 'provider-with-legacy-oauth-secret'
+            """
         ).fetchone()[0]
-        usage_count = connection.execute(
-            "SELECT COUNT(*) FROM usage_histories WHERE id = 'workflow-usage'"
-        ).fetchone()[0]
-
-        try:
-            connection.execute(
-                """
-                INSERT INTO library_items (
-                    id,
-                    item_type,
-                    title,
-                    summary,
-                    content,
-                    category_id,
-                    tags,
-                    status,
-                    source_type,
-                    created_by_type,
-                    created_by_name,
-                    created_at,
-                    updated_at,
-                    details,
-                    is_archived
-                )
-                VALUES (
-                    'new-workflow-item',
-                    'WORKFLOW',
-                    'Rejected workflow item',
-                    NULL,
-                    'Should fail',
-                    NULL,
-                    '[]',
-                    'ACTIVE',
-                    'USER_CREATED',
-                    'USER',
-                    'Hermes',
-                    '2026-05-18 00:00:00',
-                    '2026-05-18 00:00:00',
-                    '{}',
-                    0
-                )
-                """
-            )
-        except sqlite3.IntegrityError:
-            workflow_rejected = True
-        else:
-            workflow_rejected = False
-
-    assert workflow_count == 0
-    assert usage_count == 0
-    assert workflow_rejected is True
+    assert remaining == 0
 
 
-def test_alembic_upgrade_removes_legacy_knowledge_library_items(
+def test_alembic_upgrade_deletes_old_version_oauth_provider_secrets(
     tmp_path: Path,
 ) -> None:
-    """Alembic should delete legacy KNOWLEDGE rows and reject new knowledge items."""
+    """Alembic should clear obsolete opaque OAuth material during upgrade."""
 
-    database_path = tmp_path / "knowledge-item-type.db"
-    previous_revision = "202605191840_remove_minio_providers"
+    database_path = tmp_path / "old-version-oauth-secret.db"
+    previous_revision = "202605201020_normalize_legacy_sqlite_datetimes"
     result = _run_alembic(database_path, previous_revision)
     assert result.returncode == 0, result.stderr
+    old_version_payload = base64.urlsafe_b64encode(bytes([2]) + b"x" * 28).decode(
+        "ascii"
+    )
 
     with sqlite3.connect(database_path) as connection:
         connection.executescript(
-            """
-            INSERT INTO library_items (
+            f"""
+            INSERT INTO librarian_providers (
                 id,
-                item_type,
-                title,
-                summary,
-                content,
-                category_id,
-                tags,
-                status,
-                source_type,
-                created_by_type,
-                created_by_name,
+                name,
+                provider_type,
+                auth_type,
+                enabled,
+                config,
                 created_at,
-                updated_at,
-                details,
-                is_archived
+                updated_at
             )
             VALUES (
-                'knowledge-item',
-                'KNOWLEDGE',
-                'Legacy knowledge item',
-                NULL,
-                'Knowledge content belongs in Context Vault',
-                NULL,
-                '[]',
-                'ACTIVE',
-                'USER_CREATED',
-                'USER',
-                'Hermes',
-                '2026-05-19 00:00:00',
-                '2026-05-19 00:00:00',
-                '{}',
-                0
-            );
-            INSERT INTO usage_histories (
-                id,
-                item_id,
-                item_type,
-                agent_name,
-                librarian_provider,
-                query,
-                selection_source,
-                used_at,
-                success,
-                feedback
-            )
-            VALUES (
-                'knowledge-usage',
-                'knowledge-item',
-                'KNOWLEDGE',
-                'Hermes',
-                NULL,
-                NULL,
-                'MANUAL_BROWSE',
-                '2026-05-19 00:00:00',
+                'provider-with-old-oauth-secret',
+                'Old OAuth provider',
+                'OPENAI_CODEX',
+                'OAUTH',
                 1,
-                NULL
+                '{{}}',
+                '2026-05-20 00:00:00+00:00',
+                '2026-05-20 00:00:00+00:00'
+            );
+            INSERT INTO librarian_provider_secrets (
+                id,
+                provider_id,
+                key_name,
+                value
+            )
+            VALUES (
+                'old-oauth-secret-row',
+                'provider-with-old-oauth-secret',
+                'oauth_refresh_token',
+                '{old_version_payload}'
             );
             """
         )
 
     result = _run_alembic(database_path, "head")
+
     assert result.returncode == 0, result.stderr
-
     with sqlite3.connect(database_path) as connection:
-        knowledge_count = connection.execute(
-            "SELECT COUNT(*) FROM library_items WHERE item_type = 'KNOWLEDGE'"
+        remaining = connection.execute(
+            """
+            SELECT COUNT(*) FROM librarian_provider_secrets
+            WHERE provider_id = 'provider-with-old-oauth-secret'
+            """
         ).fetchone()[0]
-        usage_count = connection.execute(
-            "SELECT COUNT(*) FROM usage_histories WHERE id = 'knowledge-usage'"
-        ).fetchone()[0]
-
-        try:
-            connection.execute(
-                """
-                INSERT INTO library_items (
-                    id,
-                    item_type,
-                    title,
-                    summary,
-                    content,
-                    category_id,
-                    tags,
-                    status,
-                    source_type,
-                    created_by_type,
-                    created_by_name,
-                    created_at,
-                    updated_at,
-                    details,
-                    is_archived
-                )
-                VALUES (
-                    'new-knowledge-item',
-                    'KNOWLEDGE',
-                    'Rejected knowledge item',
-                    NULL,
-                    'Should fail',
-                    NULL,
-                    '[]',
-                    'ACTIVE',
-                    'USER_CREATED',
-                    'USER',
-                    'Hermes',
-                    '2026-05-19 00:00:00',
-                    '2026-05-19 00:00:00',
-                    '{}',
-                    0
-                )
-                """
-            )
-        except sqlite3.IntegrityError:
-            knowledge_rejected = True
-        else:
-            knowledge_rejected = False
-
-    assert knowledge_count == 0
-    assert usage_count == 0
-    assert knowledge_rejected is True
+    assert remaining == 0
 
 
 def test_alembic_upgrade_allows_prompt_library_items(tmp_path: Path) -> None:

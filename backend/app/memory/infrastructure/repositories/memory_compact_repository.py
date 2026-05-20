@@ -20,6 +20,7 @@ from app.memory.infrastructure.models.memory_compact_models import (
     MemoryCompactSourceRefORM,
 )
 from app.shared.exceptions import MemoryCompactNotFoundError
+from app.shared.types.types_convert_utils import aware_utc_datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -91,14 +92,18 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         *,
         project: str | None = None,
         status: MemoryCompactStatus | None = None,
+        covered_after: datetime | None = None,
+        covered_before: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[MemoryCompact], int]:
         """List compacts and total count.
 
         Args:
-            project: Optional project filter.
-            status: Optional lifecycle status filter.
+            project: Project filter.
+            status: Lifecycle status filter.
+            covered_after: Coverage-overlap lower bound.
+            covered_before: Coverage-overlap upper bound.
             limit: Maximum number of rows to return.
             offset: Number of rows to skip.
 
@@ -110,6 +115,10 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
             statement = statement.where(MemoryCompactORM.project == project)
         if status is not None:
             statement = statement.where(MemoryCompactORM.status == status.value)
+        if covered_after is not None:
+            statement = statement.where(MemoryCompactORM.covered_to >= covered_after)
+        if covered_before is not None:
+            statement = statement.where(MemoryCompactORM.covered_from <= covered_before)
         count = await self._session.scalar(
             select(func.count()).select_from(statement.subquery())
         )
@@ -214,14 +223,16 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         return MemoryCompact(
             id=model.id,
             project=model.project,
-            covered_from=model.covered_from,
-            covered_to=model.covered_to,
+            covered_from=aware_utc_datetime(model.covered_from),
+            covered_to=aware_utc_datetime(model.covered_to),
             markdown_body=model.markdown_body,
             status=MemoryCompactStatus(model.status),
             source_refs=refs,
-            created_at=model.created_at,
-            updated_at=model.updated_at,
-            archived_at=model.archived_at,
+            created_at=aware_utc_datetime(model.created_at),
+            updated_at=aware_utc_datetime(model.updated_at),
+            archived_at=aware_utc_datetime(model.archived_at)
+            if model.archived_at is not None
+            else None,
         )
 
 

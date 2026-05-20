@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.cli_support.daemon.launchd_service import render_launchd_plist
 from app.cli_support.daemon.service_contracts import ServiceDefinition
-from app.cli_support.daemon.systemd_service import render_systemd_unit
+from app.cli_support.daemon.service_manager import (
+    render_launchd_plist,
+    render_systemd_unit,
+)
 
 
 def _definition(tmp_path: Path) -> ServiceDefinition:

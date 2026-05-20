@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const chatBackend = readFileSync(new URL("../src/lib/backend/librarian-chat.ts", import.meta.url), "utf8");
 const chatRoute = readFileSync(new URL("../src/app/api/librarians/chat/route.ts", import.meta.url), "utf8");
 const chatClient = readFileSync(new URL("../src/components/librarian/librarian-chat-client.tsx", import.meta.url), "utf8");
+const libraryTypes = readFileSync(new URL("../src/types/library.ts", import.meta.url), "utf8");
 
 assert.match(
   chatRoute,
@@ -24,6 +25,26 @@ assert.match(
   chatBackend,
   /delegateFailureAnswer/,
   "chat orchestration must surface skipped delegate evidence to the UI",
+);
+assert.match(
+  chatBackend,
+  /function delegateCompletedAnswer/,
+  "chat orchestration must build the visible answer from completed delegate summaries",
+);
+assert.match(
+  chatBackend,
+  /filter\(\(delegate\) => delegate\.status === "COMPLETED"\)[\s\S]*delegate\.summary\.trim\(\)/,
+  "completed librarian chat answers must surface completed delegate summaries",
+);
+assert.doesNotMatch(
+  chatBackend,
+  /answer:\s*askResponse\.recommendation/,
+  "completed librarian chat answers must not show only the generic recommendation",
+);
+assert.match(
+  chatBackend,
+  /검색된 후보 총계:\s*\$\{totalCount\}개입니다/,
+  "completed librarian chat answers must include the real direct-search total as evidence",
 );
 assert.match(
   chatBackend,
@@ -129,6 +150,76 @@ assert.match(
   chatBackend,
   /Do not expose raw API routes/,
   "delegated librarian prompts must hide raw implementation routes from ordinary answers",
+);
+assert.match(
+  libraryTypes,
+  /type LibrarianChatRequestDTO[\s\S]*librarianProfileId\?: string \| null/,
+  "librarian chat requests must carry an optional selected librarian profile",
+);
+assert.match(
+  chatClient,
+  /fetchAgents/,
+  "librarian chat UI must load saved librarian profiles for selection",
+);
+assert.match(
+  chatClient,
+  /사서 선택/,
+  "librarian chat UI must expose a natural librarian selector",
+);
+assert.match(
+  chatClient,
+  /aria-label="사서 필터링"/,
+  "librarian chat execution mode, librarian selector, and targets must be grouped as filters",
+);
+assert.match(
+  chatClient,
+  /SlidersHorizontal/,
+  "librarian chat filter group must use the shared filter affordance icon",
+);
+assert.match(
+  chatClient,
+  /필터 초기화/,
+  "librarian chat filters must support resetting execution and target filters together",
+);
+assert.match(
+  chatClient,
+  /librarianProfileId: selectedLibrarian\?\.id/,
+  "librarian chat UI must submit the selected librarian profile id",
+);
+assert.match(
+  chatBackend,
+  /librarianProfileId: request\.librarianProfileId/,
+  "chat orchestration must forward the selected librarian profile to backend ask",
+);
+assert.match(
+  chatBackend,
+  /selectedLibrarianRolePrompt/,
+  "chat orchestration must preserve selected profile role prompt while appending platform guardrails",
+);
+assert.match(
+  chatBackend,
+  /function isMemoryCompactAction/,
+  "librarian chat must detect explicit memory compact action requests",
+);
+assert.match(
+  chatBackend,
+  /prepareCompactInBackend/,
+  "memory compact actions must prepare a durable compact context before saving the compact artifact",
+);
+assert.match(
+  chatBackend,
+  /createMemoryCompactInBackend/,
+  "memory compact actions must save a first-class Memory Compact artifact",
+);
+assert.match(
+  chatBackend,
+  /작업 실행: Memory Compact 생성 완료/,
+  "memory compact actions must report completed execution in user-visible CLI summary",
+);
+assert.match(
+  chatBackend,
+  /status:\s*"CURRENT"/,
+  "explicit memory compact actions must create a current compact rather than only answering the question",
 );
 
 assert.doesNotMatch(

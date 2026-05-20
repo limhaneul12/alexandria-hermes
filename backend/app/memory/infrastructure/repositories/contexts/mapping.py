@@ -24,20 +24,11 @@ from app.memory.infrastructure.models.context_models import (
     ContextORM,
 )
 from app.shared.types.extra_types import JSONValue
+from app.shared.types.types_convert_utils import aware_utc_datetime
 
 
-def _string_list(value: JSONValue) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value]
-
-
-def _json_object(value: JSONValue) -> ContextMetadataPayload:
-    payload: ContextMetadataPayload = {}
-    if not isinstance(value, dict):
-        return payload
-    payload.update(value.items())
-    return payload
+def _json_object(value: dict[str, JSONValue]) -> ContextMetadataPayload:
+    return ContextMetadataPayload(**value)
 
 
 def map_context_row(row: ContextORM) -> ContextRecord:
@@ -66,17 +57,23 @@ def map_context_row(row: ContextORM) -> ContextRecord:
         source_agent=row.source_agent,
         source_type=ContextSourceType(row.source_type),
         importance=ContextImportance(row.importance),
-        tags=_string_list(row.tags),
+        tags=row.tags,
         status=ContextStorageStatus(row.status),
         quality_score=row.quality_score,
-        warnings=_string_list(row.warnings),
+        warnings=row.warnings,
         restore_prompt=row.restore_prompt,
         context_metadata=_json_object(row.context_metadata),
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-        last_accessed_at=row.last_accessed_at,
-        expires_at=row.expires_at,
-        archived_at=row.archived_at,
+        created_at=aware_utc_datetime(row.created_at),
+        updated_at=aware_utc_datetime(row.updated_at),
+        last_accessed_at=aware_utc_datetime(row.last_accessed_at)
+        if row.last_accessed_at is not None
+        else None,
+        expires_at=aware_utc_datetime(row.expires_at)
+        if row.expires_at is not None
+        else None,
+        archived_at=aware_utc_datetime(row.archived_at)
+        if row.archived_at is not None
+        else None,
         access_count=row.access_count,
         is_archived=row.is_archived,
     )
@@ -101,7 +98,7 @@ def map_chunk_row(row: ContextChunkORM) -> ContextChunkRecord:
         token_count=row.token_count,
         content_hash=row.content_hash,
         chunk_metadata=_json_object(row.chunk_metadata),
-        created_at=row.created_at,
+        created_at=aware_utc_datetime(row.created_at),
     )
     return chunk
 
@@ -118,7 +115,7 @@ def map_access_event_row(row: ContextAccessEventORM) -> ContextAccessEventRecord
     event = ContextAccessEventRecord(
         id=row.id,
         context_id=row.context_id,
-        accessed_at=row.accessed_at,
+        accessed_at=aware_utc_datetime(row.accessed_at),
         actor_name=row.actor_name,
         actor_type=ContextAccessActorType(row.actor_type),
         access_method=ContextAccessMethod(row.access_method),

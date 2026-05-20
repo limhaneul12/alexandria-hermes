@@ -40,19 +40,27 @@ async def _close_service(
     await database.shutdown()
 
 
-def _payload(status: str = "CURRENT") -> dict[str, object]:
+def _payload(
+    status: str = "CURRENT",
+    *,
+    covered_from: str = "2026-05-01T00:00:00Z",
+    covered_to: str = "2026-05-10T00:00:00Z",
+    source_id: str = "ctx-1",
+) -> dict[str, object]:
     return {
         "project": "alexandria-hermes",
-        "covered_from": "2026-05-01T00:00:00Z",
-        "covered_to": "2026-05-10T00:00:00Z",
-        "markdown_body": "## 2026-05-01 to 2026-05-10\nDurable Memory Compact.",
+        "covered_from": covered_from,
+        "covered_to": covered_to,
+        "markdown_body": (
+            f"## {covered_from[:10]} to {covered_to[:10]}\nDurable Memory Compact."
+        ),
         "status": status,
         "source_refs": [
             {
                 "source_type": "CONTEXT",
-                "source_id": "ctx-1",
+                "source_id": source_id,
                 "title": "Context source",
-                "detail_path": "/memory/contexts/ctx-1",
+                "detail_path": f"/memory/contexts/{source_id}",
             }
         ],
     }
@@ -92,6 +100,60 @@ def test_memory_compact_api_exposes_current_archive_lifecycle(tmp_path: Path) ->
     assert list_response.json()["total"] == 1
     assert archive_response.status_code == 200
     assert archive_response.json()["status"] == "ARCHIVED"
+
+
+def test_memory_compact_api_filters_by_dates_when_requested(tmp_path: Path) -> None:
+    """Memory Compact API should filter by coverage overlap."""
+    database, session_context, session, service = anyio.run(
+        _open_service, tmp_path / "compact-date-filters.db"
+    )
+    try:
+        with (
+            override_library_provider("memory_compact_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            may_response = client.post(
+                "/memory/compacts",
+                json=_payload(
+                    "DRAFT",
+                    covered_from="2026-05-01T00:00:00Z",
+                    covered_to="2026-05-10T00:00:00Z",
+                    source_id="ctx-may",
+                ),
+            )
+            june_response = client.post(
+                "/memory/compacts",
+                json=_payload(
+                    "DRAFT",
+                    covered_from="2026-06-01T00:00:00Z",
+                    covered_to="2026-06-10T00:00:00Z",
+                    source_id="ctx-june",
+                ),
+            )
+            coverage_response = client.get(
+                "/memory/compacts",
+                params={
+                    "project": "alexandria-hermes",
+                    "covered_after": "2026-05-05T00:00:00Z",
+                    "covered_before": "2026-05-06T23:59:59Z",
+                },
+            )
+            naive_response = client.get(
+                "/memory/compacts",
+                params={"covered_after": "2026-05-05T00:00:00"},
+            )
+    finally:
+        anyio.run(_close_service, database, session_context, session)
+
+    assert may_response.status_code == 201
+    assert june_response.status_code == 201
+    assert coverage_response.status_code == 200
+    coverage_payload = coverage_response.json()
+    assert coverage_payload["total"] == 1
+    assert [item["id"] for item in coverage_payload["items"]] == [
+        may_response.json()["id"]
+    ]
+    assert naive_response.status_code == 422
 
 
 def test_memory_compact_api_rejects_non_iso_datetime_without_server_error(

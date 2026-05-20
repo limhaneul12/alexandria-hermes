@@ -18,7 +18,6 @@ from app.library.infrastructure.repositories.items.candidate_search import (
 )
 from app.library.infrastructure.repositories.items.fts import (
     build_item_fts_payload,
-    build_item_fts_query,
     delete_item_fts_statement,
     insert_item_fts_statement,
 )
@@ -31,7 +30,7 @@ from app.library.infrastructure.repositories.items.queries import (
     build_items_filtered_statement,
     build_items_page_statement,
 )
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import LibraryResourceNotFoundError
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,7 +78,7 @@ class SqlAlchemyItemRepository(IItemRepository):
         """
         model = await self._session.get(LibraryItemORM, item_id)
         if model is None:
-            raise NotFoundError(f"Item not found: {item_id}")
+            raise LibraryResourceNotFoundError(f"Item not found: {item_id}")
 
         values = payload.to_record()
         if "title" in values:
@@ -124,7 +123,7 @@ class SqlAlchemyItemRepository(IItemRepository):
         """
         model = await self._session.get(LibraryItemORM, item_id)
         if model is None:
-            raise NotFoundError(f"Item not found: {item_id}")
+            raise LibraryResourceNotFoundError(f"Item not found: {item_id}")
 
         await self.remove_fts(item_id)
         await self._session.execute(
@@ -163,7 +162,6 @@ class SqlAlchemyItemRepository(IItemRepository):
         limit: int | None = None,
         offset: int = 0,
         category_id: str | None = None,
-        search_query: str | None = None,
     ) -> tuple[list[LibraryItem], int]:
         """List all items with optional filters.
 
@@ -171,14 +169,12 @@ class SqlAlchemyItemRepository(IItemRepository):
             limit: Optional item limit.
             offset: Optional offset.
             category_id: Optional category filter.
-            search_query: Optional title/summary/content like search.
 
         Returns:
             Tuple of (items, total_count).
         """
         statement = build_items_filtered_statement(
             category_id=category_id,
-            search_query=search_query,
         )
         count = await self._session.scalar(build_items_count_statement(statement))
         total = 0 if count is None else int(count)
@@ -223,35 +219,6 @@ class SqlAlchemyItemRepository(IItemRepository):
             delete_item_fts_statement(),
             {"item_id": item_id},
         )
-
-    async def search(
-        self, query: str, item_type: ItemType | None = None
-    ) -> list[LibraryItem]:
-        """Run FTS query against text index and return ORM rows.
-
-        Args:
-            query: Raw user search text.
-            item_type: Optional type filter.
-
-        Returns:
-            Matched ORM rows.
-        """
-        fts_query = build_item_fts_query(query, item_type)
-        if fts_query is None:
-            return []
-
-        ids_result = await self._session.execute(
-            fts_query.statement,
-            fts_query.parameters,
-        )
-        ids = [row[0] for row in ids_result.all()]
-        if not ids:
-            return []
-
-        rows = await self._session.execute(
-            select(LibraryItemORM).where(LibraryItemORM.id.in_(ids))
-        )
-        return [map_item_row_to_read_model(row) for row in rows.scalars().all()]
 
     async def search_candidates(
         self,

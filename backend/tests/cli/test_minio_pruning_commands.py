@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import io
-import json
 from collections.abc import Callable
 
 from app.cli import HttpHeaders, run
+from app.shared.serialization.orjson_codec import dumps_json
 
 RecordedCall = tuple[str, str, bytes | None, HttpHeaders, float]
 
@@ -24,7 +24,7 @@ def _transport(
         timeout: float,
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
-        response = json.dumps(response_payload).encode()
+        response = dumps_json(response_payload)
         return 200, response
 
     return fake_transport, calls

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import BoundaryValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 
@@ -16,6 +16,40 @@ def now_utc() -> datetime:
         datetime: Timezone-aware current timestamp in UTC.
     """
     return datetime.now(UTC)
+
+
+def aware_utc_datetime(value: datetime) -> datetime:
+    """Return a timezone-aware UTC datetime.
+
+    Args:
+        value: Datetime from an internal or persistence boundary.
+
+    Returns:
+        UTC-aware datetime. Naive values are treated as UTC because SQLite
+        drops timezone metadata for ``DateTime(timezone=True)`` values.
+    """
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def optional_iso_utc_datetime(value: str | None) -> datetime | None:
+    """Parse an optional ISO-8601 timestamp into a UTC-aware datetime.
+
+    Args:
+        value: Optional ISO-8601 timestamp text. ``Z`` suffixes are accepted and
+            naive values are treated as UTC for legacy persistence boundaries.
+
+    Returns:
+        UTC-aware datetime when parsing succeeds, otherwise ``None``.
+    """
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return aware_utc_datetime(parsed)
 
 
 def required_datetime_value(value: JSONValue | None, field_name: str) -> datetime:
@@ -29,11 +63,11 @@ def required_datetime_value(value: JSONValue | None, field_name: str) -> datetim
         datetime: Validated datetime value.
 
     Raises:
-        ValidationError: When the value is not a datetime.
+        BoundaryValidationError: When the value is not a datetime.
     """
     if isinstance(value, datetime):
-        return value
-    raise ValidationError(f"{field_name} must be a datetime")
+        return aware_utc_datetime(value)
+    raise BoundaryValidationError(f"{field_name} must be a datetime")
 
 
 def required_string_value(value: JSONValue | None, field_name: str) -> str:
@@ -47,11 +81,11 @@ def required_string_value(value: JSONValue | None, field_name: str) -> str:
         str: Validated string value.
 
     Raises:
-        ValidationError: When the value is not a string.
+        BoundaryValidationError: When the value is not a string.
     """
     if isinstance(value, str):
         return value
-    raise ValidationError(f"{field_name} must be a string")
+    raise BoundaryValidationError(f"{field_name} must be a string")
 
 
 def optional_string_value(value: JSONValue | None) -> str | None:
@@ -161,13 +195,13 @@ def enum_value[EnumValue: StrEnum](
         EnumValue: Enum instance matching the input value.
 
     Raises:
-        ValidationError: When the value is not a valid enum string.
+        BoundaryValidationError: When the value is not a valid enum string.
     """
-    if isinstance(value, enum_type):
-        return value
     if isinstance(value, str):
         try:
             return enum_type(value)
         except ValueError as exc:
-            raise ValidationError(f"{field_name} must be a valid string") from exc
-    raise ValidationError(f"{field_name} must be a valid string")
+            raise BoundaryValidationError(
+                f"{field_name} must be a valid string"
+            ) from exc
+    raise BoundaryValidationError(f"{field_name} must be a valid string")

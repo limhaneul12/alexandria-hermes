@@ -7,7 +7,7 @@ from difflib import unified_diff
 
 from app.cli_support.argument_values import bounded_limit
 from app.cli_support.backend_api_client import CliBackendApiClient
-from app.cli_support.contracts.command_contracts import (
+from app.cli_support.contracts.library_command_contracts import (
     ItemIdCommand,
     PromptDeprecateCommand,
     PromptDiffCommand,
@@ -20,7 +20,6 @@ from app.cli_support.contracts.request_mappers import (
     prompt_usage_payload,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
-from app.cli_support.json_payloads import schema_payload
 from app.cli_support.presentation.output_renderers import (
     detail_text,
     json_list,
@@ -29,8 +28,10 @@ from app.cli_support.presentation.output_renderers import (
     print_prompt_table,
     text_field,
 )
+from app.cli_support.schemas.list_filter_schemas import PromptListFilter
 from app.cli_support.schemas.prompt_command_schemas import PromptUsageResult
 from app.cli_support.url_paths import quote_path
+from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 
@@ -53,12 +54,19 @@ def handle_prompts_list(
     offset = max(0, int(command.offset))
     payload = client.get(f"/library/prompts?limit={limit}&offset={offset}")
     rows = json_list(payload)
-    if command.kind is not None:
+    filters = schema_payload(
+        PromptListFilter(
+            kind=command.kind.value if command.kind else None,
+            tag=command.tag,
+        ),
+        exclude_none=True,
+    )
+    if "kind" in filters:
         rows = [
-            row for row in rows if detail_text(row, "prompt_kind") == command.kind.value
+            row for row in rows if detail_text(row, "prompt_kind") == filters["kind"]
         ]
-    if command.tag is not None:
-        rows = [row for row in rows if command.tag in list_field(row, "tags")]
+    if "tag" in filters:
+        rows = [row for row in rows if filters["tag"] in list_field(row, "tags")]
     output_payload: JSONValue = rows
     if context.json_output:
         print_json(output_payload, context.stdout)

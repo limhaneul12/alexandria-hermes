@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
@@ -20,6 +18,7 @@ from app.memory.domain.types.context_payload_types import (
     ContextLintNormalizedPayload,
 )
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
+from app.shared.schemas.datetime_schemas import AwareTimestamp
 from app.shared.types.extra_types import JSONObject
 from pydantic import ConfigDict, Field, field_validator
 
@@ -78,7 +77,7 @@ class ContextSaveRequest(ContextLintRequest):
 
     source_type: ContextSourceType = ContextSourceType.AGENT
     importance: ContextImportance = ContextImportance.MEDIUM
-    expires_at: datetime | None = None
+    expires_at: AwareTimestamp | None = None
     metadata: JSONObject = Field(default_factory=dict)
 
 
@@ -156,11 +155,11 @@ class ContextResponse(StrictSchemaModel):
     warnings: list[str]
     restore_prompt: str | None
     metadata: JSONObject
-    created_at: datetime
-    updated_at: datetime
-    last_accessed_at: datetime | None
-    expires_at: datetime | None
-    archived_at: datetime | None
+    created_at: AwareTimestamp
+    updated_at: AwareTimestamp
+    last_accessed_at: AwareTimestamp | None
+    expires_at: AwareTimestamp | None
+    archived_at: AwareTimestamp | None
     access_count: int
     is_archived: bool
 
@@ -183,7 +182,7 @@ class ContextChunkResponse(StrictSchemaModel):
     token_count: int
     content_hash: str
     metadata: JSONObject
-    created_at: datetime
+    created_at: AwareTimestamp
 
 
 class ContextChunkResponseList(StrictRootSchemaModel[list[ContextChunkResponse]]):
@@ -204,7 +203,7 @@ class ContextAccessEventResponse(StrictSchemaModel):
 
     id: str
     context_id: str
-    accessed_at: datetime
+    accessed_at: AwareTimestamp
     actor_name: str
     actor_type: ContextAccessActorType
     access_method: ContextAccessMethod

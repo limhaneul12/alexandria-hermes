@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import anyio
 from app.main import app
 from app.memory.application.context_service import ContextService
+from app.memory.infrastructure.models.context_models import ContextORM
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
@@ -61,6 +63,98 @@ async def _close_context_service(
     await session.commit()
     await session_context.__aexit__(None, None, None)
     await database.shutdown()
+
+
+async def _set_context_dates(
+    session: AsyncSession,
+    context_id: str,
+    created_at: datetime,
+    updated_at: datetime,
+) -> None:
+    model = await session.get(ContextORM, context_id)
+    assert model is not None
+    model.created_at = created_at
+    model.updated_at = updated_at
+    await session.commit()
+
+
+def test_context_api_filters_list_by_created_and_updated_dates(tmp_path: Path) -> None:
+    """Context list route should accept created/updated date-range filters."""
+
+    database, session_context, session, service = anyio.run(
+        _open_context_service, tmp_path / "context-api-date-filters.db"
+    )
+    try:
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            older_response = client.post(
+                "/memory/contexts/capture",
+                json=_context_payload() | {"title": "Older API handoff"},
+            )
+            inside_response = client.post(
+                "/memory/contexts/capture",
+                json=_context_payload() | {"title": "Inside API handoff"},
+            )
+            newer_response = client.post(
+                "/memory/contexts/capture",
+                json=_context_payload() | {"title": "Newer API handoff"},
+            )
+            for response in [older_response, inside_response, newer_response]:
+                assert response.status_code == 201
+            anyio.run(
+                _set_context_dates,
+                session,
+                older_response.json()["id"],
+                datetime(2026, 5, 17, 10, 0, tzinfo=UTC),
+                datetime(2026, 5, 17, 11, 0, tzinfo=UTC),
+            )
+            anyio.run(
+                _set_context_dates,
+                session,
+                inside_response.json()["id"],
+                datetime(2026, 5, 18, 10, 0, tzinfo=UTC),
+                datetime(2026, 5, 18, 11, 0, tzinfo=UTC),
+            )
+            anyio.run(
+                _set_context_dates,
+                session,
+                newer_response.json()["id"],
+                datetime(2026, 5, 19, 10, 0, tzinfo=UTC),
+                datetime(2026, 5, 19, 11, 0, tzinfo=UTC),
+            )
+
+            created_response = client.get(
+                "/memory/contexts",
+                params={
+                    "created_after": "2026-05-18T00:00:00.000Z",
+                    "created_before": "2026-05-18T23:59:59.999Z",
+                },
+            )
+            updated_response = client.get(
+                "/memory/contexts",
+                params={
+                    "updated_after": "2026-05-18T00:00:00.000Z",
+                    "updated_before": "2026-05-18T23:59:59.999Z",
+                },
+            )
+            naive_response = client.get(
+                "/memory/contexts",
+                params={"created_after": "2026-05-18T00:00:00"},
+            )
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert created_response.status_code == 200
+    assert [item["id"] for item in created_response.json()["items"]] == [
+        inside_response.json()["id"]
+    ]
+    assert updated_response.status_code == 200
+    assert [item["id"] for item in updated_response.json()["items"]] == [
+        inside_response.json()["id"]
+    ]
+    assert naive_response.status_code == 422
 
 
 def test_context_api_captures_lists_searches_accesses_and_archives(
@@ -282,6 +376,70 @@ def test_context_api_captures_agent_owned_harness_without_library_route(
     assert search_response.status_code == 200
     assert search_response.json()["matches"][0]["context"]["id"] == body["id"]
     assert library_harness_paths == []
+
+
+def test_context_api_manages_harnesses_through_dedicated_context_routes(
+    tmp_path: Path,
+) -> None:
+    """Harness management routes should stay scoped to Context Vault HARNESS rows."""
+
+    database, session_context, session, service = anyio.run(
+        _open_context_service, tmp_path / "harness-management.db"
+    )
+    try:
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            check_response = client.post(
+                "/memory/contexts/harnesses/check",
+                json={
+                    "task_goal": "Refactor CLI support",
+                    "project": "alexandria-hermes",
+                    "source_agent": "Hermes",
+                    "steps": ["Read rules"],
+                    "reusable_procedure": "Read rules, edit, and run make ci.",
+                    "recall_keywords": ["cli-refactor"],
+                },
+            )
+            create_response = client.post(
+                "/memory/contexts/harnesses/capture",
+                json={
+                    "task_goal": "Refactor CLI support",
+                    "project": "alexandria-hermes",
+                    "source_agent": "Hermes",
+                    "steps": ["Read rules"],
+                    "reusable_procedure": "Read rules, edit, and run make ci.",
+                    "recall_keywords": ["cli-refactor"],
+                },
+            )
+            context_id = create_response.json()["id"]
+            list_response = client.get(
+                "/memory/contexts/harnesses",
+                params={"project": "alexandria-hermes", "tag": "cli-refactor"},
+            )
+            get_response = client.get(f"/memory/contexts/harnesses/{context_id}")
+            archive_response = client.post(
+                f"/memory/contexts/harnesses/{context_id}/archive"
+            )
+            archived_list_response = client.get(
+                "/memory/contexts/harnesses",
+                params={"include_archived": "true"},
+            )
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert check_response.status_code == 200
+    assert check_response.json()["ok"] is True
+    assert create_response.status_code == 201
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()["items"]] == [context_id]
+    assert get_response.status_code == 200
+    assert get_response.json()["kind"] == "HARNESS"
+    assert archive_response.status_code == 200
+    assert archive_response.json()["is_archived"] is True
+    assert archived_list_response.status_code == 200
+    assert archived_list_response.json()["total"] == 1
 
 
 def test_generic_context_capture_rejects_harness_kind(tmp_path: Path) -> None:

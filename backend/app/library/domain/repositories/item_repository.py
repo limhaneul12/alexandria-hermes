@@ -90,7 +90,6 @@ class IItemRepository(ABC):
         limit: int | None = None,
         offset: int = 0,
         category_id: str | None = None,
-        search_query: str | None = None,
     ) -> tuple[list[LibraryItem], int]:
         """List and count all items.
 
@@ -98,24 +97,9 @@ class IItemRepository(ABC):
             limit: Optional limit.
             offset: Optional offset.
             category_id: Optional category filter.
-            search_query: Optional substring search text.
 
         Returns:
             ``(items, total_count)``.
-        """
-
-    @abstractmethod
-    async def search(
-        self, query: str, item_type: ItemType | None = None
-    ) -> list[LibraryItem]:
-        """Search items using SQLite FTS5.
-
-        Args:
-            query: Search string.
-            item_type: Optional type filter.
-
-        Returns:
-            Matching ORM rows.
         """
 
     @abstractmethod

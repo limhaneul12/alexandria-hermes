@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from app.shared.types.extra_types import JSONValue
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -29,7 +30,7 @@ class UsageHistoryORM(Base):
     librarian_provider: Mapped[str | None] = mapped_column(String(255), nullable=True)
     query: Mapped[str | None] = mapped_column(Text, nullable=True)
     selection_source: Mapped[str] = mapped_column(String(24), nullable=False)
-    used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     success: Mapped[bool] = mapped_column(nullable=False)
     feedback: Mapped[dict[str, JSONValue] | None] = mapped_column(JSON, nullable=True)
 

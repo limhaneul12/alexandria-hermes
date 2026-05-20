@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import io
-import json
 from pathlib import Path
 
 from app.cli import run
+from app.shared.serialization.orjson_codec import loads_json
 
 
 def test_setup_guidebook_documents_runtime_and_policy_controls(tmp_path: Path) -> None:
@@ -31,7 +31,7 @@ def test_setup_guidebook_documents_runtime_and_policy_controls(tmp_path: Path) -
         stdout=stdout,
     )
 
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     guidebook_path = Path(str(payload["guidebook_path"]))
     guidebook = guidebook_path.read_text(encoding="utf-8")
     assert exit_code == 0

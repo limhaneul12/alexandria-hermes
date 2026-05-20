@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 
 from app.memory.domain.types.context_payload_types import ContextMetadataPayload
+from app.shared.utils.text_metrics import count_word_tokens, sha256_text_hexdigest
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
-WORD_PATTERN = re.compile(r"\w+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,14 +21,6 @@ class MarkdownChunk:
     token_count: int
     content_hash: str
     metadata: ContextMetadataPayload
-
-
-def _content_hash(content: str) -> str:
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
-def _token_count(content: str) -> int:
-    return len(WORD_PATTERN.findall(content))
 
 
 def _split_large_section(section: str, max_chars: int) -> list[str]:
@@ -101,8 +92,8 @@ def chunk_markdown(
                     chunk_index=len(chunks),
                     heading=heading,
                     content=part,
-                    token_count=_token_count(part),
-                    content_hash=_content_hash(part),
+                    token_count=count_word_tokens(part),
+                    content_hash=sha256_text_hexdigest(part),
                     metadata=metadata,
                 )
             )

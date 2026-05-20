@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from app.shared.types.extra_types import JSONObject
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
+from sqlalchemy import JSON, Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -24,12 +25,8 @@ class LibrarianProviderORM(Base):
     auth_type: Mapped[str] = mapped_column(String(20), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     config: Mapped[JSONObject] = mapped_column(JSON, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     secrets: Mapped[list[ProviderSecretORM]] = relationship(
         "ProviderSecretORM",
         back_populates="provider",

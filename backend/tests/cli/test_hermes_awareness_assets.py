@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import io
-import json
 from pathlib import Path
 
 from app.cli import run
-from app.cli_support.hermes.asset_sources import (
+from app.cli_support.support.hermes.install.asset_sources import (
     load_alexandria_prompt_sources,
     load_alexandria_skill_source,
 )
+from app.shared.serialization.orjson_codec import loads_json
 
 
 def test_alexandria_awareness_skill_source_teaches_policy_and_local_first() -> None:
@@ -56,7 +56,7 @@ def test_setup_can_plan_hermes_awareness_asset_install(tmp_path: Path) -> None:
         stdout=stdout,
     )
 
-    payload = json.loads(stdout.getvalue())
+    payload = loads_json(stdout.getvalue())
     planned_files = payload["hermes_assets"]["planned_files"]
     assert exit_code == 0
     assert "skills/alexandria-hermes/alexandria-library/SKILL.md" in planned_files

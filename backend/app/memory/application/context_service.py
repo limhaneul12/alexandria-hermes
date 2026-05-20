@@ -52,8 +52,12 @@ from app.retrieval.application.embedding_provider import (
 )
 from app.retrieval.application.rag_health import build_rag_dependency_health
 from app.retrieval.application.vector_serialization import vector_to_sqlite_json
-from app.shared.exceptions import NotFoundError, ValidationError
+from app.shared.exceptions import (
+    MemoryContextNotFoundError,
+    MemoryContextValidationError,
+)
 from app.shared.types.types_convert_utils import enum_value, now_utc
+from asyncer import asyncify
 
 
 class ContextService:
@@ -206,7 +210,9 @@ class ContextService:
             tags=lint_tags,
         )
         if lint_result.status is ContextStorageStatus.BLOCKED_SECRET_RISK:
-            raise ValidationError("Context blocked by high-risk secret policy")
+            raise MemoryContextValidationError(
+                "Context blocked by high-risk secret policy"
+            )
 
         now = now_utc()
         normalized_summary = lint_result.normalized["summary"]
@@ -215,7 +221,7 @@ class ContextService:
         markdown_chunks = list(
             chunk_markdown(title=title, content=lint_result.redacted_content)
         )
-        embedding_fields = self._chunk_embedding_fields(
+        embedding_fields = await self._chunk_embedding_fields(
             [chunk.content for chunk in markdown_chunks]
         )
         chunks = [
@@ -364,6 +370,108 @@ class ContextService:
         )
         return context
 
+    def check_harness(self, payload: HarnessCapture) -> ContextLintResult:
+        """Validate a harness without persisting it.
+
+        Args:
+            payload: Harness capture command.
+
+        Returns:
+            Lint result for the generated HARNESS context content.
+        """
+        scope = enum_value(payload.scope, ContextScope, "scope")
+        result = self.lint(
+            kind=ContextKind.HARNESS,
+            title=f"Harness: {payload.task_goal.strip()}",
+            content=build_harness_context_content(payload),
+            summary=payload.summary,
+            project=payload.project,
+            scope=scope,
+            workspace_id=payload.workspace_id,
+            agent_id=payload.agent_id,
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+            visibility=scope,
+            source_agent=payload.source_agent,
+            tags=["harness", *_clean_harness_tags(payload.recall_keywords)],
+        )
+        return result
+
+    async def list_harnesses(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        project: str | None = None,
+        scope: ContextScope | None = None,
+        workspace_id: str | None = None,
+        agent_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        source_agent: str | None = None,
+        tag: str | None = None,
+        include_archived: bool = False,
+    ) -> tuple[list[ContextRecord], int]:
+        """List saved execution harness contexts.
+
+        Args:
+            limit: Maximum returned entries.
+            offset: Pagination offset.
+            project: Optional project scope.
+            scope: Optional recall scope.
+            workspace_id: Optional workspace filter.
+            agent_id: Optional agent filter.
+            user_id: Optional user filter.
+            session_id: Optional session filter.
+            source_agent: Optional producing-agent filter.
+            tag: Optional tag filter.
+            include_archived: Whether archived harnesses are included.
+
+        Returns:
+            Matching HARNESS context rows and total count.
+        """
+        result = await self.list_contexts(
+            limit=limit,
+            offset=offset,
+            kind=ContextKind.HARNESS,
+            project=project,
+            scope=scope,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            session_id=session_id,
+            source_agent=source_agent,
+            tag=tag,
+            include_archived=include_archived,
+        )
+        return result
+
+    async def get_harness(self, context_id: str) -> ContextRecord:
+        """Return one HARNESS context or raise not-found.
+
+        Args:
+            context_id: Context identifier.
+
+        Returns:
+            Stored HARNESS context read model.
+        """
+        context = await self.get(context_id)
+        if context.kind is not ContextKind.HARNESS:
+            raise MemoryContextNotFoundError(f"Harness not found: {context_id}")
+        return context
+
+    async def archive_harness(self, context_id: str) -> ContextRecord:
+        """Archive one HARNESS context.
+
+        Args:
+            context_id: Context identifier.
+
+        Returns:
+            Archived HARNESS context read model.
+        """
+        await self.get_harness(context_id)
+        context = await self.archive(context_id)
+        return context
+
     async def get(self, context_id: str) -> ContextRecord:
         """Return one context or raise not-found.
 
@@ -375,7 +483,7 @@ class ContextService:
         """
         context = await self._repository.get(context_id)
         if context is None:
-            raise NotFoundError(f"Context not found: {context_id}")
+            raise MemoryContextNotFoundError(f"Context not found: {context_id}")
         return context
 
     async def list_contexts(
@@ -391,6 +499,10 @@ class ContextService:
         session_id: str | None = None,
         source_agent: str | None = None,
         tag: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         include_archived: bool = False,
     ) -> tuple[list[ContextRecord], int]:
         """List contexts with filters.
@@ -407,6 +519,10 @@ class ContextService:
             session_id: Optional session filter.
             source_agent: Optional source-agent filter.
             tag: Optional tag filter.
+            created_after: Optional inclusive created-at lower bound.
+            created_before: Optional inclusive created-at upper bound.
+            updated_after: Optional inclusive updated-at lower bound.
+            updated_before: Optional inclusive updated-at upper bound.
             include_archived: Whether archived entries are included.
 
         Returns:
@@ -428,6 +544,10 @@ class ContextService:
             session_id=session_id,
             source_agent=source_agent,
             tag=tag,
+            created_after=created_after,
+            created_before=created_before,
+            updated_after=updated_after,
+            updated_before=updated_before,
             include_archived=include_archived,
         )
         return result
@@ -552,7 +672,7 @@ class ContextService:
             Context pack containing retrieved matches and warnings.
         """
         if not query.strip():
-            raise ValidationError("query is required")
+            raise MemoryContextValidationError("query is required")
         strategy = enum_value(strategy, RagStrategy, "strategy")
         if kind is not None:
             kind = enum_value(kind, ContextKind, "kind")
@@ -643,17 +763,20 @@ class ContextService:
         )
         return context_pack
 
-    async def reindex_embeddings(self, limit: int = 100) -> ContextReindexResult:
-        """Backfill embeddings for stored context chunks.
+    async def reindex_embeddings(
+        self, limit: int = 100, *, force: bool = False
+    ) -> ContextReindexResult:
+        """Backfill or rebuild embeddings for stored context chunks.
 
         Args:
             limit: Maximum chunks to reindex in this batch.
+            force: Whether to rebuild existing embeddings even if model metadata matches.
 
         Returns:
             Context reindex result.
         """
         if limit < 1:
-            raise ValidationError("limit must be at least 1")
+            raise MemoryContextValidationError("limit must be at least 1")
         provider = self._embedding_provider
         health = self.rag_health()
         warnings = list(health.warnings)
@@ -674,23 +797,27 @@ class ContextService:
             model_name=provider.model_name,
             dimensions=provider.dimensions,
             limit=limit,
+            force=force,
         )
-        embeddings = provider.embed_documents([chunk.content for chunk in chunks])
+        embeddings = await _embed_documents(
+            provider,
+            [chunk.content for chunk in chunks],
+        )
         if len(embeddings) != len(chunks):
-            raise ValidationError(
+            raise MemoryContextValidationError(
                 "Embedding provider returned an unexpected vector count"
             )
 
         updates: list[ContextChunkEmbeddingUpdate] = []
         for chunk, embedding in zip(chunks, embeddings, strict=True):
             if len(embedding) != provider.dimensions:
-                raise ValidationError(
+                raise MemoryContextValidationError(
                     "Embedding provider returned an unexpected dimension"
                 )
             try:
                 serialized = vector_to_sqlite_json(embedding)
             except ValueError as exc:
-                raise ValidationError(str(exc)) from exc
+                raise MemoryContextValidationError(str(exc)) from exc
             updates.append(
                 ContextChunkEmbeddingUpdate(
                     chunk_id=chunk.id,
@@ -708,7 +835,7 @@ class ContextService:
         )
         return result
 
-    def _chunk_embedding_fields(
+    async def _chunk_embedding_fields(
         self,
         chunk_contents: list[str],
     ) -> list[tuple[str | None, str | None, int | None]]:
@@ -716,22 +843,22 @@ class ContextService:
             return [(None, None, None) for _ in chunk_contents]
 
         provider = self._embedding_provider
-        embeddings = provider.embed_documents(chunk_contents)
+        embeddings = await _embed_documents(provider, chunk_contents)
         if len(embeddings) != len(chunk_contents):
-            raise ValidationError(
+            raise MemoryContextValidationError(
                 "Embedding provider returned an unexpected vector count"
             )
 
         fields: list[tuple[str | None, str | None, int | None]] = []
         for embedding in embeddings:
             if len(embedding) != provider.dimensions:
-                raise ValidationError(
+                raise MemoryContextValidationError(
                     "Embedding provider returned an unexpected dimension"
                 )
             try:
                 serialized = vector_to_sqlite_json(embedding)
             except ValueError as exc:
-                raise ValidationError(str(exc)) from exc
+                raise MemoryContextValidationError(str(exc)) from exc
             fields.append((serialized, provider.model_name, provider.dimensions))
         return fields
 
@@ -751,9 +878,11 @@ class ContextService:
         provider = self._embedding_provider
         if provider is None:
             return []
-        query_embedding = provider.embed_query(query)
+        query_embedding = await _embed_query(provider, query)
         if len(query_embedding) != provider.dimensions:
-            raise ValidationError("Embedding provider returned an unexpected dimension")
+            raise MemoryContextValidationError(
+                "Embedding provider returned an unexpected dimension"
+            )
         matches = await self._repository.search_vector(
             query_embedding=query_embedding,
             model_name=provider.model_name,
@@ -768,6 +897,17 @@ class ContextService:
             session_id=session_id,
         )
         return matches
+
+
+async def _embed_documents(
+    provider: EmbeddingProvider,
+    texts: list[str],
+) -> list[list[float]]:
+    return await asyncify(provider.embed_documents, abandon_on_cancel=True)(texts)
+
+
+async def _embed_query(provider: EmbeddingProvider, text: str) -> list[float]:
+    return await asyncify(provider.embed_query, abandon_on_cancel=True)(text)
 
 
 def _extract_restore_prompt(content: str) -> str | None:

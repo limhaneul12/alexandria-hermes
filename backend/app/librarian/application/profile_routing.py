@@ -4,34 +4,20 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
 )
 from app.librarian.domain.entities.read_models import AgentProfile
-from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
-from app.librarian.domain.repositories.agent_repository import IAgentRepository
-from app.shared.exceptions import NotFoundError
-
-_QUALITY_REVIEW_TOKENS = frozenset(
-    {
-        "security",
-        "oauth",
-        "auth",
-        "token",
-        "secret",
-        "production",
-        "deploy",
-        "risk",
-        "dangerous",
-        "review",
-        "validate",
-        "verify",
-        "candidate",
-        "prompt",
-    }
+from app.librarian.domain.event_enum.collaboration_enums import (
+    ArchiveRoutingToken,
+    LibrarianProfileRole,
+    QualityReviewRoutingToken,
 )
-_ARCHIVE_TOKENS = frozenset({"archive", "curate", "stale", "duplicate", "hygiene"})
+from app.librarian.domain.repositories.agent_repository import IAgentRepository
+from app.shared.exceptions import LibrarianResourceNotFoundError
+
 _TOKEN_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _DEFAULT_MAX_AUTO_PROFILES = 2
 
@@ -105,7 +91,7 @@ class LibrarianProfileRouter:
     ) -> LibrarianRoutingDecision:
         profile = await self.agent_repo.get(command.librarian_profile_id or "")
         if profile is None:
-            raise NotFoundError(
+            raise LibrarianResourceNotFoundError(
                 f"Librarian profile not found: {command.librarian_profile_id}"
             )
         max_agents = command.max_librarian_agents or profile.max_librarian_agents
@@ -261,11 +247,24 @@ def _profile_specialties(profile: AgentProfile) -> list[str]:
 
 
 def _quality_review_requested(command: HermesLibrarianAskCommand) -> bool:
-    return bool(_query_tokens(command) & _QUALITY_REVIEW_TOKENS)
+    return _has_routing_token(_query_tokens(command), QualityReviewRoutingToken)
 
 
 def _archive_requested(command: HermesLibrarianAskCommand) -> bool:
-    return bool(_query_tokens(command) & _ARCHIVE_TOKENS)
+    return _has_routing_token(_query_tokens(command), ArchiveRoutingToken)
+
+
+def _has_routing_token(tokens: set[str], routing_tokens: type[StrEnum]) -> bool:
+    """Return whether normalized prompt tokens include any routing enum value.
+
+    Args:
+        tokens: Normalized prompt/project/task tokens.
+        routing_tokens: Routing token enum class to match.
+
+    Returns:
+        bool: ``True`` when at least one routing enum value is present.
+    """
+    return any(routing_token.value in tokens for routing_token in routing_tokens)
 
 
 def _first_default_profile(profiles: list[AgentProfile]) -> AgentProfile | None:

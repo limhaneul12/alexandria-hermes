@@ -14,7 +14,7 @@ function safeHref(value: string) {
 }
 
 function inlineNodes(text: string, keyPrefix: string): ReactNode[] {
-  const pattern = /(\[[^\]]+\]\([^\s)]+\)|`[^`]+`)/g;
+  const pattern = /(\[[^\]]+\]\([^\s)]+\)|`[^`]+`|\*\*[^*]+?\*\*)/g;
   const nodes: ReactNode[] = [];
   let cursor = 0;
   let index = 0;
@@ -27,6 +27,12 @@ function inlineNodes(text: string, keyPrefix: string): ReactNode[] {
         <code key={`${keyPrefix}-code-${index}`} className="rounded border border-[#cfc8b8] bg-[#eee9df] px-1 py-0.5 text-[0.92em] text-[#111111]">
           {matched.slice(1, -1)}
         </code>,
+      );
+    } else if (matched.startsWith("**")) {
+      nodes.push(
+        <strong key={`${keyPrefix}-bold-${index}`} className="font-semibold text-[#111111]">
+          {matched.slice(2, -2)}
+        </strong>,
       );
     } else {
       const link = matched.match(/^\[([^\]]+)\]\(([^\s)]+)\)$/);

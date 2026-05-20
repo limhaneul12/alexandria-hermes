@@ -8,8 +8,9 @@ from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -26,23 +27,13 @@ class MemoryCompactORM(Base):
         String(ID_LENGTH), primary_key=True, default=new_uuid
     )
     project: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    covered_from: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    covered_to: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    covered_from: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    covered_to: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     markdown_body: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
     __table_args__ = (
         CheckConstraint(

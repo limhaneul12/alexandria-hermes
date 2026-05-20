@@ -10,6 +10,11 @@ assert.match(
 );
 assert.match(
   source,
+  /FilterChip/,
+  "Ask Librarian quick prompts must use the shared filter chip UI.",
+);
+assert.match(
+  source,
   /setResponse\(null\);[\s\S]*const result = await askLibrarian/,
   "submitting a new prompt should clear stale responses before awaiting the librarian",
 );

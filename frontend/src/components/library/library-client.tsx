@@ -4,14 +4,19 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Code2, FolderPlus, Search, ScrollText, X } from "lucide-react";
+import { Code2, FolderPlus, Search, ScrollText, SlidersHorizontal, X } from "lucide-react";
 
 import { LibraryFolderBrowser, findCategoryPath, flattenCategories } from "@/components/library/library-folder-browser";
 import { FolderCreateForm } from "@/components/library/library-forms";
 import { LibraryItemCard } from "@/components/library/library-item-card";
 import { Button } from "@/components/ui/button";
-import { Select, type SelectOption } from "@/components/ui/select";
+import {
+  FilterChipGroup,
+  type FilterChipChoice,
+} from "@/components/ui/filter-chip-group";
+import { Input } from "@/components/ui/input";
 import { createCategory, deleteCategory, fetchLibrary } from "@/lib/api";
+import { dateInputValue, toUtcDateBoundaryIso } from "@/lib/filter-utils";
 import { t, tx } from "@/lib/i18n";
 import { buildCategoryCreatePayload, flattenCategoryOptions } from "@/lib/library/forms";
 import { useLibraryStore } from "@/store/library-store";
@@ -53,8 +58,11 @@ export function LibraryClient({
   const type = forcedType ?? (typeParam && isItemType(typeParam) ? typeParam : null);
   const sortParam = searchParams.get("sort");
   const sort = sortParam === "recent" || sortParam === "title" ? sortParam : "popular";
+  const updatedAfter = searchParams.get("updated_after");
+  const updatedBefore = searchParams.get("updated_before");
 
   const [inlineSearch, setInlineSearch] = useState(searchQuery);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [showFolderForm, setShowFolderForm] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [folderParentId, setFolderParentId] = useState("");
@@ -71,10 +79,12 @@ export function LibraryClient({
     if (categorySlug) next.set("category", categorySlug);
     if (tag) next.set("tag", tag);
     if (type) next.set("type", type);
+    if (updatedAfter) next.set("updated_after", updatedAfter);
+    if (updatedBefore) next.set("updated_before", updatedBefore);
     next.set("sort", sort);
     next.set("limit", "48");
     return next;
-  }, [categorySlug, searchQuery, sort, tag, type]);
+  }, [categorySlug, searchQuery, sort, tag, type, updatedAfter, updatedBefore]);
 
   const libraryQuery = useQuery({
     queryKey: ["library", params.toString()],
@@ -93,7 +103,20 @@ export function LibraryClient({
   );
   const pageTitle = title ?? activePath.at(-1)?.name ?? t(language, "myLibrary");
   const pageDescription = description ?? t(language, flatList && forcedType === "SKILL" ? "flatSkillsDescription" : flatList && forcedType === "PROMPT" ? "flatPromptsDescription" : "libraryDefaultDescription");
-  const hasFilters = Boolean(searchQuery || categorySlug || tag || (!forcedType && type));
+  const hasFilters = Boolean(
+    searchQuery ||
+    categorySlug ||
+    tag ||
+    (!forcedType && type) ||
+    updatedAfter ||
+    updatedBefore,
+  );
+  const activeFilterCount = [
+    !forcedType && type,
+    !flatList && categorySlug,
+    tag,
+    updatedAfter || updatedBefore,
+  ].filter(Boolean).length;
   const visibleItems = useMemo(() => data?.items ?? [], [data?.items]);
   const sortedItems = useMemo(() => {
     const items = [...visibleItems];
@@ -152,6 +175,22 @@ export function LibraryClient({
     replaceLibraryQuery({ q: inlineSearch.trim() || null });
   }
 
+  function pushCategoryFilter(value: string) {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    const query = nextParams.toString();
+    const targetPath = value === "ALL" ? "/library" : `/library/${value}`;
+    router.push(`${targetPath}${query ? `?${query}` : ""}`, { scroll: false });
+  }
+
+  function updateDateFilter(value: string, boundary: "start" | "end") {
+    replaceLibraryQuery({
+      [boundary === "start" ? "updated_after" : "updated_before"]: toUtcDateBoundaryIso(
+        value,
+        boundary,
+      ),
+    });
+  }
+
   function handleCreateCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     createCategoryMutation.mutate();
@@ -162,20 +201,17 @@ export function LibraryClient({
     deleteCategoryMutation.mutate(pendingCategoryDelete);
   }
 
-  const typeOptions: SelectOption[] = [
-    { value: "", label: t(language, "allTypes") },
+  const typeChoices: FilterChipChoice[] = [
     { value: "SKILL", label: t(language, "skill") },
     { value: "PROMPT", label: t(language, "prompt") },
   ];
-  const categorySelectOptions: SelectOption[] = [
-    { value: "", label: t(language, "allCategories") },
+  const categoryChoices: FilterChipChoice[] = [
     ...flatCategories.map((category) => ({ value: category.slug, label: category.name })),
   ];
-  const tagOptions: SelectOption[] = [
-    { value: "", label: t(language, "allTags") },
+  const tagChoices: FilterChipChoice[] = [
     ...(data?.tags ?? []).map((tagName) => ({ value: tagName, label: tagName })),
   ];
-  const sortOptions: SelectOption[] = [
+  const sortChoices: FilterChipChoice[] = [
     { value: "popular", label: t(language, "popular") },
     { value: "recent", label: t(language, "newest") },
     { value: "title", label: t(language, "titleSort") },
@@ -190,33 +226,113 @@ export function LibraryClient({
       </section>
 
       <div className="archive-filter-panel mb-8">
-        <form onSubmit={handleInlineSearch} className="relative max-w-[640px]">
-          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f6a60]" aria-hidden="true" />
-          <input
-            value={inlineSearch}
-            onChange={(event) => setInlineSearch(event.target.value)}
-            placeholder={t(language, "librarySearchPlaceholder")}
-            className="h-12 w-full rounded-lg border border-[#d8d3c7] bg-white pl-11 pr-4 text-sm text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15"
-          />
-        </form>
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <form onSubmit={handleInlineSearch} className="relative max-w-[560px] xl:flex-1">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6f6a60]" aria-hidden="true" />
+            <input
+              value={inlineSearch}
+              onChange={(event) => setInlineSearch(event.target.value)}
+              placeholder={t(language, "librarySearchPlaceholder")}
+              className="h-10 w-full rounded-full border border-[#cfc8b8] bg-[#fbfaf6] pl-10 pr-4 text-sm text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15"
+            />
+          </form>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
-          {forcedType ? null : (
-            <Select label={t(language, "typeFilter")} value={type ?? ""} options={typeOptions} onChange={(value) => replaceLibraryQuery({ type: value || null })} />
-          )}
-          {!flatList ? (
-            <Select label={t(language, "categoryFilter")} value={categorySlug ?? ""} options={categorySelectOptions} onChange={(value) => router.push(value ? `/library/${value}` : "/library", { scroll: false })} />
-          ) : null}
-          <Select label={t(language, "tagsFilter")} value={tag ?? ""} options={tagOptions} onChange={(value) => replaceLibraryQuery({ tag: value || null })} />
-          <Select label={t(language, "sortBy")} value={sort} options={sortOptions} onChange={(value) => replaceLibraryQuery({ sort: value })} />
-          <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {!flatList ? (
-              <Button type="button" variant="secondary" onClick={() => setShowFolderForm((value) => !value)}>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-9 rounded-full border-[#cfc8b8] bg-[#fbfaf6] px-4 text-sm font-semibold text-[#36322d] hover:bg-[#eee9df]"
+                onClick={() => setShowFolderForm((value) => !value)}
+              >
                 <FolderPlus className="h-4 w-4" /> {t(language, "folder")}
               </Button>
             ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-9 rounded-full border-[#cfc8b8] bg-[#fbfaf6] px-4 text-sm font-semibold text-[#36322d] hover:bg-[#eee9df]"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((current) => !current)}
+            >
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+              {t(language, "filters")} ({activeFilterCount})
+            </Button>
           </div>
         </div>
+
+        {filtersOpen ? (
+          <div className="mt-4 space-y-4 rounded-2xl border border-[#d8d3c7] bg-white/45 p-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              {forcedType ? null : (
+                <FilterChipGroup
+                  name="library-type"
+                  label={t(language, "typeFilter")}
+                  value={type ?? "ALL"}
+                  onChange={(value) => replaceLibraryQuery({ type: value === "ALL" ? null : value })}
+                  allLabel={t(language, "allTypes")}
+                  choices={typeChoices}
+                />
+              )}
+              {!flatList ? (
+                <FilterChipGroup
+                  name="library-category"
+                  label={t(language, "categoryFilter")}
+                  value={categorySlug ?? "ALL"}
+                  onChange={pushCategoryFilter}
+                  allLabel={t(language, "allCategories")}
+                  choices={categoryChoices}
+                  emptyLabel={t(language, "noCategories")}
+                />
+              ) : null}
+              <FilterChipGroup
+                name="library-tag"
+                label={t(language, "tagsFilter")}
+                value={tag ?? "ALL"}
+                onChange={(value) => replaceLibraryQuery({ tag: value === "ALL" ? null : value })}
+                allLabel={t(language, "allTags")}
+                choices={tagChoices}
+                emptyLabel={t(language, "allTags")}
+              />
+              <FilterChipGroup
+                name="library-sort"
+                label={t(language, "sortBy")}
+                value={sort}
+                onChange={(value) => replaceLibraryQuery({ sort: value })}
+                allLabel={null}
+                choices={sortChoices}
+              />
+            </div>
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px] md:items-end">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6f6a60]">
+                  {t(language, "updatedRange")}
+                </p>
+                <p className="rounded-xl border border-[#d8d3c7] bg-white/55 px-3 py-2 text-xs leading-5 text-[#514c44]">
+                  {t(language, "updatedDateFilterHelper")}
+                </p>
+              </div>
+              <label className="space-y-2 text-sm font-semibold text-[#28241f]">
+                {t(language, "fromDate")}
+                <Input
+                  name="library-updated-from"
+                  type="date"
+                  value={dateInputValue(updatedAfter)}
+                  onChange={(event) => updateDateFilter(event.target.value, "start")}
+                />
+              </label>
+              <label className="space-y-2 text-sm font-semibold text-[#28241f]">
+                {t(language, "toDate")}
+                <Input
+                  name="library-updated-to"
+                  type="date"
+                  value={dateInputValue(updatedBefore)}
+                  onChange={(event) => updateDateFilter(event.target.value, "end")}
+                />
+              </label>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {showFolderForm && !flatList ? (

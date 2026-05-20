@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.event_enum.provider_enums import (
@@ -28,8 +27,9 @@ from app.connections.infrastructure.librarians.provider_types import (
     parse_auth_type,
     parse_provider_type,
 )
-from app.shared.exceptions import UnsupportedProviderError
+from app.shared.exceptions import ConnectionsProviderUnsupportedError
 from app.shared.types.extra_types import JSONObject
+from app.shared.types.types_convert_utils import now_utc, optional_iso_utc_datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +127,7 @@ class LibrarianClientFactory(LibrarianProviderClientFactory):
         credential = ApiKeyCredential(api_key)
         try:
             adapter = self._build_adapter(provider_type, provider.config, credential)
-        except UnsupportedProviderError as exc:
+        except ConnectionsProviderUnsupportedError as exc:
             result = ProviderClientTestResult(
                 provider_id=provider.id,
                 ok=False,
@@ -180,14 +180,14 @@ class LibrarianClientFactory(LibrarianProviderClientFactory):
                 ),
             )
             return result
-        expires_at = _parse_oauth_expires_at(expires_at_value)
+        expires_at = optional_iso_utc_datetime(expires_at_value)
         if expires_at is None:
             return ProviderClientTestResult(
                 provider_id=provider.id,
                 ok=False,
                 message="oauth token expiry missing or invalid",
             )
-        if expires_at <= datetime.now(UTC):
+        if expires_at <= now_utc():
             return ProviderClientTestResult(
                 provider_id=provider.id,
                 ok=False,
@@ -218,7 +218,7 @@ class LibrarianClientFactory(LibrarianProviderClientFactory):
             OpenAIStyleSDKAdapter: OpenAI SDK adapter.
         """
         if provider_type is not ProviderType.OPENAI:
-            raise UnsupportedProviderError(
+            raise ConnectionsProviderUnsupportedError(
                 f"provider type {provider_type.value} is unsupported for librarian SDK clients"
             )
         client_config = build_openai_client_config(provider_type, config, credential)
@@ -228,18 +228,6 @@ class LibrarianClientFactory(LibrarianProviderClientFactory):
             dry_run=self.dry_run,
         )
         return adapter
-
-
-def _parse_oauth_expires_at(value: str | None) -> datetime | None:
-    if value is None:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed
 
 
 __all__ = [

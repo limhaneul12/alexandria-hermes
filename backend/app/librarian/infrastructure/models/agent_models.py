@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -46,12 +47,8 @@ class AgentProfileORM(Base):
     librarian_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
 
     def __repr__(self) -> str:
         return f"AgentProfileORM(id={self.id!r}, name={self.name!r})"

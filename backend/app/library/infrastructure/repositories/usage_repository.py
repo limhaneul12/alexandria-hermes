@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import cast
 
 from app.library.domain.contracts.usage_contracts import UsageCreate
 from app.library.domain.entities.read_models import UsageHistory
@@ -23,7 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 def _feedback_from(row: UsageHistoryORM) -> UsageFeedbackPayload | None:
     """Return typed feedback payload from an ORM row."""
     feedback = row.feedback
-    return cast(UsageFeedbackPayload, feedback) if isinstance(feedback, dict) else None
+    if feedback is None:
+        return None
+    return UsageFeedbackPayload(**feedback)
 
 
 def _to_read_model(row: UsageHistoryORM) -> UsageHistory:

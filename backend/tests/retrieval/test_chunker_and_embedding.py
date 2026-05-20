@@ -25,7 +25,12 @@ FastEmbed works locally.
         "Summary",
         "Evidence",
     ]
-    assert all(chunk.content_hash for chunk in chunks)
+    assert [chunk.token_count for chunk in chunks] == [2, 4, 4]
+    assert [chunk.content_hash for chunk in chunks] == [
+        "b3297da392cbbb0893201b7cdc3121e35f2b34190868b94ff1d221ec394acec7",
+        "6933f5bf2cb64cf2dfb59560a04dd92c07fcd95d63fa6031f9d69eb34aff029e",
+        "9985ad61dbafad3c91f809680f1c42896a60162d8991419d2c9fcad8987f78c3",
+    ]
     assert chunks[1].metadata == {"title": "Decision log", "heading": "Summary"}
 
 

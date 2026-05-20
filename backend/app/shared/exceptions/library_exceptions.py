@@ -21,10 +21,3 @@ class LibraryCategoryCycleError(LibraryValidationError):
 
 class LibraryProviderUnsupportedError(LibraryDomainError):
     """Raised when a librarian provider cannot perform the requested action."""
-
-
-# Backwards-compatible aliases for existing application/repository imports.
-NotFoundError = LibraryResourceNotFoundError
-ValidationError = LibraryValidationError
-CircularCategoryError = LibraryCategoryCycleError
-UnsupportedProviderError = LibraryProviderUnsupportedError

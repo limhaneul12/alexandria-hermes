@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import httpx
 from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
-from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.config import settings_model_config
+from app.shared.utils.http_helpers.json_payloads import (
+    decode_json_body,
+    extract_json_error_message,
+    json_body_bytes,
+)
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 
@@ -171,7 +175,7 @@ class AlexandriaApiClient:
         payload: JSONValue | None,
         params: JSONObject | None,
     ) -> JSONValue:
-        request_body = None if payload is None else dumps_json(payload)
+        request_body = None if payload is None else json_body_bytes(payload)
         headers: HttpHeaders = {"Accept": "application/json"}
         if request_body is not None:
             headers["Content-Type"] = "application/json"
@@ -194,9 +198,9 @@ class AlexandriaApiClient:
             message = str(exc)
             raise AlexandriaApiError(0, message) from exc
         if response.status_code < 200 or response.status_code >= 300:
-            message = _error_message(response.content)
+            message = extract_json_error_message(response.content)
             raise AlexandriaApiError(response.status_code, message)
-        decoded = _decode_json(response.content)
+        decoded = decode_json_body(response.content)
         return decoded
 
 
@@ -212,26 +216,3 @@ def _query_params(params: JSONObject | None) -> list[tuple[str, QueryParamValue]
             continue
         compact.append((key, str(value)))
     return compact
-
-
-def _decode_json(body: bytes) -> JSONValue:
-    if not body:
-        return None
-    decoded = loads_json(body)
-    return decoded
-
-
-def _error_message(body: bytes) -> str:
-    try:
-        payload = _decode_json(body)
-    except ValueError:
-        decoded_body = body.decode("utf-8", errors="replace")
-        message = "request failed" if decoded_body == "" else decoded_body
-        return message
-    if isinstance(payload, dict):
-        detail = payload.get("detail")
-        if detail is None:
-            detail = payload.get("message")
-        if isinstance(detail, str):
-            return detail
-    return "request failed"

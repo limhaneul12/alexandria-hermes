@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from datetime import datetime
 
 from app.connections.domain.repositories.librarian_repository import (
@@ -21,23 +21,18 @@ from app.librarian.domain.types.agent_payload_types import (
     AgentUpdatePayload,
     AgentUpdateValues,
 )
-from app.shared.exceptions import NotFoundError, UnsupportedProviderError
-from app.shared.types.extra_types import JSONValue
-from app.shared.types.types_convert_utils import (
-    now_utc,
-    optional_string_value,
-    required_datetime_value,
-    required_string_value,
-    string_items,
+from app.shared.exceptions import (
+    LibrarianProviderUnsupportedError,
+    LibrarianResourceNotFoundError,
 )
-
-DEFAULT_MAX_LIBRARIAN_AGENTS = 1
-MAX_LIBRARIAN_AGENTS_LIMIT = 6
-DEFAULT_ROUTING_PRIORITY = 100
+from app.shared.types.types_convert_utils import (
+    enum_value,
+    now_utc,
+)
 
 
 def _profile_role_value(
-    value: JSONValue | LibrarianProfileRole | None,
+    value: LibrarianProfileRole | str,
 ) -> LibrarianProfileRole:
     """Normalize profile role from public input.
 
@@ -47,56 +42,10 @@ def _profile_role_value(
     Returns:
         LibrarianProfileRole: Valid librarian profile role.
     """
-    if isinstance(value, LibrarianProfileRole):
-        return value
-    if isinstance(value, str):
-        return LibrarianProfileRole(value)
-    return LibrarianProfileRole.DEFAULT_SEARCH
+    return enum_value(value, LibrarianProfileRole, "librarian_role")
 
 
-def _routing_priority_value(value: JSONValue | None) -> int:
-    """Normalize deterministic routing priority.
-
-    Args:
-        value: Interface payload value to narrow.
-
-    Returns:
-        int: Non-negative routing priority.
-    """
-    if isinstance(value, int) and not isinstance(value, bool):
-        return max(value, 0)
-    return DEFAULT_ROUTING_PRIORITY
-
-
-def _enabled_value(value: JSONValue | None) -> bool:
-    """Normalize profile enabled flag.
-
-    Args:
-        value: Interface payload value to narrow.
-
-    Returns:
-        bool: Enabled flag, defaulting to true.
-    """
-    if isinstance(value, bool):
-        return value
-    return True
-
-
-def _max_librarian_agents_value(value: JSONValue | None) -> int:
-    """Normalize maximum librarian agent count from an interface payload.
-
-    Args:
-        value: Interface payload value to narrow.
-
-    Returns:
-        int: Bounded positive agent count.
-    """
-    if isinstance(value, int) and not isinstance(value, bool):
-        return min(max(value, 1), MAX_LIBRARIAN_AGENTS_LIMIT)
-    return DEFAULT_MAX_LIBRARIAN_AGENTS
-
-
-def _agent_update_values(payload: Mapping[str, JSONValue]) -> AgentUpdateValues:
+def _agent_update_values(payload: AgentUpdatePayload) -> AgentUpdateValues:
     """Normalize public agent patch fields into an explicit update contract.
 
     Args:
@@ -105,42 +54,76 @@ def _agent_update_values(payload: Mapping[str, JSONValue]) -> AgentUpdateValues:
     Returns:
         AgentUpdateValues: Typed patch values accepted by the repository.
     """
-    values: AgentUpdateValues = {}
-    if "name" in payload:
-        values["name"] = required_string_value(payload["name"], "name")
-    if "provider" in payload:
-        values["provider"] = required_string_value(payload["provider"], "provider")
-    if "description" in payload:
-        values["description"] = optional_string_value(payload["description"])
-    if "capabilities" in payload:
-        values["capabilities"] = string_items(payload["capabilities"])
-    if "preferred_librarian_provider" in payload:
-        values["preferred_librarian_provider"] = optional_string_value(
-            payload["preferred_librarian_provider"]
-        )
-    if "preferred_librarian_model" in payload:
-        values["preferred_librarian_model"] = optional_string_value(
-            payload["preferred_librarian_model"]
-        )
-    if "max_librarian_agents" in payload:
-        values["max_librarian_agents"] = _max_librarian_agents_value(
-            payload["max_librarian_agents"]
-        )
-    if "librarian_role_prompt" in payload:
-        values["librarian_role_prompt"] = optional_string_value(
-            payload["librarian_role_prompt"]
-        )
-    if "librarian_role" in payload:
-        values["librarian_role"] = _profile_role_value(payload["librarian_role"])
-    if "librarian_specialties" in payload:
-        values["librarian_specialties"] = string_items(payload["librarian_specialties"])
-    if "librarian_routing_priority" in payload:
-        values["librarian_routing_priority"] = _routing_priority_value(
-            payload["librarian_routing_priority"]
-        )
-    if "librarian_enabled" in payload:
-        values["librarian_enabled"] = _enabled_value(payload["librarian_enabled"])
-    return values
+    builder = _AgentUpdateValueBuilder(payload)
+    return builder.build()
+
+
+class _AgentUpdateValueBuilder:
+    """Build repository-safe agent update values from a boundary payload."""
+
+    __slots__ = ("_payload", "_values")
+
+    def __init__(self, payload: AgentUpdatePayload) -> None:
+        """Initialize the pure patch-value builder.
+
+        Args:
+            payload: Partial agent patch payload from the interface schema.
+        """
+        self._payload = payload
+        self._values: AgentUpdateValues = {}
+
+    def build(self) -> AgentUpdateValues:
+        """Return normalized update values while preserving key presence.
+
+        Returns:
+            AgentUpdateValues: Repository-safe patch values.
+        """
+        self._apply_identity_fields()
+        self._apply_librarian_preference_fields()
+        self._apply_librarian_profile_fields()
+        return self._values
+
+    def _apply_identity_fields(self) -> None:
+        if "name" in self._payload:
+            self._values["name"] = self._payload["name"]
+        if "provider" in self._payload:
+            self._values["provider"] = self._payload["provider"]
+        if "description" in self._payload:
+            self._values["description"] = self._payload["description"]
+        if "capabilities" in self._payload:
+            self._values["capabilities"] = self._payload["capabilities"]
+
+    def _apply_librarian_preference_fields(self) -> None:
+        if "preferred_librarian_provider" in self._payload:
+            self._values["preferred_librarian_provider"] = self._payload[
+                "preferred_librarian_provider"
+            ]
+        if "preferred_librarian_model" in self._payload:
+            self._values["preferred_librarian_model"] = self._payload[
+                "preferred_librarian_model"
+            ]
+        if "max_librarian_agents" in self._payload:
+            self._values["max_librarian_agents"] = self._payload["max_librarian_agents"]
+        if "librarian_role_prompt" in self._payload:
+            self._values["librarian_role_prompt"] = self._payload[
+                "librarian_role_prompt"
+            ]
+
+    def _apply_librarian_profile_fields(self) -> None:
+        if "librarian_role" in self._payload:
+            self._values["librarian_role"] = _profile_role_value(
+                self._payload["librarian_role"]
+            )
+        if "librarian_specialties" in self._payload:
+            self._values["librarian_specialties"] = self._payload[
+                "librarian_specialties"
+            ]
+        if "librarian_routing_priority" in self._payload:
+            self._values["librarian_routing_priority"] = self._payload[
+                "librarian_routing_priority"
+            ]
+        if "librarian_enabled" in self._payload:
+            self._values["librarian_enabled"] = self._payload["librarian_enabled"]
 
 
 class AgentService:
@@ -194,40 +177,24 @@ class AgentService:
         Returns:
             AgentProfile: Persisted agent profile.
         """
-        preferred_provider_id = optional_string_value(
-            payload.get("preferred_librarian_provider")
-        )
+        preferred_provider_id = payload["preferred_librarian_provider"]
         await self._ensure_executable_provider(preferred_provider_id)
         return await self.repository.create(
             AgentCreate(
-                name=required_string_value(payload.get("name"), "name"),
-                provider=required_string_value(payload.get("provider"), "provider"),
-                description=optional_string_value(payload.get("description")),
-                capabilities=string_items(payload.get("capabilities")),
+                name=payload["name"],
+                provider=payload["provider"],
+                description=payload["description"],
+                capabilities=payload["capabilities"],
                 preferred_librarian_provider=preferred_provider_id,
-                preferred_librarian_model=optional_string_value(
-                    payload.get("preferred_librarian_model")
-                ),
-                max_librarian_agents=_max_librarian_agents_value(
-                    payload.get("max_librarian_agents")
-                ),
-                librarian_role_prompt=optional_string_value(
-                    payload.get("librarian_role_prompt")
-                ),
-                librarian_role=_profile_role_value(payload.get("librarian_role")),
-                librarian_specialties=string_items(
-                    payload.get("librarian_specialties")
-                ),
-                librarian_routing_priority=_routing_priority_value(
-                    payload.get("librarian_routing_priority")
-                ),
-                librarian_enabled=_enabled_value(payload.get("librarian_enabled")),
-                created_at=required_datetime_value(
-                    payload.get("created_at"), "created_at"
-                ),
-                updated_at=required_datetime_value(
-                    payload.get("updated_at"), "updated_at"
-                ),
+                preferred_librarian_model=payload["preferred_librarian_model"],
+                max_librarian_agents=payload["max_librarian_agents"],
+                librarian_role_prompt=payload["librarian_role_prompt"],
+                librarian_role=_profile_role_value(payload["librarian_role"]),
+                librarian_specialties=payload["librarian_specialties"],
+                librarian_routing_priority=payload["librarian_routing_priority"],
+                librarian_enabled=payload["librarian_enabled"],
+                created_at=payload["created_at"],
+                updated_at=payload["updated_at"],
             )
         )
 
@@ -271,13 +238,13 @@ class AgentService:
             return
         provider = await self.provider_repo.get(provider_id)
         if provider is None:
-            raise NotFoundError(f"Provider not found: {provider_id}")
+            raise LibrarianResourceNotFoundError(f"Provider not found: {provider_id}")
         executable = await provider_can_execute(
             provider,
             self.secret_repo,
             self.now_provider,
         )
         if not executable:
-            raise UnsupportedProviderError(
+            raise LibrarianProviderUnsupportedError(
                 f"Provider is not authorized for librarian execution: {provider_id}"
             )

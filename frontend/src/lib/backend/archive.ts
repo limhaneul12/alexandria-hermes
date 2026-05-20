@@ -412,6 +412,8 @@ async function loadLibraryCandidateContext(searchParams: URLSearchParams) {
   const categorySlugParam = searchParams.get("category");
   const typeParam = searchParams.get("type");
   const type = typeParam && isItemType(typeParam) ? typeParam : null;
+  const updatedAfter = searchParams.get("updated_after");
+  const updatedBefore = searchParams.get("updated_before");
   const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 48), 1), 60);
   const backendLimit = Math.max(limit, 100);
   const selectedCategory = categorySlugParam
@@ -432,6 +434,8 @@ async function loadLibraryCandidateContext(searchParams: URLSearchParams) {
   for (const tagValue of searchParamValues(searchParams, "tag")) {
     params.append("tags_any", tagValue);
   }
+  if (updatedAfter) params.set("updated_after", updatedAfter);
+  if (updatedBefore) params.set("updated_before", updatedBefore);
   params.set("limit", String(Math.min(backendLimit, 100)));
   params.set("offset", "0");
   params.set("content_mode", "candidate");

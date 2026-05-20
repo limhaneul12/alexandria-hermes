@@ -37,6 +37,7 @@ services:
       dockerfile: Dockerfile
     command: npm run dev:container
     environment:
+      NEXT_TELEMETRY_DISABLED: "1"
       NEXT_PUBLIC_BACKEND_URL: http://backend:8000
       ALEXANDRIA_OPERATOR_API_KEY: ${ALEXANDRIA_OPERATOR_API_KEY}
     ports:

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from app.connections.domain.event_enum.provider_enums import (
     OAuthConnectionStatus,
     OAuthPollStatus,
 )
 from app.shared.schemas.common_schemas import StrictSchemaModel
+from app.shared.schemas.datetime_schemas import AwareTimestamp
 from pydantic import ConfigDict
 
 
@@ -38,7 +37,7 @@ class LibrarianOAuthStartResponse(StrictSchemaModel):
     user_code: str
     verification_uri: str
     verification_uri_complete: str | None
-    expires_at: datetime
+    expires_at: AwareTimestamp
     interval_seconds: int
 
 
@@ -63,6 +62,6 @@ class LibrarianOAuthStatusResponse(StrictSchemaModel):
     provider_id: str
     status: OAuthConnectionStatus
     connected: bool
-    expires_at: datetime | None
+    expires_at: AwareTimestamp | None
     refresh_required: bool
     message: str | None

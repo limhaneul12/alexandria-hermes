@@ -15,8 +15,8 @@ from app.container import ApplicationContainer
 from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import (
+    CONNECTIONS_PROVIDER_TEST_EXCEPTION_MAPPING,
     CONNECTIONS_ROUTE_EXCEPTION_MAPPING,
-    LIBRARY_PROVIDER_TEST_EXCEPTION_MAPPING,
 )
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -191,7 +191,7 @@ async def delete_librarian_provider(
     status_code=status.HTTP_200_OK,
     summary="Test librarian provider",
 )
-@router_exception_status(LIBRARY_PROVIDER_TEST_EXCEPTION_MAPPING)
+@router_exception_status(CONNECTIONS_PROVIDER_TEST_EXCEPTION_MAPPING)
 @inject
 async def test_librarian_provider(
     provider_id: str,

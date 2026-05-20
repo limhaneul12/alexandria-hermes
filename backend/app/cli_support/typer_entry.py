@@ -14,20 +14,27 @@ from app.cli_support.contracts.runtime_contracts import (
     CommandContext,
 )
 from app.cli_support.handlers.library import handle_health
-from app.cli_support.typer_commands.collaboration import librarian_app, usage_app
-from app.cli_support.typer_commands.context import context_app
-from app.cli_support.typer_commands.daemon import daemon_app
-from app.cli_support.typer_commands.hermes import hermes_app
-from app.cli_support.typer_commands.library import (
+from app.cli_support.typer_commands.librarian_commands.collaboration import (
+    librarian_app,
+    usage_app,
+)
+from app.cli_support.typer_commands.library_commands.prompts import prompts_app
+from app.cli_support.typer_commands.library_commands.skills import (
     folders_app,
     library_app,
     skills_app,
 )
-from app.cli_support.typer_commands.library_prompts import prompts_app
-from app.cli_support.typer_commands.mcp import mcp_app
-from app.cli_support.typer_commands.memory_compact import memory_compact_app
-from app.cli_support.typer_commands.runtime import serve_command
-from app.cli_support.typer_commands.setup import setup_app
+from app.cli_support.typer_commands.memory_commands.compacts import memory_compact_app
+from app.cli_support.typer_commands.memory_commands.context import context_app
+from app.cli_support.typer_commands.memory_commands.harness import harness_app
+from app.cli_support.typer_commands.runtime_commands.daemon import daemon_app
+from app.cli_support.typer_commands.runtime_commands.mcp import mcp_app
+from app.cli_support.typer_commands.runtime_commands.setup_server import (
+    serve_command,
+    setup_app,
+)
+from app.cli_support.typer_commands.support_commands.codex import codex_app
+from app.cli_support.typer_commands.support_commands.hermes import hermes_app
 from app.cli_support.typer_commands.typer_runtime import run_context
 from app.cli_support.url_paths import normalized_base_url
 from app.mcp_server.mcp_protocol_enums import McpLaunchArgument
@@ -44,10 +51,12 @@ typer_app.add_typer(prompts_app, name="prompts")
 typer_app.add_typer(folders_app, name="folders")
 typer_app.add_typer(library_app, name="library")
 typer_app.add_typer(context_app, name="context")
+typer_app.add_typer(harness_app, name="harness")
 typer_app.add_typer(memory_compact_app, name="memory-compacts")
 typer_app.add_typer(setup_app, name="setup")
 typer_app.add_typer(daemon_app, name="daemon")
 typer_app.add_typer(hermes_app, name="hermes")
+typer_app.add_typer(codex_app, name="codex")
 typer_app.add_typer(librarian_app, name="librarian")
 typer_app.add_typer(usage_app, name="usage")
 typer_app.add_typer(mcp_app, name=McpLaunchArgument.MCP.value)

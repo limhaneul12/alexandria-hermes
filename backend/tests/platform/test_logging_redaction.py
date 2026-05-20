@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
 
 from app.platform.logging.formatter.config import JsonFormatter
 from app.platform.schemas.logging_schema import JsonLogServiceContext
+from app.shared.serialization.orjson_codec import loads_json
 
 
 def _formatter() -> JsonFormatter:
@@ -47,7 +47,7 @@ def test_json_formatter_redacts_secret_values_in_messages_and_exceptions() -> No
         )
 
     encoded = _formatter().format(record)
-    payload = json.loads(encoded)
+    payload = loads_json(encoded)
 
     assert "do-not-log-api-key" not in encoded
     assert "do-not-log-token" not in encoded

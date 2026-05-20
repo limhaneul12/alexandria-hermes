@@ -5,10 +5,7 @@ from __future__ import annotations
 from app.container import ApplicationContainer
 from app.librarian.application.agent_service import AgentService
 from app.librarian.domain.entities.read_models import AgentProfile
-from app.librarian.domain.types.agent_payload_types import (
-    AgentCreatePayload,
-    AgentUpdatePayload,
-)
+from app.librarian.domain.types.agent_payload_types import AgentCreatePayload
 from app.librarian.interface.schemas.agent.agent_schema import (
     AgentCreateRequest,
     AgentPatchRequest,
@@ -68,47 +65,6 @@ def _create_payload(request: AgentCreateRequest) -> AgentCreatePayload:
         created_at=now,
         updated_at=now,
     )
-
-
-def _patch_payload(request: AgentPatchRequest) -> AgentUpdatePayload:
-    """Convert a patch request into an application payload.
-
-    Args:
-        request: Validated patch request.
-
-    Returns:
-        AgentUpdatePayload: Explicit application patch payload.
-    """
-    fields = request.model_fields_set
-    payload = AgentUpdatePayload()
-    if "name" in fields and request.name is not None:
-        payload["name"] = request.name
-    if "provider" in fields and request.provider is not None:
-        payload["provider"] = request.provider
-    if "description" in fields:
-        payload["description"] = request.description
-    if "capabilities" in fields and request.capabilities is not None:
-        payload["capabilities"] = request.capabilities
-    if "preferred_librarian_provider" in fields:
-        payload["preferred_librarian_provider"] = request.preferred_librarian_provider
-    if "preferred_librarian_model" in fields:
-        payload["preferred_librarian_model"] = request.preferred_librarian_model
-    if "max_librarian_agents" in fields and request.max_librarian_agents is not None:
-        payload["max_librarian_agents"] = request.max_librarian_agents
-    if "librarian_role_prompt" in fields:
-        payload["librarian_role_prompt"] = request.librarian_role_prompt
-    if "librarian_role" in fields and request.librarian_role is not None:
-        payload["librarian_role"] = request.librarian_role
-    if "librarian_specialties" in fields and request.librarian_specialties is not None:
-        payload["librarian_specialties"] = request.librarian_specialties
-    if (
-        "librarian_routing_priority" in fields
-        and request.librarian_routing_priority is not None
-    ):
-        payload["librarian_routing_priority"] = request.librarian_routing_priority
-    if "librarian_enabled" in fields and request.librarian_enabled is not None:
-        payload["librarian_enabled"] = request.librarian_enabled
-    return payload
 
 
 @router.post(
@@ -224,7 +180,7 @@ async def patch_agent(
     Returns:
         AgentResponse: Value produced by patch_agent.
     """
-    model = await service.update_agent(agent_id, _patch_payload(request))
+    model = await service.update_agent(agent_id, request.to_payload())
     return _to_response(model)
 
 

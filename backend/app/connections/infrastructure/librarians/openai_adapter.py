@@ -10,7 +10,7 @@ from app.connections.infrastructure.librarians.contracts import (
     ApiKeyCredential,
     ProviderClientTestResult,
 )
-from app.shared.exceptions import UnsupportedProviderError
+from app.shared.exceptions import ConnectionsProviderUnsupportedError
 from app.shared.types.extra_types import JSONObject
 from openai import OpenAI
 
@@ -22,6 +22,7 @@ class OpenAIClientConfig:
     api_key: str
     base_url: str | None = None
     default_headers: dict[str, str] | None = None
+    timeout: float | None = None
 
 
 OpenAIClientBuilder = Callable[[OpenAIClientConfig], OpenAI]
@@ -78,7 +79,7 @@ def build_openai_client_config(
     """
     _ = config
     if provider_type is not ProviderType.OPENAI:
-        raise UnsupportedProviderError(
+        raise ConnectionsProviderUnsupportedError(
             f"provider type {provider_type.value} is unsupported for OpenAI SDK clients"
         )
     client_config = OpenAIClientConfig(api_key=credential.value)
@@ -98,5 +99,6 @@ def build_openai_client(config: OpenAIClientConfig) -> OpenAI:
         api_key=config.api_key,
         base_url=config.base_url,
         default_headers=config.default_headers,
+        timeout=config.timeout,
     )
     return client

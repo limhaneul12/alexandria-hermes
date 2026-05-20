@@ -10,6 +10,7 @@ from app.library.domain.types.usage_payload_types import (
     UsageRecordCommandPayload,
 )
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
+from app.shared.schemas.datetime_schemas import AwareTimestamp
 from app.shared.types.extra_types import JSONObject
 from pydantic import ConfigDict
 
@@ -92,7 +93,7 @@ class UsageRecordResponse(StrictSchemaModel):
     agent_name: str
     librarian_provider: str | None
     selection_source: SelectionSource
-    used_at: datetime
+    used_at: AwareTimestamp
     success: bool
 
 

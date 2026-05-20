@@ -11,13 +11,13 @@ from app.library.domain.event_enum.item_enums import (
     SourceType,
 )
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from app.shared.types.extra_types import JSONValue
 from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
-    DateTime,
     ForeignKey,
     String,
     Text,
@@ -48,12 +48,8 @@ class LibraryItemORM(Base):
     source_type: Mapped[str] = mapped_column(String(30), nullable=False)
     created_by_type: Mapped[str] = mapped_column(String(20), nullable=False)
     created_by_name: Mapped[str] = mapped_column(String(length=255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     details: Mapped[dict[str, JSONValue]] = mapped_column(
         JSON, nullable=False, default=dict
     )

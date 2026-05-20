@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.memory.domain.entities.memory_compact import MemoryCompact
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
@@ -67,14 +69,18 @@ class MemoryCompactService:
         *,
         project: str | None = None,
         status: MemoryCompactStatus | None = None,
+        covered_after: datetime | None = None,
+        covered_before: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[MemoryCompact], int]:
         """List Memory Compacts.
 
         Args:
-            project: Optional project filter.
-            status: Optional lifecycle status filter.
+            project: Project filter.
+            status: Lifecycle status filter.
+            covered_after: Coverage-overlap lower bound.
+            covered_before: Coverage-overlap upper bound.
             limit: Maximum number of rows to return.
             offset: Number of rows to skip.
 
@@ -88,6 +94,8 @@ class MemoryCompactService:
         return await self._repository.list_compacts(
             project=project,
             status=status,
+            covered_after=covered_after,
+            covered_before=covered_before,
             limit=bounded_limit,
             offset=bounded_offset,
         )

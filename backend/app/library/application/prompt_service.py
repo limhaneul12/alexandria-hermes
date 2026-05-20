@@ -28,7 +28,7 @@ from app.library.domain.types.item_payload_types import (
     LibraryItemPayload,
 )
 from app.library.domain.types.prompt_payload_types import PromptVariablePayload
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibraryValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.types.types_convert_utils import enum_value
 
@@ -184,7 +184,7 @@ class PromptService:
         """
         item = await self.item_service.get_item(item_id)
         if item["item_type"] != ItemType.PROMPT:
-            raise ValidationError("Not a prompt item")
+            raise LibraryValidationError("Not a prompt item")
         update_payload = shape_prompt_patch_payload(item=item, payload=payload)
         updated = await self.item_service.update_item(
             item_id,

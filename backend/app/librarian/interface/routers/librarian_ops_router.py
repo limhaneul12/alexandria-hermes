@@ -71,6 +71,8 @@ async def _run_skill_acquisition_background_job(
                 runner = runner_candidate
             await runner.run_job(job_id)
         except Exception:
+            # This is the background task transaction boundary. Roll back any
+            # partially flushed state before FastAPI surfaces the task failure.
             await session.rollback()
             logger.exception(
                 "Skill acquisition background task failed",

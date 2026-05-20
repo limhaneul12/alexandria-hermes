@@ -5,9 +5,21 @@ from __future__ import annotations
 from typing import TextIO
 
 from app.cli_support.contracts.runtime_contracts import CommandContext
-from app.cli_support.presentation.json_output import print_json
-from app.shared.serialization.orjson_codec import dumps_json
+from app.shared.serialization.orjson_codec import dumps_json, dumps_pretty_json
 from app.shared.types.extra_types import JSONObject, JSONValue
+
+
+def print_json(payload: JSONValue, stdout: TextIO) -> None:
+    """Print pretty JSON to the selected stream.
+
+    Args:
+        payload: JSON-compatible payload.
+        stdout: Destination stream.
+
+    Returns:
+        None.
+    """
+    print(dumps_pretty_json(payload).decode("utf-8"), file=stdout)
 
 
 def print_context_payload(payload: JSONValue, context: CommandContext) -> None:
@@ -44,6 +56,34 @@ def print_hermes_payload(payload: JSONValue, context: CommandContext) -> None:
         payload: Backend or local integration payload.
         context: CLI runtime context with output preferences.
     """
+    print_written_skipped_payload(payload, context, "Hermes integration")
+
+
+def print_codex_payload(payload: JSONValue, context: CommandContext) -> None:
+    """Print Codex integration command output.
+
+    Args:
+        payload: Local Codex integration payload.
+        context: CLI runtime context with output preferences.
+    """
+    print_written_skipped_payload(payload, context, "Codex integration")
+
+
+def print_written_skipped_payload(
+    payload: JSONValue,
+    context: CommandContext,
+    label: str,
+) -> None:
+    """Print local integration output with written/skipped counts.
+
+    Args:
+        payload: Local integration payload.
+        context: CLI runtime context with output preferences.
+        label: Human-readable integration label.
+
+    Returns:
+        None.
+    """
     if context.json_output:
         print_json(payload, context.stdout)
         return
@@ -51,11 +91,37 @@ def print_hermes_payload(payload: JSONValue, context: CommandContext) -> None:
         written = list_field(payload, "written")
         skipped = list_field(payload, "skipped")
         print(
-            f"Hermes integration: {len(written)} written, {len(skipped)} skipped",
+            f"{label}: {len(written)} written, {len(skipped)} skipped",
             file=context.stdout,
         )
         return
     print_json(payload, context.stdout)
+
+
+def print_json_or_summary(
+    payload: JSONValue,
+    context: CommandContext,
+    label: str,
+) -> None:
+    """Print JSON output or a compact summary line.
+
+    Args:
+        payload: Backend response payload.
+        context: CLI runtime context.
+        label: Human-readable result label.
+
+    Returns:
+        None.
+    """
+    if context.json_output:
+        print_json(payload, context.stdout)
+        return
+    if isinstance(payload, list):
+        print(f"{label}: {len(payload)}", file=context.stdout)
+        return
+    item_id = text_field(payload, "id")
+    suffix = f" {item_id}" if item_id else ""
+    print(f"{label}{suffix}", file=context.stdout)
 
 
 def print_item_table(

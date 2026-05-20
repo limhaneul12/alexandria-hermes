@@ -3,15 +3,23 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import secrets
 from dataclasses import dataclass
 from typing import Literal
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-_TOKEN_PREFIX = "enc:v1"
 _NONCE_SIZE = 12
+# Storage payload version is embedded inside the opaque base64 payload. Any
+# version bump must add a migration that either upgrades or explicitly rejects
+# old rows before runtime starts decrypting the new format.
+_PAYLOAD_VERSION = 1
+_PAYLOAD_VERSION_SIZE = 1
+_AES_GCM_TAG_SIZE = 16
+_MIN_ENCRYPTED_PAYLOAD_SIZE = _PAYLOAD_VERSION_SIZE + _NONCE_SIZE + _AES_GCM_TAG_SIZE
 _LOCAL_DEV_KEY_SEED = "alexandria-hermes-local-development-secret-v1"
 
 
@@ -23,7 +31,14 @@ def _urlsafe_b64encode(value: bytes) -> str:
 def _urlsafe_b64decode(value: str) -> bytes:
     """Decode unpadded URL-safe base64 text."""
     padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(f"{value}{padding}".encode("ascii"))
+    try:
+        return base64.b64decode(
+            f"{value}{padding}".encode("ascii"),
+            altchars=b"-_",
+            validate=True,
+        )
+    except (binascii.Error, UnicodeEncodeError) as exc:
+        raise ValueError("Value is not valid URL-safe base64") from exc
 
 
 def _derive_key(raw_key: str) -> bytes:
@@ -52,11 +67,9 @@ class SecretCipher:
 
     Args:
         key: Raw 256-bit AES-GCM key.
-        allow_legacy_plaintext: Whether unresolved legacy values may be returned.
     """
 
     key: bytes
-    allow_legacy_plaintext: bool = True
 
     @classmethod
     def from_settings(cls, settings: SecretCipherSettings) -> SecretCipher:
@@ -93,12 +106,11 @@ class SecretCipher:
         """
         nonce = secrets.token_bytes(_NONCE_SIZE)
         ciphertext = AESGCM(self.key).encrypt(nonce, value.encode("utf-8"), None)
-        return f"{_TOKEN_PREFIX}:{_urlsafe_b64encode(nonce)}:{_urlsafe_b64encode(ciphertext)}"
+        payload = bytes([_PAYLOAD_VERSION]) + nonce + ciphertext
+        return _urlsafe_b64encode(payload)
 
     def decrypt(self, stored_value: str) -> str:
         """Decrypt one stored secret string.
-
-        Legacy plaintext values are returned only when allow_legacy_plaintext is true.
 
         Args:
             stored_value [str]: Value supplied to decrypt.
@@ -106,14 +118,21 @@ class SecretCipher:
         Returns:
             str: Value produced by decrypt.
         """
-        if not stored_value.startswith(f"{_TOKEN_PREFIX}:"):
-            if self.allow_legacy_plaintext:
-                return stored_value
-            raise ValueError("Stored secret is not encrypted")
-        parts = stored_value.split(":", 3)
-        if len(parts) != 4 or parts[0] != "enc" or parts[1] != "v1":
+        try:
+            payload = _urlsafe_b64decode(stored_value)
+        except ValueError as exc:
+            raise ValueError("Stored secret has an invalid encrypted format") from exc
+        if len(payload) < _MIN_ENCRYPTED_PAYLOAD_SIZE:
             raise ValueError("Stored secret has an invalid encrypted format")
-        nonce = _urlsafe_b64decode(parts[2])
-        ciphertext = _urlsafe_b64decode(parts[3])
-        plaintext = AESGCM(self.key).decrypt(nonce, ciphertext, None)
+        version = payload[0]
+        if version != _PAYLOAD_VERSION:
+            raise ValueError("Stored secret has an invalid encrypted format")
+        nonce_start = _PAYLOAD_VERSION_SIZE
+        nonce_end = nonce_start + _NONCE_SIZE
+        nonce = payload[nonce_start:nonce_end]
+        ciphertext = payload[nonce_end:]
+        try:
+            plaintext = AESGCM(self.key).decrypt(nonce, ciphertext, None)
+        except InvalidTag as exc:
+            raise ValueError("Stored secret cannot be decrypted") from exc
         return plaintext.decode("utf-8")

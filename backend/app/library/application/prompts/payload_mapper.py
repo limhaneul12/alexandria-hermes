@@ -21,7 +21,7 @@ from app.library.domain.types.prompt_payload_types import (
     PromptItemUpdatePayload,
     PromptVariablePayload,
 )
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibraryValidationError
 from app.shared.types.extra_types import JSONValue
 from app.shared.types.types_convert_utils import (
     bool_value,
@@ -35,7 +35,7 @@ from app.shared.types.types_convert_utils import (
 def _variable_payload(value: JSONValue) -> PromptVariablePayload:
     """Normalize one prompt variable payload."""
     if not isinstance(value, dict):
-        raise ValidationError("input_variables must contain objects")
+        raise LibraryValidationError("input_variables must contain objects")
     name = required_string_value(value.get("name"), "input_variables.name")
     variable: PromptVariablePayload = {
         "name": name,
@@ -55,11 +55,11 @@ def _variables_payload(value: JSONValue) -> list[PromptVariablePayload]:
     if value is None:
         return []
     if not isinstance(value, list):
-        raise ValidationError("input_variables must be a list")
+        raise LibraryValidationError("input_variables must be a list")
     variables = [_variable_payload(item) for item in value]
     names = [item["name"] for item in variables]
     if len(set(names)) != len(names):
-        raise ValidationError("input_variables names must be unique")
+        raise LibraryValidationError("input_variables names must be unique")
     return variables
 
 
@@ -186,7 +186,7 @@ def shape_prompt_patch_payload(
         Item-service update payload.
 
     Raises:
-        ValidationError: When no supported fields are provided.
+        LibraryValidationError: When no supported fields are provided.
     """
     shaped_payload: PromptItemUpdatePayload = {}
     if "title" in payload:
@@ -211,5 +211,5 @@ def shape_prompt_patch_payload(
             cast(Mapping[str, JSONValue], details)
         )
     if not shaped_payload:
-        raise ValidationError("No fields provided")
+        raise LibraryValidationError("No fields provided")
     return shaped_payload

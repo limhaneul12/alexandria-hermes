@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from typing import cast
 
 from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
 from app.connections.domain.types.librarian_provider_payload_types import (
     LibrarianProviderPatchPayload,
 )
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
+from app.shared.schemas.datetime_schemas import AwareTimestamp
+from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject
 from pydantic import ConfigDict, Field
 
@@ -85,22 +87,10 @@ class LibrarianProviderPatchRequest(StrictSchemaModel):
         Returns:
             LibrarianProviderPatchPayload: Provider patch fields excluding absent values.
         """
-        payload: LibrarianProviderPatchPayload = {}
-        if self.name is not None:
-            payload["name"] = self.name
-        if self.provider_type is not None:
-            payload["provider_type"] = self.provider_type
-        if self.auth_type is not None:
-            payload["auth_type"] = self.auth_type
-        if self.enabled is not None:
-            payload["enabled"] = self.enabled
-        if self.config is not None:
-            payload["config"] = self.config
-        if self.api_key is not None:
-            payload["api_key"] = self.api_key
-        if self.oauth_access_token is not None:
-            payload["oauth_access_token"] = self.oauth_access_token
-        return payload
+        return cast(
+            LibrarianProviderPatchPayload,
+            schema_payload(self, exclude_none=True, exclude_unset=True),
+        )
 
 
 class LibrarianProviderResponse(StrictSchemaModel):
@@ -129,8 +119,8 @@ class LibrarianProviderResponse(StrictSchemaModel):
     auth_type: AuthType
     enabled: bool
     config: JSONObject
-    created_at: datetime
-    updated_at: datetime
+    created_at: AwareTimestamp
+    updated_at: AwareTimestamp
 
 
 class LibrarianProviderResponseList(

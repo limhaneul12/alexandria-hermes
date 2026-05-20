@@ -10,7 +10,8 @@ from app.librarian.domain.entities.read_models import AgentProfile
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
 from app.librarian.domain.repositories.agent_repository import IAgentRepository
 from app.librarian.infrastructure.models.agent_models import AgentProfileORM
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import LibrarianResourceNotFoundError
+from app.shared.types.types_convert_utils import aware_utc_datetime
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,8 +28,8 @@ def _to_read_model(row: AgentProfileORM) -> AgentProfile:
         preferred_librarian_model=row.preferred_librarian_model,
         max_librarian_agents=row.max_librarian_agents,
         librarian_role_prompt=row.librarian_role_prompt,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
+        created_at=aware_utc_datetime(row.created_at),
+        updated_at=aware_utc_datetime(row.updated_at),
         librarian_role=LibrarianProfileRole(row.librarian_role),
         librarian_specialties=list(row.librarian_specialties or []),
         librarian_routing_priority=row.librarian_routing_priority,
@@ -94,7 +95,7 @@ class SqlAlchemyAgentRepository(IAgentRepository):
         """
         model = await self._session.get(AgentProfileORM, agent_id)
         if model is None:
-            raise NotFoundError(f"Agent not found: {agent_id}")
+            raise LibrarianResourceNotFoundError(f"Agent not found: {agent_id}")
 
         values = payload.to_record()
         if "name" in values:
@@ -148,7 +149,7 @@ class SqlAlchemyAgentRepository(IAgentRepository):
         """
         model = await self._session.get(AgentProfileORM, agent_id)
         if model is None:
-            raise NotFoundError(f"Agent not found: {agent_id}")
+            raise LibrarianResourceNotFoundError(f"Agent not found: {agent_id}")
 
         await self._session.execute(
             delete(AgentProfileORM).where(AgentProfileORM.id == agent_id)

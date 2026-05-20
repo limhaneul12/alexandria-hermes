@@ -17,11 +17,14 @@ from app.mcp_server.backend_api_client import (
 )
 from app.mcp_server.backend_tool_gateway import (
     alexandria_archive_context,
+    alexandria_archive_harness,
     alexandria_ask_librarian,
     alexandria_capture_context,
     alexandria_capture_harness,
+    alexandria_check_harness,
     alexandria_complete_skill_acquisition,
     alexandria_get_current_memory_compact,
+    alexandria_get_harness,
     alexandria_get_memory_compact,
     alexandria_get_prompt,
     alexandria_get_skill,
@@ -32,6 +35,7 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_librarian_oauth_start,
     alexandria_librarian_oauth_status,
     alexandria_librarian_route_preview,
+    alexandria_list_harnesses,
     alexandria_list_memory_compact_artifacts,
     alexandria_rag_status,
     alexandria_record_usage,
@@ -107,6 +111,10 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
     assert iscoroutinefunction(alexandria_search)
     assert iscoroutinefunction(alexandria_capture_context)
     assert iscoroutinefunction(alexandria_capture_harness)
+    assert iscoroutinefunction(alexandria_check_harness)
+    assert iscoroutinefunction(alexandria_list_harnesses)
+    assert iscoroutinefunction(alexandria_get_harness)
+    assert iscoroutinefunction(alexandria_archive_harness)
     assert iscoroutinefunction(alexandria_rag_status)
     assert iscoroutinefunction(alexandria_record_usage)
     assert iscoroutinefunction(alexandria_ask_librarian)
@@ -387,6 +395,51 @@ def test_mcp_capture_harness_uses_context_vault_not_library_crud() -> None:
         "Write a pruning contract and remove the public route."
     )
     assert request_body["recall_keywords"] == ["workflow-removal"]
+
+
+def test_mcp_harness_management_uses_context_vault_routes() -> None:
+    """Harness MCP management should wrap the dedicated Context Vault routes."""
+    client, calls = _client()
+
+    async def run_tools() -> None:
+        await alexandria_check_harness(
+            client,
+            task_goal="Refactor CLI support",
+            reusable_procedure="Read rules, edit, and run make ci.",
+            project="alexandria-hermes",
+            steps=["Read rules"],
+        )
+        await alexandria_list_harnesses(
+            client,
+            project="alexandria-hermes",
+            source_agent="Hermes",
+            tag="refactor",
+            limit=7,
+            include_archived=True,
+        )
+        await alexandria_get_harness(client, "ctx/1")
+        await alexandria_archive_harness(client, "ctx/1")
+
+    anyio.run(run_tools)
+
+    methods_and_paths = [
+        (call.method, str(call.url).removeprefix("http://backend:8000"))
+        for call in calls
+    ]
+    assert methods_and_paths == [
+        ("POST", "/memory/contexts/harnesses/check"),
+        (
+            "GET",
+            "/memory/contexts/harnesses?limit=7&offset=0"
+            "&include_archived=true&project=alexandria-hermes"
+            "&source_agent=Hermes&tag=refactor",
+        ),
+        ("GET", "/memory/contexts/harnesses/ctx%2F1"),
+        ("POST", "/memory/contexts/harnesses/ctx%2F1/archive"),
+    ]
+    check_body = loads_json(calls[0].content or b"{}")
+    assert check_body["task_goal"] == "Refactor CLI support"
+    assert check_body["steps"] == ["Read rules"]
 
 
 def test_mcp_generic_context_capture_rejects_harness_kind() -> None:
@@ -679,6 +732,10 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_rag_context",
         "alexandria_capture_context",
         "alexandria_capture_harness",
+        "alexandria_check_harness",
+        "alexandria_list_harnesses",
+        "alexandria_get_harness",
+        "alexandria_archive_harness",
         "alexandria_list_memory_compact_artifacts",
         "alexandria_get_current_memory_compact",
         "alexandria_get_memory_compact",

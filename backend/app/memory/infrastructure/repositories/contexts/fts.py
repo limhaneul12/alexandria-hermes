@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import cast
 
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from app.shared.utils.text_metrics import extract_word_tokens
 from sqlalchemy import (
     Select,
     bindparam,
@@ -22,7 +22,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.dml import Delete, Insert
 from sqlalchemy.sql.elements import ColumnElement
 
-FTS_TOKEN_PATTERN = re.compile(r"\w+")
 MAX_FTS_TOKEN_COUNT = 32
 MAX_FTS_TOKEN_LENGTH = 64
 
@@ -88,10 +87,11 @@ def normalize_fts_query(raw_query: str) -> str | None:
     Returns:
         FTS5 query string with literal prefix tokens, or None when empty.
     """
-    tokens = [
-        token[:MAX_FTS_TOKEN_LENGTH]
-        for token in FTS_TOKEN_PATTERN.findall(raw_query.strip())[:MAX_FTS_TOKEN_COUNT]
-    ]
+    tokens = extract_word_tokens(
+        raw_query.strip(),
+        max_tokens=MAX_FTS_TOKEN_COUNT,
+        max_token_length=MAX_FTS_TOKEN_LENGTH,
+    )
     if not tokens:
         return None
     normalized = " ".join(f'"{token}"*' for token in tokens)

@@ -1,16 +1,18 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Bot, Loader2, Search, Send } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Bot, Loader2, Search, Send, SlidersHorizontal } from "lucide-react";
 
 import { ContentViewer } from "@/components/content/content-viewer";
 import { Button } from "@/components/ui/button";
-import { chatWithLibrarian } from "@/lib/api";
+import { chatWithLibrarian, fetchAgents, fetchLibrarianProviders } from "@/lib/api";
 import type {
+  AgentDTO,
   LibrarianChatMode,
   LibrarianChatResponseDTO,
   LibrarianChatTarget,
+  LibrarianProviderDTO,
   LibrarianSourceRefDTO,
 } from "@/types/library";
 
@@ -35,20 +37,86 @@ function sourceRefLabel(sourceType: LibrarianSourceRefDTO["sourceType"]) {
   return "라이브러리 항목";
 }
 
+function providerName(
+  providers: LibrarianProviderDTO[] | undefined,
+  providerId: string | null,
+) {
+  if (!providerId) return "provider 미지정";
+  return providers?.find((provider) => provider.id === providerId)?.name ?? providerId;
+}
+
+function librarianOptionLabel(
+  agent: AgentDTO,
+  providers: LibrarianProviderDTO[] | undefined,
+) {
+  const model = agent.preferredLibrarianModel ?? "model unset";
+  return `${agent.name} · ${providerName(providers, agent.preferredLibrarianProvider)} · ${model}`;
+}
+
 export function LibrarianChatClient() {
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState<LibrarianChatMode>("SEARCH_AND_DELEGATE");
+  const [selectedLibrarianId, setSelectedLibrarianId] = useState("");
   const [targets, setTargets] = useState<LibrarianChatTarget[]>(["SKILL", "PROMPT", "CONTEXT", "MEMORY_COMPACT"]);
   const [response, setResponse] = useState<LibrarianChatResponseDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const allTargets = useMemo(() => TARGETS.map((target) => target.value), []);
 
   const modeOptions = useMemo(
     () => (["SEARCH_AND_DELEGATE", "DIRECT_SEARCH", "DELEGATE"] as const).map((item) => ({ value: item, label: modeLabel(item) })),
     [],
   );
 
+  const agentsQuery = useQuery({
+    queryKey: ["agents", "librarian-chat"],
+    queryFn: fetchAgents,
+    staleTime: 60_000,
+  });
+
+  const providersQuery = useQuery({
+    queryKey: ["librarian-providers", "librarian-chat"],
+    queryFn: fetchLibrarianProviders,
+    staleTime: 60_000,
+  });
+
+  const librarianProfiles = useMemo(
+    () =>
+      (agentsQuery.data ?? []).filter(
+        (agent) =>
+          agent.librarianEnabled &&
+          (
+            agent.provider === "OPENAI_CODEX" ||
+            agent.preferredLibrarianProvider !== null
+          ),
+      ),
+    [agentsQuery.data],
+  );
+
+  const selectedLibrarian = useMemo(
+    () =>
+      librarianProfiles.find((agent) => agent.id === selectedLibrarianId) ??
+      null,
+    [librarianProfiles, selectedLibrarianId],
+  );
+  const activeFilterCount = [
+    mode !== "SEARCH_AND_DELEGATE",
+    selectedLibrarianId !== "",
+    targets.length !== TARGETS.length,
+  ].filter(Boolean).length;
+
   const chatMutation = useMutation({
-    mutationFn: () => chatWithLibrarian({ prompt: prompt.trim(), mode, targets, limit: 5 }),
+    mutationFn: () => chatWithLibrarian({
+      prompt: prompt.trim(),
+      mode,
+      targets,
+      limit: 5,
+      providerId: selectedLibrarian?.preferredLibrarianProvider ?? null,
+      librarianProfileId: selectedLibrarian?.id ?? null,
+      librarianProfileName: selectedLibrarian?.name ?? null,
+      librarianModel: selectedLibrarian?.preferredLibrarianModel ?? null,
+      librarianRolePrompt: selectedLibrarian?.librarianRolePrompt ?? null,
+      maxLibrarianAgents: selectedLibrarian ? 1 : null,
+    }),
     onMutate: () => {
       setResponse(null);
       setError(null);
@@ -67,6 +135,12 @@ export function LibrarianChatClient() {
     });
   }
 
+  function resetFilters() {
+    setMode("SEARCH_AND_DELEGATE");
+    setSelectedLibrarianId("");
+    setTargets(allTargets);
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!prompt.trim() || chatMutation.isPending) return;
@@ -79,7 +153,7 @@ export function LibrarianChatClient() {
         <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#161616]">AI Librarian</p>
         <h1 className="mt-4 text-balance font-serif text-6xl tracking-[-0.04em] text-[#070707] md:text-7xl">사서와 얘기하기</h1>
         <p className="mt-5 max-w-3xl text-sm leading-7 text-[#36322d]">
-          질문을 입력하면 Alexandria가 먼저 직접 검색 후보와 source ref를 구성하고, 필요하면 사서 delegate에 budgeted packet으로 전달합니다.
+          질문이나 실행 명령을 입력하면 Alexandria가 먼저 직접 검색 후보와 source ref를 구성하고, 필요하면 사서 delegate 또는 안전한 플랫폼 작업으로 실행합니다.
         </p>
       </section>
 
@@ -87,43 +161,96 @@ export function LibrarianChatClient() {
         <section className="space-y-5">
           <form onSubmit={submit} className="rounded-2xl border border-[#d8d3c7] bg-white/65 p-5">
             <label className="block text-sm font-semibold text-[#28241f]">
-              질문 입력
+              질문/명령 입력
               <textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
                 rows={5}
                 className="mt-2 w-full rounded-xl border border-[#cfc8b8] bg-white/80 px-4 py-3 text-sm leading-6 text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15"
-                placeholder="예: OAuth 검토에 맞는 스킬과 관련 장기기억을 찾아줘"
+                placeholder="예: OAuth 검토에 맞는 스킬을 찾아줘 / 장기기억 메모리 compact 해줘"
               />
             </label>
-            <div className="mt-4 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-end">
-              <label className="block text-sm font-semibold text-[#28241f]">
-                실행 모드
-                <select
-                  value={mode}
-                  onChange={(event) => setMode(event.target.value as LibrarianChatMode)}
-                  className="mt-2 w-full rounded-xl border border-[#cfc8b8] bg-white/85 px-3 py-2 text-sm text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15"
-                >
-                  {modeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#6f6a60]">검색 대상</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {TARGETS.map((target) => (
-                    <label key={target.value} className="flex cursor-pointer gap-3 rounded-xl border border-[#d8d3c7] bg-white/70 p-3 text-sm text-[#36322d]">
-                      <input type="checkbox" checked={targets.includes(target.value)} onChange={() => toggleTarget(target.value)} className="mt-1 h-4 w-4 accent-black" />
-                      <span>
-                        <span className="block font-semibold text-[#111111]">{target.label}</span>
-                        <span className="block text-xs leading-5 text-[#6f6a60]">{target.description}</span>
-                      </span>
-                    </label>
-                  ))}
+            <section
+              aria-label="사서 필터링"
+              className="mt-4 rounded-2xl border border-[#d8d3c7] bg-[#fbfaf6]/75 p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-2 text-sm font-semibold text-[#111111]">
+                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                    필터링
+                    <span className="rounded-full bg-[#eee9df] px-2 py-0.5 text-xs text-[#625c52]">
+                      {activeFilterCount}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-[#6f6a60]">
+                    실행 방식, 위임할 사서, 검색 대상을 한 곳에서 조정합니다.
+                  </p>
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={resetFilters}
+                  disabled={activeFilterCount === 0}
+                >
+                  필터 초기화
+                </Button>
               </div>
-            </div>
+              <div className="mt-4 grid gap-4 xl:grid-cols-[220px_320px_minmax(0,1fr)] xl:items-start">
+                <label className="block text-sm font-semibold text-[#28241f]">
+                  실행 모드
+                  <select
+                    value={mode}
+                    onChange={(event) => setMode(event.target.value as LibrarianChatMode)}
+                    className="mt-2 w-full rounded-xl border border-[#cfc8b8] bg-white/85 px-3 py-2 text-sm text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15"
+                  >
+                    {modeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm font-semibold text-[#28241f]">
+                  사서 선택
+                  <select
+                    value={selectedLibrarianId}
+                    onChange={(event) => setSelectedLibrarianId(event.target.value)}
+                    disabled={agentsQuery.isLoading || librarianProfiles.length === 0}
+                    className="mt-2 w-full rounded-xl border border-[#cfc8b8] bg-white/85 px-3 py-2 text-sm text-[#111111] outline-none focus-visible:ring-2 focus-visible:ring-black/15 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">자동 선택</option>
+                    {librarianProfiles.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {librarianOptionLabel(agent, providersQuery.data)}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-1 block text-xs leading-5 text-[#6f6a60]">
+                    {agentsQuery.isLoading
+                      ? "사서 목록을 불러오는 중입니다."
+                      : librarianProfiles.length
+                        ? "특정 사서를 고르면 해당 profile/provider로 위임합니다."
+                        : "저장된 사서 profile이 없으면 자동 라우팅을 사용합니다."}
+                  </span>
+                </label>
+                <fieldset>
+                  <legend className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#6f6a60]">
+                    검색 대상
+                  </legend>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {TARGETS.map((target) => (
+                      <label key={target.value} className="flex cursor-pointer gap-3 rounded-xl border border-[#d8d3c7] bg-white/70 p-3 text-sm text-[#36322d]">
+                        <input type="checkbox" checked={targets.includes(target.value)} onChange={() => toggleTarget(target.value)} className="mt-1 h-4 w-4 accent-black" />
+                        <span>
+                          <span className="block font-semibold text-[#111111]">{target.label}</span>
+                          <span className="block text-xs leading-5 text-[#6f6a60]">{target.description}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              </div>
+            </section>
             <div className="mt-5 flex justify-end">
               <Button type="submit" disabled={!prompt.trim() || chatMutation.isPending}>
                 {chatMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} 보내기

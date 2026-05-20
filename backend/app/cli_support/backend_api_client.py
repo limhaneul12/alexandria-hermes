@@ -10,15 +10,15 @@ from app.cli_support.contracts.runtime_contracts import (
     HttpHeaders,
     HttpResponse,
 )
-from app.cli_support.json_payloads import (
-    decode_json,
-    error_message,
-    json_bytes,
-)
 from app.cli_support.url_paths import join_url
 from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.exceptions.cli_exceptions import CliRequestError
 from app.shared.types.extra_types import JSONValue
+from app.shared.utils.http_helpers.json_payloads import (
+    decode_json_body,
+    extract_json_error_message,
+    json_body_bytes,
+)
 
 
 class CliBackendApiClient:
@@ -84,7 +84,7 @@ class CliBackendApiClient:
 
     def _request(self, method: str, path: str, payload: JSONValue | None) -> JSONValue:
         url = join_url(self._context.base_url, path)
-        request_body = None if payload is None else json_bytes(payload)
+        request_body = None if payload is None else json_body_bytes(payload)
         headers: HttpHeaders = {"Accept": "application/json"}
         if request_body is not None:
             headers["Content-Type"] = "application/json"
@@ -105,9 +105,9 @@ class CliBackendApiClient:
             reason = str(exc.reason)
             raise CliRequestError(0, reason) from exc
         if status_code < 200 or status_code >= 300:
-            message = error_message(response_body)
+            message = extract_json_error_message(response_body)
             raise CliRequestError(status_code, message)
-        response = decode_json(response_body)
+        response = decode_json_body(response_body)
         return response
 
 

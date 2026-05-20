@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from app.memory.domain.contracts.context_contracts import (
     ContextAccessCreate,
@@ -65,6 +66,10 @@ class IContextRepository(ABC):
         session_id: str | None = None,
         source_agent: str | None = None,
         tag: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         include_archived: bool = False,
     ) -> tuple[list[ContextRecord], int]:
         """List contexts with filters and total count.
@@ -81,6 +86,10 @@ class IContextRepository(ABC):
             session_id: Optional session filter.
             source_agent: Optional source-agent filter.
             tag: Optional tag filter.
+            created_after: Optional inclusive created-at lower bound.
+            created_before: Optional inclusive created-at upper bound.
+            updated_after: Optional inclusive updated-at lower bound.
+            updated_before: Optional inclusive updated-at upper bound.
             include_archived: Whether archived entries are included.
 
         Returns:
@@ -207,16 +216,18 @@ class IContextRepository(ABC):
         model_name: str,
         dimensions: int,
         limit: int,
+        force: bool = False,
     ) -> list[ContextChunkRecord]:
-        """Return chunks that need embedding backfill.
+        """Return chunks that need embedding backfill or forced rebuild.
 
         Args:
             model_name: Current embedding model name.
             dimensions: Current embedding dimensions.
             limit: Maximum chunks to scan.
+            force: Whether to rebuild existing embeddings even if model metadata matches.
 
         Returns:
-            Chunks missing current embedding metadata.
+            Chunks missing current embedding metadata or selected for forced rebuild.
         """
 
     @abstractmethod

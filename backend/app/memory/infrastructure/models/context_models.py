@@ -15,13 +15,13 @@ from app.memory.domain.event_enum.context_enums import (
     ContextStorageStatus,
 )
 from app.shared.infrastructure.database import Base
+from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from app.shared.types.extra_types import JSONValue
 from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
-    DateTime,
     ForeignKey,
     Integer,
     String,
@@ -73,21 +73,13 @@ class ContextORM(Base):
     context_metadata: Mapped[dict[str, JSONValue]] = mapped_column(
         "metadata", JSON, nullable=False, default=dict
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     last_accessed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        UTCDateTime(), nullable=True
     )
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    archived_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     access_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
@@ -153,9 +145,7 @@ class ContextChunkORM(Base):
     chunk_metadata: Mapped[dict[str, JSONValue]] = mapped_column(
         "metadata", JSON, nullable=False, default=dict
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
 
 
 class ContextAccessEventORM(Base):
@@ -173,7 +163,7 @@ class ContextAccessEventORM(Base):
         index=True,
     )
     accessed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, index=True
+        UTCDateTime(), nullable=False, index=True
     )
     actor_name: Mapped[str] = mapped_column(String(255), nullable=False)
     actor_type: Mapped[str] = mapped_column(String(32), nullable=False)

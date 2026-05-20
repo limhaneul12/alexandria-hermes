@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 
 import { testLibrarianProviderInBackend } from "@/lib/backend/librarians";
 import { backendFailureResponse } from "../../../_shared/backend-error-response";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+import { routeErrorPayload } from "@/lib/backend/route-errors";
+import { isRecord } from "../../../_shared/request-parsing";
 
 export async function POST(
   request: Request,
@@ -16,10 +14,10 @@ export async function POST(
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ message: "사서 인증 정보를 다시 확인하세요." }, { status: 400 });
+    return NextResponse.json(routeErrorPayload("INVALID_LIBRARIAN_PROVIDER_TEST_PAYLOAD", "Invalid librarian provider test payload."), { status: 400 });
   }
   if (!isRecord(body)) {
-    return NextResponse.json({ message: "사서 인증 정보를 다시 확인하세요." }, { status: 400 });
+    return NextResponse.json(routeErrorPayload("INVALID_LIBRARIAN_PROVIDER_TEST_PAYLOAD", "Invalid librarian provider test payload."), { status: 400 });
   }
   const testQuery = typeof body.testQuery === "string" && body.testQuery.trim()
     ? body.testQuery.trim()
@@ -28,6 +26,6 @@ export async function POST(
   try {
     return NextResponse.json(await testLibrarianProviderInBackend(providerId, testQuery));
   } catch (error) {
-    return backendFailureResponse(error, "사서 인증 검증을 완료하지 못했습니다.");
+    return backendFailureResponse(error, "Librarian provider test failed", "LIBRARIAN_PROVIDER_TEST_FAILED");
   }
 }

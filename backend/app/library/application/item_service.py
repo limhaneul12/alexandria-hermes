@@ -14,9 +14,8 @@ from app.library.domain.types.item_payload_types import (
     ItemUpdateValues,
     LibraryItemListResult,
     LibraryItemPayload,
-    LibraryItemPayloadList,
 )
-from app.shared.exceptions import NotFoundError, ValidationError
+from app.shared.exceptions import LibraryResourceNotFoundError, LibraryValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.types.types_convert_utils import (
     enum_value,
@@ -141,11 +140,11 @@ class ItemService:
             Updated item payload.
         """
         if not payload:
-            raise ValidationError("No fields to update")
+            raise LibraryValidationError("No fields to update")
 
         values = _item_update_values(payload)
         if not values:
-            raise ValidationError("No fields to update")
+            raise LibraryValidationError("No fields to update")
 
         updated = await self.item_repo.update(
             item_id,
@@ -164,7 +163,7 @@ class ItemService:
         """
         model = await self.item_repo.get(item_id)
         if model is None:
-            raise NotFoundError(f"Item not found: {item_id}")
+            raise LibraryResourceNotFoundError(f"Item not found: {item_id}")
         return model.to_dict()
 
     async def delete_item(self, item_id: str) -> None:
@@ -178,7 +177,7 @@ class ItemService:
         """
         model = await self.item_repo.get(item_id)
         if model is None:
-            raise NotFoundError(f"Item not found: {item_id}")
+            raise LibraryResourceNotFoundError(f"Item not found: {item_id}")
         await self.item_repo.delete(item_id)
 
     async def list_items(
@@ -187,7 +186,6 @@ class ItemService:
         limit: int = 100,
         offset: int = 0,
         category_id: str | None = None,
-        search_query: str | None = None,
     ) -> LibraryItemListResult:
         """List all items with optional filters.
 
@@ -196,7 +194,6 @@ class ItemService:
             limit: Page size.
             offset: Offset.
             category_id: Optional category filter.
-            search_query: Optional text filter.
 
         Returns:
             Tuple of ``(items, total_count)``.
@@ -208,7 +205,6 @@ class ItemService:
                 limit=limit,
                 offset=offset,
                 category_id=category_id,
-                search_query=search_query,
             )
         else:
             rows = await self.item_repo.list_by_type(
@@ -218,38 +214,5 @@ class ItemService:
             )
             if category_id is not None:
                 rows = [row for row in rows if row.category_id == category_id]
-            if search_query:
-                pattern = search_query.strip().lower()
-                rows = [
-                    row
-                    for row in rows
-                    if pattern in row.title.lower()
-                    or pattern in ("" if row.summary is None else row.summary).lower()
-                    or pattern in row.content.lower()
-                ]
             count = len(rows)
         return [row.to_dict() for row in rows], count
-
-    async def search(
-        self,
-        query: str,
-        item_type: ItemType | None = None,
-    ) -> LibraryItemPayloadList:
-        """Search across all items via FTS5.
-
-        Args:
-            query: Search input.
-            item_type: Optional filter.
-
-        Returns:
-            Matched item payload list.
-        """
-        if not query.strip():
-            return []
-        if item_type is not None:
-            item_type = enum_value(item_type, ItemType, "item_type")
-        rows = await self.item_repo.search(
-            query=query,
-            item_type=item_type,
-        )
-        return [row.to_dict() for row in rows]

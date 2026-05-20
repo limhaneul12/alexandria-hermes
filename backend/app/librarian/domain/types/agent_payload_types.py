@@ -19,7 +19,7 @@ class AgentCreatePayload(TypedDict, closed=True):
     preferred_librarian_model: str | None
     max_librarian_agents: int
     librarian_role_prompt: str | None
-    librarian_role: LibrarianProfileRole
+    librarian_role: LibrarianProfileRole | str
     librarian_specialties: list[str]
     librarian_routing_priority: int
     librarian_enabled: bool
@@ -38,7 +38,7 @@ class AgentUpdatePayload(TypedDict, total=False, closed=True):
     preferred_librarian_model: str | None
     max_librarian_agents: int
     librarian_role_prompt: str | None
-    librarian_role: LibrarianProfileRole
+    librarian_role: LibrarianProfileRole | str
     librarian_specialties: list[str]
     librarian_routing_priority: int
     librarian_enabled: bool

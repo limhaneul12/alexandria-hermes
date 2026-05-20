@@ -18,3 +18,15 @@ class FolderEnsureResult(StrictSchemaModel):
     created: list[str]
     existing: list[str]
     folder_id: str
+
+
+class LibraryListQuery(StrictSchemaModel):
+    """Query-string contract for the library list/search CLI command."""
+
+    limit: int
+    offset: int
+    item_type: str | None = None
+    category_id: str | None = None
+    q: str | None = None
+    content_mode: str | None = None
+    search_fields: tuple[str, ...] | None = None

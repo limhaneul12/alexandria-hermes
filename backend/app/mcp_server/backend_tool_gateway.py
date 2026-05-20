@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
 from urllib.parse import quote
 
 from app.librarian.interface.schemas.librarian.hermes_collaboration_schemas import (
@@ -22,9 +21,18 @@ from app.library.domain.event_enum.search_enums import SearchContentMode
 from app.library.domain.event_enum.skill_enums import RiskLevel
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.library.interface.schemas.skill.request_schemas import AgentSubmitSkillRequest
-from app.library.interface.schemas.usage.usage_schema import UsageRecordRequest
+from app.library.interface.schemas.usage.usage_schema import (
+    UsageRecordRequest,
+)
 from app.mcp_server.backend_api_client import AlexandriaApiClient
 from app.mcp_server.mcp_protocol_enums import McpContextTag
+from app.mcp_server.tools.harness_tools import (
+    alexandria_archive_harness as _alexandria_archive_harness,
+    alexandria_capture_harness as _alexandria_capture_harness,
+    alexandria_check_harness as _alexandria_check_harness,
+    alexandria_get_harness as _alexandria_get_harness,
+    alexandria_list_harnesses as _alexandria_list_harnesses,
+)
 from app.mcp_server.tools.memory_compact_tools import (
     alexandria_get_current_memory_compact as _alexandria_get_current_memory_compact,
     alexandria_get_memory_compact as _alexandria_get_memory_compact,
@@ -41,11 +49,11 @@ from app.memory.interface.schemas.context.context_schema import (
     ContextCaptureRequest,
     ContextPrepareCompactRequest,
     ContextSearchRequest,
-    HarnessCaptureRequest,
 )
+from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
-from pydantic import BaseModel
+from app.shared.utils.usage_feedback import usage_feedback_value
 
 DEFAULT_CONTEXT_SEARCH_LIMIT = 5
 DEFAULT_CONTEXT_SEARCH_STRATEGY = RagStrategy.HYBRID
@@ -59,6 +67,11 @@ DEFAULT_LIBRARY_SEARCH_LIMIT = 20
 alexandria_get_current_memory_compact = _alexandria_get_current_memory_compact
 alexandria_get_memory_compact = _alexandria_get_memory_compact
 alexandria_list_memory_compact_artifacts = _alexandria_list_memory_compact_artifacts
+alexandria_capture_harness = _alexandria_capture_harness
+alexandria_check_harness = _alexandria_check_harness
+alexandria_list_harnesses = _alexandria_list_harnesses
+alexandria_get_harness = _alexandria_get_harness
+alexandria_archive_harness = _alexandria_archive_harness
 
 
 async def alexandria_search(
@@ -99,7 +112,7 @@ async def alexandria_search(
         user_id=user_id,
         session_id=session_id,
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     if payload.get("include_scopes") == []:
         del payload["include_scopes"]
     response = await client.post("/memory/contexts/retrieval/search", payload)
@@ -223,87 +236,8 @@ async def alexandria_capture_context(
         metadata={},
         tags=[McpContextTag.MCP.value, McpContextTag.CAPTURE.value],
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     response = await client.post("/memory/contexts/capture", payload)
-    return response
-
-
-async def alexandria_capture_harness(
-    client: AlexandriaApiClient,
-    task_goal: str,
-    reusable_procedure: str,
-    summary: str | None = None,
-    project: str | None = None,
-    scope: ContextScope = ContextScope.PROJECT,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
-    source_agent: str = DEFAULT_SOURCE_AGENT,
-    environment: str | None = None,
-    trigger_context: str | None = None,
-    steps: list[str] | None = None,
-    commands: list[str] | None = None,
-    tests: list[str] | None = None,
-    failures: list[str] | None = None,
-    fixes: list[str] | None = None,
-    artifacts: list[str] | None = None,
-    recall_keywords: list[str] | None = None,
-    safety_notes: list[str] | None = None,
-) -> JSONValue:
-    """Capture an agent-owned execution harness through Context Vault.
-
-    Args:
-        client: Backend HTTP client.
-        task_goal: Goal the agent executed.
-        reusable_procedure: Procedure future agents can reuse.
-        summary: Optional summary.
-        project: Optional project scope.
-        scope: Recall-routing scope.
-        workspace_id: Optional workspace identifier.
-        agent_id: Optional agent identifier.
-        user_id: Optional user identifier.
-        session_id: Optional session identifier.
-        source_agent: Producing agent name.
-        environment: Optional environment description.
-        trigger_context: Why this harness was created.
-        steps: Ordered execution steps.
-        commands: Commands that were run.
-        tests: Tests or checks that were run.
-        failures: Failures encountered.
-        fixes: Fixes applied.
-        artifacts: Relevant artifact handles.
-        recall_keywords: Keywords for later recall.
-        safety_notes: Safety and side-effect notes.
-
-    Returns:
-        Stored HARNESS context response.
-    """
-    request = HarnessCaptureRequest(
-        task_goal=task_goal,
-        reusable_procedure=reusable_procedure,
-        summary=summary,
-        project=project,
-        scope=scope,
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        user_id=user_id,
-        session_id=session_id,
-        source_agent=source_agent,
-        environment=environment,
-        trigger_context=trigger_context,
-        steps=[] if steps is None else steps,
-        commands=[] if commands is None else commands,
-        tests=[] if tests is None else tests,
-        failures=[] if failures is None else failures,
-        fixes=[] if fixes is None else fixes,
-        artifacts=[] if artifacts is None else artifacts,
-        recall_keywords=[] if recall_keywords is None else recall_keywords,
-        safety_notes=[] if safety_notes is None else safety_notes,
-        metadata={},
-    )
-    payload = _schema_payload(request)
-    response = await client.post("/memory/contexts/harnesses/capture", payload)
     return response
 
 
@@ -355,7 +289,7 @@ async def alexandria_prepare_compact(
         session_id=session_id,
         visibility=scope,
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     response = await client.post("/memory/contexts/prepare-compact", payload)
     return response
 
@@ -554,7 +488,7 @@ async def alexandria_start_skill_acquisition(
         provider_id=provider_id,
         librarian_profile_id=librarian_profile_id,
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     response = await client.post("/librarians/skill-acquisition-jobs", payload)
     return without_oauth_sensitive_fields(response)
 
@@ -623,7 +557,7 @@ async def alexandria_complete_skill_acquisition(
         source_summary=source_summary,
         next_steps=_items_or_empty(next_steps),
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     response = await client.post(
         f"/librarians/skill-acquisition-jobs/{_path_segment(job_id)}/complete",
         payload,
@@ -678,7 +612,7 @@ async def alexandria_submit_skill_candidate(
         evidence_urls=candidate_evidence_urls,
         source_summary=source_summary,
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     response = await client.post("/library/skills/submit-by-agent", payload)
     return response
 
@@ -725,7 +659,7 @@ async def alexandria_record_usage(
         success=success,
         feedback=feedback_payload,
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     response = await client.post("/library/usage", payload)
     return response
 
@@ -757,7 +691,7 @@ async def alexandria_librarian_brief_preview(
             max_source_refs=_bounded_source_ref_limit(max_source_refs),
         ),
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     payload.pop("source_refs", None)
     response = await client.post("/librarians/brief-preview", payload)
     return response
@@ -809,7 +743,7 @@ async def alexandria_ask_librarian(
         max_librarian_agents=max_librarian_agents,
         routing_specialties=[] if routing_specialties is None else routing_specialties,
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     payload.pop("budget", None)
     payload.pop("source_refs", None)
     response = await client.post("/librarians/ask", payload)
@@ -860,7 +794,7 @@ async def alexandria_librarian_route_preview(
         max_librarian_agents=max_librarian_agents,
         routing_specialties=[] if routing_specialties is None else routing_specialties,
     )
-    payload = _schema_payload(request)
+    payload = schema_payload(request, exclude_none=True)
     payload.pop("budget", None)
     payload.pop("source_refs", None)
     response = await client.post("/librarians/route-preview", payload)
@@ -968,11 +902,6 @@ def _bounded_source_ref_limit(limit: int) -> int:
     return min(max(int(limit), 1), 100)
 
 
-def _schema_payload(schema: BaseModel) -> JSONObject:
-    payload = cast(JSONObject, schema.model_dump(mode="json", exclude_none=True))
-    return payload
-
-
 def _bounded_search_limit(limit: int) -> int:
     bounded_limit = min(max(int(limit), 1), 50)
     return bounded_limit
@@ -1014,13 +943,8 @@ def _usage_feedback(
     task_summary: str | None,
     feedback: str | None,
 ) -> JSONObject | str | None:
-    if project is None and task_summary is None:
-        return feedback
-    payload: JSONObject = {}
-    if project is not None:
-        payload["project"] = project
-    if task_summary is not None:
-        payload["task_summary"] = task_summary
-    if feedback is not None:
-        payload["comment"] = feedback
-    return payload
+    return usage_feedback_value(
+        project=project,
+        task_summary=task_summary,
+        feedback=feedback,
+    )

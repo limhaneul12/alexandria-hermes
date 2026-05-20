@@ -19,6 +19,7 @@ from app.library.domain.event_enum.skill_enums import RiskLevel
 from app.library.interface.schemas.item.item_search_schema import ItemSearchResponse
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARY_ROUTE_EXCEPTION_MAPPING
+from app.shared.schemas.datetime_schemas import AwareTimestamp
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
@@ -52,6 +53,8 @@ async def search_library_candidates(
     source_type: SourceType | None = Query(default=None),
     created_by_type: CreatedByType | None = Query(default=None),
     created_by_name: str | None = Query(default=None),
+    updated_after: AwareTimestamp | None = Query(default=None),
+    updated_before: AwareTimestamp | None = Query(default=None),
     search_fields: list[str] | None = Query(default=None),
     strategy: SearchStrategy = Query(default=SearchStrategy.DEFAULT),
     content_mode: SearchContentMode = Query(default=SearchContentMode.CANDIDATE),
@@ -78,6 +81,8 @@ async def search_library_candidates(
         source_type: Optional item source filter.
         created_by_type: Optional creator type filter.
         created_by_name: Optional creator display name filter.
+        updated_after: Optional inclusive updated-at lower bound.
+        updated_before: Optional inclusive updated-at upper bound.
         search_fields: Optional field hints for search strategy.
         strategy: Search strategy hint.
         content_mode: Content mode, restricted to candidate.
@@ -103,6 +108,8 @@ async def search_library_candidates(
         source_type=source_type,
         created_by_type=created_by_type,
         created_by_name=created_by_name,
+        updated_after=updated_after,
+        updated_before=updated_before,
         search_fields=_split_query_values(search_fields),
         strategy=strategy,
         content_mode=content_mode,

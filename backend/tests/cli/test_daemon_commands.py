@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import io
-import json
 from pathlib import Path
 
 from app.cli import run
+from app.shared.serialization.orjson_codec import loads_json
 
 
 def _json_cli(argv: list[str]) -> tuple[int, dict[str, object], str]:
@@ -15,7 +15,7 @@ def _json_cli(argv: list[str]) -> tuple[int, dict[str, object], str]:
 
     exit_code = run(["--json", *argv], stdout=stdout, stderr=stderr)
 
-    payload = json.loads(stdout.getvalue()) if stdout.getvalue().strip() else {}
+    payload = loads_json(stdout.getvalue()) if stdout.getvalue().strip() else {}
     return exit_code, payload, stderr.getvalue()
 
 

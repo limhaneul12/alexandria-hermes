@@ -16,32 +16,36 @@ async def chunks_missing_embeddings(
     model_name: str,
     dimensions: int,
     limit: int,
+    force: bool = False,
 ) -> list[ContextChunkRecord]:
-    """Return chunks missing embeddings for the current model.
+    """Return chunks requiring embedding reindex for the current model.
 
     Args:
         session: Active async database session.
         model_name: Current embedding model name.
         dimensions: Current embedding dimensions.
         limit: Maximum chunks to scan.
+        force: Whether to rebuild all active chunk embeddings even if model metadata matches.
 
     Returns:
-        Chunks requiring embedding backfill.
+        Chunks requiring embedding backfill or forced rebuild.
     """
-    rows = await session.execute(
+    statement = (
         select(ContextChunkORM)
         .join(ContextORM, ContextORM.id == ContextChunkORM.context_id)
         .where(ContextORM.is_archived.is_(False))
-        .where(
+        .order_by(ContextChunkORM.created_at.asc())
+        .limit(limit)
+    )
+    if not force:
+        statement = statement.where(
             or_(
                 ContextChunkORM.embedding.is_(None),
                 ContextChunkORM.embedding_model != model_name,
                 ContextChunkORM.embedding_dimensions != dimensions,
             )
         )
-        .order_by(ContextChunkORM.created_at.asc())
-        .limit(limit)
-    )
+    rows = await session.execute(statement)
     chunks = [map_chunk_row(row) for row in rows.scalars().all()]
     return chunks
 

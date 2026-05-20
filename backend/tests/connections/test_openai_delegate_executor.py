@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import base64
-import json
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from typing import cast
 
 import anyio
@@ -37,6 +37,7 @@ from app.librarian.domain.event_enum.collaboration_enums import (
     LibrarianDelegateKind,
     LibrarianDelegateStatus,
 )
+from app.shared.serialization.orjson_codec import dumps_json
 from app.shared.types.extra_types import JSONValue
 from openai import OpenAIError
 from openai.types.responses import ResponseTextDeltaEvent
@@ -120,6 +121,49 @@ class FakeOpenAIClient:
         self.responses = FakeResponsesResource()
 
 
+class BlockingResponsesResource(FakeResponsesResource):
+    """SDK responses fake that blocks until an async task releases it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = Event()
+        self._release = Event()
+        self.released_by_async_task = False
+
+    def create(
+        self,
+        *,
+        model: str,
+        input: str | list[dict[str, JSONValue]],
+        instructions: str,
+        store: bool | None = None,
+        stream: bool = False,
+    ) -> FakeResponse | list[ResponseTextDeltaEvent]:
+        self.calls.append(
+            {
+                "model": model,
+                "input": input,
+                "instructions": instructions,
+                "store": store,
+                "stream": stream,
+            }
+        )
+        self.started.set()
+        self.released_by_async_task = self._release.wait(timeout=0.2)
+        return FakeResponse("Provider-backed answer after blocking boundary")
+
+    def release(self) -> None:
+        """Release the blocked SDK boundary call."""
+        self._release.set()
+
+
+class BlockingOpenAIClient:
+    """Minimal SDK client whose responses resource blocks."""
+
+    def __init__(self) -> None:
+        self.responses = BlockingResponsesResource()
+
+
 class FailingResponsesResource:
     """SDK responses resource that fails at the provider boundary."""
 
@@ -201,6 +245,90 @@ def test_openai_api_key_executor_sends_prompt_to_responses_api() -> None:
         assert "Return concise implementation guidance." in str(call["instructions"])
         assert result.summary == "Provider-backed answer without secrets"
         assert "sk-secret-value" not in repr(result)
+
+    anyio.run(scenario)
+
+
+def test_openai_api_key_executor_offloads_blocking_sdk_call_from_event_loop() -> None:
+    async def scenario() -> None:
+        client = BlockingOpenAIClient()
+
+        def build_client(config: OpenAIClientConfig):
+            return client
+
+        secret_repo = FakeSecretRepository(
+            {
+                ("openai-main", ProviderSecretKey.API_KEY.value): "sk-secret-value",
+            }
+        )
+        executor = OpenAIProviderDelegateExecutor(
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+        results: list[LibrarianDelegateResult] = []
+
+        async def execute_delegate() -> None:
+            result = await executor.execute(
+                command=_command("Summarize blocking provider risk"),
+                plan=_plan(
+                    _provider("openai-main", ProviderType.OPENAI, AuthType.API_KEY)
+                ),
+                fallback=_fallback("openai-main"),
+            )
+            results.append(result)
+
+        async def release_when_sdk_call_starts() -> None:
+            while not client.responses.started.is_set():
+                await anyio.sleep(0)
+            client.responses.release()
+
+        with anyio.fail_after(1):
+            async with anyio.create_task_group() as task_group:
+                task_group.start_soon(execute_delegate)
+                task_group.start_soon(release_when_sdk_call_starts)
+
+        assert client.responses.released_by_async_task is True
+        assert [result.summary for result in results] == [
+            "Provider-backed answer after blocking boundary"
+        ]
+
+    anyio.run(scenario)
+
+
+def test_openai_api_key_executor_includes_task_summary_in_provider_prompt() -> None:
+    """Provider delegates should receive searched inventory context, not just refs."""
+
+    async def scenario() -> None:
+        client = FakeOpenAIClient()
+
+        def build_client(config: OpenAIClientConfig):
+            return client
+
+        secret_repo = FakeSecretRepository(
+            {
+                ("openai-main", ProviderSecretKey.API_KEY.value): "sk-secret-value",
+            }
+        )
+        executor = OpenAIProviderDelegateExecutor(
+            secret_repo=cast(IProviderSecretRepository, secret_repo),
+            openai_client_builder=cast(OpenAIClientBuilder, build_client),
+        )
+        await executor.execute(
+            command=_command(
+                "hermes와 관련된 skill은 몇개정도 있지?",
+                task_summary=(
+                    "Direct search inventory total count: 42.\n"
+                    "Visible top 5 representative items for count/list/inventory answers."
+                ),
+            ),
+            plan=_plan(_provider("openai-main", ProviderType.OPENAI, AuthType.API_KEY)),
+            fallback=_fallback("openai-main"),
+        )
+
+        provider_prompt = str(client.responses.calls[0]["input"])
+        assert "Direct search inventory total count: 42." in provider_prompt
+        assert "Visible top 5 representative items" in provider_prompt
+        assert "hermes와 관련된 skill은 몇개정도 있지?" in provider_prompt
 
     anyio.run(scenario)
 
@@ -387,16 +515,20 @@ def _fake_oauth_jwt(*, account_id: str) -> str:
 
 
 def _base64_url_json(value: dict[str, str | dict[str, str]]) -> str:
-    raw = json.dumps(value, separators=(",", ":")).encode()
+    raw = dumps_json(value)
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def _command(prompt: str) -> HermesLibrarianAskCommand:
+def _command(
+    prompt: str,
+    *,
+    task_summary: str | None = None,
+) -> HermesLibrarianAskCommand:
     return HermesLibrarianAskCommand(
         prompt=prompt,
         agent_name="Hermes",
         project="alexandria-hermes",
-        task_summary=None,
+        task_summary=task_summary,
         delegate_to_librarian=True,
         provider_id=None,
         librarian_profile_id=None,

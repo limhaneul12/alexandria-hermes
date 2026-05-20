@@ -390,6 +390,129 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             safety_notes,
         )
 
+    @server.tool(name="alexandria_check_harness")
+    async def _tool_check_harness(
+        task_goal: str,
+        reusable_procedure: str,
+        summary: str | None = None,
+        project: str | None = None,
+        scope: ContextScope = ContextScope.PROJECT,
+        source_agent: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        environment: str | None = None,
+        trigger_context: str | None = None,
+        steps: list[str] | None = None,
+        commands: list[str] | None = None,
+        tests: list[str] | None = None,
+        failures: list[str] | None = None,
+        fixes: list[str] | None = None,
+        artifacts: list[str] | None = None,
+        recall_keywords: list[str] | None = None,
+        safety_notes: list[str] | None = None,
+    ) -> JSONValue:
+        """Validate an execution harness without saving it.
+
+        Args:
+            task_goal: Goal the harness solves.
+            reusable_procedure: Procedure future agents can reuse.
+            summary: Optional summary.
+            project: Optional project scope.
+            scope: Recall-routing scope.
+            source_agent: Producing agent name.
+            environment: Optional environment description.
+            trigger_context: Why this harness was created.
+            steps: Ordered execution steps.
+            commands: Commands that were run.
+            tests: Tests or checks that were run.
+            failures: Failures encountered.
+            fixes: Fixes applied.
+            artifacts: Relevant artifact handles.
+            recall_keywords: Keywords for later recall.
+            safety_notes: Safety and side-effect notes.
+
+        Returns:
+            Harness lint response.
+        """
+        return await backend_tool_gateway.alexandria_check_harness(
+            api_client,
+            task_goal,
+            reusable_procedure,
+            summary,
+            project,
+            scope,
+            source_agent,
+            environment,
+            trigger_context,
+            steps,
+            commands,
+            tests,
+            failures,
+            fixes,
+            artifacts,
+            recall_keywords,
+            safety_notes,
+        )
+
+    @server.tool(name="alexandria_list_harnesses")
+    async def _tool_list_harnesses(
+        project: str | None = None,
+        scope: ContextScope | None = None,
+        source_agent: str | None = None,
+        tag: str | None = None,
+        limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
+        offset: int = 0,
+        include_archived: bool = False,
+    ) -> JSONValue:
+        """List saved execution harnesses.
+
+        Args:
+            project: Optional project filter.
+            scope: Optional recall scope filter.
+            source_agent: Optional producing-agent filter.
+            tag: Optional tag filter.
+            limit: Maximum harnesses to return.
+            offset: Pagination offset.
+            include_archived: Whether archived harnesses are included.
+
+        Returns:
+            Backend harness list response.
+        """
+        return await backend_tool_gateway.alexandria_list_harnesses(
+            api_client,
+            project,
+            scope,
+            source_agent,
+            tag,
+            limit,
+            offset,
+            include_archived,
+        )
+
+    @server.tool(name="alexandria_get_harness")
+    async def _tool_get_harness(context_id: str) -> JSONValue:
+        """Read one saved execution harness.
+
+        Args:
+            context_id: Harness context identifier.
+
+        Returns:
+            Backend harness response.
+        """
+        return await backend_tool_gateway.alexandria_get_harness(api_client, context_id)
+
+    @server.tool(name="alexandria_archive_harness")
+    async def _tool_archive_harness(context_id: str) -> JSONValue:
+        """Archive one saved execution harness.
+
+        Args:
+            context_id: Harness context identifier.
+
+        Returns:
+            Archived harness response.
+        """
+        return await backend_tool_gateway.alexandria_archive_harness(
+            api_client, context_id
+        )
+
     @server.tool(name="alexandria_list_memory_compact_artifacts")
     async def _tool_list_memory_compact_artifacts(
         project: str | None = None,

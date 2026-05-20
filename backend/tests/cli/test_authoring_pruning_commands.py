@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import io
-import json
 from collections.abc import Callable
 
 import pytest
 from app.cli import HttpHeaders, run
+from app.shared.serialization.orjson_codec import dumps_json
 
 RecordedCall = tuple[str, str, bytes | None, HttpHeaders, float]
 
@@ -23,7 +23,7 @@ def _transport() -> tuple[Callable[..., tuple[int, bytes]], list[RecordedCall]]:
         timeout: float,
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
-        return 200, json.dumps({"unexpected": True}).encode()
+        return 200, dumps_json({"unexpected": True})
 
     return fake_transport, calls
 

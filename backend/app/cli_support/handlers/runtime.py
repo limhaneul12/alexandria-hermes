@@ -6,7 +6,7 @@ from os import environ as process_environment
 from pathlib import Path
 
 import uvicorn
-from app.cli_support.contracts.command_contracts import ServeCommand
+from app.cli_support.contracts.runtime_command_contracts import ServeCommand
 
 
 def handle_serve(command: ServeCommand) -> int:

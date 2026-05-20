@@ -2,34 +2,35 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Final
 
 from app.shared.types.extra_types import JSONObject, JSONValue
 
-OAUTH_SENSITIVE_RESPONSE_KEYS: Final[frozenset[str]] = frozenset(
-    {
-        "access_token",
-        "api_key",
-        "client_secret",
-        "device_code",
-        "id_token",
-        "oauth_access_token",
-        "oauth_device_code",
-        "oauth_refresh_token",
-        "refresh_token",
-        "secret",
-        "secrets",
-        "token",
-        "tokens",
-    }
-)
 
-OAUTH_DEVICE_USER_INSTRUCTION_KEYS: Final[frozenset[str]] = frozenset(
-    {
-        "user_code",
-        "verification_uri_complete",
-    }
-)
+class OAuthSensitiveResponseKey(StrEnum):
+    """OAuth response fields that must not be exposed to agents."""
+
+    ACCESS_TOKEN = "access_token"
+    API_KEY = "api_key"
+    CLIENT_SECRET = "client_secret"
+    DEVICE_CODE = "device_code"
+    ID_TOKEN = "id_token"
+    OAUTH_ACCESS_TOKEN = "oauth_access_token"
+    OAUTH_DEVICE_CODE = "oauth_device_code"
+    OAUTH_REFRESH_TOKEN = "oauth_refresh_token"
+    REFRESH_TOKEN = "refresh_token"
+    SECRET = "secret"
+    SECRETS = "secrets"
+    TOKEN = "token"
+    TOKENS = "tokens"
+
+
+class OAuthDeviceUserInstructionKey(StrEnum):
+    """Device-flow instruction fields hidden except for local operator UX."""
+
+    USER_CODE = "user_code"
+    VERIFICATION_URI_COMPLETE = "verification_uri_complete"
 
 
 def _normalized_key(key: str) -> str:
@@ -45,10 +46,10 @@ def _normalized_key(key: str) -> str:
 
 
 _OAUTH_SENSITIVE_NORMALIZED_KEYS: Final[frozenset[str]] = frozenset(
-    {_normalized_key(key) for key in OAUTH_SENSITIVE_RESPONSE_KEYS}
+    _normalized_key(key.value) for key in OAuthSensitiveResponseKey
 )
 _OAUTH_DEVICE_USER_INSTRUCTION_NORMALIZED_KEYS: Final[frozenset[str]] = frozenset(
-    {_normalized_key(key) for key in OAUTH_DEVICE_USER_INSTRUCTION_KEYS}
+    _normalized_key(key.value) for key in OAuthDeviceUserInstructionKey
 )
 
 

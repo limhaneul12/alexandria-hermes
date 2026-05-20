@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.library.domain.entities.item_search_hit import (
     ItemSearchCandidate,
     ItemSearchHit,
@@ -27,8 +29,9 @@ from app.library.domain.repositories.item_repository import IItemRepository
 from app.library.domain.types.item_search_payload_types import (
     ItemSearchResultPayload,
 )
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibraryValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
+from app.shared.utils.text_metrics import extract_word_tokens
 
 DEFAULT_SEARCH_LIMIT = 20
 MAX_SEARCH_LIMIT = 100
@@ -62,6 +65,8 @@ class ItemSearchService:
         source_type: SourceType | None = None,
         created_by_type: CreatedByType | None = None,
         created_by_name: str | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
         search_fields: list[str] | None = None,
         strategy: SearchStrategy = SearchStrategy.DEFAULT,
         content_mode: SearchContentMode = SearchContentMode.CANDIDATE,
@@ -84,6 +89,8 @@ class ItemSearchService:
             source_type: Optional source type filter.
             created_by_type: Optional creator kind filter.
             created_by_name: Optional creator display-name filter.
+            updated_after: Optional inclusive updated-at lower bound.
+            updated_before: Optional inclusive updated-at upper bound.
             search_fields: Optional field hints for future strategy selection.
         strategy: Candidate search strategy.
             content_mode: Broad search content mode; only candidate is allowed.
@@ -94,7 +101,7 @@ class ItemSearchService:
             Candidate search result payload.
         """
         if content_mode is not SearchContentMode.CANDIDATE:
-            raise ValidationError(
+            raise LibraryValidationError(
                 "Broad library search only returns candidate content; "
                 "use selected item endpoints for full content."
             )
@@ -118,6 +125,8 @@ class ItemSearchService:
             source_type=source_type,
             created_by_type=created_by_type,
             created_by_name=created_by_name,
+            updated_since=updated_after,
+            updated_before=updated_before,
             search_fields=normalized_search_fields,
             limit=bounded_limit,
             offset=bounded_offset,
@@ -170,11 +179,13 @@ def _resolve_search_fields(
         try:
             field = LibrarySearchField.from_request_value(value)
         except ValueError as error:
-            raise ValidationError(
+            raise LibraryValidationError(
                 f"Unsupported library search field: {value}"
             ) from error
         if strategy is SearchStrategy.METADATA and field is LibrarySearchField.CONTENT:
-            raise ValidationError("metadata search does not include content body")
+            raise LibraryValidationError(
+                "metadata search does not include content body"
+            )
         if field not in normalized:
             normalized.append(field)
     return tuple(normalized)
@@ -226,7 +237,7 @@ def _match_explanation(
 ) -> tuple[list[str], list[str]]:
     if query is None or not query.strip():
         return [], []
-    tokens = [token.lower() for token in query.split() if token.strip()]
+    tokens = [token.lower() for token in extract_word_tokens(query)]
     why: list[str] = []
     highlights: list[str] = []
     _append_match("title", candidate.title, tokens, why, highlights)

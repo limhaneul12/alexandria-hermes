@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import platform
+import shlex
 from pathlib import Path
+from xml.sax.saxutils import escape
 
-from app.cli_support.daemon.launchd_service import render_launchd_plist
 from app.cli_support.daemon.service_contracts import DaemonResult, ServiceDefinition
-from app.cli_support.daemon.systemd_service import render_systemd_unit
 from app.cli_support.setup.local_state import resolve_local_state
 
 SERVICE_NAME = "alexandria-hermes-backend"
@@ -142,6 +142,89 @@ def _write_service_file(path: Path, service: ServiceDefinition) -> None:
         else render_systemd_unit(service)
     )
     path.write_text(rendered, encoding="utf-8")
+
+
+def render_launchd_plist(service: ServiceDefinition) -> str:
+    """Render a launchd plist for `alexandria-hermes serve`.
+
+    Args:
+        service: Service definition with paths and network binding.
+
+    Returns:
+        XML plist text.
+    """
+    args = [
+        service.cli_command,
+        "serve",
+        "--env-file",
+        str(service.env_file),
+        "--host",
+        service.host,
+        "--port",
+        str(service.port),
+    ]
+    program_arguments = "\n".join(
+        f"        <string>{escape(argument)}</string>" for argument in args
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- alexandria-hermes serve --env-file {escape(str(service.env_file))} --host {escape(service.host)} --port {service.port} -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.alexandria-hermes.backend</string>
+    <key>ProgramArguments</key>
+    <array>
+{program_arguments}
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{escape(str(service.log_path))}</string>
+    <key>StandardErrorPath</key>
+    <string>{escape(str(service.log_path))}</string>
+</dict>
+</plist>
+"""
+
+
+def render_systemd_unit(service: ServiceDefinition) -> str:
+    """Render a systemd user unit for `alexandria-hermes serve`.
+
+    Args:
+        service: Service definition with paths and network binding.
+
+    Returns:
+        systemd unit text.
+    """
+    exec_start = " ".join(
+        [
+            shlex.quote(service.cli_command),
+            "serve",
+            "--env-file",
+            shlex.quote(str(service.env_file)),
+            "--host",
+            shlex.quote(service.host),
+            "--port",
+            str(service.port),
+        ]
+    )
+    return f"""[Unit]
+Description=Alexandria-Hermes backend SQLite daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={exec_start}
+Restart=on-failure
+StandardOutput=append:{service.log_path}
+StandardError=append:{service.log_path}
+
+[Install]
+WantedBy=default.target
+"""
 
 
 def _commands(

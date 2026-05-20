@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -12,6 +11,7 @@ from app.platform.security.operator_api_key import (
     OPERATOR_API_KEY_HEADER,
     require_operator_api_key,
 )
+from app.shared.serialization.orjson_codec import loads_json
 from fastapi.testclient import TestClient
 from tests.shared.provider_overrides import override_library_provider
 
@@ -147,7 +147,7 @@ def test_compose_defaults_bind_service_ports_to_localhost() -> None:
 
 def test_frontend_dev_scripts_keep_operator_proxy_local_by_default() -> None:
     """Local Next.js scripts should not expose the operator-key proxy to LAN."""
-    package_json = json.loads(
+    package_json = loads_json(
         (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
     )
     scripts = package_json["scripts"]

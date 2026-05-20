@@ -20,7 +20,7 @@ from app.library.domain.event_enum.item_enums import (
     ItemType,
     SourceType,
 )
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibraryValidationError
 from app.shared.types.types_convert_utils import enum_value
 
 
@@ -104,7 +104,7 @@ def build_librarian_skill_create_command(
         Item-service create command for librarian-created skills.
     """
     if not created_by_name.strip():
-        raise ValidationError("created_by_name is required")
+        raise LibraryValidationError("created_by_name is required")
 
     item_payload = build_librarian_skill_item_payload(
         generated=generated,
@@ -175,6 +175,6 @@ def _candidate_evidence_urls(fields: SkillCreateFields) -> list[str]:
 
 def _validate_required_source_fields(fields: SkillCreateFields) -> None:
     if not fields.purpose.strip():
-        raise ValidationError("purpose is required")
+        raise LibraryValidationError("purpose is required")
     if not fields.created_by_name.strip():
-        raise ValidationError("created_by_name is required")
+        raise LibraryValidationError("created_by_name is required")

@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import cast
 
-from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.event_enum.search_enums import LibrarySearchField
 from app.library.infrastructure.models.item_models import LibraryItemORM
 from app.shared.types.extra_types import JSONValue
+from app.shared.utils.text_metrics import extract_word_tokens
 from sqlalchemy import Select, bindparam, column, delete, func, insert, select, table
 from sqlalchemy.sql.dml import Delete, Insert
 from sqlalchemy.sql.elements import ColumnElement
 
-FTS_TOKEN_PATTERN = re.compile(r"\w+")
 CONTENT_DETAIL_KEYS = frozenset(
     (
         "body",
@@ -35,9 +33,8 @@ ITEM_SEARCH_FTS_TABLE = table(
     column("tags"),
     column("details"),
 )
-type ItemFtsRow = tuple[str]
 type ItemCandidateFtsRow = tuple[str, float]
-type ItemFtsStatement = Select[ItemFtsRow] | Select[ItemCandidateFtsRow]
+type ItemFtsStatement = Select[ItemCandidateFtsRow]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,13 +72,7 @@ class ItemFtsQuery:
     """SQLAlchemy statement and parameters for a normalized FTS search."""
 
     statement: ItemFtsStatement
-    parameters: dict[str, str | None]
-
-
-def _details_from_item(item: LibraryItemORM) -> dict[str, JSONValue]:
-    details = item.details
-    item_details = details if isinstance(details, dict) else {}
-    return item_details
+    parameters: dict[str, str]
 
 
 def _tags_text_from(details: dict[str, JSONValue], item: LibraryItemORM) -> str:
@@ -141,7 +132,7 @@ def build_item_fts_payload(item: LibraryItemORM) -> ItemFtsPayload:
     Returns:
         ItemFtsPayload: Value produced by build_item_fts_payload.
     """
-    details = _details_from_item(item)
+    details = item.details
     payload = ItemFtsPayload(
         item_id=item.id,
         item_type=item.item_type,
@@ -191,44 +182,10 @@ def normalize_item_fts_query(query: str) -> str | None:
     Returns:
         FTS5 query string with literal prefix tokens, or None when no tokens exist.
     """
-    tokens = FTS_TOKEN_PATTERN.findall(query.strip())
+    tokens = extract_word_tokens(query.strip())
     if not tokens:
         return None
     return " ".join(f'"{token}"*' for token in tokens)
-
-
-def build_item_fts_query(
-    query: str, item_type: ItemType | None = None
-) -> ItemFtsQuery | None:
-    """Build a safe FTS query from raw user search text.
-
-    Args:
-        query [str]: Value supplied to build_item_fts_query.
-        item_type [ItemType | None]: Value supplied to build_item_fts_query.
-
-    Returns:
-        ItemFtsQuery | None: Value produced by build_item_fts_query.
-    """
-    normalized = normalize_item_fts_query(query)
-    if normalized is None:
-        return None
-
-    fts_table = ITEM_SEARCH_FTS_TABLE
-    fts_match_target = fts_table.table_valued()
-    statement = select(fts_table.c.item_id).where(
-        fts_match_target.op("MATCH")(bindparam("query"))
-    )
-    if item_type is not None:
-        statement = statement.where(fts_table.c.item_type == bindparam("item_type"))
-
-    fts_query = ItemFtsQuery(
-        statement=cast(Select[ItemFtsRow], statement),
-        parameters={
-            "query": normalized,
-            "item_type": item_type.value if item_type is not None else None,
-        },
-    )
-    return fts_query
 
 
 def build_item_candidate_fts_query(
@@ -262,9 +219,6 @@ def build_item_candidate_fts_query(
     ).where(fts_match_target.op("MATCH")(bindparam("query")))
     fts_query = ItemFtsQuery(
         statement=cast(Select[ItemCandidateFtsRow], statement),
-        parameters={
-            "query": field_scoped_query,
-            "item_type": None,
-        },
+        parameters={"query": field_scoped_query},
     )
     return fts_query

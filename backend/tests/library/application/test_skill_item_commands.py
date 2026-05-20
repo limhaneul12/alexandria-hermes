@@ -19,7 +19,7 @@ from app.library.domain.event_enum.item_enums import (
     SourceType,
 )
 from app.library.domain.event_enum.skill_enums import RiskLevel
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibraryValidationError
 
 
 def _skill_create_fields(
@@ -122,7 +122,7 @@ def test_skill_create_command_rejects_blank_required_fields(
     message: str,
 ) -> None:
     """Skill command builders should preserve required source field validation."""
-    with pytest.raises(ValidationError, match=message):
+    with pytest.raises(LibraryValidationError, match=message):
         build_agent_skill_create_command(
             _skill_create_fields(
                 purpose=purpose,
@@ -165,7 +165,7 @@ def test_librarian_skill_create_command_preserves_librarian_source_contract() ->
 
 def test_librarian_skill_create_command_rejects_blank_creator_name() -> None:
     """Librarian skill command should preserve creator name validation."""
-    with pytest.raises(ValidationError, match="created_by_name is required"):
+    with pytest.raises(LibraryValidationError, match="created_by_name is required"):
         build_librarian_skill_create_command(
             generated=CreateSkillCandidateResult(
                 title="Generated FastAPI skill",

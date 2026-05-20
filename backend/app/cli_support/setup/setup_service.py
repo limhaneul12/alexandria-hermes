@@ -5,15 +5,17 @@ from __future__ import annotations
 import secrets
 from pathlib import Path
 
-from app.cli_support.contracts.command_contracts import SetupCommand
-from app.cli_support.hermes.asset_sources import (
+from app.cli_support.contracts.runtime_command_contracts import (
+    SetupCommand,
+    SetupRuntimeMode,
+)
+from app.cli_support.setup.local_state import AlexandriaLocalState, resolve_local_state
+from app.cli_support.setup.setup_schemas import HermesAssetsSetupSummary, SetupSummary
+from app.cli_support.support.hermes.install.asset_sources import (
     load_alexandria_prompt_sources,
     load_alexandria_skill_source,
 )
-from app.cli_support.hermes.policy_files import default_policy_yaml
-from app.cli_support.setup.local_state import AlexandriaLocalState, resolve_local_state
-from app.cli_support.setup.setup_schemas import HermesAssetsSetupSummary, SetupSummary
-from app.cli_support.typer_commands.command_choices import SetupRuntimeMode
+from app.cli_support.support.hermes.install.policy_files import default_policy_yaml
 from app.shared.exceptions.cli_exceptions import CliInputError
 
 ASSET_SKILL_TARGET = "skills/alexandria-hermes/alexandria-library/SKILL.md"

@@ -6,20 +6,24 @@ import sys
 from pathlib import Path
 
 from app.cli_support.argument_values import bounded_limit, optional_text
-from app.cli_support.contracts.command_contracts import (
-    ContextRecallCommand,
+from app.cli_support.contracts.library_command_contracts import (
     FoldersCreateCommand,
     PromptsUseCommand,
 )
-from app.cli_support.json_payloads import schema_payload
+from app.cli_support.contracts.memory_command_contracts import (
+    ContextRecallCommand,
+    HarnessCaptureCommand,
+)
 from app.library.domain.event_enum.item_enums import ItemType
 from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.library.interface.schemas.category.category_schema import CategoryCreateRequest
 from app.library.interface.schemas.usage.usage_schema import UsageRecordRequest
 from app.memory.interface.schemas.context.context_schema import (
     ContextSearchRequest,
+    HarnessCaptureRequest,
 )
 from app.shared.exceptions.cli_exceptions import CliInputError
+from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject
 
 
@@ -70,6 +74,42 @@ def context_search_payload(command: ContextRecallCommand) -> JSONObject:
     payload = schema_payload(request, exclude_none=True)
     if payload.get("include_scopes") == []:
         del payload["include_scopes"]
+    return payload
+
+
+def harness_capture_payload(command: HarnessCaptureCommand) -> JSONObject:
+    """Map a harness command to the backend HARNESS capture contract.
+
+    Args:
+        command: CLI command contract for harness capture or check.
+
+    Returns:
+        JSON-compatible harness request payload.
+    """
+    procedure = content_or_file(
+        command.reusable_procedure,
+        command.reusable_procedure_file,
+        "reusable procedure",
+    )
+    request = HarnessCaptureRequest(
+        task_goal=command.task_goal,
+        reusable_procedure=procedure,
+        summary=optional_text(command.summary),
+        project=optional_text(command.project),
+        scope=command.scope,
+        source_agent=command.source_agent,
+        environment=optional_text(command.environment),
+        trigger_context=optional_text(command.trigger_context),
+        steps=command.steps,
+        commands=command.commands,
+        tests=command.tests,
+        failures=command.failures,
+        fixes=command.fixes,
+        artifacts=command.artifacts,
+        recall_keywords=command.recall_keywords,
+        safety_notes=command.safety_notes,
+    )
+    payload = schema_payload(request, exclude_none=True)
     return payload
 
 

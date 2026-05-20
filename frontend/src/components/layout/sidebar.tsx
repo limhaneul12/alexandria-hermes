@@ -27,10 +27,11 @@ type ActiveTarget =
   | "librarians"
   | "settings"
   | "contexts"
+  | "harnesses"
   | "memory-compacts";
 
 type NavItem = { labelKey: TranslationKey; href: string; icon: LucideIcon; active: ActiveTarget };
-type NavSection = { titleKey: TranslationKey | "libraryStatic" | "memoryStatic"; items: NavItem[] };
+type NavSection = { titleKey: TranslationKey | "libraryStatic"; items: NavItem[] };
 
 const sections: NavSection[] = [
   {
@@ -43,9 +44,10 @@ const sections: NavSection[] = [
     ],
   },
   {
-    titleKey: "memoryStatic",
+    titleKey: "longTermMemory",
     items: [
       { labelKey: "contextVault", href: "/contexts", icon: ScrollText, active: "contexts" },
+      { labelKey: "harnessGuidebook", href: "/harnesses", icon: BookOpen, active: "harnesses" },
       { labelKey: "memoryCompacts", href: "/memory-compacts", icon: BookOpen, active: "memory-compacts" },
     ],
   },
@@ -67,7 +69,6 @@ const sections: NavSection[] = [
 
 function sectionTitle(language: Language, key: NavSection["titleKey"]) {
   if (key === "libraryStatic") return t(language, "library");
-  if (key === "memoryStatic") return "장기기억";
   return t(language, key);
 }
 
@@ -80,6 +81,7 @@ function isActive(pathname: string, active: ActiveTarget) {
   if (active === "settings") return pathname === "/settings";
   if (active === "librarians") return pathname === "/settings/librarians";
   if (active === "contexts") return pathname.startsWith("/contexts");
+  if (active === "harnesses") return pathname.startsWith("/harnesses");
   if (active === "memory-compacts") return pathname.startsWith("/memory-compacts");
   return false;
 }

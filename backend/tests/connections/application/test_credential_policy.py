@@ -4,22 +4,25 @@ from __future__ import annotations
 
 import pytest
 from app.connections.application.librarians.credential_policy import (
+    OPENAI_CODEX_OAUTH_ALLOWED_HOSTS,
+    OPENAI_CODEX_OAUTH_PROTECTED_CONFIG_KEYS,
+    OPENAI_CODEX_OAUTH_URL_KEYS,
     OpenAICodexOAuthAllowedHost,
     OpenAICodexOAuthAllowedPath,
     OpenAICodexOAuthConfigKey,
-    OpenAICodexOAuthPolicy,
     ensure_openai_codex_oauth_config_is_safe,
+    openai_codex_oauth_allowed_paths_for,
     openai_codex_oauth_config_has_protected_change,
 )
 from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
-from app.shared.exceptions import UnsupportedProviderError
+from app.shared.exceptions import ConnectionsProviderUnsupportedError
 from app.shared.types.extra_types import JSONObject
 
 
 def test_openai_codex_oauth_policy_groups_config_keys_as_enums() -> None:
     """OAuth config routing policy should expose typed enum-owned key groups."""
 
-    assert OpenAICodexOAuthPolicy.url_keys() == (
+    assert OPENAI_CODEX_OAUTH_URL_KEYS == (
         OpenAICodexOAuthConfigKey.DEVICE_AUTHORIZATION_URL,
         OpenAICodexOAuthConfigKey.DEVICE_TOKEN_URL,
         OpenAICodexOAuthConfigKey.ISSUER,
@@ -27,7 +30,7 @@ def test_openai_codex_oauth_policy_groups_config_keys_as_enums() -> None:
         OpenAICodexOAuthConfigKey.TOKEN_URL,
         OpenAICodexOAuthConfigKey.VERIFICATION_URI,
     )
-    assert OpenAICodexOAuthPolicy.protected_config_keys() == (
+    assert OPENAI_CODEX_OAUTH_PROTECTED_CONFIG_KEYS == (
         OpenAICodexOAuthConfigKey.DEVICE_AUTHORIZATION_URL,
         OpenAICodexOAuthConfigKey.DEVICE_TOKEN_URL,
         OpenAICodexOAuthConfigKey.CLIENT_ID,
@@ -42,13 +45,14 @@ def test_openai_codex_oauth_policy_groups_config_keys_as_enums() -> None:
 def test_openai_codex_oauth_policy_groups_allowed_endpoint_parts_as_enums() -> None:
     """Allowed OpenAI Codex OAuth endpoints should be enum-owned contracts."""
 
-    assert OpenAICodexOAuthPolicy.allowed_hosts() == frozenset(
-        {OpenAICodexOAuthAllowedHost.AUTH_OPENAI}
+    assert (
+        frozenset({OpenAICodexOAuthAllowedHost.AUTH_OPENAI})
+        == OPENAI_CODEX_OAUTH_ALLOWED_HOSTS
     )
-    assert OpenAICodexOAuthPolicy.allowed_paths_for(
+    assert openai_codex_oauth_allowed_paths_for(
         OpenAICodexOAuthConfigKey.DEVICE_AUTHORIZATION_URL
     ) == frozenset({OpenAICodexOAuthAllowedPath.DEVICE_AUTHORIZATION})
-    assert OpenAICodexOAuthPolicy.allowed_paths_for(
+    assert openai_codex_oauth_allowed_paths_for(
         OpenAICodexOAuthConfigKey.ISSUER
     ) == frozenset(
         {
@@ -83,7 +87,7 @@ def test_openai_codex_oauth_policy_keeps_existing_safety_behavior() -> None:
     unsafe_config["device_token_url"] = (
         "https://example.com/api/accounts/deviceauth/token"
     )
-    with pytest.raises(UnsupportedProviderError) as exc_info:
+    with pytest.raises(ConnectionsProviderUnsupportedError) as exc_info:
         ensure_openai_codex_oauth_config_is_safe(
             provider_type=ProviderType.OPENAI_CODEX,
             auth_type=AuthType.OAUTH,

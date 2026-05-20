@@ -28,7 +28,10 @@ from app.library.application.skill_service import SkillService
 from app.library.domain.event_enum.item_enums import ItemStatus
 from app.memory.application.context_service import ContextService
 from app.memory.domain.entities.context_read_models import ContextRecord
-from app.shared.exceptions import NotFoundError, ValidationError
+from app.shared.exceptions import (
+    LibrarianResourceNotFoundError,
+    LibrarianValidationError,
+)
 from app.shared.types.types_convert_utils import now_utc
 from app.shared.utils.logging import redact_sensitive_text
 
@@ -147,7 +150,9 @@ class SkillAcquisitionService:
         """
         job = await self._repository.get(job_id)
         if job is None:
-            raise NotFoundError(f"Skill acquisition job not found: {job_id}")
+            raise LibrarianResourceNotFoundError(
+                f"Skill acquisition job not found: {job_id}"
+            )
         return job
 
     async def complete_job(
@@ -240,7 +245,7 @@ class SkillAcquisitionService:
             SkillAcquisitionJobStatus.ACCEPTED,
             SkillAcquisitionJobStatus.GUIDANCE_ONLY,
         }:
-            raise ValidationError("Skill acquisition job is not completable")
+            raise LibrarianValidationError("Skill acquisition job is not completable")
 
         evidence_urls = _clean_items(artifact.evidence_urls)
         created_by_name = _created_by_name(job, artifact)

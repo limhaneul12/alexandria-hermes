@@ -1,5 +1,6 @@
 import { backendFetch } from "@/lib/backend/client";
 import type {
+  MemoryCompactCreateDTO,
   MemoryCompactDTO,
   MemoryCompactListDTO,
   MemoryCompactSourceRefDTO,
@@ -33,6 +34,22 @@ type BackendMemoryCompactList = {
   total: number;
 };
 
+type BackendMemoryCompactCreateSourceRef = {
+  source_type: string;
+  source_id: string;
+  title: string;
+  detail_path: string;
+};
+
+type BackendMemoryCompactCreate = {
+  project: string | null;
+  covered_from: string;
+  covered_to: string;
+  markdown_body: string;
+  status: MemoryCompactStatus;
+  source_refs: BackendMemoryCompactCreateSourceRef[];
+};
+
 function toSourceRefDTO(ref: BackendMemoryCompactSourceRef): MemoryCompactSourceRefDTO {
   return {
     id: ref.id,
@@ -56,6 +73,22 @@ function toMemoryCompactDTO(compact: BackendMemoryCompact): MemoryCompactDTO {
     createdAt: compact.created_at,
     updatedAt: compact.updated_at,
     archivedAt: compact.archived_at,
+  };
+}
+
+function createBody(payload: MemoryCompactCreateDTO): BackendMemoryCompactCreate {
+  return {
+    project: payload.project,
+    covered_from: payload.coveredFrom,
+    covered_to: payload.coveredTo,
+    markdown_body: payload.markdownBody,
+    status: payload.status,
+    source_refs: payload.sourceRefs.map((ref) => ({
+      source_type: ref.sourceType,
+      source_id: ref.sourceId,
+      title: ref.title,
+      detail_path: ref.detailPath,
+    })),
   };
 }
 
@@ -85,5 +118,16 @@ export async function loadMemoryCompactFromBackend(
   const result = await backendFetch<BackendMemoryCompact>(
     `/memory/compacts/${encodeURIComponent(compactId)}`,
   );
+  return toMemoryCompactDTO(result);
+}
+
+export async function createMemoryCompactInBackend(
+  payload: MemoryCompactCreateDTO,
+): Promise<MemoryCompactDTO> {
+  const result = await backendFetch<BackendMemoryCompact>("/memory/compacts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(createBody(payload)),
+  });
   return toMemoryCompactDTO(result);
 }

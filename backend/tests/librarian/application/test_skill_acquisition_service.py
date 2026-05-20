@@ -46,7 +46,7 @@ from app.memory.domain.event_enum.context_enums import (
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
-from app.shared.exceptions import ValidationError
+from app.shared.exceptions import LibrarianValidationError
 from app.shared.infrastructure.database import Database
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -166,16 +166,9 @@ class FakeItemRepository(IItemRepository):
         limit: int | None = None,
         offset: int = 0,
         category_id: str | None = None,
-        search_query: str | None = None,
     ) -> tuple[list[LibraryItem], int]:
         """List all is unused by these tests."""
         return [], 0
-
-    async def search(
-        self, query: str, item_type: ItemType | None = None
-    ) -> list[LibraryItem]:
-        """Search is unused by these tests."""
-        return []
 
     async def search_candidates(
         self,
@@ -402,7 +395,8 @@ def test_skill_acquisition_completion_rejects_failed_jobs(
                 agent_name="Hermes",
             )
             with pytest.raises(
-                ValidationError, match="Skill acquisition job is not completable"
+                LibrarianValidationError,
+                match="Skill acquisition job is not completable",
             ) as exc_info:
                 await service.complete_with_skill_artifact(
                     job_id=job.id,

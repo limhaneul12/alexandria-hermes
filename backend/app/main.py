@@ -139,7 +139,6 @@ def create_app(app_config: AppConfig) -> FastAPI:
             "app.librarian.interface.routers",
             "app.library.interface.routers",
             "app.memory.interface.routers",
-            "app.retrieval.interface.routers",
         ]
     )
 

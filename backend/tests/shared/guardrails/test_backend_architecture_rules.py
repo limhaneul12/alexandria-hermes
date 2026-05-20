@@ -19,24 +19,23 @@ BOUNDED_INTERFACE_ROOTS = tuple(
 )
 SHARED_EXCEPTIONS = APP_ROOT / "shared" / "exceptions"
 ALLOWED_INIT_FILES = {
+    "cli_support/contracts/__init__.py": (
+        "CLI command contracts intentionally expose a package-level broad import surface."
+    ),
     "shared/exceptions/__init__.py": "Shared exception catalog owns an explicit public import surface.",
 }
 
 MODULE_LINE_BUDGET = 450
 OVERSIZED_MODULE_ALLOWLIST = {
-    "cli_support/contracts/command_contracts.py": (
-        "CLI command dataclass catalog is intentionally centralized until command "
-        "groups receive package-local contract modules."
-    ),
     "cli_support/handlers/collaboration.py": (
         "Collaboration CLI remains a route-handler facade after helper extraction; "
         "split provider/profile/oauth handlers by command group next."
     ),
-    "cli_support/hermes/integration_files.py": (
+    "cli_support/support/hermes/install/integration_files.py": (
         "Hermes install-file generation owns several template renderers; split into "
         "per-target writer modules before adding new templates."
     ),
-    "cli_support/typer_commands/collaboration.py": (
+    "cli_support/typer_commands/librarian_commands/collaboration.py": (
         "Typer collaboration command tree spans provider/profile/oauth verbs; split "
         "into command-group modules before adding more verbs."
     ),
@@ -354,6 +353,20 @@ def test_backend_app_does_not_use_dynamic_attribute_access_or_writes() -> None:
 
 def test_backend_app_does_not_use_unjustified_lazy_imports() -> None:
     check_lazy_import_usage.ensure_clean(BACKEND_ROOT)
+
+
+def test_library_item_listing_does_not_reintroduce_like_based_text_search() -> None:
+    query_source = (
+        APP_ROOT
+        / "library"
+        / "infrastructure"
+        / "repositories"
+        / "items"
+        / "queries.py"
+    ).read_text(encoding="utf-8")
+
+    assert "search_query" not in query_source
+    assert ".like(" not in query_source
 
 
 def test_library_interface_router_folders_are_only_for_multi_module_concepts() -> None:

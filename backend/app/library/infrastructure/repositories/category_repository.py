@@ -16,7 +16,7 @@ from app.library.infrastructure.repositories.categories.hierarchy import (
 from app.library.infrastructure.repositories.categories.mapper import (
     category_to_read_model,
 )
-from app.shared.exceptions import NotFoundError
+from app.shared.exceptions import LibraryResourceNotFoundError
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -106,7 +106,7 @@ class SqlAlchemyCategoryRepository(ICategoryRepository):
         """
         model = await self._session.get(CategoryORM, category_id)
         if model is None:
-            raise NotFoundError(f"Category not found: {category_id}")
+            raise LibraryResourceNotFoundError(f"Category not found: {category_id}")
 
         model.name = name
         model.updated_at = datetime.now(UTC)
@@ -133,7 +133,7 @@ class SqlAlchemyCategoryRepository(ICategoryRepository):
         """
         model = await self._session.get(CategoryORM, category_id)
         if model is None:
-            raise NotFoundError(f"Category not found: {category_id}")
+            raise LibraryResourceNotFoundError(f"Category not found: {category_id}")
 
         model.parent_id = parent_id
         model.position = position
@@ -154,7 +154,7 @@ class SqlAlchemyCategoryRepository(ICategoryRepository):
         """
         model = await self._session.get(CategoryORM, category_id)
         if model is None:
-            raise NotFoundError(f"Category not found: {category_id}")
+            raise LibraryResourceNotFoundError(f"Category not found: {category_id}")
 
         model.position = position
         model.updated_at = datetime.now(UTC)
@@ -173,7 +173,7 @@ class SqlAlchemyCategoryRepository(ICategoryRepository):
         """
         model = await self._session.get(CategoryORM, category_id)
         if model is None:
-            raise NotFoundError(f"Category not found: {category_id}")
+            raise LibraryResourceNotFoundError(f"Category not found: {category_id}")
 
         await self._session.execute(
             delete(CategoryORM).where(CategoryORM.id == category_id),

@@ -11,6 +11,14 @@ class LibrarianValidationError(LibrarianDomainError):
     """Raised when librarian domain values violate invariants."""
 
 
+class LibrarianResourceNotFoundError(LibrarianDomainError):
+    """Raised when a librarian resource cannot be located."""
+
+
+class LibrarianProviderUnsupportedError(LibrarianDomainError):
+    """Raised when a provider cannot perform a librarian operation."""
+
+
 class LibrarianSkillAcquisitionProviderError(LibrarianDomainError):
     """Raised when a skill-acquisition provider cannot be used."""
 

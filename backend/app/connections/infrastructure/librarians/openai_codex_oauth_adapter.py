@@ -23,7 +23,7 @@ from app.connections.domain.event_enum.provider_enums import (
     ProviderType,
 )
 from app.platform.config.app_config import AppConfig
-from app.shared.exceptions import UnsupportedProviderError
+from app.shared.exceptions import ConnectionsProviderUnsupportedError
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
 from typing_extensions import TypedDict
@@ -138,7 +138,9 @@ class OpenAICodexOAuthClient(OAuthProviderClient):
                 headers={"Content-Type": "application/json"},
             )
         if response.status_code >= 400:
-            raise UnsupportedProviderError("OAuth device authorization failed")
+            raise ConnectionsProviderUnsupportedError(
+                "OAuth device authorization failed"
+            )
         payload = _response_payload(response)
 
         device_auth_id = _required_string(payload, "device_auth_id")
@@ -246,7 +248,7 @@ class OpenAICodexOAuthClient(OAuthProviderClient):
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
         if response.status_code >= 400:
-            raise UnsupportedProviderError("OAuth token refresh failed")
+            raise ConnectionsProviderUnsupportedError("OAuth token refresh failed")
         payload = _response_payload(response)
         token_set = _token_set_from_payload(payload)
         return token_set
@@ -310,23 +312,27 @@ def _config_string(config: JSONObject, key: str, *, default: str) -> str:
         return default
     if isinstance(value, str) and value:
         return value
-    raise UnsupportedProviderError(f"OAuth config {key} must be a non-empty string")
+    raise ConnectionsProviderUnsupportedError(
+        f"OAuth config {key} must be a non-empty string"
+    )
 
 
 def _response_payload(response: httpx.Response) -> JSONObject:
     try:
         decoded = loads_json(response.text)
     except ValueError as exc:
-        raise UnsupportedProviderError("OAuth provider returned invalid JSON") from exc
+        raise ConnectionsProviderUnsupportedError(
+            "OAuth provider returned invalid JSON"
+        ) from exc
     if isinstance(decoded, dict):
         return decoded
-    raise UnsupportedProviderError("OAuth provider returned invalid JSON")
+    raise ConnectionsProviderUnsupportedError("OAuth provider returned invalid JSON")
 
 
 def _error_response_payload(response: httpx.Response) -> JSONObject:
     try:
         return _response_payload(response)
-    except UnsupportedProviderError:
+    except ConnectionsProviderUnsupportedError:
         return {}
 
 
@@ -385,11 +391,13 @@ def _device_secret_payload(device_code: str) -> CodexDeviceSecretPayload:
     try:
         decoded = loads_json(device_code)
     except ValueError as exc:
-        raise UnsupportedProviderError(
+        raise ConnectionsProviderUnsupportedError(
             "OAuth device authorization context is invalid"
         ) from exc
     if not isinstance(decoded, dict):
-        raise UnsupportedProviderError("OAuth device authorization context is invalid")
+        raise ConnectionsProviderUnsupportedError(
+            "OAuth device authorization context is invalid"
+        )
     return CodexDeviceSecretPayload(
         device_auth_id=_required_string(decoded, "device_auth_id"),
         user_code=_required_string(decoded, "user_code"),
@@ -412,7 +420,9 @@ def _expires_at_from_payload(payload: JSONObject) -> datetime:
         try:
             parsed = datetime.fromisoformat(expires_at_value.replace("Z", "+00:00"))
         except ValueError as exc:
-            raise UnsupportedProviderError("OAuth expires_at is invalid") from exc
+            raise ConnectionsProviderUnsupportedError(
+                "OAuth expires_at is invalid"
+            ) from exc
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=UTC)
         return parsed
@@ -445,7 +455,9 @@ def _required_string(payload: JSONObject, key: str) -> str:
     value = payload.get(key)
     if isinstance(value, str) and value:
         return value
-    raise UnsupportedProviderError(f"OAuth response missing required field: {key}")
+    raise ConnectionsProviderUnsupportedError(
+        f"OAuth response missing required field: {key}"
+    )
 
 
 def _optional_string(payload: JSONObject, key: str) -> str | None:

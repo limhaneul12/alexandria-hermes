@@ -6,7 +6,7 @@ import urllib.parse
 
 from app.cli_support.argument_values import bounded_limit
 from app.cli_support.backend_api_client import CliBackendApiClient
-from app.cli_support.contracts.command_contracts import (
+from app.cli_support.contracts.library_command_contracts import (
     FolderIdCommand,
     FoldersCreateCommand,
     FoldersEnsureCommand,
@@ -21,7 +21,6 @@ from app.cli_support.contracts.request_mappers import (
     folder_create_payload,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
-from app.cli_support.json_payloads import schema_payload
 from app.cli_support.presentation.output_renderers import (
     json_list,
     print_folder_table,
@@ -32,9 +31,11 @@ from app.cli_support.presentation.output_renderers import (
 from app.cli_support.schemas.library_command_schemas import (
     DeletedResourceResult,
     FolderEnsureResult,
+    LibraryListQuery,
 )
 from app.cli_support.url_paths import quote_path
 from app.shared.exceptions.cli_exceptions import CliInputError
+from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject
 
 
@@ -367,18 +368,25 @@ def handle_library_list(
     Returns:
         Process-style exit code.
     """
-    params = [
-        ("limit", str(bounded_limit(command.limit, default=20))),
-        ("offset", str(max(0, int(command.offset)))),
-    ]
-    if command.item_type is not None:
-        params.append(("item_type", command.item_type.value))
-    if command.folder_id is not None:
-        params.append(("category_id", command.folder_id))
-    if command.query is not None:
-        params.append(("q", command.query))
-    query = urllib.parse.urlencode(params)
-    payload = client.get(f"/library/items?{query}")
+    search_query = command.query.strip() if command.query else None
+    query_payload = schema_payload(
+        LibraryListQuery(
+            limit=bounded_limit(command.limit, default=20),
+            offset=max(0, int(command.offset)),
+            item_type=command.item_type.value if command.item_type else None,
+            category_id=command.folder_id,
+            q=search_query,
+            content_mode="candidate" if search_query else None,
+            search_fields=("title", "summary", "content") if search_query else None,
+        ),
+        exclude_none=True,
+    )
+    if search_query:
+        endpoint = "/library/search"
+    else:
+        endpoint = "/library/items"
+    query = urllib.parse.urlencode(query_payload, doseq=True)
+    payload = client.get(f"{endpoint}?{query}")
     if context.json_output:
         print_json(payload, context.stdout)
     else:

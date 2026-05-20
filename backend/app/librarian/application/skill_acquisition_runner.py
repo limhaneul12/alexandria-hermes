@@ -14,8 +14,23 @@ from app.librarian.domain.entities.skill_acquisition_job import SkillAcquisition
 from app.librarian.domain.event_enum.collaboration_enums import (
     SkillAcquisitionJobStatus,
 )
+from app.shared.exceptions.librarian_exceptions import (
+    LibrarianSkillAcquisitionArtifactError,
+    LibrarianSkillAcquisitionExecutionError,
+    LibrarianSkillAcquisitionProviderError,
+)
 
 logger = logging.getLogger(__name__)
+type SkillAcquisitionKnownFailure = (
+    LibrarianSkillAcquisitionProviderError
+    | LibrarianSkillAcquisitionExecutionError
+    | LibrarianSkillAcquisitionArtifactError
+)
+_KNOWN_FAILURE_MESSAGES: dict[type[SkillAcquisitionKnownFailure], str] = {
+    LibrarianSkillAcquisitionProviderError: "Skill acquisition provider failed",
+    LibrarianSkillAcquisitionExecutionError: "Skill acquisition execution failed",
+    LibrarianSkillAcquisitionArtifactError: "Skill acquisition artifact invalid",
+}
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -92,7 +107,24 @@ class SkillAcquisitionRunner:
 
         try:
             artifact = await self._executor.acquire_skill(request)
+        except (
+            LibrarianSkillAcquisitionProviderError,
+            LibrarianSkillAcquisitionExecutionError,
+            LibrarianSkillAcquisitionArtifactError,
+        ) as error:
+            failure_message = _known_failure_message(error)
+            logger.warning(
+                failure_message,
+                extra={"job_id": job.id, "error_type": type(error).__name__},
+            )
+            return await self._service.fail_job(
+                job_id=job.id,
+                error_message=failure_message,
+            )
         except Exception as error:
+            # Background acquisition must terminalize durable jobs even when an
+            # unexpected executor bug occurs. Persist only a sanitized message;
+            # keep the concrete exception type in logs for operator evidence.
             logger.warning(
                 "Skill acquisition executor failed",
                 extra={"job_id": job.id, "error_type": type(error).__name__},
@@ -106,3 +138,15 @@ class SkillAcquisitionRunner:
             job_id=job.id,
             artifact=artifact,
         )
+
+
+def _known_failure_message(error: SkillAcquisitionKnownFailure) -> str:
+    """Map known executor domain failures to persisted sanitized messages.
+
+    Args:
+        error: Known skill-acquisition domain failure from the executor.
+
+    Returns:
+        Stable, secret-free job failure message.
+    """
+    return _KNOWN_FAILURE_MESSAGES[type(error)]

@@ -93,6 +93,25 @@ def _categorized_item_payload(
     )
 
 
+def _dated_item_payload(title: str, *, updated_at: datetime) -> ItemCreate:
+    return ItemCreate(
+        item_type=ItemType.SKILL,
+        title=title,
+        summary="Date scoped searchable summary",
+        content="needle date scoped body",
+        category_id=None,
+        tags=["date-scope"],
+        status=ItemStatus.ACTIVE,
+        source_type=SourceType.USER_CREATED,
+        created_by_type=CreatedByType.USER,
+        created_by_name="scale-test",
+        created_at=updated_at,
+        updated_at=updated_at,
+        details={"required_tools": ["pytest"], "risk_level": "LOW"},
+        is_archived=False,
+    )
+
+
 def test_library_search_payload_size_is_bounded_when_many_long_items_match(
     tmp_path: Path,
 ) -> None:
@@ -222,3 +241,58 @@ def test_library_search_applies_descendant_category_filter_before_pagination(
     assert payload["total"] == 1
     assert len(payload["items"]) == 1
     assert payload["items"][0]["title"] == "needle category candidate 99"
+
+
+def test_library_search_filters_candidates_by_updated_date_range(
+    tmp_path: Path,
+) -> None:
+    """Updated date filters should be applied before pagination."""
+
+    async def seed_database() -> Database:
+        database = Database(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'dates.db'}",
+            create_schema=True,
+        )
+        await database.initialize()
+        async with database.session() as session:
+            item_repository = SqlAlchemyItemRepository(session=session)
+            for title, updated_at in [
+                ("needle older item", datetime(2026, 5, 17, 12, tzinfo=UTC)),
+                ("needle target item", datetime(2026, 5, 18, 12, tzinfo=UTC)),
+                ("needle newer item", datetime(2026, 5, 19, 12, tzinfo=UTC)),
+            ]:
+                await item_repository.create(
+                    payload=_dated_item_payload(title, updated_at=updated_at)
+                )
+            await session.commit()
+        return database
+
+    database = anyio.run(seed_database)
+    session_context = database.session()
+    session = anyio.run(session_context.__aenter__)
+    search_service = ItemSearchService(
+        item_repo=SqlAlchemyItemRepository(session=session)
+    )
+
+    try:
+        with (
+            override_library_provider("item_search_service", search_service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            response = client.get(
+                "/library/search",
+                params={
+                    "q": "needle",
+                    "updated_after": "2026-05-18T00:00:00.000Z",
+                    "updated_before": "2026-05-18T23:59:59.999Z",
+                    "limit": "10",
+                },
+            )
+    finally:
+        anyio.run(session_context.__aexit__, None, None, None)
+        anyio.run(database.shutdown)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["title"] for item in payload["items"]] == ["needle target item"]
