@@ -3,55 +3,17 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ClipboardCheck } from "lucide-react";
+import { Archive } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { archiveHarness, captureHarness, checkHarness, fetchHarnesses, requestErrorMessage } from "@/lib/api";
-import { harnessRouteErrorMessages, t, type Language } from "@/lib/i18n";
+import { archiveHarness, fetchHarnesses, requestErrorMessage } from "@/lib/api";
+import { t, type Language } from "@/lib/i18n";
 import { formatDate } from "@/lib/utils";
 import { useLibraryStore } from "@/store/library-store";
-import type { ContextLintDTO, HarnessCaptureDTO, HarnessContextDTO } from "@/types/library";
-
-const emptyDraft: HarnessCaptureDTO = {
-  taskGoal: "",
-  reusableProcedure: "",
-  summary: null,
-  project: null,
-  scope: "PROJECT",
-  sourceAgent: "Hermes",
-  environment: null,
-  triggerContext: null,
-  steps: [],
-  commands: [],
-  tests: [],
-  failures: [],
-  fixes: [],
-  artifacts: [],
-  recallKeywords: [],
-  safetyNotes: [],
-};
-
-function lines(value: string): string[] {
-  return value.split("\n").flatMap((line) => {
-    const trimmed = line.trim();
-    return trimmed ? [trimmed] : [];
-  });
-}
-
-function keywordTokens(value: string): string[] {
-  return value.split(/[\n,]/u).flatMap((token) => {
-    const trimmed = token.trim();
-    return trimmed ? [trimmed] : [];
-  });
-}
-
-function nullableText(value: string): string | null {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
+import type { HarnessContextDTO } from "@/types/library";
 
 function preview(content: string): string {
   return content.replace(/[#>*_`-]/g, "").split("\n").filter(Boolean).slice(0, 2).join(" ");
@@ -112,80 +74,11 @@ function HarnessCard({ harness, language, onArchive }: { harness: HarnessContext
   );
 }
 
-function DraftPanel({
-  language,
-  onChecked,
-  harnessErrorMessages,
-}: {
-  language: Language;
-  onChecked: (result: ContextLintDTO | null) => void;
-  harnessErrorMessages: Partial<Record<string, string>>;
-}) {
-  const queryClient = useQueryClient();
-  const [taskGoal, setTaskGoal] = useState("");
-  const [procedure, setProcedure] = useState("");
-  const [project, setProject] = useState("alexandria-hermes");
-  const [steps, setSteps] = useState("");
-  const [commands, setCommands] = useState("");
-  const [tests, setTests] = useState("");
-  const [keywords, setKeywords] = useState("");
-  const [safetyNotes, setSafetyNotes] = useState("");
-
-  const payload = useMemo<HarnessCaptureDTO>(() => ({
-    ...emptyDraft,
-    taskGoal: taskGoal.trim(),
-    reusableProcedure: procedure.trim(),
-    project: nullableText(project),
-    steps: lines(steps),
-    commands: lines(commands),
-    tests: lines(tests),
-    recallKeywords: keywordTokens(keywords),
-    safetyNotes: lines(safetyNotes),
-  }), [commands, keywords, procedure, project, safetyNotes, steps, taskGoal, tests]);
-
-  const checkMutation = useMutation({
-    mutationFn: checkHarness,
-    onSuccess: onChecked,
-  });
-  const captureMutation = useMutation({
-    mutationFn: captureHarness,
-    onSuccess: () => {
-      onChecked(null);
-      void queryClient.invalidateQueries({ queryKey: ["harnesses"] });
-    },
-  });
-  const canSubmit = payload.taskGoal.length > 0 && payload.reusableProcedure.length > 0;
-
-  return (
-    <Card className="archive-paper-card p-5">
-      <CardHeader className="px-0 pt-0"><CardTitle className="flex items-center gap-2"><ClipboardCheck className="h-5 w-5" aria-hidden="true" /> {t(language, "harnessDraftPage")}</CardTitle></CardHeader>
-      <CardContent className="space-y-3 px-0 pb-0">
-        <Input value={taskGoal} onChange={(event) => setTaskGoal(event.target.value)} placeholder={t(language, "harnessTaskGoal")} />
-        <Input value={project} onChange={(event) => setProject(event.target.value)} placeholder={t(language, "harnessProject")} />
-        <textarea className="min-h-28 w-full rounded-xl border border-[#cfc8b8] bg-white/70 p-3 text-sm text-[#111111]" value={procedure} onChange={(event) => setProcedure(event.target.value)} placeholder={t(language, "harnessReusableProcedure")} />
-        <textarea className="min-h-20 w-full rounded-xl border border-[#cfc8b8] bg-white/70 p-3 text-sm text-[#111111]" value={steps} onChange={(event) => setSteps(event.target.value)} placeholder={t(language, "harnessStepsPlaceholder")} />
-        <textarea className="min-h-20 w-full rounded-xl border border-[#cfc8b8] bg-white/70 p-3 text-sm text-[#111111]" value={commands} onChange={(event) => setCommands(event.target.value)} placeholder={t(language, "harnessCommandsPlaceholder")} />
-        <textarea className="min-h-20 w-full rounded-xl border border-[#cfc8b8] bg-white/70 p-3 text-sm text-[#111111]" value={tests} onChange={(event) => setTests(event.target.value)} placeholder={t(language, "harnessTestsPlaceholder")} />
-        <textarea className="min-h-20 w-full rounded-xl border border-[#cfc8b8] bg-white/70 p-3 text-sm text-[#111111]" value={keywords} onChange={(event) => setKeywords(event.target.value)} placeholder={t(language, "harnessRecallKeywordsPlaceholder")} />
-        <textarea className="min-h-20 w-full rounded-xl border border-[#cfc8b8] bg-white/70 p-3 text-sm text-[#111111]" value={safetyNotes} onChange={(event) => setSafetyNotes(event.target.value)} placeholder={t(language, "harnessSafetyNotesPlaceholder")} />
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" disabled={!canSubmit || checkMutation.isPending} onClick={() => checkMutation.mutate(payload)}>{t(language, "check")}</Button>
-          <Button type="button" disabled={!canSubmit || captureMutation.isPending} onClick={() => captureMutation.mutate(payload)}>{t(language, "harnessCapture")}</Button>
-        </div>
-        {checkMutation.isError ? <p className="text-sm text-[#8f5037]">{requestErrorMessage(checkMutation.error, t(language, "harnessActionFailed"), harnessErrorMessages)}</p> : null}
-        {captureMutation.isError ? <p className="text-sm text-[#8f5037]">{requestErrorMessage(captureMutation.error, t(language, "harnessActionFailed"), harnessErrorMessages)}</p> : null}
-      </CardContent>
-    </Card>
-  );
-}
-
 export function HarnessGuidebookClient() {
   const queryClient = useQueryClient();
   const language = useLibraryStore((state) => state.language);
-  const harnessErrorMessages = harnessRouteErrorMessages(language);
   const [project, setProject] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
-  const [checkResult, setCheckResult] = useState<ContextLintDTO | null>(null);
   const params = useMemo(() => {
     const searchParams = new URLSearchParams({ limit: "60" });
     if (project.trim()) searchParams.set("project", project.trim());
@@ -217,17 +110,11 @@ export function HarnessGuidebookClient() {
           {harnessesQuery.isLoading ? <p className="text-sm text-[#514c44]">{t(language, "harnessOpeningShelf")}</p> : null}
           {items.map((harness) => <HarnessCard key={harness.id} harness={harness} language={language} onArchive={(id) => archiveMutation.mutate(id)} />)}
           {!harnessesQuery.isLoading && items.length === 0 ? <Card className="archive-paper-card p-6 text-sm text-[#6f6a60]">{t(language, "harnessEmpty")}</Card> : null}
-          {archiveMutation.isError ? <p className="text-sm text-[#8f5037]">{requestErrorMessage(archiveMutation.error, t(language, "harnessActionFailed"), harnessErrorMessages)}</p> : null}
+          {archiveMutation.isError ? <p className="text-sm text-[#8f5037]">{requestErrorMessage(archiveMutation.error, t(language, "harnessActionFailed"))}</p> : null}
         </div>
       </main>
       <aside className="archive-right-rail space-y-5 p-5">
         <Card className="archive-paper-card p-5"><p className="font-serif text-2xl text-[#111111]">{t(language, "harnessWhatIs")}</p><p className="mt-3 text-sm leading-6 text-[#514c44]">{t(language, "harnessWhatIsBody")}</p></Card>
-        <DraftPanel
-          language={language}
-          onChecked={setCheckResult}
-          harnessErrorMessages={harnessErrorMessages}
-        />
-        {checkResult ? <Card className="archive-paper-card p-5"><p className="font-serif text-xl">{t(language, "harnessCheckResult")}</p><p className="mt-2 text-sm">{checkResult.ok ? t(language, "harnessReadyToSave") : t(language, "harnessNeedsReview")} · {t(language, "harnessScore")} {checkResult.score}</p>{checkResult.warnings.length ? <ul className="mt-3 list-disc pl-4 text-sm text-[#8f5037]">{checkResult.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}</Card> : null}
       </aside>
     </div>
   );

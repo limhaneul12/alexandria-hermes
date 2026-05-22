@@ -11,8 +11,6 @@ import type {
   ContextListDTO,
   ContextPrepareCompactDTO,
   DashboardDTO,
-  ContextLintDTO,
-  HarnessCaptureDTO,
   HarnessContextDTO,
   HarnessListDTO,
   LibrarianOAuthStartDTO,
@@ -266,20 +264,6 @@ export function fetchHarnesses(params: URLSearchParams) {
 
 export function fetchHarness(contextId: string) {
   return fetchJson<HarnessContextDTO>(`/api/library/harnesses/${encodeURIComponent(contextId)}`);
-}
-
-export function captureHarness(payload: HarnessCaptureDTO) {
-  return fetchJson<HarnessContextDTO>(
-    "/api/library/harnesses",
-    jsonInit("POST", payload),
-  );
-}
-
-export function checkHarness(payload: HarnessCaptureDTO) {
-  return fetchJson<ContextLintDTO>(
-    "/api/library/harnesses/check",
-    jsonInit("POST", payload),
-  );
 }
 
 export function archiveHarness(contextId: string) {

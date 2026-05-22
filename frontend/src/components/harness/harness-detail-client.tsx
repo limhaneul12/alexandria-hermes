@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { archiveHarness, fetchHarness, recordContextAccessEvent, requestErrorMessage } from "@/lib/api";
-import { harnessRouteErrorMessages, t, type Language } from "@/lib/i18n";
+import { t, type Language } from "@/lib/i18n";
 import { formatDate } from "@/lib/utils";
 import { useLibraryStore } from "@/store/library-store";
 
@@ -28,7 +28,6 @@ function ListPanel({ title, items, language }: PanelProps) {
 export function HarnessDetailClient({ contextId }: { contextId: string }) {
   const queryClient = useQueryClient();
   const language = useLibraryStore((state) => state.language);
-  const harnessErrorMessages = harnessRouteErrorMessages(language);
   const harnessQuery = useQuery({ queryKey: ["harness", contextId], queryFn: () => fetchHarness(contextId) });
   const archiveMutation = useMutation({
     mutationFn: archiveHarness,
@@ -48,7 +47,7 @@ export function HarnessDetailClient({ contextId }: { contextId: string }) {
   }, [contextId]);
 
   if (harnessQuery.isLoading) return <div className="archive-document-page p-10 text-sm text-[#514c44]">{t(language, "harnessOpening")}</div>;
-  if (harnessQuery.isError || !harnessQuery.data) return <div className="archive-document-page p-10 text-sm text-[#8f5037]">{requestErrorMessage(harnessQuery.error, t(language, "harnessNotFound"), harnessErrorMessages)}</div>;
+  if (harnessQuery.isError || !harnessQuery.data) return <div className="archive-document-page p-10 text-sm text-[#8f5037]">{requestErrorMessage(harnessQuery.error, t(language, "harnessNotFound"))}</div>;
 
   const harness = harnessQuery.data;
   const meta = harness.harness;
@@ -69,7 +68,7 @@ export function HarnessDetailClient({ contextId }: { contextId: string }) {
             <h1 className="mt-4 text-balance font-serif text-5xl leading-tight tracking-[-0.03em] md:text-6xl">{meta.taskGoal ?? harness.title}</h1>
             <p className="mt-4 max-w-3xl text-sm leading-7">{harness.summary}</p>
             <div className="mt-5 flex flex-wrap gap-2"><Button type="button" onClick={() => void navigator.clipboard.writeText(harness.content)}><Clipboard className="h-4 w-4" aria-hidden="true" /> {t(language, "harnessCopyManual")}</Button>{!harness.isArchived ? <Button type="button" variant="outline" onClick={() => archiveMutation.mutate(harness.id)}><Archive className="h-4 w-4" aria-hidden="true" /> {t(language, "archive")}</Button> : null}</div>
-            {archiveMutation.isError ? <p className="mt-3 text-sm text-[#8f5037]">{requestErrorMessage(archiveMutation.error, t(language, "harnessActionFailed"), harnessErrorMessages)}</p> : null}
+            {archiveMutation.isError ? <p className="mt-3 text-sm text-[#8f5037]">{requestErrorMessage(archiveMutation.error, t(language, "harnessActionFailed"))}</p> : null}
           </div>
         </Card>
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">

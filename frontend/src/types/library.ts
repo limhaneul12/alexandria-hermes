@@ -580,36 +580,6 @@ export type HarnessListDTO = {
   total: number;
 };
 
-export type HarnessCaptureDTO = {
-  taskGoal: string;
-  reusableProcedure: string;
-  summary: string | null;
-  project: string | null;
-  scope: ContextScope;
-  sourceAgent: string;
-  environment: string | null;
-  triggerContext: string | null;
-  steps: string[];
-  commands: string[];
-  tests: string[];
-  failures: string[];
-  fixes: string[];
-  artifacts: string[];
-  recallKeywords: string[];
-  safetyNotes: string[];
-};
-
-export type ContextLintDTO = {
-  ok: boolean;
-  status: ContextStorageStatus;
-  score: number;
-  errors: string[];
-  warnings: string[];
-  suggestions: string[];
-  redactedContent: string;
-  redactionReport: string[];
-};
-
 export type ContextSearchDTO = {
   query: string;
   strategy: RagStrategy;

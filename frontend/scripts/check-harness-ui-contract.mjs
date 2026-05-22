@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 const sidebar = readFileSync(new URL("../src/components/layout/sidebar.tsx", import.meta.url), "utf8");
 const harnessClient = readFileSync(new URL("../src/components/harness/harness-guidebook-client.tsx", import.meta.url), "utf8");
 const harnessDetail = readFileSync(new URL("../src/components/harness/harness-detail-client.tsx", import.meta.url), "utf8");
+const harnessRoute = readFileSync(new URL("../src/app/api/library/harnesses/route.ts", import.meta.url), "utf8");
 const api = readFileSync(new URL("../src/lib/api.ts", import.meta.url), "utf8");
 const backendHarnesses = readFileSync(new URL("../src/lib/backend/harnesses.ts", import.meta.url), "utf8");
 const types = readFileSync(new URL("../src/types/library.ts", import.meta.url), "utf8");
@@ -15,11 +16,16 @@ for (const file of [
   "../src/app/harnesses/page.tsx",
   "../src/app/harnesses/[contextId]/page.tsx",
   "../src/app/api/library/harnesses/route.ts",
-  "../src/app/api/library/harnesses/check/route.ts",
   "../src/app/api/library/harnesses/[contextId]/route.ts",
   "../src/app/api/library/harnesses/[contextId]/archive/route.ts",
 ]) {
   assert.equal(existsSync(new URL(file, import.meta.url)), true, `${file} must exist`);
+}
+for (const removedFile of [
+  "../src/app/api/library/harnesses/check/route.ts",
+  "../src/app/api/library/harnesses/harness-route-payload.ts",
+]) {
+  assert.equal(existsSync(new URL(removedFile, import.meta.url)), false, `${removedFile} must stay removed`);
 }
 
 assert.match(sidebar, /href:\s*"\/harnesses"/, "sidebar must expose the Harness Guidebook route");
@@ -28,14 +34,35 @@ for (const required of [
   "Harness Guidebook",
   "Reusable Field Manuals",
   "book-cover",
-  "Draft Harness Page",
-  "Check Result",
   "fetchHarnesses",
-  "captureHarness",
-  "checkHarness",
   "archiveHarness",
 ]) {
   assert.match(`${harnessClient}\n${i18n}`, new RegExp(required), `Harness list UI missing ${required}`);
+}
+for (const removed of [
+  "Draft Harness Page",
+  "하네스 초안",
+  "DraftPanel",
+  "harnessDraftPage",
+  "harnessCheckResult",
+  "harnessReadyToSave",
+  "harnessNeedsReview",
+  "harnessCapture",
+  "harnessStepsPlaceholder",
+  "harnessCommandsPlaceholder",
+  "harnessTestsPlaceholder",
+  "harnessRecallKeywordsPlaceholder",
+  "harnessSafetyNotesPlaceholder",
+  "captureHarness",
+  "checkHarness",
+  "HarnessCaptureDTO",
+  "ContextLintDTO",
+]) {
+  assert.doesNotMatch(
+    `${harnessClient}\n${i18n}\n${api}\n${backendHarnesses}\n${types}`,
+    new RegExp(removed),
+    `Harness manual draft surface must not expose ${removed}`,
+  );
 }
 for (const required of [
   "Harness Field Manual",
@@ -52,21 +79,19 @@ assert.match(i18n, /longTermMemory/, "sidebar memory section must be localized")
 for (const required of [
   "fetchHarnesses",
   "fetchHarness",
-  "captureHarness",
-  "checkHarness",
   "archiveHarness",
 ]) {
   assert.match(api, new RegExp(`export function ${required}`), `API helper missing ${required}`);
 }
 for (const route of [
   "/memory/contexts/harnesses",
-  "/memory/contexts/harnesses/capture",
-  "/memory/contexts/harnesses/check",
 ]) {
   assert.match(backendHarnesses, new RegExp(route.replaceAll("/", "\\/")), `frontend backend adapter must call ${route}`);
 }
+assert.doesNotMatch(harnessRoute, /export async function POST/, "Harness list route must not expose manual capture POST");
+assert.doesNotMatch(backendHarnesses, /\/memory\/contexts\/harnesses\/capture/, "frontend backend adapter must not call manual harness capture");
+assert.doesNotMatch(backendHarnesses, /\/memory\/contexts\/harnesses\/check/, "frontend backend adapter must not call manual harness check");
 assert.match(types, /type HarnessExecutionMetadataDTO/, "types must define harness metadata DTO");
-assert.match(types, /type HarnessCaptureDTO/, "types must define harness capture DTO");
 assert.match(backendRouter, /"\/harnesses\/check"/, "backend router must expose harness check");
 assert.match(backendRouter, /"\/harnesses"/, "backend router must expose harness list");
 assert.match(mcpGateway, /alexandria_list_harnesses/, "MCP gateway must expose harness list wrapper");

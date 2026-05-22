@@ -1,7 +1,5 @@
 import { backendFetch } from "@/lib/backend/client";
 import type {
-  ContextLintDTO,
-  HarnessCaptureDTO,
   HarnessContextDTO,
   HarnessExecutionMetadataDTO,
   HarnessListDTO,
@@ -36,17 +34,6 @@ type BackendHarnessContext = {
 type BackendHarnessList = {
   items: BackendHarnessContext[];
   total: number;
-};
-
-type BackendContextLint = {
-  ok: boolean;
-  status: ContextLintDTO["status"];
-  score: number;
-  errors: string[];
-  warnings: string[];
-  suggestions: string[];
-  redacted_content: string;
-  redaction_report: string[];
 };
 
 function stringValue(value: unknown): string | null {
@@ -106,40 +93,6 @@ function toHarnessDTO(context: BackendHarnessContext): HarnessContextDTO {
   };
 }
 
-function harnessBody(payload: HarnessCaptureDTO) {
-  return {
-    task_goal: payload.taskGoal,
-    reusable_procedure: payload.reusableProcedure,
-    summary: payload.summary,
-    project: payload.project,
-    scope: payload.scope,
-    source_agent: payload.sourceAgent,
-    environment: payload.environment,
-    trigger_context: payload.triggerContext,
-    steps: payload.steps,
-    commands: payload.commands,
-    tests: payload.tests,
-    failures: payload.failures,
-    fixes: payload.fixes,
-    artifacts: payload.artifacts,
-    recall_keywords: payload.recallKeywords,
-    safety_notes: payload.safetyNotes,
-    metadata: {},
-  };
-}
-
-function toContextLintDTO(payload: BackendContextLint): ContextLintDTO {
-  return {
-    ok: payload.ok,
-    status: payload.status,
-    score: payload.score,
-    errors: payload.errors,
-    warnings: payload.warnings,
-    suggestions: payload.suggestions,
-    redactedContent: payload.redacted_content,
-    redactionReport: payload.redaction_report,
-  };
-}
 
 export async function loadHarnessesFromBackend(searchParams: URLSearchParams): Promise<HarnessListDTO> {
   const query = searchParams.toString();
@@ -150,24 +103,6 @@ export async function loadHarnessesFromBackend(searchParams: URLSearchParams): P
 export async function loadHarnessFromBackend(contextId: string): Promise<HarnessContextDTO> {
   const context = await backendFetch<BackendHarnessContext>(`/memory/contexts/harnesses/${encodeURIComponent(contextId)}`);
   return toHarnessDTO(context);
-}
-
-export async function captureHarnessInBackend(payload: HarnessCaptureDTO): Promise<HarnessContextDTO> {
-  const context = await backendFetch<BackendHarnessContext>("/memory/contexts/harnesses/capture", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(harnessBody(payload)),
-  });
-  return toHarnessDTO(context);
-}
-
-export async function checkHarnessInBackend(payload: HarnessCaptureDTO): Promise<ContextLintDTO> {
-  const result = await backendFetch<BackendContextLint>("/memory/contexts/harnesses/check", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(harnessBody(payload)),
-  });
-  return toContextLintDTO(result);
 }
 
 export async function archiveHarnessInBackend(contextId: string): Promise<HarnessContextDTO> {
