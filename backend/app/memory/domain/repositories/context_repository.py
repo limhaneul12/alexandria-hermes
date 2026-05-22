@@ -119,6 +119,17 @@ class IContextRepository(ABC):
         """
 
     @abstractmethod
+    async def delete(self, context_id: str) -> None:
+        """Hard delete one context and dependent rows.
+
+        Args:
+            context_id: Context identifier.
+
+        Returns:
+            None.
+        """
+
+    @abstractmethod
     async def record_access(self, payload: ContextAccessCreate) -> ContextRecord:
         """Record an access event for recall/audit purposes.
 

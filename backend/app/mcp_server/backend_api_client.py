@@ -168,6 +168,18 @@ class AlexandriaApiClient:
         response = await self._request("POST", path, payload, None)
         return response
 
+    async def delete(self, path: str) -> JSONValue:
+        """Send a DELETE request to the backend.
+
+        Args:
+            path: Backend path beginning with slash.
+
+        Returns:
+            Decoded JSON response, or None for empty 204 responses.
+        """
+        response = await self._request("DELETE", path, None, None)
+        return response
+
     async def _request(
         self,
         method: str,

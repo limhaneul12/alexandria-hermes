@@ -541,6 +541,13 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             api_client, compact_id
         )
 
+    @server.tool(name="alexandria_delete_memory_compact")
+    async def _tool_delete_memory_compact(compact_id: str) -> JSONValue:
+        """Hard delete one selected Memory Compact by id."""
+        return await backend_tool_gateway.alexandria_delete_memory_compact(
+            api_client, compact_id
+        )
+
     @server.tool(name="alexandria_prepare_compact")
     async def _tool_prepare_compact(current_goal: str) -> JSONValue:
         """Prepare and save a compact handoff context.
@@ -915,6 +922,20 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             Archived context response.
         """
         return await backend_tool_gateway.alexandria_archive_context(
+            api_client, context_id
+        )
+
+    @server.tool(name="alexandria_delete_context")
+    async def _tool_delete_context(context_id: str) -> JSONValue:
+        """Hard delete one Context Vault entry.
+
+        Args:
+            context_id: Context identifier.
+
+        Returns:
+            Backend delete response, typically null for HTTP 204.
+        """
+        return await backend_tool_gateway.alexandria_delete_context(
             api_client, context_id
         )
 

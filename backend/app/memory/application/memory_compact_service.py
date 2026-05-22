@@ -144,6 +144,17 @@ class MemoryCompactService:
         """
         return await self._repository.archive(compact_id)
 
+    async def delete(self, compact_id: str) -> None:
+        """Hard delete one Memory Compact.
+
+        Args:
+            compact_id: Memory Compact identifier.
+
+        Returns:
+            None.
+        """
+        await self._repository.delete(compact_id)
+
     def _validate_create(self, payload: MemoryCompactCreate) -> None:
         if payload.covered_to < payload.covered_from:
             raise MemoryCompactValidationError("covered_to must be after covered_from")

@@ -8,11 +8,16 @@ from typing import Any
 import anyio
 from app.main import app
 from app.memory.application.memory_compact_service import MemoryCompactService
+from app.memory.infrastructure.models.memory_compact_models import (
+    MemoryCompactORM,
+    MemoryCompactSourceRefORM,
+)
 from app.memory.infrastructure.repositories.memory_compact_repository import (
     SqlAlchemyMemoryCompactRepository,
 )
 from app.shared.infrastructure.database import Database
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.shared.provider_overrides import override_library_provider
 
@@ -40,6 +45,26 @@ async def _close_service(
     await database.shutdown()
 
 
+async def _compact_persistence_counts(
+    session: AsyncSession,
+    compact_id: str,
+) -> dict[str, int]:
+    compact_count = await session.scalar(
+        select(func.count())
+        .select_from(MemoryCompactORM)
+        .where(MemoryCompactORM.id == compact_id)
+    )
+    source_ref_count = await session.scalar(
+        select(func.count())
+        .select_from(MemoryCompactSourceRefORM)
+        .where(MemoryCompactSourceRefORM.compact_id == compact_id)
+    )
+    return {
+        "compacts": int(compact_count or 0),
+        "source_refs": int(source_ref_count or 0),
+    }
+
+
 def _payload(
     status: str = "CURRENT",
     *,
@@ -64,6 +89,42 @@ def _payload(
             }
         ],
     }
+
+
+def test_memory_compact_api_hard_deletes_compact_and_source_refs(
+    tmp_path: Path,
+) -> None:
+    """Memory Compact delete should remove the artifact and its source refs."""
+    database, session_context, session, service = anyio.run(
+        _open_service, tmp_path / "compact-api-delete.db"
+    )
+    try:
+        with (
+            override_library_provider("memory_compact_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            create_response = client.post("/memory/compacts", json=_payload())
+            compact_id = create_response.json()["id"]
+            delete_response = client.delete(f"/memory/compacts/{compact_id}")
+            get_response = client.get(f"/memory/compacts/{compact_id}")
+            list_response = client.get(
+                "/memory/compacts", params={"project": "alexandria-hermes"}
+            )
+            current_response = client.get(
+                "/memory/compacts/current", params={"project": "alexandria-hermes"}
+            )
+            counts = anyio.run(_compact_persistence_counts, session, compact_id)
+    finally:
+        anyio.run(_close_service, database, session_context, session)
+
+    assert create_response.status_code == 201
+    assert delete_response.status_code == 204
+    assert delete_response.content == b""
+    assert get_response.status_code == 404
+    assert list_response.status_code == 200
+    assert list_response.json()["total"] == 0
+    assert current_response.status_code == 404
+    assert counts == {"compacts": 0, "source_refs": 0}
 
 
 def test_memory_compact_api_exposes_current_archive_lifecycle(tmp_path: Path) -> None:

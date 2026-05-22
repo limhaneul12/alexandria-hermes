@@ -15,6 +15,7 @@ from app.cli_support.handlers.context import (
     handle_context_chunks,
     handle_context_compact,
     handle_context_curate,
+    handle_context_delete,
     handle_context_doctor_rag,
     handle_context_embed,
     handle_context_memory_map,
@@ -164,6 +165,20 @@ def context_chunks(ctx: typer.Context, context_id: str) -> None:
         None.
     """
     run_client(ctx, ContextIdCommand(context_id=context_id), handle_context_chunks)
+
+
+@context_app.command("delete")
+def context_delete(ctx: typer.Context, context_id: str) -> None:
+    """Hard delete one Context Vault entry.
+
+    Args:
+        ctx: Typer context.
+        context_id: Context identifier.
+
+    Returns:
+        None.
+    """
+    run_client(ctx, ContextIdCommand(context_id=context_id), handle_context_delete)
 
 
 @context_app.command("compact")

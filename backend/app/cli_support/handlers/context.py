@@ -70,6 +70,30 @@ def handle_context_chunks(
     return 0
 
 
+def handle_context_delete(
+    command: ContextIdCommand,
+    context: CommandContext,
+    client: CliBackendApiClient,
+) -> int:
+    """Run the context hard-delete CLI command.
+
+    Args:
+        command: Typed CLI command contract for the operation.
+        context: CLI runtime context with output settings.
+        client: Backend API client used for HTTP requests.
+
+    Returns:
+        Process-style exit code.
+    """
+    context_id = str(command.context_id)
+    client.delete(f"/memory/contexts/{quote_path(context_id)}")
+    if context.json_output:
+        print_context_payload({"deleted": True, "context_id": context_id}, context)
+        return 0
+    print(f"deleted context {context_id}", file=context.stdout)
+    return 0
+
+
 def handle_context_compact(
     command: ContextCompactCommand,
     context: CommandContext,

@@ -116,3 +116,14 @@ class IMemoryCompactRepository(ABC):
         Returns:
             Archived compact.
         """
+
+    @abstractmethod
+    async def delete(self, compact_id: str) -> None:
+        """Hard delete one compact and dependent source refs.
+
+        Args:
+            compact_id: Memory Compact identifier.
+
+        Returns:
+            None.
+        """

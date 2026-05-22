@@ -9,6 +9,7 @@ from app.cli_support.contracts.memory_command_contracts import (
 )
 from app.cli_support.handlers.memory_compact import (
     handle_memory_compact_current,
+    handle_memory_compact_delete,
     handle_memory_compact_get,
     handle_memory_compact_list,
 )
@@ -84,4 +85,19 @@ def memory_compact_get(ctx: typer.Context, compact_id: str) -> None:
         ctx,
         MemoryCompactIdCommand(compact_id=compact_id),
         handle_memory_compact_get,
+    )
+
+
+@memory_compact_app.command("delete")
+def memory_compact_delete(ctx: typer.Context, compact_id: str) -> None:
+    """Hard delete one selected Memory Compact by id.
+
+    Args:
+        ctx: Typer command context.
+        compact_id: Memory Compact identifier.
+    """
+    run_client(
+        ctx,
+        MemoryCompactIdCommand(compact_id=compact_id),
+        handle_memory_compact_delete,
     )

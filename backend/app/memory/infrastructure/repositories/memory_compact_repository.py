@@ -21,7 +21,7 @@ from app.memory.infrastructure.models.memory_compact_models import (
 )
 from app.shared.exceptions import MemoryCompactNotFoundError
 from app.shared.types.types_convert_utils import aware_utc_datetime
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -191,6 +191,26 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         model.updated_at = now
         await self._session.flush()
         return await self._read_model(model)
+
+    async def delete(self, compact_id: str) -> None:
+        """Hard delete one compact and dependent source refs.
+
+        Args:
+            compact_id: Memory Compact identifier.
+
+        Returns:
+            None.
+        """
+        model = await self._session.get(MemoryCompactORM, compact_id)
+        if model is None:
+            raise MemoryCompactNotFoundError(f"Memory compact not found: {compact_id}")
+        await self._session.execute(
+            delete(MemoryCompactSourceRefORM).where(
+                MemoryCompactSourceRefORM.compact_id == compact_id
+            )
+        )
+        await self._session.delete(model)
+        await self._session.flush()
 
     async def _supersede_current_project(
         self,

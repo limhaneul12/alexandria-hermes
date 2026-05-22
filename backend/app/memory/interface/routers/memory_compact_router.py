@@ -18,7 +18,7 @@ from app.shared.exceptions.route_exceptions import (
 )
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 router = APIRouter(prefix="/memory/compacts", tags=["memory-compacts"])
 
@@ -181,6 +181,33 @@ async def mark_memory_compact_current(
     """
     compact = await service.mark_current(compact_id)
     return MemoryCompactResponse.from_entity(compact)
+
+
+@router.delete(
+    "/{compact_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete Memory Compact",
+    description="Hard delete a Memory Compact and its durable source references.",
+)
+@router_exception_status(MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def delete_memory_compact(
+    compact_id: str,
+    service: MemoryCompactService = Depends(
+        Provide[ApplicationContainer.memory.memory_compact_service]
+    ),
+) -> Response:
+    """Hard delete one Memory Compact.
+
+    Args:
+        compact_id: Memory Compact identifier.
+        service: Memory Compact application service.
+
+    Returns:
+        Empty HTTP 204 response.
+    """
+    await service.delete(compact_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

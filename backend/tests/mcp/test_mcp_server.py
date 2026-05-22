@@ -23,6 +23,8 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_capture_harness,
     alexandria_check_harness,
     alexandria_complete_skill_acquisition,
+    alexandria_delete_context,
+    alexandria_delete_memory_compact,
     alexandria_get_current_memory_compact,
     alexandria_get_harness,
     alexandria_get_memory_compact,
@@ -132,6 +134,8 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
     assert iscoroutinefunction(alexandria_start_skill_acquisition)
     assert iscoroutinefunction(alexandria_skill_acquisition_job_status)
     assert iscoroutinefunction(alexandria_complete_skill_acquisition)
+    assert iscoroutinefunction(alexandria_delete_context)
+    assert iscoroutinefunction(alexandria_delete_memory_compact)
 
 
 def test_mcp_client_sends_backend_http_only_with_auth_headers() -> None:
@@ -546,6 +550,7 @@ def test_mcp_memory_compact_tools_map_to_selected_artifact_endpoints() -> None:
         )
         await alexandria_get_current_memory_compact(client, project="alexandria-hermes")
         await alexandria_get_memory_compact(client, "compact/1")
+        await alexandria_delete_memory_compact(client, "compact/1")
 
     anyio.run(run_tools)
 
@@ -560,7 +565,18 @@ def test_mcp_memory_compact_tools_map_to_selected_artifact_endpoints() -> None:
         ),
         ("GET", "/memory/compacts/current?project=alexandria-hermes"),
         ("GET", "/memory/compacts/compact%2F1"),
+        ("DELETE", "/memory/compacts/compact%2F1"),
     ]
+
+
+def test_mcp_context_delete_tool_maps_to_hard_delete_endpoint() -> None:
+    """Context delete MCP tool should call the hard-delete context endpoint."""
+    client, calls = _client()
+
+    _run_json(alexandria_delete_context(client, "ctx/1"))
+
+    assert calls[0].method == "DELETE"
+    assert str(calls[0].url) == "http://backend:8000/memory/contexts/ctx%2F1"
 
 
 def test_mcp_librarian_brief_preview_uses_budgeted_packet_contract() -> None:
@@ -739,6 +755,7 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_list_memory_compact_artifacts",
         "alexandria_get_current_memory_compact",
         "alexandria_get_memory_compact",
+        "alexandria_delete_memory_compact",
         "alexandria_prepare_compact",
         "alexandria_start_skill_acquisition",
         "alexandria_skill_acquisition_job_status",
@@ -754,6 +771,7 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_librarian_oauth_status",
         "alexandria_librarian_oauth_refresh",
         "alexandria_archive_context",
+        "alexandria_delete_context",
         "alexandria_rag_status",
     } <= names
     assert "alexandria_request_skill_acquisition" not in names

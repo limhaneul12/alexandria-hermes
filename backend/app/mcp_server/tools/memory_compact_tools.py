@@ -70,3 +70,19 @@ async def alexandria_get_memory_compact(
         Backend Memory Compact response.
     """
     return await client.get(f"/memory/compacts/{quote(compact_id, safe='')}")
+
+
+async def alexandria_delete_memory_compact(
+    client: AlexandriaApiClient,
+    compact_id: str,
+) -> JSONValue:
+    """Hard delete one selected Memory Compact by id.
+
+    Args:
+        client: Backend HTTP client.
+        compact_id: Memory Compact identifier.
+
+    Returns:
+        Backend delete response, typically None for HTTP 204.
+    """
+    return await client.delete(f"/memory/compacts/{quote(compact_id, safe='')}")

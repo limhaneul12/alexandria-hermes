@@ -9,12 +9,17 @@ from typing import Any
 import anyio
 from app.main import app
 from app.memory.application.context_service import ContextService
-from app.memory.infrastructure.models.context_models import ContextORM
+from app.memory.infrastructure.models.context_models import (
+    ContextAccessEventORM,
+    ContextChunkORM,
+    ContextORM,
+)
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
 from app.shared.infrastructure.database import Database
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.shared.provider_overrides import override_library_provider
 
@@ -76,6 +81,30 @@ async def _set_context_dates(
     model.created_at = created_at
     model.updated_at = updated_at
     await session.commit()
+
+
+async def _context_persistence_counts(
+    session: AsyncSession,
+    context_id: str,
+) -> dict[str, int]:
+    context_count = await session.scalar(
+        select(func.count()).select_from(ContextORM).where(ContextORM.id == context_id)
+    )
+    chunk_count = await session.scalar(
+        select(func.count())
+        .select_from(ContextChunkORM)
+        .where(ContextChunkORM.context_id == context_id)
+    )
+    access_event_count = await session.scalar(
+        select(func.count())
+        .select_from(ContextAccessEventORM)
+        .where(ContextAccessEventORM.context_id == context_id)
+    )
+    return {
+        "contexts": int(context_count or 0),
+        "chunks": int(chunk_count or 0),
+        "access_events": int(access_event_count or 0),
+    }
 
 
 def test_context_api_filters_list_by_created_and_updated_dates(tmp_path: Path) -> None:
@@ -155,6 +184,62 @@ def test_context_api_filters_list_by_created_and_updated_dates(tmp_path: Path) -
         inside_response.json()["id"]
     ]
     assert naive_response.status_code == 422
+
+
+def test_context_api_hard_deletes_context_rows_chunks_access_events_and_search_index(
+    tmp_path: Path,
+) -> None:
+    """Context delete should remove durable rows and retrieval traces."""
+    database, session_context, session, service = anyio.run(
+        _open_context_service, tmp_path / "context-api-delete.db"
+    )
+    try:
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            create_response = client.post(
+                "/memory/contexts/capture", json=_context_payload()
+            )
+            context_id = create_response.json()["id"]
+            access_response = client.post(
+                f"/memory/contexts/{context_id}/access-events",
+                json={
+                    "actor_name": "Alexandria UI",
+                    "actor_type": "UI",
+                    "access_method": "DETAIL_VIEW",
+                    "source_surface": "context-detail",
+                },
+            )
+            before_search_response = client.post(
+                "/memory/contexts/retrieval/search",
+                json={"query": "API saves recalls", "strategy": "HYBRID"},
+            )
+            delete_response = client.delete(f"/memory/contexts/{context_id}")
+            after_get_response = client.get(f"/memory/contexts/{context_id}")
+            after_list_response = client.get(
+                "/memory/contexts", params={"include_archived": "true"}
+            )
+            after_search_response = client.post(
+                "/memory/contexts/retrieval/search",
+                json={"query": "API saves recalls", "strategy": "HYBRID"},
+            )
+            counts = anyio.run(_context_persistence_counts, session, context_id)
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert create_response.status_code == 201
+    assert access_response.status_code == 201
+    assert before_search_response.status_code == 200
+    assert context_id in before_search_response.json()["context_pack"]
+    assert delete_response.status_code == 204
+    assert delete_response.content == b""
+    assert after_get_response.status_code == 404
+    assert after_list_response.status_code == 200
+    assert after_list_response.json()["total"] == 0
+    assert after_search_response.status_code == 200
+    assert after_search_response.json()["matches"] == []
+    assert counts == {"contexts": 0, "chunks": 0, "access_events": 0}
 
 
 def test_context_api_captures_lists_searches_accesses_and_archives(

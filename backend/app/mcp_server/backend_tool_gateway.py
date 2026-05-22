@@ -34,6 +34,7 @@ from app.mcp_server.tools.harness_tools import (
     alexandria_list_harnesses as _alexandria_list_harnesses,
 )
 from app.mcp_server.tools.memory_compact_tools import (
+    alexandria_delete_memory_compact as _alexandria_delete_memory_compact,
     alexandria_get_current_memory_compact as _alexandria_get_current_memory_compact,
     alexandria_get_memory_compact as _alexandria_get_memory_compact,
     alexandria_list_memory_compact_artifacts as _alexandria_list_memory_compact_artifacts,
@@ -66,6 +67,7 @@ DEFAULT_LIBRARY_SEARCH_LIMIT = 20
 
 alexandria_get_current_memory_compact = _alexandria_get_current_memory_compact
 alexandria_get_memory_compact = _alexandria_get_memory_compact
+alexandria_delete_memory_compact = _alexandria_delete_memory_compact
 alexandria_list_memory_compact_artifacts = _alexandria_list_memory_compact_artifacts
 alexandria_capture_harness = _alexandria_capture_harness
 alexandria_check_harness = _alexandria_check_harness
@@ -297,7 +299,7 @@ async def alexandria_prepare_compact(
 async def alexandria_archive_context(
     client: AlexandriaApiClient, context_id: str
 ) -> JSONValue:
-    """Archive a context without exposing hard delete.
+    """Archive a context without hard deleting it.
 
     Args:
         client: Backend HTTP client.
@@ -309,6 +311,22 @@ async def alexandria_archive_context(
     response = await client.post(
         f"/memory/contexts/{_path_segment(context_id)}/archive", {}
     )
+    return response
+
+
+async def alexandria_delete_context(
+    client: AlexandriaApiClient, context_id: str
+) -> JSONValue:
+    """Hard delete one context.
+
+    Args:
+        client: Backend HTTP client.
+        context_id: Context identifier.
+
+    Returns:
+        Backend delete response, typically None for HTTP 204.
+    """
+    response = await client.delete(f"/memory/contexts/{_path_segment(context_id)}")
     return response
 
 

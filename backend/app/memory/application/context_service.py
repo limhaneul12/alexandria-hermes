@@ -577,6 +577,17 @@ class ContextService:
         context = await self._repository.archive(context_id)
         return context
 
+    async def delete(self, context_id: str) -> None:
+        """Hard delete one context.
+
+        Args:
+            context_id: Context identifier.
+
+        Returns:
+            None.
+        """
+        await self._repository.delete(context_id)
+
     async def access(
         self,
         context_id: str,

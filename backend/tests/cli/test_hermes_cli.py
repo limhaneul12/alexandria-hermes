@@ -1439,6 +1439,33 @@ def test_cli_reads_current_and_selected_memory_compacts() -> None:
     assert loads_json(get_stdout.getvalue())["id"] == "compact/1"
 
 
+def test_cli_hard_deletes_context_and_memory_compact() -> None:
+    """Context and Memory Compact CLI delete commands should hit hard-delete APIs."""
+    transport, calls = _transport(None)
+    context_stdout = io.StringIO()
+    compact_stdout = io.StringIO()
+
+    context_exit = run(
+        ["context", "delete", "ctx/1"],
+        transport=transport,
+        stdout=context_stdout,
+    )
+    compact_exit = run(
+        ["memory-compacts", "delete", "compact/1"],
+        transport=transport,
+        stdout=compact_stdout,
+    )
+
+    assert context_exit == 0
+    assert compact_exit == 0
+    assert [(call[0], call[1]) for call in calls] == [
+        ("DELETE", "http://localhost:8000/memory/contexts/ctx%2F1"),
+        ("DELETE", "http://localhost:8000/memory/compacts/compact%2F1"),
+    ]
+    assert "deleted context ctx/1" in context_stdout.getvalue()
+    assert "deleted memory compact compact/1" in compact_stdout.getvalue()
+
+
 def test_cli_previews_librarian_route_without_delegation() -> None:
     """Librarian route-preview should not queue delegated work."""
     transport, calls = _transport(

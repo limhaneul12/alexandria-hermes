@@ -18,14 +18,12 @@ from app.memory.domain.entities.context_read_models import (
 )
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.domain.repositories.context_repository import IContextRepository
-from app.memory.infrastructure.models.context_models import (
-    ContextChunkORM,
-    ContextORM,
-)
+from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
 from app.memory.infrastructure.repositories.contexts.access_events import (
     list_context_access_events,
     record_context_access,
 )
+from app.memory.infrastructure.repositories.contexts.deletion import delete_context_rows
 from app.memory.infrastructure.repositories.contexts.embedding_reindex import (
     chunks_missing_embeddings,
     update_chunk_embeddings,
@@ -59,11 +57,6 @@ class SqlAlchemyContextRepository(IContextRepository):
     """Concrete repository for Context Vault persistence and FTS retrieval."""
 
     def __init__(self, *, session: AsyncSession) -> None:
-        """Initialize repository.
-
-        Args:
-            session: Active async session.
-        """
         self._session = session
 
     async def ensure_search_tables(self) -> None:
@@ -265,6 +258,12 @@ class SqlAlchemyContextRepository(IContextRepository):
         await remove_context_fts(session=self._session, context_id=context_id)
         context = map_context_row(model)
         return context
+
+    async def delete(self, context_id: str) -> None:
+        model = await self._require_context(context_id)
+        await delete_context_rows(
+            session=self._session, context_id=context_id, model=model
+        )
 
     async def record_access(self, payload: ContextAccessCreate) -> ContextRecord:
         """Record a recall/access event.

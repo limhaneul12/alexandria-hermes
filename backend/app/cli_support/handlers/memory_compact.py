@@ -95,6 +95,30 @@ def handle_memory_compact_get(
     return 0
 
 
+def handle_memory_compact_delete(
+    command: MemoryCompactIdCommand,
+    context: CommandContext,
+    client: CliBackendApiClient,
+) -> int:
+    """Run the Memory Compact hard-delete CLI command.
+
+    Args:
+        command: Typed command contract with the selected compact id.
+        context: CLI runtime context with output settings.
+        client: Backend API client used for HTTP requests.
+
+    Returns:
+        Process-style exit code.
+    """
+    compact_id = str(command.compact_id)
+    client.delete(f"/memory/compacts/{quote_path(compact_id)}")
+    if context.json_output:
+        print_json({"deleted": True, "compact_id": compact_id}, context.stdout)
+        return 0
+    print(f"deleted memory compact {compact_id}", file=context.stdout)
+    return 0
+
+
 def _print_memory_compact_list(payload: JSONValue, context: CommandContext) -> None:
     if context.json_output:
         print_json(payload, context.stdout)

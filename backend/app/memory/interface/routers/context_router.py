@@ -39,7 +39,7 @@ from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import CONTEXT_ROUTE_EXCEPTION_MAPPING
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 router = APIRouter(prefix="/memory/contexts", tags=["library-contexts"])
 
@@ -693,11 +693,38 @@ async def access_context(
     return response
 
 
+@router.delete(
+    "/{context_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    description="Hard delete one Context Vault entry and its retrieval/audit rows.",
+    summary="Delete context",
+)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def delete_context(
+    context_id: str,
+    service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
+) -> Response:
+    """Hard delete one context.
+
+    Args:
+        context_id: Context identifier.
+        service: Context application service.
+
+    Returns:
+        Empty HTTP 204 response.
+    """
+    await service.delete(context_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/{context_id}/archive",
     response_model=ContextResponse,
     status_code=status.HTTP_200_OK,
-    description="Archive one context; hard delete is intentionally unavailable.",
+    description="Archive one context without hard deleting its durable row.",
     summary="Archive context",
 )
 @router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
