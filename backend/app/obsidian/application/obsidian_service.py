@@ -2,25 +2,24 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 
+from app.obsidian.application.obsidian_graph_relations import (
+    add_or_update_alexandria_links_section,
+)
+from app.obsidian.application.obsidian_note_indexer import note_index_from_path
 from app.obsidian.application.obsidian_note_templates import (
-    chunks_for_body,
     conversation_id,
     default_folders,
     default_note_path,
     frontmatter_for_save,
     librarian_answer,
     librarian_transcript_body,
-    sha256_text,
     source_refs_for_librarian,
     start_here_body,
-    title_from_document,
 )
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
-    ObsidianNoteIndex,
     ObsidianSaveNote,
     ObsidianSearchQuery,
 )
@@ -35,8 +34,6 @@ from app.obsidian.domain.repositories.obsidian_repository import (
     IObsidianIndexRepository,
 )
 from app.obsidian.infrastructure.markdown.frontmatter import (
-    frontmatter_json,
-    frontmatter_list,
     frontmatter_text,
     parse_markdown_document,
     render_markdown_document,
@@ -151,7 +148,11 @@ class ObsidianService:
             relative_path = str(path.relative_to(self._vault_path))
             seen_paths.add(relative_path)
             try:
-                payload = self._note_index_from_path(path, relative_path)
+                payload = note_index_from_path(
+                    path,
+                    relative_path,
+                    alexandria_root=self._alexandria_root,
+                )
                 if payload is None:
                     files_skipped += 1
                     continue
@@ -266,12 +267,18 @@ class ObsidianService:
             title=title,
             redaction_warnings=redaction.warnings,
         )
-        body = redaction.redacted_content
+        body = add_or_update_alexandria_links_section(
+            redaction.redacted_content, frontmatter
+        )
         document = render_markdown_document(frontmatter, body)
         temp_path = absolute.with_suffix(f"{NOTE_SUFFIX}.tmp")
         temp_path.write_text(document, encoding="utf-8")
         temp_path.replace(absolute)
-        index_payload = self._note_index_from_path(absolute, safe_path)
+        index_payload = note_index_from_path(
+            absolute,
+            safe_path,
+            alexandria_root=self._alexandria_root,
+        )
         if index_payload is None:
             raise ObsidianValidationError(
                 "saved note is missing Alexandria frontmatter"
@@ -329,6 +336,9 @@ class ObsidianService:
             ],
             "conversation_id": conversation_id(),
             "transcript_path": None,
+            "delegate_status": _delegate_status(payload),
+            "provider_id": payload.provider_id,
+            "profile_id": payload.profile_id,
         }
         if payload.save_transcript:
             transcript = await self._save_librarian_chat(
@@ -372,48 +382,20 @@ class ObsidianService:
                     "conversation_id": conversation_id,
                     "active_note_path": payload.active_note_path,
                     "linked_note_ids": [hit.note.note_id for hit in hits],
+                    "source_refs": [
+                        {
+                            "id": hit.note.note_id,
+                            "path": hit.note.relative_path,
+                            "relation": "cites",
+                        }
+                        for hit in hits
+                    ],
                 },
             )
         )
 
     def _root_path(self) -> Path:
         return resolve_note_path(self._vault_path, self._alexandria_root)
-
-    def _note_index_from_path(
-        self,
-        path: Path,
-        relative_path: str,
-    ) -> ObsidianNoteIndex | None:
-        text = path.read_text(encoding="utf-8")
-        document = parse_markdown_document(text)
-        note_type_value = frontmatter_text(document.frontmatter, "alexandria_type")
-        note_id = frontmatter_text(document.frontmatter, "id")
-        if not note_type_value or not note_id:
-            return None
-        note_type = AlexandriaNoteType(note_type_value)
-        stat = path.stat()
-        body = document.body.rstrip("\n")
-        title = title_from_document(document.frontmatter, body, path)
-        tags = frontmatter_list(document.frontmatter, "tags")
-        modified_at = datetime.fromtimestamp(stat.st_mtime, tz=UTC)
-        content_hash = sha256_text(text)
-        chunks = chunks_for_body(body)
-        return ObsidianNoteIndex(
-            note_id=note_id,
-            relative_path=relative_path,
-            alexandria_type=note_type,
-            title=title,
-            status=frontmatter_text(document.frontmatter, "status") or "active",
-            tags=tags,
-            project=frontmatter_text(document.frontmatter, "project"),
-            source=frontmatter_text(document.frontmatter, "source"),
-            content_hash=content_hash,
-            frontmatter=frontmatter_json(document.frontmatter),
-            body=body,
-            size_bytes=stat.st_size,
-            modified_at=modified_at,
-            chunks=chunks,
-        )
 
     def _read_authoritative_note(
         self,
@@ -424,7 +406,11 @@ class ObsidianService:
         absolute = resolve_note_path(self._vault_path, relative_path)
         if not absolute.exists():
             raise ObsidianNotFoundError(f"Obsidian note not found: {relative_path}")
-        payload = self._note_index_from_path(absolute, relative_path)
+        payload = note_index_from_path(
+            absolute,
+            relative_path,
+            alexandria_root=self._alexandria_root,
+        )
         if payload is None:
             raise ObsidianValidationError(
                 f"Obsidian note is missing Alexandria frontmatter: {relative_path}"
@@ -447,3 +433,11 @@ class ObsidianService:
             modified_at=payload.modified_at,
             indexed_at=indexed.indexed_at,
         )
+
+
+def _delegate_status(payload: ObsidianLibrarianAsk) -> str:
+    if not payload.delegate_to_librarian:
+        return "local_only"
+    if payload.provider_id or payload.profile_id:
+        return "requested_local_fallback"
+    return "requested_no_provider_local_fallback"

@@ -12,6 +12,14 @@ class HermesAssetsSetupSummary(StrictSchemaModel):
     written_files: list[str]
 
 
+class MigrationSetupSummary(StrictSchemaModel):
+    """Setup-triggered Alembic migration result."""
+
+    run_requested: bool
+    status: str
+    revision: str | None
+
+
 class SetupSummary(StrictSchemaModel):
     """CLI setup result payload."""
 
@@ -32,4 +40,5 @@ class SetupSummary(StrictSchemaModel):
     guidebook_written: bool
     hermes_assets_planned: bool
     hermes_assets: HermesAssetsSetupSummary
+    migrations: MigrationSetupSummary
     next_steps: list[str]

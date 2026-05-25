@@ -32,6 +32,8 @@ def test_daemon_install_dry_run_reports_service_path_and_command(
             "install",
             "--hermes-home",
             str(hermes_home),
+            "--service-home",
+            str(tmp_path),
             "--dry-run",
         ]
     )

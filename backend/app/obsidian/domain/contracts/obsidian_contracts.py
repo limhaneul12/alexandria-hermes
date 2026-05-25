@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
+from app.obsidian.domain.event_enum.obsidian_enums import (
+    AlexandriaNoteType,
+    ObsidianEdgeSourceKind,
+    ObsidianRelationType,
+)
 from app.shared.types.extra_types import JSONObject
 
 
@@ -18,6 +22,20 @@ class ObsidianChunkIndex:
     text: str
     content_hash: str
     token_count: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianEdgeIndex:
+    """Graph edge discovered while indexing one Obsidian note."""
+
+    edge_id: str
+    source_note_id: str
+    source_path: str
+    target_note_id: str | None
+    target_path: str
+    relation: ObsidianRelationType
+    confidence: float
+    source_kind: ObsidianEdgeSourceKind
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -38,6 +56,7 @@ class ObsidianNoteIndex:
     size_bytes: int
     modified_at: datetime
     chunks: list[ObsidianChunkIndex]
+    edges: list[ObsidianEdgeIndex] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -78,3 +97,20 @@ class ObsidianLibrarianAsk:
     preferred_alexandria_types: list[AlexandriaNoteType] = field(default_factory=list)
     save_transcript: bool = False
     delegate_to_librarian: bool = False
+    provider_id: str | None = None
+    profile_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianLibrarianWorkflowStart:
+    """Start request for a resumable Obsidian librarian workflow."""
+
+    ask: ObsidianLibrarianAsk
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianLibrarianWorkflowResume:
+    """Resume request with approved workflow action ids."""
+
+    thread_id: str
+    approved_actions: list[str] = field(default_factory=list)

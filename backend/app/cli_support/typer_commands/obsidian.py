@@ -6,6 +6,7 @@ import typer
 from app.cli_support.contracts.obsidian_command_contracts import (
     ObsidianAskCommand,
     ObsidianReadCommand,
+    ObsidianRelatedCommand,
     ObsidianSaveCommand,
     ObsidianSearchCommand,
 )
@@ -14,14 +15,49 @@ from app.cli_support.handlers.obsidian import (
     handle_obsidian_init,
     handle_obsidian_read,
     handle_obsidian_reindex,
+    handle_obsidian_related,
     handle_obsidian_save,
     handle_obsidian_search,
     handle_obsidian_status,
 )
-from app.cli_support.typer_commands.typer_runtime import run_client, run_context
+from app.cli_support.obsidian_plugin_install import install_local_obsidian_plugin
+from app.cli_support.presentation.output_renderers import print_json
+from app.cli_support.typer_commands.typer_runtime import (
+    command_context,
+    run_client,
+    run_context,
+)
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 
 obsidian_app = typer.Typer(help="Manage Obsidian-backed Alexandria vault")
+
+
+@obsidian_app.command("install-local")
+def obsidian_install_local(
+    ctx: typer.Context,
+    vault_path: str = typer.Option(..., "--vault-path"),
+    plugin_install_mode: str = typer.Option("copy", "--plugin-install-mode"),
+    enable_plugin: bool = typer.Option(True, "--enable-plugin/--no-enable-plugin"),
+) -> None:
+    """Install the local Alexandria Obsidian plugin into a vault.
+
+    Args:
+        ctx: Typer invocation context.
+        vault_path: Target Obsidian vault path.
+        plugin_install_mode: copy or symlink. Copy avoids repo data.json writes.
+        enable_plugin: Whether to add the plugin id to community-plugins.json.
+    """
+    context = command_context(ctx)
+    try:
+        result = install_local_obsidian_plugin(
+            vault_path=vault_path,
+            install_mode=plugin_install_mode,
+            enable_plugin=enable_plugin,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=context.stderr)
+        raise typer.Exit(1) from exc
+    print_json(result.to_payload(), context.stdout)
 
 
 @obsidian_app.command("status")
@@ -106,6 +142,28 @@ def obsidian_read(
     )
 
 
+@obsidian_app.command("related")
+def obsidian_related(
+    ctx: typer.Context,
+    note_id: str | None = typer.Argument(None),
+    path: str | None = typer.Option(None, "--path"),
+    limit: int = typer.Option(10, "--limit"),
+) -> None:
+    """Read graph-related notes by id or --path.
+
+    Args:
+        ctx: Typer invocation context.
+        note_id: Optional stable note id.
+        path: Optional vault-relative Markdown path.
+        limit: Maximum related notes.
+    """
+    run_client(
+        ctx,
+        ObsidianRelatedCommand(note_id=note_id, path=path, limit=limit),
+        handle_obsidian_related,
+    )
+
+
 @obsidian_app.command("save")
 def obsidian_save(
     ctx: typer.Context,
@@ -152,6 +210,9 @@ def obsidian_ask(
     selection: str | None = typer.Option(None, "--selection"),
     project: str | None = typer.Option(None, "--project"),
     save_transcript: bool = typer.Option(False, "--save-transcript"),
+    delegate_to_librarian: bool = typer.Option(False, "--delegate"),
+    provider_id: str | None = typer.Option(None, "--provider-id"),
+    profile_id: str | None = typer.Option(None, "--profile-id"),
 ) -> None:
     """Ask the Obsidian-aware Alexandria librarian.
 
@@ -162,6 +223,9 @@ def obsidian_ask(
         selection: Optional selected text from Obsidian.
         project: Optional project filter.
         save_transcript: Whether to write the chat transcript note.
+        delegate_to_librarian: Whether to request provider delegation hooks.
+        provider_id: Optional preferred provider id.
+        profile_id: Optional preferred librarian profile id.
     """
     run_client(
         ctx,
@@ -171,6 +235,9 @@ def obsidian_ask(
             selection=selection,
             project=project,
             save_transcript=save_transcript,
+            delegate_to_librarian=delegate_to_librarian,
+            provider_id=provider_id,
+            profile_id=profile_id,
         ),
         handle_obsidian_ask,
     )

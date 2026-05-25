@@ -92,6 +92,11 @@ def setup(
         "--install-hermes-assets",
         help="Plan or write Hermes awareness skill/prompt/policy assets.",
     ),
+    run_migrations: bool = typer.Option(
+        False,
+        "--run-migrations",
+        help="Run Alembic migrations after writing local setup files.",
+    ),
 ) -> None:
     """Configure a supported Alexandria-Hermes runtime.
 
@@ -109,6 +114,7 @@ def setup(
         apply: Whether to write files.
         write_guidebook: Whether to write a guidebook.
         install_hermes_assets: Whether to plan/write Hermes awareness assets.
+        run_migrations: Whether to run Alembic after writing setup files.
 
     Returns:
         None.
@@ -131,6 +137,7 @@ def setup(
                 apply=apply,
                 write_guidebook=write_guidebook,
                 install_hermes_assets=install_hermes_assets,
+                run_migrations=run_migrations,
             )
         )
     except (CliInputError, OSError) as exc:

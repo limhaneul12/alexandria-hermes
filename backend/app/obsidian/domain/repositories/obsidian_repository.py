@@ -9,7 +9,9 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianSearchQuery,
 )
 from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianLibrarianWorkflow,
     ObsidianNote,
+    ObsidianRelatedNote,
     ObsidianSearchHit,
 )
 
@@ -77,9 +79,49 @@ class IObsidianIndexRepository(ABC):
         """
 
     @abstractmethod
+    async def related_notes(
+        self,
+        *,
+        note_id: str,
+        limit: int,
+    ) -> list[ObsidianRelatedNote]:
+        """Return graph-related notes for one indexed note.
+
+        Args:
+            note_id: Source or target note id to expand.
+            limit: Maximum related notes.
+
+        Returns:
+            Ranked related-note results.
+        """
+
+    @abstractmethod
     async def count_by_status(self) -> tuple[int, int, int]:
         """Return indexed, stale, and error note counts.
 
         Returns:
             Tuple of indexed, stale, and error note counts.
+        """
+
+
+class IObsidianWorkflowRepository(ABC):
+    """Persistence contract for librarian workflow checkpoints."""
+
+    @abstractmethod
+    async def upsert_workflow(self, workflow: ObsidianLibrarianWorkflow) -> None:
+        """Persist one workflow checkpoint.
+
+        Args:
+            workflow: Workflow checkpoint entity.
+        """
+
+    @abstractmethod
+    async def get_workflow(self, thread_id: str) -> ObsidianLibrarianWorkflow | None:
+        """Read one workflow checkpoint by thread id.
+
+        Args:
+            thread_id: Workflow thread id.
+
+        Returns:
+            Workflow when found.
         """

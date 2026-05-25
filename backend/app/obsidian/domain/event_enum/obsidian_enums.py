@@ -23,3 +23,33 @@ class ObsidianIndexStatus(StrEnum):
     INDEXED = "indexed"
     STALE = "stale"
     ERROR = "error"
+
+
+class ObsidianRelationType(StrEnum):
+    """Supported Alexandria graph relation kinds."""
+
+    CITES = "cites"
+    DERIVED_FROM = "derived_from"
+    RELATED = "related"
+    SUPERSEDES = "supersedes"
+    PROMOTES_TO = "promotes_to"
+    BLOCKS = "blocks"
+    RESOLVES = "resolves"
+    WIKILINK = "wikilink"
+
+
+class ObsidianEdgeSourceKind(StrEnum):
+    """Where an indexed graph edge came from."""
+
+    FRONTMATTER = "frontmatter"
+    WIKILINK = "wikilink"
+    INFERRED = "inferred"
+    USER_APPROVED = "user_approved"
+
+
+class ObsidianLibrarianWorkflowStatus(StrEnum):
+    """Status values for Obsidian librarian approval workflows."""
+
+    WAITING_FOR_APPROVAL = "waiting_for_approval"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"

@@ -8,7 +8,16 @@ from app.shared.infrastructure.database import Base
 from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.extra_types import JSONValue
-from sqlalchemy import JSON, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 
@@ -59,3 +68,51 @@ class ObsidianChunkORM(Base):
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
+class ObsidianEdgeORM(Base):
+    """Indexed graph edge derived from canonical Markdown."""
+
+    __tablename__ = "obsidian_edges"
+
+    edge_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_note_id: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("obsidian_files.note_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_path: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    target_note_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
+    target_path: Mapped[str] = mapped_column(String(1024), nullable=False, index=True)
+    relation: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    source_kind: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    indexed_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+
+class ObsidianLibrarianWorkflowORM(Base):
+    """Persisted checkpoint for an Obsidian librarian workflow."""
+
+    __tablename__ = "obsidian_librarian_workflows"
+
+    thread_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    status: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    active_note_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    project: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    provider_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    profile_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delegate_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    state_json: Mapped[dict[str, JSONValue]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)

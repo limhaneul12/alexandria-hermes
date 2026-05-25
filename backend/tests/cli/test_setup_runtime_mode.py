@@ -185,3 +185,44 @@ def test_setup_invalid_runtime_mode_is_rejected() -> None:
 
     assert exit_code != 0
     assert "postgres" in stderr.getvalue()
+
+
+def test_setup_backend_daemon_run_migrations_creates_obsidian_tables(
+    tmp_path: Path,
+) -> None:
+    """--run-migrations should prevent first Obsidian init from missing tables."""
+    import sqlite3
+
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir()
+
+    exit_code, payload, stderr = _json_stdout(
+        [
+            "setup",
+            "--mode",
+            "backend-daemon",
+            "--hermes-home",
+            str(hermes_home),
+            "--apply",
+            "--run-migrations",
+            "--operator-api-key",
+            "test-operator-api-key-for-setup-000000000000",
+        ]
+    )
+
+    database_path = Path(str(payload["database_path"]))
+    with sqlite3.connect(database_path) as connection:
+        table_names = {
+            row[0]
+            for row in connection.execute(
+                "select name from sqlite_master where type in ('table', 'virtual table')"
+            )
+        }
+    assert exit_code == 0, stderr
+    assert payload["migrations"] == {
+        "run_requested": True,
+        "status": "upgraded",
+        "revision": "head",
+    }
+    assert "obsidian_files" in table_names
+    assert "obsidian_edges" in table_names

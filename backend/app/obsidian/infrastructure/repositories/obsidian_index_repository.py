@@ -10,18 +10,23 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianSearchQuery,
 )
 from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianEdge,
     ObsidianNote,
+    ObsidianRelatedNote,
     ObsidianSearchHit,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
+    ObsidianEdgeSourceKind,
     ObsidianIndexStatus,
+    ObsidianRelationType,
 )
 from app.obsidian.domain.repositories.obsidian_repository import (
     IObsidianIndexRepository,
 )
 from app.obsidian.infrastructure.models.obsidian_index_models import (
     ObsidianChunkORM,
+    ObsidianEdgeORM,
     ObsidianFileORM,
 )
 from app.obsidian.infrastructure.repositories.obsidian_fts import (
@@ -33,7 +38,7 @@ from app.obsidian.infrastructure.repositories.obsidian_fts import (
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.extra_types import JSONObject
 from app.shared.types.types_convert_utils import aware_utc_datetime
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -78,6 +83,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         model.modified_at = aware_utc_datetime(payload.modified_at)
         model.indexed_at = now
         await self._replace_chunks(payload, now=now)
+        await self._replace_edges(payload, now=now)
         await self._session.flush()
         return _note_from_model(model)
 
@@ -173,6 +179,56 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             )
         return hits
 
+    async def related_notes(
+        self,
+        *,
+        note_id: str,
+        limit: int,
+    ) -> list[ObsidianRelatedNote]:
+        """Return ranked related notes from indexed graph edges.
+
+        Args:
+            note_id: Source or target note id to expand.
+            limit: Maximum related notes.
+
+        Returns:
+            Ranked related-note results.
+        """
+        source = await self.get_by_id(note_id)
+        if source is None:
+            return []
+        results: dict[str, ObsidianRelatedNote] = {}
+        outgoing = await self._session.execute(
+            select(ObsidianEdgeORM, ObsidianFileORM)
+            .join(
+                ObsidianFileORM,
+                or_(
+                    ObsidianFileORM.note_id == ObsidianEdgeORM.target_note_id,
+                    ObsidianFileORM.relative_path == ObsidianEdgeORM.target_path,
+                ),
+            )
+            .where(ObsidianEdgeORM.source_note_id == note_id)
+        )
+        for edge, note_model in outgoing.all():
+            _add_related_result(results, edge, note_model, direction="outgoing")
+        incoming = await self._session.execute(
+            select(ObsidianEdgeORM, ObsidianFileORM)
+            .join(
+                ObsidianFileORM,
+                ObsidianFileORM.note_id == ObsidianEdgeORM.source_note_id,
+            )
+            .where(
+                or_(
+                    ObsidianEdgeORM.target_note_id == note_id,
+                    ObsidianEdgeORM.target_path == source.relative_path,
+                )
+            )
+        )
+        for edge, note_model in incoming.all():
+            _add_related_result(results, edge, note_model, direction="incoming")
+        ranked = sorted(results.values(), key=lambda item: item.score, reverse=True)
+        return ranked[:limit]
+
     async def count_by_status(self) -> tuple[int, int, int]:
         """Return indexed, stale, and error note counts.
 
@@ -238,6 +294,39 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         if fts_rows:
             await self._session.execute(insert(OBSIDIAN_CHUNK_FTS_TABLE), fts_rows)
 
+    async def _replace_edges(
+        self,
+        payload: ObsidianNoteIndex,
+        *,
+        now: datetime,
+    ) -> None:
+        await self._session.execute(
+            delete(ObsidianEdgeORM).where(
+                ObsidianEdgeORM.source_note_id == payload.note_id
+            )
+        )
+        edge_models: list[ObsidianEdgeORM] = []
+        for edge in payload.edges:
+            target_note_id = edge.target_note_id
+            if target_note_id is None:
+                target = await self.get_by_path(edge.target_path)
+                target_note_id = None if target is None else target.note_id
+            edge_models.append(
+                ObsidianEdgeORM(
+                    edge_id=edge.edge_id,
+                    source_note_id=edge.source_note_id,
+                    source_path=edge.source_path,
+                    target_note_id=target_note_id,
+                    target_path=edge.target_path,
+                    relation=edge.relation.value,
+                    confidence=edge.confidence,
+                    source_kind=edge.source_kind.value,
+                    created_at=now,
+                    indexed_at=now,
+                )
+            )
+        self._session.add_all(edge_models)
+
     async def _recent_notes(
         self,
         query: ObsidianSearchQuery,
@@ -285,6 +374,59 @@ def _note_from_model(model: ObsidianFileORM) -> ObsidianNote:
         modified_at=model.modified_at,
         indexed_at=model.indexed_at,
     )
+
+
+def _edge_from_model(model: ObsidianEdgeORM) -> ObsidianEdge:
+    return ObsidianEdge(
+        edge_id=model.edge_id,
+        source_note_id=model.source_note_id,
+        source_path=model.source_path,
+        target_note_id=model.target_note_id,
+        target_path=model.target_path,
+        relation=ObsidianRelationType(model.relation),
+        confidence=model.confidence,
+        source_kind=ObsidianEdgeSourceKind(model.source_kind),
+        created_at=model.created_at,
+        indexed_at=model.indexed_at,
+    )
+
+
+def _add_related_result(
+    results: dict[str, ObsidianRelatedNote],
+    edge: ObsidianEdgeORM,
+    note_model: ObsidianFileORM,
+    *,
+    direction: str,
+) -> None:
+    note = _note_from_model(note_model)
+    if note.note_id == edge.source_note_id and direction == "outgoing":
+        return
+    edge_entity = _edge_from_model(edge)
+    score = _relation_weight(edge_entity.relation) + edge_entity.confidence
+    result = ObsidianRelatedNote(
+        note=note,
+        relation=edge_entity.relation,
+        source_kind=edge_entity.source_kind,
+        direction=direction,
+        score=score,
+        edge_id=edge_entity.edge_id,
+    )
+    current = results.get(note.note_id)
+    if current is None or result.score > current.score:
+        results[note.note_id] = result
+
+
+def _relation_weight(relation: ObsidianRelationType) -> float:
+    return {
+        ObsidianRelationType.DERIVED_FROM: 1.0,
+        ObsidianRelationType.CITES: 0.9,
+        ObsidianRelationType.SUPERSEDES: 0.8,
+        ObsidianRelationType.PROMOTES_TO: 0.8,
+        ObsidianRelationType.RELATED: 0.6,
+        ObsidianRelationType.WIKILINK: 0.5,
+        ObsidianRelationType.BLOCKS: 0.4,
+        ObsidianRelationType.RESOLVES: 0.4,
+    }[relation]
 
 
 def _matches_tags(tags: list[str], required: list[str]) -> bool:

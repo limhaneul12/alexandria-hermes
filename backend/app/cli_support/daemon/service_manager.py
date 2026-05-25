@@ -12,6 +12,7 @@ from app.cli_support.setup.local_state import resolve_local_state
 
 SERVICE_NAME = "alexandria-hermes-backend"
 CLI_COMMAND = "alexandria-hermes"
+UV_CLI_COMMAND = "uv run alexandria-hermes"
 
 
 def service_definition(
@@ -40,7 +41,8 @@ def service_definition(
         host=host,
         port=port,
         log_path=state.backend_log_path,
-        cli_command=CLI_COMMAND,
+        cli_command=_cli_command(),
+        working_directory=_backend_working_directory(),
     )
 
 
@@ -122,6 +124,38 @@ def handle_daemon_action(
     )
 
 
+def _backend_working_directory() -> Path | None:
+    backend_root = Path(__file__).resolve().parents[3]
+    if (backend_root / "pyproject.toml").exists() and (backend_root / "app").exists():
+        return backend_root
+    return None
+
+
+def _cli_command() -> str:
+    return UV_CLI_COMMAND if _backend_working_directory() is not None else CLI_COMMAND
+
+
+def _serve_command(service: ServiceDefinition) -> str:
+    command_words = [
+        *shlex.split(service.cli_command),
+        "serve",
+        "--env-file",
+        str(service.env_file),
+        "--host",
+        service.host,
+        "--port",
+        str(service.port),
+    ]
+    return " ".join(shlex.quote(word) for word in command_words)
+
+
+def _serve_shell_command(service: ServiceDefinition) -> str:
+    command = _serve_command(service)
+    if service.working_directory is None:
+        return command
+    return f"cd {shlex.quote(str(service.working_directory))} && exec {command}"
+
+
 def _service_file_path(service_home: str | None) -> Path | None:
     home = Path(service_home).expanduser().resolve() if service_home else Path.home()
     system = platform.system()
@@ -153,16 +187,19 @@ def render_launchd_plist(service: ServiceDefinition) -> str:
     Returns:
         XML plist text.
     """
-    args = [
-        service.cli_command,
-        "serve",
-        "--env-file",
-        str(service.env_file),
-        "--host",
-        service.host,
-        "--port",
-        str(service.port),
-    ]
+    if service.working_directory is None:
+        args = [
+            service.cli_command,
+            "serve",
+            "--env-file",
+            str(service.env_file),
+            "--host",
+            service.host,
+            "--port",
+            str(service.port),
+        ]
+    else:
+        args = ["/bin/zsh", "-lc", _serve_shell_command(service)]
     program_arguments = "\n".join(
         f"        <string>{escape(argument)}</string>" for argument in args
     )
@@ -199,17 +236,11 @@ def render_systemd_unit(service: ServiceDefinition) -> str:
     Returns:
         systemd unit text.
     """
-    exec_start = " ".join(
-        [
-            shlex.quote(service.cli_command),
-            "serve",
-            "--env-file",
-            shlex.quote(str(service.env_file)),
-            "--host",
-            shlex.quote(service.host),
-            "--port",
-            str(service.port),
-        ]
+    exec_start = _serve_command(service)
+    working_directory = (
+        ""
+        if service.working_directory is None
+        else f"WorkingDirectory={service.working_directory}\n"
     )
     return f"""[Unit]
 Description=Alexandria-Hermes backend SQLite daemon
@@ -217,7 +248,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart={exec_start}
+{working_directory}ExecStart={exec_start}
 Restart=on-failure
 StandardOutput=append:{service.log_path}
 StandardError=append:{service.log_path}
@@ -232,10 +263,7 @@ def _commands(
     service: ServiceDefinition,
     service_file_path: Path | None,
 ) -> list[str]:
-    serve_command = (
-        f"{service.cli_command} serve --env-file {service.env_file} "
-        f"--host {service.host} --port {service.port}"
-    )
+    serve_command = _serve_shell_command(service)
     if action == "logs":
         return [f"tail -f {service.log_path}"]
     if service_file_path is None:

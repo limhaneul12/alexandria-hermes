@@ -7,7 +7,10 @@ from datetime import datetime
 
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
+    ObsidianEdgeSourceKind,
     ObsidianIndexStatus,
+    ObsidianLibrarianWorkflowStatus,
+    ObsidianRelationType,
 )
 from app.shared.types.extra_types import JSONObject
 
@@ -45,6 +48,51 @@ class ObsidianNote:
     size_bytes: int
     modified_at: datetime
     indexed_at: datetime
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianEdge:
+    """Indexed graph edge between Obsidian notes."""
+
+    edge_id: str
+    source_note_id: str
+    source_path: str
+    target_note_id: str | None
+    target_path: str
+    relation: ObsidianRelationType
+    confidence: float
+    source_kind: ObsidianEdgeSourceKind
+    created_at: datetime
+    indexed_at: datetime
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianRelatedNote:
+    """Related note result ranked by graph edge evidence."""
+
+    note: ObsidianNote
+    relation: ObsidianRelationType
+    source_kind: ObsidianEdgeSourceKind
+    direction: str
+    score: float
+    edge_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianLibrarianWorkflow:
+    """Persisted Obsidian librarian workflow checkpoint."""
+
+    thread_id: str
+    status: ObsidianLibrarianWorkflowStatus
+    query: str
+    active_note_path: str | None
+    project: str | None
+    provider_id: str | None
+    profile_id: str | None
+    delegate_requested: bool
+    state: JSONObject
+    created_at: datetime
+    updated_at: datetime
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

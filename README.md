@@ -27,7 +27,7 @@ Terminal 1:
 ```bash
 cd backend
 uv sync
-uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook
+uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook --run-migrations
 uv run alexandria-hermes serve \
   --env-file "$HOME/.hermes/alexandria-hermes/.env" \
   --host 127.0.0.1 \
@@ -59,6 +59,7 @@ uv run alexandria-hermes setup \
   --mode backend-daemon \
   --apply \
   --write-guidebook \
+  --run-migrations \
   --obsidian-vault-path "$HOME/Desktop/Alexandria" \
   --alexandria-obsidian-root "."
 uv run alexandria-hermes serve \
@@ -69,21 +70,41 @@ uv run alexandria-hermes serve \
 
 Use `--alexandria-obsidian-root "."` when the vault itself is the Alexandria workspace. This avoids a nested `Alexandria/Alexandria` layout.
 
-Smoke-tested local vault: `/Users/imhaneul/Desktop/Alexandria` with root `.`. Reindex saw 5 Markdown files, indexed 4 Alexandria notes, and skipped the default welcome note because it has no Alexandria frontmatter.
+Smoke-tested local vault: `/Users/imhaneul/Desktop/Alexandria` with root `.`. Reindex saw 7 Markdown files, indexed 6 Alexandria notes, skipped the default welcome note without Alexandria frontmatter, verified plugin copy install, and confirmed delegated librarian ask falls back transparently to the local librarian when no OAuth provider runner is attached.
 
 ## Obsidian plugin: librarian side pane
 
 Install the local plugin into the target vault:
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-VAULT="$HOME/Desktop/Alexandria" # or ~/.hermes/alexandria-hermes/data/obsidian-vault
-mkdir -p "$VAULT/.obsidian/plugins"
-ln -s "$REPO_ROOT/integrations/obsidian/alexandria-librarian" \
-  "$VAULT/.obsidian/plugins/alexandria-librarian"
+cd backend
+uv run alexandria-hermes obsidian install-local \
+  --vault-path "$HOME/Desktop/Alexandria" \
+  --plugin-install-mode copy
 ```
 
-Then open Obsidian, enable Community plugins, enable **Alexandria Librarian**, and run the command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, and transcript preference to the local backend.
+`copy` is the default and avoids Obsidian writing plugin `data.json` into the repo. Use `--plugin-install-mode symlink` only for plugin development.
+
+Then open Obsidian, enable Community plugins, enable **Alexandria Librarian**, and run the command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, transcript preference, optional provider/profile ids, and explicit OAuth-delegate flag to the local backend.
+
+## Graph edges, related notes, and workflows
+
+Reindex now rebuilds an `obsidian_edges` cache from relation frontmatter and body wikilinks. Obsidian Markdown remains canonical; deleting SQLite and running reindex rebuilds the cache.
+
+```bash
+uv run alexandria-hermes obsidian related --path "START_HERE.md"
+uv run alexandria-hermes obsidian ask "정리해줘" --delegate --provider-id codex-oauth --profile-id research-critic
+```
+
+HTTP/MCP additions include related-note retrieval and resumable local librarian workflows:
+
+```text
+GET  /obsidian/notes/by-path/related?path=<path>
+GET  /obsidian/notes/{note_id}/related
+POST /obsidian/librarian/workflows
+GET  /obsidian/librarian/workflows/{thread_id}
+POST /obsidian/librarian/workflows/{thread_id}/resume
+```
 
 ## Local development
 

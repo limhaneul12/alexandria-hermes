@@ -41,3 +41,21 @@
   font-size: var(--font-ui-smaller);
   margin-top: 8px;
 }
+
+.alexandria-related,
+.alexandria-graph-actions,
+.alexandria-workflow {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  margin: 12px 0;
+  padding: 10px;
+}
+
+.alexandria-inline-input {
+  min-width: 120px;
+}
+
+.alexandria-badge {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}

@@ -85,6 +85,33 @@ def test_cli_obsidian_search_posts_filters() -> None:
     }
 
 
+def test_cli_obsidian_related_reads_by_path() -> None:
+    """Related command calls the graph related-notes endpoint."""
+    transport, calls = _transport({"items": [], "total": 0})
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "obsidian",
+            "related",
+            "--path",
+            "Alexandria/START_HERE.md",
+            "--limit",
+            "4",
+        ],
+        transport=transport,
+        stdout=stdout,
+    )
+
+    assert exit_code == 0
+    assert calls[0][0] == "GET"
+    assert calls[0][1] == (
+        "http://localhost:8000/obsidian/notes/by-path/related?"
+        "path=Alexandria/START_HERE.md&limit=4"
+    )
+
+
 def test_cli_obsidian_save_reads_markdown_body(tmp_path: Path) -> None:
     """Save command reads Markdown body file and posts note metadata."""
     body_file = tmp_path / "body.md"
@@ -154,4 +181,36 @@ def test_cli_obsidian_ask_posts_librarian_context() -> None:
         "active_note_path": "Alexandria/Contexts/Today.md",
         "selection": "selected text",
         "project": "alexandria-hermes",
+    }
+
+
+def test_cli_obsidian_ask_can_request_delegated_provider() -> None:
+    """Ask command forwards provider/profile delegation hooks without tokens."""
+    transport, calls = _transport({"answer_markdown": "ok"})
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "obsidian",
+            "ask",
+            "Need outside critic",
+            "--delegate",
+            "--provider-id",
+            "codex-oauth",
+            "--profile-id",
+            "research-critic",
+        ],
+        transport=transport,
+        stdout=stdout,
+    )
+
+    request_body = loads_json((calls[0][2] or b"{}").decode())
+    assert exit_code == 0
+    assert request_body == {
+        "query": "Need outside critic",
+        "save_transcript": False,
+        "delegate_to_librarian": True,
+        "provider_id": "codex-oauth",
+        "profile_id": "research-critic",
     }

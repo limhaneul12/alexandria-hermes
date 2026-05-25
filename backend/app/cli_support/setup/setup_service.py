@@ -10,7 +10,12 @@ from app.cli_support.contracts.runtime_command_contracts import (
     SetupRuntimeMode,
 )
 from app.cli_support.setup.local_state import AlexandriaLocalState, resolve_local_state
-from app.cli_support.setup.setup_schemas import HermesAssetsSetupSummary, SetupSummary
+from app.cli_support.setup.migrations import run_alembic_upgrade
+from app.cli_support.setup.setup_schemas import (
+    HermesAssetsSetupSummary,
+    MigrationSetupSummary,
+    SetupSummary,
+)
 from app.cli_support.support.hermes.install.asset_sources import (
     load_alexandria_prompt_sources,
     load_alexandria_skill_source,
@@ -48,6 +53,8 @@ def handle_setup(command: SetupCommand) -> SetupSummary:
     env_written = False
     guidebook_written = False
     written_assets: list[str] = []
+    migration_status = "not_requested"
+    migration_revision: str | None = None
     if should_apply:
         state.root.mkdir(parents=True, exist_ok=True)
         for directory in (
@@ -80,6 +87,10 @@ def handle_setup(command: SetupCommand) -> SetupSummary:
             guidebook_written = True
         if command.install_hermes_assets:
             written_assets = _write_hermes_assets(state.hermes_home)
+        if command.run_migrations:
+            migration = run_alembic_upgrade(database_url=state.database_url)
+            migration_status = migration.status
+            migration_revision = migration.revision
     return SetupSummary(
         mode=selected_mode.value,
         dry_run=command.dry_run,
@@ -101,7 +112,14 @@ def handle_setup(command: SetupCommand) -> SetupSummary:
             planned_files=planned_assets,
             written_files=written_assets,
         ),
-        next_steps=_next_steps(selected_mode, state),
+        migrations=MigrationSetupSummary(
+            run_requested=command.run_migrations,
+            status=migration_status,
+            revision=migration_revision,
+        ),
+        next_steps=_next_steps(
+            selected_mode, state, run_migrations=command.run_migrations
+        ),
     )
 
 
@@ -210,14 +228,27 @@ def _write_relative(base: Path, relative_path: str, content: str) -> None:
     target.write_text(content, encoding="utf-8")
 
 
-def _next_steps(mode: SetupRuntimeMode, state: AlexandriaLocalState) -> list[str]:
+def _next_steps(
+    mode: SetupRuntimeMode,
+    state: AlexandriaLocalState,
+    *,
+    run_migrations: bool = False,
+) -> list[str]:
     shared = [
         "Run alexandria-hermes hermes policy status to confirm Alexandria is enabled or disabled as desired.",
         "Run alexandria-hermes hermes onboard when you want Hermes prompt/MCP integration assets installed.",
     ]
+    migration_step = (
+        []
+        if run_migrations
+        else [
+            "Run setup again with --run-migrations, or run alembic upgrade head before first backend use."
+        ]
+    )
     per_mode = {
         SetupRuntimeMode.BACKEND_DAEMON: [
             f"Use {state.env_path} for local Backend + SQLite daemon configuration.",
+            *migration_step,
             "Start the backend daemon with the generated env file before connecting Hermes.",
         ],
         SetupRuntimeMode.GUIDEBOOK_ONLY: [
@@ -234,7 +265,9 @@ def _guidebook_text(
     alexandria_obsidian_root: str,
     memory_compact_note_dir: str,
 ) -> str:
-    steps = "\n".join(f"- {step}" for step in _next_steps(mode, state))
+    steps = "\n".join(
+        f"- {step}" for step in _next_steps(mode, state, run_migrations=False)
+    )
     root_hint = (
         "The vault root itself is managed because `SERVICE_ALEXANDRIA_OBSIDIAN_ROOT=.`."
         if alexandria_obsidian_root == "."

@@ -18,6 +18,7 @@ class ServiceDefinition:
     port: int
     log_path: Path
     cli_command: str
+    working_directory: Path | None = None
 
 
 class DaemonResult(StrictSchemaModel):

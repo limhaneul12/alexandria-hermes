@@ -8,18 +8,23 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianSearchQuery,
 )
 from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianLibrarianWorkflow,
     ObsidianNote,
     ObsidianReindexResult,
+    ObsidianRelatedNote,
     ObsidianSearchHit,
     ObsidianVaultStatus,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
+    ObsidianEdgeSourceKind,
     ObsidianIndexStatus,
+    ObsidianLibrarianWorkflowStatus,
+    ObsidianRelationType,
 )
 from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
-from app.shared.types.extra_types import JSONObject
+from app.shared.types.extra_types import JSONObject, JSONValue
 from pydantic import Field
 
 
@@ -194,6 +199,43 @@ class ObsidianSearchResponse(StrictSchemaModel):
     total: int
 
 
+class ObsidianRelatedNoteResponse(StrictSchemaModel):
+    """One graph-related Obsidian note."""
+
+    note: ObsidianNoteResponse
+    relation: ObsidianRelationType
+    source_kind: ObsidianEdgeSourceKind
+    direction: str
+    score: float
+    edge_id: str
+
+    @classmethod
+    def from_entity(cls, item: ObsidianRelatedNote) -> ObsidianRelatedNoteResponse:
+        """Create schema from related-note entity.
+
+        Args:
+            item: Related-note entity.
+
+        Returns:
+            HTTP related-note schema.
+        """
+        return cls(
+            note=ObsidianNoteResponse.from_entity(item.note),
+            relation=item.relation,
+            source_kind=item.source_kind,
+            direction=item.direction,
+            score=item.score,
+            edge_id=item.edge_id,
+        )
+
+
+class ObsidianRelatedNotesResponse(StrictSchemaModel):
+    """Related notes response."""
+
+    items: list[ObsidianRelatedNoteResponse]
+    total: int
+
+
 class ObsidianSaveNoteRequest(StrictSchemaModel):
     """Request to create one Alexandria-managed Obsidian note."""
 
@@ -238,6 +280,8 @@ class ObsidianLibrarianAskRequest(StrictSchemaModel):
     preferred_alexandria_types: list[AlexandriaNoteType] = Field(default_factory=list)
     save_transcript: bool = False
     delegate_to_librarian: bool = False
+    provider_id: str | None = None
+    profile_id: str | None = None
 
     def to_command(self) -> ObsidianLibrarianAsk:
         """Convert request into application command.
@@ -255,6 +299,8 @@ class ObsidianLibrarianAskRequest(StrictSchemaModel):
             ],
             save_transcript=self.save_transcript,
             delegate_to_librarian=self.delegate_to_librarian,
+            provider_id=self.provider_id,
+            profile_id=self.profile_id,
         )
 
 
@@ -276,6 +322,85 @@ class ObsidianLibrarianAskResponse(StrictSchemaModel):
     action_preview: list[str]
     conversation_id: str
     transcript_path: str | None
+    delegate_status: str = "local_only"
+    provider_id: str | None = None
+    profile_id: str | None = None
+
+
+class ObsidianLibrarianWorkflowResumeRequest(StrictSchemaModel):
+    """Approved actions for resuming a librarian workflow."""
+
+    approved_actions: list[str] = Field(default_factory=list)
+
+
+class ObsidianLibrarianWorkflowResponse(StrictSchemaModel):
+    """Resumable librarian workflow response."""
+
+    thread_id: str
+    status: ObsidianLibrarianWorkflowStatus
+    query: str
+    active_note_path: str | None
+    project: str | None
+    provider_id: str | None
+    profile_id: str | None
+    delegate_requested: bool
+    response: JSONObject
+    pending_actions: list[JSONObject]
+    approved_actions: list[str]
+    completed_actions: list[str]
+    transcript_path: str | None
+
+    @classmethod
+    def from_entity(
+        cls, workflow: ObsidianLibrarianWorkflow
+    ) -> ObsidianLibrarianWorkflowResponse:
+        """Create schema from workflow checkpoint.
+
+        Args:
+            workflow: Persisted workflow checkpoint.
+
+        Returns:
+            HTTP workflow schema.
+        """
+        state = workflow.state
+        return cls(
+            thread_id=workflow.thread_id,
+            status=workflow.status,
+            query=workflow.query,
+            active_note_path=workflow.active_note_path,
+            project=workflow.project,
+            provider_id=workflow.provider_id,
+            profile_id=workflow.profile_id,
+            delegate_requested=workflow.delegate_requested,
+            response=_object_list_safe(state, "response"),
+            pending_actions=_json_object_list(state, "pending_actions"),
+            approved_actions=_string_list(state, "approved_actions"),
+            completed_actions=_string_list(state, "completed_actions"),
+            transcript_path=_optional_string(state.get("transcript_path")),
+        )
+
+
+def _object_list_safe(state: JSONObject, key: str) -> JSONObject:
+    value = state.get(key)
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _json_object_list(state: JSONObject, key: str) -> list[JSONObject]:
+    value = state.get(key)
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def _string_list(state: JSONObject, key: str) -> list[str]:
+    value = state.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _optional_string(value: JSONValue | None) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def _note_type(value: AlexandriaNoteType | str) -> AlexandriaNoteType:

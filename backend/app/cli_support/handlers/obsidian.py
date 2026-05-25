@@ -9,6 +9,7 @@ from app.cli_support.backend_api_client import CliBackendApiClient
 from app.cli_support.contracts.obsidian_command_contracts import (
     ObsidianAskCommand,
     ObsidianReadCommand,
+    ObsidianRelatedCommand,
     ObsidianSaveCommand,
     ObsidianSearchCommand,
 )
@@ -126,6 +127,35 @@ def handle_obsidian_read(
     return 0
 
 
+def handle_obsidian_related(
+    command: ObsidianRelatedCommand,
+    context: CommandContext,
+    client: CliBackendApiClient,
+) -> int:
+    """Read graph-related Obsidian notes.
+
+    Args:
+        command: Related lookup parameters.
+        context: CLI command context.
+        client: Backend API client.
+
+    Returns:
+        Process exit code.
+    """
+    if command.path is not None:
+        payload = client.get(
+            f"/obsidian/notes/by-path/related?path={quote(command.path)}&limit={command.limit}"
+        )
+    elif command.note_id is not None:
+        payload = client.get(
+            f"/obsidian/notes/{quote(command.note_id, safe='')}/related?limit={command.limit}"
+        )
+    else:
+        raise CliInputError("provide either note_id or --path")
+    _emit(context, payload)
+    return 0
+
+
 def handle_obsidian_save(
     command: ObsidianSaveCommand,
     context: CommandContext,
@@ -185,6 +215,12 @@ def handle_obsidian_ask(
         payload["selection"] = command.selection
     if command.project is not None:
         payload["project"] = command.project
+    if command.delegate_to_librarian:
+        payload["delegate_to_librarian"] = True
+    if command.provider_id is not None:
+        payload["provider_id"] = command.provider_id
+    if command.profile_id is not None:
+        payload["profile_id"] = command.profile_id
     response = client.post("/obsidian/librarian/ask", payload)
     _emit(context, response)
     return 0

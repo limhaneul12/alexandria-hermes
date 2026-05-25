@@ -606,6 +606,37 @@ async def alexandria_read_note(
     return await client.get(f"/obsidian/notes/{_path_segment(note_id)}")
 
 
+async def alexandria_get_related_notes(
+    client: AlexandriaApiClient,
+    note_id: str | None = None,
+    path: str | None = None,
+    limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
+) -> JSONValue:
+    """Read graph-related Obsidian notes by id or path.
+
+    Args:
+        client: Backend HTTP client.
+        note_id: Stable note id.
+        path: Vault-relative note path.
+        limit: Maximum related notes.
+
+    Returns:
+        Backend related notes response.
+    """
+    bounded_limit = _bounded_search_limit(limit)
+    if path is not None:
+        return await client.get(
+            "/obsidian/notes/by-path/related",
+            params={"path": path, "limit": bounded_limit},
+        )
+    if note_id is None:
+        raise ValueError("note_id or path is required")
+    return await client.get(
+        f"/obsidian/notes/{_path_segment(note_id)}/related",
+        params={"limit": bounded_limit},
+    )
+
+
 async def alexandria_save_note(
     client: AlexandriaApiClient,
     title: str,
@@ -654,6 +685,9 @@ async def alexandria_ask_obsidian_librarian(
     project: str | None = None,
     save_transcript: bool = False,
     preferred_alexandria_types: list[str] | None = None,
+    delegate_to_librarian: bool = False,
+    provider_id: str | None = None,
+    profile_id: str | None = None,
 ) -> JSONValue:
     """Ask the Obsidian-aware Alexandria librarian.
 
@@ -665,6 +699,9 @@ async def alexandria_ask_obsidian_librarian(
         project: Optional project scope.
         save_transcript: Whether to persist a librarian_chat note.
         preferred_alexandria_types: Optional type filters.
+        delegate_to_librarian: Whether to request provider delegation hooks.
+        provider_id: Optional preferred provider id.
+        profile_id: Optional preferred profile id.
 
     Returns:
         Backend librarian response.
@@ -673,6 +710,7 @@ async def alexandria_ask_obsidian_librarian(
         "query": query,
         "save_transcript": save_transcript,
         "preferred_alexandria_types": _items_or_empty(preferred_alexandria_types),
+        "delegate_to_librarian": delegate_to_librarian,
     }
     if active_note_path is not None:
         payload["active_note_path"] = active_note_path
@@ -680,6 +718,10 @@ async def alexandria_ask_obsidian_librarian(
         payload["selection"] = selection
     if project is not None:
         payload["project"] = project
+    if provider_id is not None:
+        payload["provider_id"] = provider_id
+    if profile_id is not None:
+        payload["profile_id"] = profile_id
     return await client.post("/obsidian/librarian/ask", payload)
 
 

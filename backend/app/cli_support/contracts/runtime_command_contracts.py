@@ -60,6 +60,7 @@ class SetupCommand:
     apply: bool
     write_guidebook: bool
     install_hermes_assets: bool
+    run_migrations: bool
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

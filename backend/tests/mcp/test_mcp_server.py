@@ -19,6 +19,7 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_delete_context,
     alexandria_delete_memory_compact,
     alexandria_get_current_memory_compact,
+    alexandria_get_related_notes,
     alexandria_get_memory_compact,
     alexandria_librarian_brief_preview,
     alexandria_librarian_job_status,
@@ -105,6 +106,7 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
         alexandria_delete_context,
         alexandria_rag_status,
         alexandria_read_note,
+        alexandria_get_related_notes,
         alexandria_reindex_vault,
         alexandria_ask_librarian,
         alexandria_librarian_brief_preview,
@@ -123,11 +125,6 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
         alexandria_get_current_memory_compact,
         alexandria_get_memory_compact,
         alexandria_delete_memory_compact,
-        alexandria_reindex_vault,
-        alexandria_search_vault,
-        alexandria_read_note,
-        alexandria_save_note,
-        alexandria_ask_obsidian_librarian,
     ]
 
     assert all(iscoroutinefunction(tool) for tool in async_tools)
@@ -387,6 +384,9 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
             tags=["obsidian"],
         )
         await alexandria_read_note(client, path="Alexandria/START_HERE.md")
+        await alexandria_get_related_notes(
+            client, path="Alexandria/START_HERE.md", limit=2
+        )
         await alexandria_save_note(
             client,
             title="Web Research",
@@ -400,6 +400,9 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
             query="canonical storage",
             active_note_path="Alexandria/START_HERE.md",
             save_transcript=True,
+            delegate_to_librarian=True,
+            provider_id="codex-oauth",
+            profile_id="research-critic",
         )
 
     anyio.run(run_tools)
@@ -409,12 +412,16 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
         for request in calls
     ]
     search_body = loads_json(calls[1].content or b"{}")
-    save_body = loads_json(calls[3].content or b"{}")
-    ask_body = loads_json(calls[4].content or b"{}")
+    save_body = loads_json(calls[4].content or b"{}")
+    ask_body = loads_json(calls[5].content or b"{}")
     assert methods_and_paths == [
         ("POST", "/obsidian/index/rebuild"),
         ("POST", "/obsidian/search"),
         ("GET", "/obsidian/notes/by-path?path=Alexandria%2FSTART_HERE.md"),
+        (
+            "GET",
+            "/obsidian/notes/by-path/related?path=Alexandria%2FSTART_HERE.md&limit=2",
+        ),
         ("POST", "/obsidian/notes"),
         ("POST", "/obsidian/librarian/ask"),
     ]
@@ -427,6 +434,9 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
     }
     assert save_body["id"] == "skill_web_research"
     assert ask_body["save_transcript"] is True
+    assert ask_body["delegate_to_librarian"] is True
+    assert ask_body["provider_id"] == "codex-oauth"
+    assert ask_body["profile_id"] == "research-critic"
 
 
 def test_mcp_context_delete_tool_maps_to_hard_delete_endpoint() -> None:

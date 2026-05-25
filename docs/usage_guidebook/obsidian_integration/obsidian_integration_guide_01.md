@@ -46,7 +46,7 @@ Terminal 1:
 ```bash
 cd backend
 uv sync
-uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook
+uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook --run-migrations
 uv run alexandria-hermes serve \
   --env-file "$HOME/.hermes/alexandria-hermes/.env" \
   --host 127.0.0.1 \
@@ -60,6 +60,8 @@ cd backend
 uv run alexandria-hermes obsidian init
 uv run alexandria-hermes obsidian reindex
 ```
+
+`--run-migrations` applies Alembic before the first backend/Obsidian call, preventing missing-table errors on `/obsidian/init`.
 
 The generated `.env` includes:
 
@@ -80,6 +82,7 @@ uv run alexandria-hermes setup \
   --mode backend-daemon \
   --apply \
   --write-guidebook \
+  --run-migrations \
   --obsidian-vault-path "$HOME/Desktop/Alexandria" \
   --alexandria-obsidian-root "."
 ```
@@ -176,6 +179,12 @@ uv run alexandria-hermes obsidian save "Prompt Draft" \
   --tag prompt
 ```
 
+Read graph-related notes after reindex:
+
+```bash
+uv run alexandria-hermes obsidian related --path "START_HERE.md"
+```
+
 Ask the Obsidian-aware librarian:
 
 ```bash
@@ -183,6 +192,12 @@ uv run alexandria-hermes obsidian ask \
   "이 노트에서 장기기억으로 승격할 내용은?" \
   --active-note-path "Contexts/Today.md" \
   --save-transcript
+
+uv run alexandria-hermes obsidian ask \
+  "외부 사서 비평도 같이 받아볼까요?" \
+  --delegate \
+  --provider-id codex-oauth \
+  --profile-id research-critic
 ```
 
 ## 6. MCP tools
@@ -194,6 +209,7 @@ Agents can use MCP tools that mirror the CLI:
 - `alexandria_read_note`
 - `alexandria_save_note`
 - `alexandria_ask_obsidian_librarian`
+- `alexandria_get_related_notes`
 
 The intended agent flow is:
 
@@ -209,19 +225,60 @@ A minimal local plugin is available at:
 integrations/obsidian/alexandria-librarian/
 ```
 
-Install it into a vault by copying or symlinking the folder:
+Install it into a vault with the CLI:
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-VAULT="$HOME/Desktop/Alexandria"
-mkdir -p "$VAULT/.obsidian/plugins"
-ln -s "$REPO_ROOT/integrations/obsidian/alexandria-librarian" \
-  "$VAULT/.obsidian/plugins/alexandria-librarian"
+cd backend
+uv run alexandria-hermes obsidian install-local \
+  --vault-path "$HOME/Desktop/Alexandria" \
+  --plugin-install-mode copy
 ```
+
+Use `copy` for normal installs so plugin settings/data stay in the vault copy instead of the repo. Use `symlink` only when developing the plugin.
 
 Then enable **Alexandria Librarian** from Obsidian Community plugins and run command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, and transcript preference to the local backend.
 
-## 8. Librarian chat model
+
+## 8. Graph relation contract
+
+Alexandria relation frontmatter is rendered into an Obsidian-readable managed wikilink section:
+
+```yaml
+source_refs:
+  - id: alexandria_start_here
+    path: START_HERE.md
+    relation: cites
+derived_from: []
+related: []
+supersedes: []
+promotes_to: []
+```
+
+```md
+<!-- ALEXANDRIA-LINKS:START -->
+## Alexandria Links
+
+### Sources
+- [[START_HERE]] — cites
+<!-- ALEXANDRIA-LINKS:END -->
+```
+
+SQLite stores this as a rebuildable `obsidian_edges` cache. Related notes are available via CLI, MCP, and HTTP. The Obsidian side pane can show related notes and can write source wikilinks into the active note after user action.
+
+## 9. Resumable librarian workflow
+
+The workflow endpoints provide a local LangGraph-style checkpoint/state-machine boundary:
+
+```text
+POST /obsidian/librarian/workflows
+GET  /obsidian/librarian/workflows/{thread_id}
+POST /obsidian/librarian/workflows/{thread_id}/resume
+POST /obsidian/librarian/workflows/{thread_id}/cancel
+```
+
+The first MVP pauses with proposed actions such as `save_transcript`, `create_context_note`, `create_skill_draft`, and `add_graph_links`. Only approved actions are written to Obsidian. OAuth provider/profile ids are routing hints only; tokens remain in backend provider storage and are never written to the vault or plugin settings.
+
+## 10. Librarian chat model
 
 The Obsidian librarian endpoint returns:
 
@@ -232,7 +289,7 @@ The Obsidian librarian endpoint returns:
 
 The current backend implementation is deterministic and source-grounded. It can later delegate to an external librarian provider without changing the Obsidian note contract.
 
-## 9. Smoke-test evidence
+## 11. Smoke-test evidence
 
 The local `/Users/imhaneul/Desktop/Alexandria` vault was tested with:
 
@@ -244,11 +301,13 @@ SERVICE_ALEXANDRIA_OBSIDIAN_ROOT=.
 Observed result:
 
 - `START_HERE.md` and `Jobs/Alexandria Obsidian Smoke Test.md` were created.
-- Reindex saw 5 Markdown files, indexed 4 Alexandria notes, skipped 1 Obsidian welcome note without Alexandria frontmatter.
-- Search found the smoke note.
-- Librarian ask returned 2 source references and saved a transcript under `Librarian/Chats/`.
+- Reindex saw 7 Markdown files, indexed 6 Alexandria notes, skipped 1 Obsidian welcome note without Alexandria frontmatter.
+- Search found indexed Alexandria notes.
+- `obsidian related --path START_HERE.md --limit 5` returned an empty related set, which is valid when no graph edges target or originate from that note yet.
+- Delegated librarian ask returned `delegate_status=requested_local_fallback`, `provider_id=codex-oauth`, and `profile_id=research-critic` without saving a transcript.
+- Workflow start/resume smoke moved `waiting_for_approval -> completed` with no approved writes.
 
-## 10. Safety rules
+## 12. Safety rules
 
 - Do not save raw secrets/API keys/tokens into Obsidian notes.
 - Treat Obsidian Markdown as canonical; SQLite can be deleted and rebuilt.

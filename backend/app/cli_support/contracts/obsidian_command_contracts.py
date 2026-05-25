@@ -27,6 +27,15 @@ class ObsidianReadCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianRelatedCommand:
+    """Parameters for Obsidian related-note lookup."""
+
+    note_id: str | None
+    path: str | None
+    limit: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianSaveCommand:
     """Parameters for creating one Obsidian note."""
 
@@ -48,3 +57,6 @@ class ObsidianAskCommand:
     selection: str | None
     project: str | None
     save_transcript: bool
+    delegate_to_librarian: bool = False
+    provider_id: str | None = None
+    profile_id: str | None = None

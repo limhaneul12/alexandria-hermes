@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+from app.obsidian.application.obsidian_graph_service import ObsidianGraphService
+from app.obsidian.application.obsidian_librarian_workflow_service import (
+    ObsidianLibrarianWorkflowService,
+)
 from app.obsidian.application.obsidian_service import ObsidianService
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
+)
+from app.obsidian.infrastructure.repositories.obsidian_workflow_repository import (
+    SqlAlchemyObsidianWorkflowRepository,
 )
 from app.platform.config.app_config import AppConfig
 from dependency_injector import containers, providers
@@ -24,4 +31,17 @@ class ObsidianContainer(containers.DeclarativeContainer):
         repository=index_repo,
         vault_path=app_config.provided.obsidian_vault_path,
         alexandria_root=app_config.provided.alexandria_obsidian_root,
+    )
+    graph_service = providers.Factory(
+        ObsidianGraphService,
+        repository=index_repo,
+        obsidian_service=obsidian_service,
+    )
+    workflow_repo = providers.Factory(
+        SqlAlchemyObsidianWorkflowRepository, session=db_session
+    )
+    workflow_service = providers.Factory(
+        ObsidianLibrarianWorkflowService,
+        workflow_repository=workflow_repo,
+        obsidian_service=obsidian_service,
     )
