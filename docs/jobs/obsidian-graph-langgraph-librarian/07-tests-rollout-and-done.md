@@ -156,3 +156,13 @@ Manual smoke:
 - LangGraph workflow가 local answer + approval resume을 지원.
 - OAuth provider 위임이 plugin에서 선택적으로 가능.
 - 모든 검증 명령 통과.
+
+## 2026-05-26 G003 verification additions
+
+Additional coverage added:
+
+- LangGraph package runtime pauses and resumes through SQLite checkpoint persistence.
+- Workflow resumes after service recreation using the same thread id.
+- Approved GPT OAuth delegate action calls the delegate service and appends returned summary.
+- Missing GPT profile falls back to `GUIDANCE_ONLY` instead of failing the workflow.
+- Unknown actions are rejected before graph resume to protect checkpoint integrity.

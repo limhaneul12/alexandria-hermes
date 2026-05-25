@@ -138,3 +138,12 @@ Profile: <select>
 - `delegate_to_librarian=true` routes through backend provider delegation.
 - OAuth token never appears in Obsidian vault or plugin `data.json`.
 - external failure degrades to local answer.
+
+## 2026-05-26 implementation update
+
+G003 wired approved OAuth delegation to the existing GPT/Codex librarian provider path:
+
+- `ask_oauth_librarian` is only executed after workflow resume approval.
+- The node calls `HermesCollaborationService.ask_librarian`, which routes to configured librarian profiles and OpenAI/Codex OAuth providers.
+- Delegate summaries are appended to the workflow answer under `## GPT OAuth Librarian`.
+- Missing provider/profile rows degrade to `GUIDANCE_ONLY`; OAuth tokens never enter Obsidian Markdown or plugin settings.

@@ -89,3 +89,8 @@ class AppConfig(BaseSettings):
     memory_compact_note_dir: str = Field(
         default="Alexandria/Memory Compacts", min_length=1
     )
+    # SQLite checkpoint file for LangGraph-powered Obsidian librarian workflows.
+    obsidian_librarian_langgraph_checkpoint_path: str = Field(
+        default="./data/obsidian_librarian_langgraph.sqlite",
+        min_length=1,
+    )

@@ -92,11 +92,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_session=db_session,
         app_config=app_config,
     )
-    obsidian = providers.Container(
-        ObsidianContainer,
-        db_session=db_session,
-        app_config=app_config,
-    )
     connections = providers.Container(
         ConnectionsContainer,
         db_session=db_session,
@@ -108,4 +103,10 @@ class ApplicationContainer(containers.DeclarativeContainer):
         librarian_provider_repo=connections.librarian_provider_repo,
         provider_secret_repo=connections.provider_secret_repo,
         memory_compact_service=memory.memory_compact_service,
+    )
+    obsidian = providers.Container(
+        ObsidianContainer,
+        db_session=db_session,
+        app_config=app_config,
+        librarian_delegate_service=librarian.hermes_collaboration_service,
     )

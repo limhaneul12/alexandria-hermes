@@ -6,6 +6,21 @@ from pathlib import Path
 
 import anyio
 import pytest
+from app.librarian.domain.contracts.hermes_collaboration_contracts import (
+    HermesLibrarianAskCommand,
+)
+from app.librarian.domain.event_enum.collaboration_enums import (
+    AcquisitionDecision,
+    LibrarianDelegateKind,
+    LibrarianDelegateStatus,
+    LibrarianDelegationStatus,
+)
+from app.librarian.domain.types.hermes_collaboration_payload_types import (
+    HermesLibrarianAskPayload,
+)
+from app.obsidian.application.obsidian_librarian_langgraph_support import (
+    ObsidianLibrarianDelegateService,
+)
 from app.obsidian.application.obsidian_librarian_workflow_service import (
     ObsidianLibrarianWorkflowService,
 )
@@ -29,6 +44,7 @@ from app.obsidian.infrastructure.repositories.obsidian_workflow_repository impor
     SqlAlchemyObsidianWorkflowRepository,
 )
 from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 from app.shared.infrastructure.database import Database
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +57,8 @@ def _database_url(path: Path) -> str:
 
 async def _services(
     tmp_path: Path,
+    *,
+    delegate_service: ObsidianLibrarianDelegateService | None = None,
 ) -> tuple[Database, AsyncSession, ObsidianService, ObsidianLibrarianWorkflowService]:
     database = Database(
         database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
@@ -52,11 +70,83 @@ async def _services(
         vault_path=str(tmp_path / "vault"),
         alexandria_root="Alexandria",
     )
-    workflow = ObsidianLibrarianWorkflowService(
+    workflow = ObsidianLibrarianWorkflowService.from_services(
         workflow_repository=SqlAlchemyObsidianWorkflowRepository(session=session),
         obsidian_service=obsidian,
+        checkpoint_path=str(tmp_path / "langgraph-checkpoints.sqlite"),
+        delegate_service=delegate_service,
     )
     return database, session, obsidian, workflow
+
+
+class FakeGptOauthLibrarian(ObsidianLibrarianDelegateService):
+    """Fake GPT OAuth delegate service for behavior tests."""
+
+    def __init__(self) -> None:
+        self.commands: list[HermesLibrarianAskCommand] = []
+
+    async def ask_librarian(
+        self,
+        command: HermesLibrarianAskCommand,
+    ) -> HermesLibrarianAskPayload:
+        """Return one completed fake delegate payload.
+
+        Args:
+            command: Captured delegate command.
+
+        Returns:
+            Completed delegate payload.
+        """
+        self.commands.append(command)
+        return HermesLibrarianAskPayload(
+            job_id="job-gpt-oauth",
+            status=LibrarianDelegationStatus.COMPLETED,
+            decision=AcquisitionDecision.DELEGATE_TO_LIBRARIAN,
+            librarian_available=True,
+            self_acquisition_allowed=True,
+            recommendation="GPT OAuth librarian completed.",
+            provider_id=command.provider_id,
+            candidate_id=None,
+            librarian_profile_id=command.librarian_profile_id,
+            librarian_model="gpt-5.5",
+            librarian_role_prompt=None,
+            max_librarian_agents=1,
+            route_preview=["Completed delegated librarians: 1"],
+            selected_profiles=[command.librarian_profile_id or "request-default"],
+            matched_specialties=["oauth"],
+            quality_review_added=False,
+            routing_reason="fake delegate",
+            delegates=[
+                {
+                    "profile_id": command.librarian_profile_id or "request-default",
+                    "provider_id": command.provider_id,
+                    "status": LibrarianDelegateStatus.COMPLETED,
+                    "delegate_type": LibrarianDelegateKind.SPECIALTY_REVIEW,
+                    "summary": "GPT OAuth delegate reviewed the Obsidian answer.",
+                    "matched_specialties": ["oauth"],
+                }
+            ],
+        )
+
+
+class MissingProfileGptOauthLibrarian(ObsidianLibrarianDelegateService):
+    """Fake delegate service that mimics a missing requested GPT OAuth profile."""
+
+    async def ask_librarian(
+        self,
+        command: HermesLibrarianAskCommand,
+    ) -> HermesLibrarianAskPayload:
+        """Raise the same not-found error as the profile router.
+
+        Args:
+            command: Delegate command that requested a missing profile.
+
+        Returns:
+            Never returns; the exception drives fallback behavior.
+        """
+        raise LibrarianResourceNotFoundError(
+            f"Librarian profile not found: {command.librarian_profile_id}"
+        )
 
 
 def test_librarian_workflow_pauses_then_resumes_approved_writes(
@@ -118,11 +208,17 @@ def test_librarian_workflow_pauses_then_resumes_approved_writes(
     assert source_found is True
 
 
-def test_librarian_workflow_records_oauth_delegate_approval(tmp_path: Path) -> None:
-    """Approving OAuth delegation should record the current transparent status."""
+def test_librarian_workflow_runs_gpt_oauth_delegate_when_approved(
+    tmp_path: Path,
+) -> None:
+    """Approving OAuth delegation should call the GPT/OAuth librarian service."""
 
-    async def scenario() -> list[str]:
-        database, session, _obsidian, workflow_service = await _services(tmp_path)
+    async def scenario() -> tuple[list[str], str, str, int]:
+        delegate = FakeGptOauthLibrarian()
+        database, session, _obsidian, workflow_service = await _services(
+            tmp_path,
+            delegate_service=delegate,
+        )
         try:
             workflow = await workflow_service.start_workflow(
                 ObsidianLibrarianAsk(
@@ -141,9 +237,102 @@ def test_librarian_workflow_records_oauth_delegate_approval(tmp_path: Path) -> N
         finally:
             await session.close()
             await database.shutdown()
-        return list(resumed.state["completed_actions"])
+        response = resumed.state["response"]
+        assert isinstance(response, dict)
+        return (
+            list(resumed.state["completed_actions"]),
+            str(response["delegate_status"]),
+            str(response["answer_markdown"]),
+            len(delegate.commands),
+        )
 
-    assert anyio.run(scenario) == ["ask_oauth_librarian:requested_local_fallback"]
+    completed, delegate_status, answer, command_count = anyio.run(scenario)
+
+    assert completed == ["ask_oauth_librarian:COMPLETED"]
+    assert delegate_status == "COMPLETED"
+    assert "## GPT OAuth Librarian" in answer
+    assert command_count == 1
+
+
+def test_librarian_workflow_keeps_local_result_when_gpt_profile_is_missing(
+    tmp_path: Path,
+) -> None:
+    """Missing GPT OAuth profile should become guidance-only, not a failed workflow."""
+
+    async def scenario() -> tuple[str, list[str]]:
+        database, session, _obsidian, workflow_service = await _services(
+            tmp_path,
+            delegate_service=MissingProfileGptOauthLibrarian(),
+        )
+        try:
+            workflow = await workflow_service.start_workflow(
+                ObsidianLibrarianAsk(
+                    query="delegate check",
+                    delegate_to_librarian=True,
+                    provider_id="codex-oauth",
+                    profile_id="missing-profile",
+                )
+            )
+            resumed = await workflow_service.resume_workflow(
+                ObsidianLibrarianWorkflowResume(
+                    thread_id=workflow.thread_id,
+                    approved_actions=["ask_oauth_librarian"],
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return str(resumed.state["response"]["delegate_status"]), list(
+            resumed.state["completed_actions"]
+        )
+
+    status, completed = anyio.run(scenario)
+
+    assert status == "GUIDANCE_ONLY"
+    assert completed == ["ask_oauth_librarian:GUIDANCE_ONLY"]
+
+
+def test_librarian_workflow_resumes_after_service_recreation(
+    tmp_path: Path,
+) -> None:
+    """LangGraph SQLite checkpoints should survive a new service instance."""
+
+    async def scenario() -> tuple[str, list[str]]:
+        database, session, _obsidian, workflow_service = await _services(tmp_path)
+        try:
+            workflow = await workflow_service.start_workflow(
+                ObsidianLibrarianAsk(query="persistent approval")
+            )
+            await session.commit()
+            await session.close()
+            session = database.session()
+            obsidian = ObsidianService(
+                repository=SqlAlchemyObsidianIndexRepository(session=session),
+                vault_path=str(tmp_path / "vault"),
+                alexandria_root="Alexandria",
+            )
+            restarted = ObsidianLibrarianWorkflowService.from_services(
+                workflow_repository=SqlAlchemyObsidianWorkflowRepository(
+                    session=session
+                ),
+                obsidian_service=obsidian,
+                checkpoint_path=str(tmp_path / "langgraph-checkpoints.sqlite"),
+            )
+            resumed = await restarted.resume_workflow(
+                ObsidianLibrarianWorkflowResume(
+                    thread_id=workflow.thread_id,
+                    approved_actions=["save_transcript"],
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return resumed.status.value, list(resumed.state["completed_actions"])
+
+    status, completed_actions = anyio.run(scenario)
+
+    assert status == ObsidianLibrarianWorkflowStatus.COMPLETED.value
+    assert completed_actions == ["save_transcript"]
 
 
 def test_librarian_workflow_rejects_unknown_or_repeated_resume(

@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   autoSaveTranscripts: false,
   preferredProviderId: "",
   preferredProfileId: "",
+  useLangGraphWorkflow: true,
   showRelatedNotes: true,
   autoRefreshRelated: true,
 };
@@ -64,6 +65,7 @@ class AlexandriaLibrarianView extends ItemView {
     super(leaf);
     this.plugin = plugin;
     this.lastResponse = null;
+    this.lastWorkflow = null;
     this.answerContainer = null;
     this.sourceContainer = null;
     this.statusEl = null;
@@ -127,6 +129,11 @@ class AlexandriaLibrarianView extends ItemView {
     const delegateInput = delegateLabel.createEl("input", { type: "checkbox" });
     delegateLabel.createSpan({ text: "Ask OAuth librarian" });
 
+    const workflowLabel = controls.createEl("label", { cls: "alexandria-checkbox" });
+    const workflowInput = workflowLabel.createEl("input", { type: "checkbox" });
+    workflowInput.checked = this.plugin.settings.useLangGraphWorkflow;
+    workflowLabel.createSpan({ text: "Use LangGraph approval" });
+
     const providerInput = controls.createEl("input", {
       cls: "alexandria-inline-input",
       attr: { placeholder: "provider id" },
@@ -152,6 +159,7 @@ class AlexandriaLibrarianView extends ItemView {
         delegateToLibrarian: delegateInput.checked,
         providerId: providerInput.value.trim(),
         profileId: profileInput.value.trim(),
+        useWorkflow: workflowInput.checked,
       });
     });
 
@@ -204,6 +212,10 @@ class AlexandriaLibrarianView extends ItemView {
       return;
     }
     this.setStatus("Asking Alexandria...");
+    if (options.useWorkflow) {
+      await this.startWorkflow(query, options);
+      return;
+    }
     const response = await this.postJson("/obsidian/librarian/ask", {
       query,
       active_note_path: this.activePath(),
@@ -215,9 +227,28 @@ class AlexandriaLibrarianView extends ItemView {
       profile_id: options.profileId || null,
     });
     this.lastResponse = response;
+    this.lastWorkflow = null;
     await this.renderAnswer(response);
-    await this.renderGraphActions(response);
+    await this.renderGraphActions(response, null);
     this.setStatus(response.transcript_path ? `Saved: ${response.transcript_path}` : "Ready");
+  }
+
+  async startWorkflow(query, options) {
+    const workflow = await this.postJson("/obsidian/librarian/workflows", {
+      query,
+      active_note_path: this.activePath(),
+      selection: this.selectionText(),
+      project: this.plugin.settings.defaultProject || null,
+      save_transcript: false,
+      delegate_to_librarian: options.delegateToLibrarian,
+      provider_id: options.providerId || null,
+      profile_id: options.profileId || null,
+    });
+    this.lastWorkflow = workflow;
+    this.lastResponse = this.responseFromWorkflow(workflow);
+    await this.renderAnswer(this.lastResponse);
+    await this.renderGraphActions(this.lastResponse, workflow);
+    this.setStatus(`Workflow waiting: ${workflow.thread_id}`);
   }
 
 
@@ -306,7 +337,7 @@ class AlexandriaLibrarianView extends ItemView {
   }
 
 
-  async renderGraphActions(response) {
+  async renderGraphActions(response, workflow) {
     if (!this.graphActionContainer) {
       return;
     }
@@ -319,6 +350,10 @@ class AlexandriaLibrarianView extends ItemView {
         text: `Delegate: ${response.delegate_status}`,
       });
     }
+    if (workflow?.status === "waiting_for_approval") {
+      this.renderWorkflowApproval(workflow);
+      return;
+    }
     const list = this.graphActionContainer.createEl("ul");
     for (const action of actions) {
       list.createEl("li", { text: action });
@@ -330,6 +365,85 @@ class AlexandriaLibrarianView extends ItemView {
         text: `Conversation: ${response.conversation_id || "local"}`,
       });
     }
+  }
+
+  renderWorkflowApproval(workflow) {
+    const actions = Array.isArray(workflow.pending_actions) ? workflow.pending_actions : [];
+    if (actions.length === 0) {
+      this.graphActionContainer.createEl("p", {
+        cls: "alexandria-muted",
+        text: "No pending workflow actions.",
+      });
+      return;
+    }
+    const form = this.graphActionContainer.createDiv({ cls: "alexandria-workflow-form" });
+    const selected = new Set();
+    for (const action of actions) {
+      const actionId = String(action.id || "");
+      if (!actionId) {
+        continue;
+      }
+      const label = form.createEl("label", { cls: "alexandria-checkbox" });
+      const input = label.createEl("input", { type: "checkbox" });
+      if (actionId === "save_transcript" && this.plugin.settings.autoSaveTranscripts) {
+        input.checked = true;
+        selected.add(actionId);
+      }
+      if (actionId === "ask_oauth_librarian") {
+        input.checked = true;
+        selected.add(actionId);
+      }
+      input.addEventListener("change", () => {
+        if (input.checked) {
+          selected.add(actionId);
+        } else {
+          selected.delete(actionId);
+        }
+      });
+      label.createSpan({ text: action.label || actionId });
+    }
+    const resumeButton = form.createEl("button", {
+      text: "Resume approved actions",
+      cls: "mod-cta",
+    });
+    resumeButton.addEventListener("click", async () => {
+      try {
+        await this.resumeWorkflow(Array.from(selected));
+      } catch (error) {
+        this.showError(error);
+      }
+    });
+  }
+
+  async resumeWorkflow(approvedActions) {
+    if (!this.lastWorkflow?.thread_id) {
+      new Notice("Start a LangGraph workflow first.");
+      return;
+    }
+    this.setStatus("Resuming LangGraph workflow...");
+    const workflow = await this.postJson(
+      `/obsidian/librarian/workflows/${encodeURIComponent(this.lastWorkflow.thread_id)}/resume`,
+      { approved_actions: approvedActions }
+    );
+    this.lastWorkflow = workflow;
+    this.lastResponse = this.responseFromWorkflow(workflow);
+    await this.renderAnswer(this.lastResponse);
+    await this.renderGraphActions(this.lastResponse, workflow);
+    this.setStatus(`Workflow ${workflow.status}: ${workflow.thread_id}`);
+  }
+
+  responseFromWorkflow(workflow) {
+    const response = workflow.response || {};
+    const completed = Array.isArray(workflow.completed_actions) ? workflow.completed_actions : [];
+    const delegated = completed.some((action) => String(action).startsWith("ask_oauth_librarian:"));
+    const delegateStatus =
+      response.delegate_status ||
+      (delegated ? "completed" : workflow.status === "waiting_for_approval" ? "pending" : "local_only");
+    return Object.assign({}, response, {
+      conversation_id: response.conversation_id || workflow.thread_id,
+      transcript_path: workflow.transcript_path || response.transcript_path || null,
+      delegate_status: delegateStatus,
+    });
   }
 
   async openSource(path) {
@@ -531,6 +645,18 @@ class AlexandriaLibrarianSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.preferredProfileId)
           .onChange(async (value) => {
             this.plugin.settings.preferredProfileId = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Use LangGraph approval workflow")
+      .setDesc("Ask through backend LangGraph workflow endpoints and approve actions before writes/delegation.")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.useLangGraphWorkflow)
+          .onChange(async (value) => {
+            this.plugin.settings.useLangGraphWorkflow = value;
             await this.plugin.saveSettings();
           })
       );

@@ -140,3 +140,13 @@ POST /obsidian/librarian/workflows/{thread_id}/cancel
 - interrupt/resume으로 사용자 승인 후 note 저장이 가능하다.
 - workflow checkpoint를 삭제해도 Obsidian 원본 note는 손상되지 않는다.
 - 기존 `/obsidian/librarian/ask` API 응답 shape가 유지된다.
+
+## 2026-05-26 implementation update
+
+G003 replaced the earlier local state-machine MVP with the actual `langgraph` package runtime:
+
+- `StateGraph` node chain: `collect_context -> plan_actions -> approval_gate -> execute_approved_actions -> finalize`.
+- Human approval uses `interrupt(...)` and `Command(resume={"approved_actions": [...]})`.
+- LangGraph checkpoints persist in `SERVICE_OBSIDIAN_LIBRARIAN_LANGGRAPH_CHECKPOINT_PATH`.
+- The existing `obsidian_librarian_workflows` table remains the API-facing checkpoint summary.
+- Cancel deletes the LangGraph thread checkpoint while leaving canonical Obsidian notes intact.

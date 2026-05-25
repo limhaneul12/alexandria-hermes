@@ -96,7 +96,7 @@ uv run alexandria-hermes obsidian related --path "START_HERE.md"
 uv run alexandria-hermes obsidian ask "정리해줘" --delegate --provider-id codex-oauth --profile-id research-critic
 ```
 
-HTTP/MCP additions include related-note retrieval and resumable local librarian workflows:
+HTTP/MCP additions include related-note retrieval and resumable LangGraph librarian workflows:
 
 ```text
 GET  /obsidian/notes/by-path/related?path=<path>
@@ -105,6 +105,8 @@ POST /obsidian/librarian/workflows
 GET  /obsidian/librarian/workflows/{thread_id}
 POST /obsidian/librarian/workflows/{thread_id}/resume
 ```
+
+The workflow runtime now uses the real `langgraph` package with `StateGraph`, `interrupt(...)`, `Command(resume=...)`, and a SQLite LangGraph checkpoint file. Default checkpoint path: `SERVICE_OBSIDIAN_LIBRARIAN_LANGGRAPH_CHECKPOINT_PATH=./data/obsidian_librarian_langgraph.sqlite`. Approving `ask_oauth_librarian` routes to the backend GPT/OAuth librarian provider/profile when connected; missing providers/profiles degrade to guidance-only without writing OAuth secrets into Obsidian.
 
 ## Local development
 

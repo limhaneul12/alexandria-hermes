@@ -59,3 +59,8 @@
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+
+.alexandria-workflow-form {
+  display: grid;
+  gap: 8px;
+}

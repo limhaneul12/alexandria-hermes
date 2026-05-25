@@ -267,7 +267,7 @@ SQLite stores this as a rebuildable `obsidian_edges` cache. Related notes are av
 
 ## 9. Resumable librarian workflow
 
-The workflow endpoints provide a local LangGraph-style checkpoint/state-machine boundary:
+The workflow endpoints provide a real LangGraph checkpoint/node runtime:
 
 ```text
 POST /obsidian/librarian/workflows
@@ -276,7 +276,7 @@ POST /obsidian/librarian/workflows/{thread_id}/resume
 POST /obsidian/librarian/workflows/{thread_id}/cancel
 ```
 
-The first MVP pauses with proposed actions such as `save_transcript`, `create_context_note`, `create_skill_draft`, and `add_graph_links`. Only approved actions are written to Obsidian. OAuth provider/profile ids are routing hints only; tokens remain in backend provider storage and are never written to the vault or plugin settings.
+The backend uses `StateGraph` nodes (`collect_context -> plan_actions -> approval_gate -> execute_approved_actions -> finalize`), pauses with `interrupt(...)`, and resumes with `Command(resume={"approved_actions": [...]})`. LangGraph checkpoints persist in `SERVICE_OBSIDIAN_LIBRARIAN_LANGGRAPH_CHECKPOINT_PATH` (default `./data/obsidian_librarian_langgraph.sqlite`), while `obsidian_librarian_workflows` stores API-visible state. Only approved actions are written to Obsidian. Approving `ask_oauth_librarian` calls the backend GPT/OAuth librarian provider/profile through `HermesCollaborationService`; tokens remain in backend provider storage and are never written to the vault or plugin settings. Missing provider/profile settings return `GUIDANCE_ONLY` instead of failing the workflow.
 
 ## 10. Librarian chat model
 
@@ -287,7 +287,7 @@ The Obsidian librarian endpoint returns:
 - optional transcript saved under `Librarian/Chats/` or `Alexandria/Librarian/Chats/`, depending on root mode;
 - action previews for follow-up note creation.
 
-The current backend implementation is deterministic and source-grounded. It can later delegate to an external librarian provider without changing the Obsidian note contract.
+The local answer remains deterministic and source-grounded. Approved GPT/OAuth delegation can now append a `## GPT OAuth Librarian` section when a connected provider/profile returns delegate guidance, without changing the Obsidian note contract.
 
 ## 11. Smoke-test evidence
 
@@ -305,7 +305,7 @@ Observed result:
 - Search found indexed Alexandria notes.
 - `obsidian related --path START_HERE.md --limit 5` returned an empty related set, which is valid when no graph edges target or originate from that note yet.
 - Delegated librarian ask returned `delegate_status=requested_local_fallback`, `provider_id=codex-oauth`, and `profile_id=research-critic` without saving a transcript.
-- Workflow start/resume smoke moved `waiting_for_approval -> completed` with no approved writes.
+- LangGraph workflow start/resume smoke moved `waiting_for_approval -> completed`; approving `ask_oauth_librarian` records `GUIDANCE_ONLY` or provider `COMPLETED` depending on configured GPT OAuth provider/profile availability.
 
 ## 12. Safety rules
 

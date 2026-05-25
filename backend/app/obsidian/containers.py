@@ -23,6 +23,7 @@ class ObsidianContainer(containers.DeclarativeContainer):
 
     db_session = providers.Dependency(instance_of=AsyncSession)
     app_config = providers.Dependency(instance_of=AppConfig)
+    librarian_delegate_service = providers.Dependency(default=None)
     index_repo = providers.Factory(
         SqlAlchemyObsidianIndexRepository, session=db_session
     )
@@ -41,7 +42,9 @@ class ObsidianContainer(containers.DeclarativeContainer):
         SqlAlchemyObsidianWorkflowRepository, session=db_session
     )
     workflow_service = providers.Factory(
-        ObsidianLibrarianWorkflowService,
+        ObsidianLibrarianWorkflowService.from_services,
         workflow_repository=workflow_repo,
         obsidian_service=obsidian_service,
+        checkpoint_path=app_config.provided.obsidian_librarian_langgraph_checkpoint_path,
+        delegate_service=librarian_delegate_service,
     )
