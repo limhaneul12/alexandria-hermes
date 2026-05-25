@@ -46,6 +46,11 @@ from .memory_context_exceptions import (
     MemoryContextNotFoundError,
     MemoryContextValidationError,
 )
+from .obsidian_exceptions import (
+    ObsidianDomainError,
+    ObsidianNotFoundError,
+    ObsidianValidationError,
+)
 from .route_exceptions import (
     ARCHIVE_ROUTE_EXCEPTION_MAPPING,
     CONNECTIONS_PROVIDER_TEST_EXCEPTION_MAPPING,
@@ -54,6 +59,7 @@ from .route_exceptions import (
     LIBRARIAN_ROUTE_EXCEPTION_MAPPING,
     LIBRARY_ROUTE_EXCEPTION_MAPPING,
     MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING,
+    OBSIDIAN_ROUTE_EXCEPTION_MAPPING,
     RETRIEVAL_ROUTE_EXCEPTION_MAPPING,
 )
 
@@ -65,6 +71,7 @@ __all__ = [
     "LIBRARIAN_ROUTE_EXCEPTION_MAPPING",
     "LIBRARY_ROUTE_EXCEPTION_MAPPING",
     "MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING",
+    "OBSIDIAN_ROUTE_EXCEPTION_MAPPING",
     "RETRIEVAL_ROUTE_EXCEPTION_MAPPING",
     "BoundaryValidationError",
     "ConnectionsDomainError",
@@ -88,6 +95,9 @@ __all__ = [
     "MemoryContextDomainError",
     "MemoryContextNotFoundError",
     "MemoryContextValidationError",
+    "ObsidianDomainError",
+    "ObsidianNotFoundError",
+    "ObsidianValidationError",
     "RedisExceptionAction",
     "RedisExceptionArgValue",
     "RedisExceptionAware",

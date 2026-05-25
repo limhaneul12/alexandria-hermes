@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -28,28 +27,6 @@ class Base(DeclarativeBase):
     """SQLAlchemy declarative base used by backend ORM models."""
 
 
-FTS_TABLE_SQL = """
-CREATE VIRTUAL TABLE IF NOT EXISTS item_search_fts USING fts5(
-    item_id UNINDEXED,
-    item_type,
-    title,
-    summary,
-    content,
-    tags,
-    details,
-    tokenize='porter'
-);
-"""
-
-
-@dataclass(frozen=True)
-class SearchFTSConfig:
-    """Configuration values for SQLite FTS5 search table."""
-
-    table_name: str = "item_search_fts"
-    schema_sql: str = FTS_TABLE_SQL.strip()
-
-
 class Database:
     """Async SQLAlchemy database coordinator."""
 
@@ -57,19 +34,16 @@ class Database:
         self,
         *,
         database_url: str,
-        fts_config: SearchFTSConfig = SearchFTSConfig(),
         create_schema: bool = False,
     ) -> None:
         """Create database coordinator.
 
         Args:
             database_url: Async SQLAlchemy URL.
-            fts_config: Configuration for the search virtual table.
             create_schema: Create ORM tables and FTS objects directly. This is
                 intended for isolated tests; runtime schema is owned by Alembic.
         """
         self._database_url = database_url
-        self._fts = fts_config
         self._create_schema = create_schema
         self.engine: AsyncEngine = create_async_engine(
             database_url,
@@ -99,7 +73,6 @@ class Database:
                 return
 
             await connection.run_sync(Base.metadata.create_all)
-            await connection.execute(text(self._fts.schema_sql))
 
     async def shutdown(self) -> None:
         """Release SQLAlchemy resources."""

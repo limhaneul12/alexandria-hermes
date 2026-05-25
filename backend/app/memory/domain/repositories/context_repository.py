@@ -7,9 +7,7 @@ from datetime import datetime
 
 from app.memory.domain.contracts.context_contracts import (
     ContextAccessCreate,
-    ContextChunkCreate,
     ContextChunkEmbeddingUpdate,
-    ContextCreate,
 )
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
@@ -22,23 +20,6 @@ from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 
 class IContextRepository(ABC):
     """Persistence contract for Context Vault operations."""
-
-    @abstractmethod
-    async def create(
-        self,
-        *,
-        payload: ContextCreate,
-        chunks: list[ContextChunkCreate],
-    ) -> ContextRecord:
-        """Persist a context with its chunks.
-
-        Args:
-            payload: Context fields to persist.
-            chunks: Search chunks derived from the context content.
-
-        Returns:
-            Stored context read model.
-        """
 
     @abstractmethod
     async def get(self, context_id: str) -> ContextRecord | None:

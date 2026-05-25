@@ -11,7 +11,6 @@ from app.platform.security.operator_api_key import (
     OPERATOR_API_KEY_HEADER,
     require_operator_api_key,
 )
-from app.shared.serialization.orjson_codec import loads_json
 from fastapi.testclient import TestClient
 from tests.shared.provider_overrides import override_library_provider
 
@@ -113,7 +112,6 @@ def test_active_code_and_onboarding_docs_do_not_use_legacy_api_token() -> None:
     legacy_token_name = "ALEXANDRIA_" + "API_TOKEN"
     checked_roots = [
         BACKEND_ROOT / "app",
-        REPO_ROOT / "frontend" / "src",
         REPO_ROOT / "install.md",
         REPO_ROOT / "README.md",
         REPO_ROOT / "docker-compose.yml",
@@ -142,18 +140,5 @@ def test_compose_defaults_bind_service_ports_to_localhost() -> None:
     compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
     assert '"127.0.0.1:8000:8000"' in compose
-    assert '"127.0.0.1:3000:3000"' in compose
-
-
-def test_frontend_dev_scripts_keep_operator_proxy_local_by_default() -> None:
-    """Local Next.js scripts should not expose the operator-key proxy to LAN."""
-    package_json = loads_json(
-        (REPO_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
-    )
-    scripts = package_json["scripts"]
-    compose = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-
-    assert scripts["dev"] == "next dev -H 127.0.0.1 -p 3000"
-    assert scripts["start"] == "next start -H 127.0.0.1 -p 3000"
-    assert scripts["dev:container"] == "next dev -H 0.0.0.0 -p 3000"
-    assert "npm run dev:container" in compose
+    assert "3000:3000" not in compose
+    assert "frontend" not in compose

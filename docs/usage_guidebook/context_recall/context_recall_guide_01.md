@@ -70,7 +70,7 @@ alexandria-hermes --base-url http://localhost:8000 context doctor-rag
 브라우저에서 확인한다.
 
 ```text
-http://localhost:3000/contexts
+alexandria-hermes context recall "<query>" --json
 ```
 
 `/contexts`에서 저장된 context가 보여야 한다. FTS/vector/RAG 상태는 `context doctor-rag`로 확인한다.
@@ -82,4 +82,4 @@ http://localhost:3000/contexts
 | backend 연결 실패 | `/health/ready` 확인 | backend 실행 또는 `--base-url` 수정 |
 | recall 결과 없음 | 저장 project/kind/query 확인 | `--project`를 빼고 다시 검색 |
 | vector degraded | `context doctor-rag` 확인 | FTS_ONLY로 smoke test 후 embedding 설정 점검 |
-| UI에는 안 보임 | frontend API proxy 설정 확인 | frontend 재시작, backend URL 확인 |
+| recall 결과가 비어 있음 | project/kind/filter 확인 | 더 좁은 query 또는 RAG 상태 확인 |

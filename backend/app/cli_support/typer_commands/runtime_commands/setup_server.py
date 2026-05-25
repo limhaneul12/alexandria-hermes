@@ -18,8 +18,8 @@ setup_app = typer.Typer(
     add_completion=False,
     invoke_without_command=True,
     help=(
-        "Configure supported Alexandria-Hermes runtimes: full-stack compose, "
-        "full-stack separate processes, Backend + SQLite daemon, or guidebook-only. "
+        "Configure supported Alexandria-Hermes runtimes: "
+        "Backend + SQLite daemon or guidebook-only. "
         "SQLite is the only supported database."
     ),
 )
@@ -32,8 +32,8 @@ def setup(
         None,
         "--mode",
         help=(
-            "Runtime mode: fullstack-compose, fullstack-separate, "
-            "backend-daemon, or guidebook-only. Required for agent/non-interactive setup."
+            "Runtime mode: backend-daemon or guidebook-only. "
+            "Required for agent/non-interactive setup."
         ),
     ),
     hermes_home: str | None = typer.Option(
@@ -51,6 +51,16 @@ def setup(
         None,
         "--api-url",
         help="Backend API URL to write into generated local env.",
+    ),
+    obsidian_vault_path: str | None = typer.Option(
+        None,
+        "--obsidian-vault-path",
+        help="Use an existing Obsidian vault instead of the generated default.",
+    ),
+    alexandria_obsidian_root: str | None = typer.Option(
+        None,
+        "--alexandria-obsidian-root",
+        help="Folder inside the vault managed by Alexandria; use '.' for vault root.",
     ),
     operator_api_key: str | None = typer.Option(
         None,
@@ -91,6 +101,8 @@ def setup(
         hermes_home: Hermes home override.
         env_path: Generated env path override.
         api_url: Backend API URL for generated env.
+        obsidian_vault_path: Existing Obsidian vault path override.
+        alexandria_obsidian_root: Alexandria-managed folder inside the vault.
         operator_api_key: Operator API key for generated env.
         non_interactive: Whether mode selection must be explicit.
         dry_run: Whether to avoid side effects.
@@ -111,6 +123,8 @@ def setup(
                 hermes_home=hermes_home,
                 env_path=env_path,
                 api_url=api_url,
+                obsidian_vault_path=obsidian_vault_path,
+                alexandria_obsidian_root=alexandria_obsidian_root,
                 operator_api_key=operator_api_key,
                 non_interactive=non_interactive,
                 dry_run=dry_run,

@@ -25,8 +25,6 @@ from app.librarian.infrastructure.repositories.agent_repository import (
 from app.librarian.infrastructure.repositories.skill_acquisition_job_repository import (
     SqlAlchemySkillAcquisitionJobRepository,
 )
-from app.library.application.skill_service import SkillService
-from app.memory.application.context_service import ContextService
 from app.memory.application.memory_compact_service import MemoryCompactService
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,8 +43,6 @@ class LibrarianContainer(containers.DeclarativeContainer):
         instance_of=ILibrarianProviderRepository
     )
     provider_secret_repo = providers.Dependency(instance_of=IProviderSecretRepository)
-    skill_service = providers.Dependency(instance_of=SkillService)
-    context_service = providers.Dependency(instance_of=ContextService)
     memory_compact_service = providers.Dependency(instance_of=MemoryCompactService)
     delegate_executor = providers.Factory(
         OpenAIProviderDelegateExecutor,
@@ -58,8 +54,6 @@ class LibrarianContainer(containers.DeclarativeContainer):
         repository=skill_acquisition_job_repo,
         provider_repo=librarian_provider_repo,
         secret_repo=provider_secret_repo,
-        skill_service=skill_service,
-        context_service=context_service,
     )
     skill_acquisition_executor = providers.Factory(
         OpenAISkillAcquisitionExecutor,

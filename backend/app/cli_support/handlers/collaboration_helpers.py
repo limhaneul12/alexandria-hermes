@@ -12,20 +12,17 @@ from app.cli_support.contracts.librarian_command_contracts import (
     LibrarianProfileUpdateCommand,
     LibrarianProviderCreateCommand,
     LibrarianRoutePreviewCommand,
-    UsageRecordCliCommand,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
 from app.cli_support.presentation.output_renderers import print_json, text_field
 from app.cli_support.schemas.collaboration_payload_schemas import (
     LibrarianAskBody,
     LibrarianProfilePatchBody,
-    UsageRecordBody,
 )
 from app.cli_support.url_paths import quote_path
 from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
-from app.shared.utils.usage_feedback import usage_feedback_value
 
 
 def cli_secret_value(env_name: str) -> str | None:
@@ -42,44 +39,6 @@ def cli_secret_value(env_name: str) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
-
-
-def usage_record_body(command: UsageRecordCliCommand) -> JSONObject:
-    """Build the backend usage-record body from a CLI command.
-
-    Args:
-        command: Typed CLI usage-record command.
-
-    Returns:
-        JSONObject: Backend request body with empty optionals omitted.
-    """
-    body = UsageRecordBody(
-        item_id=command.item_id,
-        item_type=command.item_type,
-        agent_name=command.agent_name,
-        selection_source=command.selection_source.value,
-        success=command.success,
-        query=command.query,
-        librarian_provider=command.librarian_provider,
-        feedback=usage_feedback(command),
-    )
-    return schema_payload(body, exclude_none=True)
-
-
-def usage_feedback(command: UsageRecordCliCommand) -> JSONObject | str | None:
-    """Build usage feedback for the backend usage endpoint.
-
-    Args:
-        command: Typed CLI usage-record command.
-
-    Returns:
-        JSONObject | str | None: Plain feedback, structured feedback, or none.
-    """
-    return usage_feedback_value(
-        project=command.project,
-        task_summary=command.task_summary,
-        feedback=command.feedback,
-    )
 
 
 def librarian_ask_body(command: LibrarianAskCommand) -> JSONObject:

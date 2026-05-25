@@ -12,7 +12,7 @@ Alexandria-Hermes 문서를 유명 OSS 프로젝트의 온보딩 패턴에 맞�
 - Open WebUI: Docker-first quickstart, troubleshooting, update guide
 - LangChain/LangGraph: concepts와 how-to guide 분리
 - mem0/Zep: memory add/search/retrieve의 짧은 aha loop 제공
-- Next.js: README는 짧고, 상세는 docs로 위임
+- Backend/CLI/MCP: README는 짧고, 상세는 docs로 위임
 
 ## Alexandria-Hermes 문서 원칙
 

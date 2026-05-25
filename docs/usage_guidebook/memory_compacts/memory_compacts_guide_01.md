@@ -45,3 +45,13 @@ A useful compact should include:
 - source refs to contexts, commits, docs, or issue IDs when available.
 
 Do not include raw secrets, full transcripts, or noisy progress logs.
+
+## Storage contract
+
+Memory Compacts are stored as Obsidian Markdown notes, not SQLite rows. The backend writes notes under:
+
+```text
+SERVICE_OBSIDIAN_VAULT_PATH/Alexandria/Memory Compacts/
+```
+
+Override the folder with `SERVICE_MEMORY_COMPACT_NOTE_DIR` when the vault needs a different layout. Each note includes YAML frontmatter with `alexandria_type: memory_compact`, stable `id`, lifecycle `status`, coverage timestamps, and source refs. SQLite should not be treated as the canonical store for Memory Compact content.

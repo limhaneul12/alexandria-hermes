@@ -5,7 +5,6 @@ from __future__ import annotations
 from app.cli_support.argument_values import bounded_limit
 from app.cli_support.backend_api_client import CliBackendApiClient
 from app.cli_support.contracts.memory_command_contracts import (
-    ContextCompactCommand,
     ContextCurateCommand,
     ContextIdCommand,
     ContextMemoryMapCommand,
@@ -94,42 +93,6 @@ def handle_context_delete(
     return 0
 
 
-def handle_context_compact(
-    command: ContextCompactCommand,
-    context: CommandContext,
-    client: CliBackendApiClient,
-) -> int:
-    """Run the context compact CLI command.
-
-    Args:
-        command: Typed CLI command contract for compact preparation.
-        context: CLI runtime context with output settings.
-        client: Backend API client used for HTTP requests.
-
-    Returns:
-        Process-style exit code.
-    """
-    body: JSONObject = {
-        "current_goal": command.current_goal,
-        "completed": command.completed,
-        "in_progress": command.in_progress,
-        "key_decisions": command.key_decisions,
-        "next_actions": command.next_actions,
-        "risks": command.risks,
-        "source_agent": command.source_agent,
-        "scope": command.scope.value,
-        "visibility": command.visibility.value,
-    }
-    _add_optional(body, "project", command.project)
-    _add_optional(body, "workspace_id", command.workspace_id)
-    _add_optional(body, "agent_id", command.agent_id)
-    _add_optional(body, "user_id", command.user_id)
-    _add_optional(body, "session_id", command.session_id)
-    payload = client.post("/memory/contexts/prepare-compact", body)
-    print_context_payload(payload, context)
-    return 0
-
-
 def handle_context_memory_map(
     command: ContextMemoryMapCommand,
     context: CommandContext,
@@ -208,11 +171,6 @@ def handle_context_embed(
     payload = schema_payload(result, exclude_none=True)
     print_context_payload(payload, context)
     return 0
-
-
-def _add_optional(body: JSONObject, key: str, value: JSONValue | None) -> None:
-    if value is not None:
-        body[key] = value
 
 
 def _memory_map_payload(payload: JSONValue) -> JSONObject:

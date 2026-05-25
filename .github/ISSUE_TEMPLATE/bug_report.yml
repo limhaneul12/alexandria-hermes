@@ -22,7 +22,6 @@ body:
       options:
         - Backend / API
         - CLI / MCP
-        - Frontend UI
         - Context Vault / RAG
         - Memory Compacts
         - Library skills/prompts
@@ -56,8 +55,6 @@ body:
       placeholder: |
         OS:
         Python:
-        Node:
-        Browser:
         Alexandria-Hermes commit:
   - type: checkboxes
     id: safety

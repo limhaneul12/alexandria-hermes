@@ -27,6 +27,10 @@ from app.shared.exceptions.memory_context_exceptions import (
     MemoryContextNotFoundError,
     MemoryContextValidationError,
 )
+from app.shared.exceptions.obsidian_exceptions import (
+    ObsidianNotFoundError,
+    ObsidianValidationError,
+)
 from fastapi import status
 
 LIBRARY_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
@@ -64,6 +68,12 @@ CONTEXT_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     BoundaryValidationError: status.HTTP_400_BAD_REQUEST,
     MemoryContextNotFoundError: status.HTTP_404_NOT_FOUND,
     MemoryContextValidationError: status.HTTP_400_BAD_REQUEST,
+}
+
+OBSIDIAN_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
+    BoundaryValidationError: status.HTTP_400_BAD_REQUEST,
+    ObsidianNotFoundError: status.HTTP_404_NOT_FOUND,
+    ObsidianValidationError: status.HTTP_400_BAD_REQUEST,
 }
 
 LIBRARIAN_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {

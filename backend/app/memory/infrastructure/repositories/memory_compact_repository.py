@@ -1,8 +1,10 @@
-"""SQLAlchemy Memory Compact repository implementation."""
+"""Obsidian-backed Memory Compact repository implementation."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 from app.memory.domain.entities.memory_compact import (
     MemoryCompact,
@@ -15,29 +17,32 @@ from app.memory.domain.repositories.memory_compact_repository import (
     IMemoryCompactRepository,
     MemoryCompactCreate,
 )
-from app.memory.infrastructure.models.memory_compact_models import (
-    MemoryCompactORM,
-    MemoryCompactSourceRefORM,
+from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown import (
+    NOTE_SUFFIX,
+    is_safe_note_id,
+    read_compact_file,
+    resolve_base_dir,
+    serialize_compact,
 )
 from app.shared.exceptions import MemoryCompactNotFoundError
+from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.types_convert_utils import aware_utc_datetime
-from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
-    """Concrete repository for Memory Compact persistence."""
+class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
+    """Persist Memory Compact artifacts as Markdown notes in an Obsidian vault."""
 
-    def __init__(self, *, session: AsyncSession) -> None:
-        """Initialize repository with a request session.
+    def __init__(self, *, vault_path: str | Path, relative_dir: str | Path) -> None:
+        """Initialize repository.
 
         Args:
-            session: SQLAlchemy async session for the request.
+            vault_path: Obsidian vault root path.
+            relative_dir: Relative folder for Memory Compact notes.
         """
-        self._session = session
+        self._base_dir = resolve_base_dir(vault_path, relative_dir)
 
     async def create(self, payload: MemoryCompactCreate) -> MemoryCompact:
-        """Create one Memory Compact row and source refs.
+        """Create one Memory Compact note and source-reference frontmatter.
 
         Args:
             payload: Memory Compact creation contract.
@@ -46,32 +51,23 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
             Created Memory Compact entity.
         """
         now = datetime.now(UTC)
-        if payload.status is MemoryCompactStatus.CURRENT:
-            await self._supersede_current_project(payload.project, excluded_id=None)
-        model = MemoryCompactORM(
+        compact_id = new_uuid()
+        compact = MemoryCompact(
+            id=compact_id,
             project=payload.project,
-            covered_from=payload.covered_from,
-            covered_to=payload.covered_to,
+            covered_from=aware_utc_datetime(payload.covered_from),
+            covered_to=aware_utc_datetime(payload.covered_to),
             markdown_body=payload.markdown_body,
-            status=payload.status.value,
+            status=payload.status,
+            source_refs=_source_refs(compact_id, payload),
             created_at=now,
             updated_at=now,
             archived_at=None,
         )
-        self._session.add(model)
-        await self._session.flush()
-        for source_ref in payload.source_refs:
-            self._session.add(
-                MemoryCompactSourceRefORM(
-                    compact_id=model.id,
-                    source_type=source_ref.source_type,
-                    source_id=source_ref.source_id,
-                    title=source_ref.title,
-                    detail_path=source_ref.detail_path,
-                )
-            )
-        await self._session.flush()
-        return await self._read_model(model)
+        if payload.status is MemoryCompactStatus.CURRENT:
+            await self._supersede_current_project(payload.project, excluded_id=None)
+        self._write_compact(compact)
+        return compact
 
     async def get(self, compact_id: str) -> MemoryCompact | None:
         """Read one compact by id.
@@ -82,10 +78,13 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Matching compact, or None when absent.
         """
-        model = await self._session.get(MemoryCompactORM, compact_id)
-        if model is None:
-            return None
-        return await self._read_model(model)
+        direct_path = self._compact_path(compact_id)
+        if direct_path is not None and direct_path.exists():
+            return read_compact_file(direct_path)
+        for compact in self._read_all_compacts():
+            if compact.id == compact_id:
+                return compact
+        return None
 
     async def list_compacts(
         self,
@@ -110,26 +109,15 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Page of compacts and total matching count.
         """
-        statement = select(MemoryCompactORM)
-        if project is not None:
-            statement = statement.where(MemoryCompactORM.project == project)
-        if status is not None:
-            statement = statement.where(MemoryCompactORM.status == status.value)
-        if covered_after is not None:
-            statement = statement.where(MemoryCompactORM.covered_to >= covered_after)
-        if covered_before is not None:
-            statement = statement.where(MemoryCompactORM.covered_from <= covered_before)
-        count = await self._session.scalar(
-            select(func.count()).select_from(statement.subquery())
+        compacts = self._filter_compacts(
+            project=project,
+            status=status,
+            covered_after=covered_after,
+            covered_before=covered_before,
         )
-        page = (
-            statement.order_by(MemoryCompactORM.covered_to.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-        rows = await self._session.execute(page)
-        models = list(rows.scalars().all())
-        return [await self._read_model(model) for model in models], int(count or 0)
+        compacts.sort(key=lambda item: item.covered_to, reverse=True)
+        total = len(compacts)
+        return compacts[offset : offset + limit], total
 
     async def current(self, *, project: str | None = None) -> MemoryCompact | None:
         """Read current compact for a project.
@@ -140,18 +128,13 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Current compact, or None when absent.
         """
-        statement = select(MemoryCompactORM).where(
-            MemoryCompactORM.status == MemoryCompactStatus.CURRENT.value
-        )
-        if project is None:
-            statement = statement.where(MemoryCompactORM.project.is_(None))
-        else:
-            statement = statement.where(MemoryCompactORM.project == project)
-        statement = statement.order_by(MemoryCompactORM.updated_at.desc()).limit(1)
-        model = await self._session.scalar(statement)
-        if model is None:
-            return None
-        return await self._read_model(model)
+        compacts = [
+            item
+            for item in self._read_all_compacts()
+            if item.status is MemoryCompactStatus.CURRENT and item.project == project
+        ]
+        compacts.sort(key=lambda item: item.updated_at, reverse=True)
+        return compacts[0] if compacts else None
 
     async def mark_current(self, compact_id: str) -> MemoryCompact:
         """Mark one compact current and supersede prior current for project.
@@ -162,16 +145,18 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Updated current compact.
         """
-        model = await self._session.get(MemoryCompactORM, compact_id)
-        if model is None:
+        compact = await self.get(compact_id)
+        if compact is None:
             raise MemoryCompactNotFoundError(f"Memory compact not found: {compact_id}")
-        await self._supersede_current_project(model.project, excluded_id=model.id)
-        now = datetime.now(UTC)
-        model.status = MemoryCompactStatus.CURRENT.value
-        model.archived_at = None
-        model.updated_at = now
-        await self._session.flush()
-        return await self._read_model(model)
+        await self._supersede_current_project(compact.project, excluded_id=compact.id)
+        updated = replace(
+            compact,
+            status=MemoryCompactStatus.CURRENT,
+            updated_at=datetime.now(UTC),
+            archived_at=None,
+        )
+        self._write_compact(updated)
+        return updated
 
     async def archive(self, compact_id: str) -> MemoryCompact:
         """Archive one compact.
@@ -182,18 +167,21 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Archived compact.
         """
-        model = await self._session.get(MemoryCompactORM, compact_id)
-        if model is None:
+        compact = await self.get(compact_id)
+        if compact is None:
             raise MemoryCompactNotFoundError(f"Memory compact not found: {compact_id}")
         now = datetime.now(UTC)
-        model.status = MemoryCompactStatus.ARCHIVED.value
-        model.archived_at = now
-        model.updated_at = now
-        await self._session.flush()
-        return await self._read_model(model)
+        updated = replace(
+            compact,
+            status=MemoryCompactStatus.ARCHIVED,
+            updated_at=now,
+            archived_at=now,
+        )
+        self._write_compact(updated)
+        return updated
 
     async def delete(self, compact_id: str) -> None:
-        """Hard delete one compact and dependent source refs.
+        """Hard delete one compact note.
 
         Args:
             compact_id: Memory Compact identifier.
@@ -201,67 +189,102 @@ class SqlAlchemyMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             None.
         """
-        model = await self._session.get(MemoryCompactORM, compact_id)
-        if model is None:
+        compact = await self.get(compact_id)
+        if compact is None:
             raise MemoryCompactNotFoundError(f"Memory compact not found: {compact_id}")
-        await self._session.execute(
-            delete(MemoryCompactSourceRefORM).where(
-                MemoryCompactSourceRefORM.compact_id == compact_id
-            )
-        )
-        await self._session.delete(model)
-        await self._session.flush()
+        path = self._compact_path(compact.id)
+        if path is not None and path.exists():
+            path.unlink()
+            return
+        self._delete_scanned_note(compact.id)
 
     async def _supersede_current_project(
         self,
         project: str | None,
         excluded_id: str | None,
     ) -> None:
-        statement = select(MemoryCompactORM).where(
-            MemoryCompactORM.status == MemoryCompactStatus.CURRENT.value
-        )
-        if excluded_id is not None:
-            statement = statement.where(MemoryCompactORM.id != excluded_id)
-        if project is None:
-            statement = statement.where(MemoryCompactORM.project.is_(None))
-        else:
-            statement = statement.where(MemoryCompactORM.project == project)
-        rows = await self._session.execute(statement)
         now = datetime.now(UTC)
-        for model in rows.scalars().all():
-            model.status = MemoryCompactStatus.SUPERSEDED.value
-            model.updated_at = now
-        await self._session.flush()
+        for compact in self._read_all_compacts():
+            if (
+                compact.status is MemoryCompactStatus.CURRENT
+                and compact.project == project
+                and compact.id != excluded_id
+            ):
+                self._write_compact(
+                    replace(
+                        compact,
+                        status=MemoryCompactStatus.SUPERSEDED,
+                        updated_at=now,
+                    )
+                )
 
-    async def _read_model(self, model: MemoryCompactORM) -> MemoryCompact:
-        refs_result = await self._session.execute(
-            select(MemoryCompactSourceRefORM)
-            .where(MemoryCompactSourceRefORM.compact_id == model.id)
-            .order_by(MemoryCompactSourceRefORM.id.asc())
+    def _filter_compacts(
+        self,
+        *,
+        project: str | None,
+        status: MemoryCompactStatus | None,
+        covered_after: datetime | None,
+        covered_before: datetime | None,
+    ) -> list[MemoryCompact]:
+        compacts = self._read_all_compacts()
+        if project is not None:
+            compacts = [item for item in compacts if item.project == project]
+        if status is not None:
+            compacts = [item for item in compacts if item.status is status]
+        if covered_after is not None:
+            lower_bound = aware_utc_datetime(covered_after)
+            compacts = [item for item in compacts if item.covered_to >= lower_bound]
+        if covered_before is not None:
+            upper_bound = aware_utc_datetime(covered_before)
+            compacts = [item for item in compacts if item.covered_from <= upper_bound]
+        return compacts
+
+    def _read_all_compacts(self) -> list[MemoryCompact]:
+        compacts: list[MemoryCompact] = []
+        for path in self._note_paths():
+            compact = read_compact_file(path)
+            if compact is not None:
+                compacts.append(compact)
+        return compacts
+
+    def _delete_scanned_note(self, compact_id: str) -> None:
+        for candidate in self._note_paths():
+            compact = read_compact_file(candidate)
+            if compact is not None and compact.id == compact_id:
+                candidate.unlink()
+                return
+
+    def _note_paths(self) -> list[Path]:
+        if not self._base_dir.exists():
+            return []
+        return sorted(self._base_dir.glob(f"*{NOTE_SUFFIX}"))
+
+    def _compact_path(self, compact_id: str) -> Path | None:
+        if not is_safe_note_id(compact_id):
+            return None
+        return self._base_dir / f"{compact_id}{NOTE_SUFFIX}"
+
+    def _write_compact(self, compact: MemoryCompact) -> None:
+        self._base_dir.mkdir(parents=True, exist_ok=True)
+        path = self._compact_path(compact.id)
+        if path is None:
+            raise ValueError("Memory Compact id cannot be used as a note filename")
+        temp_path = path.with_suffix(f"{NOTE_SUFFIX}.tmp")
+        temp_path.write_text(serialize_compact(compact), encoding="utf-8")
+        temp_path.replace(path)
+
+
+def _source_refs(
+    compact_id: str, payload: MemoryCompactCreate
+) -> tuple[MemoryCompactSourceRef, ...]:
+    return tuple(
+        MemoryCompactSourceRef(
+            id=new_uuid(),
+            compact_id=compact_id,
+            source_type=source_ref.source_type,
+            source_id=source_ref.source_id,
+            title=source_ref.title,
+            detail_path=source_ref.detail_path,
         )
-        refs = tuple(_map_source_ref(row) for row in refs_result.scalars().all())
-        return MemoryCompact(
-            id=model.id,
-            project=model.project,
-            covered_from=aware_utc_datetime(model.covered_from),
-            covered_to=aware_utc_datetime(model.covered_to),
-            markdown_body=model.markdown_body,
-            status=MemoryCompactStatus(model.status),
-            source_refs=refs,
-            created_at=aware_utc_datetime(model.created_at),
-            updated_at=aware_utc_datetime(model.updated_at),
-            archived_at=aware_utc_datetime(model.archived_at)
-            if model.archived_at is not None
-            else None,
-        )
-
-
-def _map_source_ref(row: MemoryCompactSourceRefORM) -> MemoryCompactSourceRef:
-    return MemoryCompactSourceRef(
-        id=row.id,
-        compact_id=row.compact_id,
-        source_type=row.source_type,
-        source_id=row.source_id,
-        title=row.title,
-        detail_path=row.detail_path,
+        for source_ref in payload.source_refs
     )

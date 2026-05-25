@@ -44,6 +44,7 @@ docs/usage_guidebook/install_onboard/install_onboard_guide_01.md
 | self_acquisition | [self_acquisition_guide_01.md](self_acquisition/self_acquisition_guide_01.md) | 사서 없이 Hermes가 직접 조사/후보 제출하는 흐름 |
 | context_recall | [context_recall_guide_01.md](context_recall/context_recall_guide_01.md) | context 저장 후 recall/Context Pack을 확인하는 첫 기능 smoke test |
 | memory_compacts | [memory_compacts_guide_01.md](memory_compacts/memory_compacts_guide_01.md) | 장기기억 요약의 24시간 coverage window와 weekly rollup 기준 |
+| obsidian_integration | [obsidian_integration_guide_01.md](obsidian_integration/obsidian_integration_guide_01.md) | Obsidian Markdown 원본 저장소, SQLite index/cache, 사서 대화 흐름 |
 | library_assets | [library_assets_guide_01.md](library_assets/library_assets_guide_01.md) | skills/prompts candidate search와 selected full-load 흐름 |
 | librarian_collaboration | [librarian_collaboration_guide_01.md](librarian_collaboration/librarian_collaboration_guide_01.md) | 사서를 optional 협업자로 쓰는 흐름 |
 | security_privacy | [security_privacy_guide_01.md](security_privacy/security_privacy_guide_01.md) | local-first single-operator 보안/프라이버시 모델 |
@@ -81,13 +82,13 @@ alexandria-hermes hermes policy enable
 ### 처음 쓰는 사용자
 
 ```text
-install_onboard → context_recall → memory_compacts → mcp_runtime → hermes_policy
+install_onboard → obsidian_integration → context_recall → memory_compacts → mcp_runtime → hermes_policy
 ```
 
 ### Agent/Hermes 통합 사용자
 
 ```text
-mcp_runtime → library_assets → self_acquisition → librarian_collaboration
+mcp_runtime → obsidian_integration → library_assets → self_acquisition → librarian_collaboration
 ```
 
 ### 운영자/공개 전 점검

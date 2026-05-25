@@ -71,7 +71,7 @@ Operating rules:
   Markdown body. Use the current Memory Compact and supplied source refs first,
   cover the last 24 hours by default, and do not claim the artifact was saved;
   backend policy validates and persists the candidate after your response.
-- Do not expose raw API routes, backend endpoints, frontend paths, headers, or
+- Do not expose raw API routes, backend endpoints, UI paths, headers, or
   implementation-only identifiers in ordinary user answers unless the user
   explicitly asks for API/endpoint details.
 - Do not answer inventory questions with only a vague relevance summary; include

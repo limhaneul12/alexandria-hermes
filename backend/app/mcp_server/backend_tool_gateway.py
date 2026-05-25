@@ -15,24 +15,7 @@ from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import 
     SkillAcquisitionCompletionRequest,
     SkillAcquisitionJobRequest,
 )
-from app.library.domain.event_enum.item_enums import ItemStatus, ItemType
-from app.library.domain.event_enum.prompt_enums import PromptKind
-from app.library.domain.event_enum.search_enums import SearchContentMode
-from app.library.domain.event_enum.skill_enums import RiskLevel
-from app.library.domain.event_enum.usage_enums import SelectionSource
-from app.library.interface.schemas.skill.request_schemas import AgentSubmitSkillRequest
-from app.library.interface.schemas.usage.usage_schema import (
-    UsageRecordRequest,
-)
 from app.mcp_server.backend_api_client import AlexandriaApiClient
-from app.mcp_server.mcp_protocol_enums import McpContextTag
-from app.mcp_server.tools.harness_tools import (
-    alexandria_archive_harness as _alexandria_archive_harness,
-    alexandria_capture_harness as _alexandria_capture_harness,
-    alexandria_check_harness as _alexandria_check_harness,
-    alexandria_get_harness as _alexandria_get_harness,
-    alexandria_list_harnesses as _alexandria_list_harnesses,
-)
 from app.mcp_server.tools.memory_compact_tools import (
     alexandria_delete_memory_compact as _alexandria_delete_memory_compact,
     alexandria_get_current_memory_compact as _alexandria_get_current_memory_compact,
@@ -40,40 +23,24 @@ from app.mcp_server.tools.memory_compact_tools import (
     alexandria_list_memory_compact_artifacts as _alexandria_list_memory_compact_artifacts,
 )
 from app.memory.domain.event_enum.context_enums import (
-    ContextImportance,
     ContextKind,
     ContextScope,
-    ContextSourceType,
     RagStrategy,
 )
-from app.memory.interface.schemas.context.context_schema import (
-    ContextCaptureRequest,
-    ContextPrepareCompactRequest,
-    ContextSearchRequest,
-)
+from app.memory.interface.schemas.context.context_schema import ContextSearchRequest
 from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
-from app.shared.utils.usage_feedback import usage_feedback_value
 
 DEFAULT_CONTEXT_SEARCH_LIMIT = 5
 DEFAULT_CONTEXT_SEARCH_STRATEGY = RagStrategy.HYBRID
-DEFAULT_CAPTURE_KIND = ContextKind.HANDOFF
 DEFAULT_SOURCE_AGENT = "Hermes"
-DEFAULT_CAPTURE_SOURCE_TYPE = ContextSourceType.AGENT
-DEFAULT_CAPTURE_IMPORTANCE = ContextImportance.MEDIUM
 DEFAULT_CANDIDATE_AUTHOR = "Hermes"
-DEFAULT_LIBRARY_SEARCH_LIMIT = 20
 
 alexandria_get_current_memory_compact = _alexandria_get_current_memory_compact
 alexandria_get_memory_compact = _alexandria_get_memory_compact
 alexandria_delete_memory_compact = _alexandria_delete_memory_compact
 alexandria_list_memory_compact_artifacts = _alexandria_list_memory_compact_artifacts
-alexandria_capture_harness = _alexandria_capture_harness
-alexandria_check_harness = _alexandria_check_harness
-alexandria_list_harnesses = _alexandria_list_harnesses
-alexandria_get_harness = _alexandria_get_harness
-alexandria_archive_harness = _alexandria_archive_harness
 
 
 async def alexandria_search(
@@ -187,115 +154,6 @@ async def alexandria_rag_context(
     return response
 
 
-async def alexandria_capture_context(
-    client: AlexandriaApiClient,
-    title: str,
-    content: str,
-    kind: ContextKind = DEFAULT_CAPTURE_KIND,
-    summary: str | None = None,
-    project: str | None = None,
-    scope: ContextScope = ContextScope.PROJECT,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
-    source_agent: str = DEFAULT_SOURCE_AGENT,
-    source_type: ContextSourceType = DEFAULT_CAPTURE_SOURCE_TYPE,
-) -> JSONValue:
-    """Capture context through the backend Context Vault API.
-
-    Args:
-        client: Backend HTTP client.
-        title: Context title.
-        content: Markdown content.
-        kind: Context kind.
-        summary: Optional summary.
-        project: Optional project scope.
-        source_agent: Producing agent name.
-        source_type: Source category for agent-authored context.
-
-    Returns:
-        Stored context response.
-    """
-    if kind == ContextKind.HARNESS:
-        raise ValueError("Use alexandria_capture_harness for HARNESS contexts")
-    request = ContextCaptureRequest(
-        kind=kind,
-        title=title,
-        content=content,
-        summary=summary,
-        project=project,
-        scope=scope,
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        user_id=user_id,
-        session_id=session_id,
-        visibility=scope,
-        source_agent=source_agent,
-        source_type=source_type,
-        importance=DEFAULT_CAPTURE_IMPORTANCE,
-        expires_at=None,
-        metadata={},
-        tags=[McpContextTag.MCP.value, McpContextTag.CAPTURE.value],
-    )
-    payload = schema_payload(request, exclude_none=True)
-    response = await client.post("/memory/contexts/capture", payload)
-    return response
-
-
-async def alexandria_prepare_compact(
-    client: AlexandriaApiClient,
-    current_goal: str,
-    completed: list[str] | None = None,
-    in_progress: list[str] | None = None,
-    key_decisions: list[str] | None = None,
-    next_actions: list[str] | None = None,
-    risks: list[str] | None = None,
-    project: str | None = None,
-    scope: ContextScope = ContextScope.SESSION,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
-    source_agent: str = DEFAULT_SOURCE_AGENT,
-) -> JSONValue:
-    """Prepare and save a compact handoff context.
-
-    Args:
-        client: Backend HTTP client.
-        current_goal: Current work goal.
-        completed: Completed bullets.
-        in_progress: Active work bullets.
-        key_decisions: Decision bullets.
-        next_actions: Next action bullets.
-        risks: Risk bullets.
-        project: Optional project scope.
-        source_agent: Producing agent name.
-
-    Returns:
-        Stored compact context response.
-    """
-    request = ContextPrepareCompactRequest(
-        project=project,
-        source_agent=source_agent,
-        current_goal=current_goal,
-        completed=_items_or_empty(completed),
-        in_progress=_items_or_empty(in_progress),
-        key_decisions=_items_or_empty(key_decisions),
-        next_actions=_items_or_empty(next_actions),
-        risks=_items_or_empty(risks),
-        scope=scope,
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        user_id=user_id,
-        session_id=session_id,
-        visibility=scope,
-    )
-    payload = schema_payload(request, exclude_none=True)
-    response = await client.post("/memory/contexts/prepare-compact", payload)
-    return response
-
-
 async def alexandria_archive_context(
     client: AlexandriaApiClient, context_id: str
 ) -> JSONValue:
@@ -340,138 +198,6 @@ async def alexandria_rag_status(client: AlexandriaApiClient) -> JSONValue:
         RAG health response.
     """
     response = await client.get("/memory/contexts/rag/status")
-    return response
-
-
-async def alexandria_get_skill(client: AlexandriaApiClient, item_id: str) -> JSONValue:
-    """Read one skill by id.
-
-    Args:
-        client: Backend HTTP client.
-        item_id: Skill item identifier.
-
-    Returns:
-        Skill item response.
-    """
-    response = await client.get(f"/library/skills/{_path_segment(item_id)}")
-    return response
-
-
-async def alexandria_get_prompt(client: AlexandriaApiClient, item_id: str) -> JSONValue:
-    """Read one prompt by id.
-
-    Args:
-        client: Backend HTTP client.
-        item_id: Prompt item identifier.
-
-    Returns:
-        Prompt item response.
-    """
-    response = await client.get(f"/library/prompts/{_path_segment(item_id)}")
-    return response
-
-
-async def alexandria_search_library(
-    client: AlexandriaApiClient,
-    query: str,
-    item_types: list[ItemType] | None = None,
-    tags: list[str] | None = None,
-    limit: int = DEFAULT_LIBRARY_SEARCH_LIMIT,
-    offset: int = 0,
-    content_mode: SearchContentMode = SearchContentMode.CANDIDATE,
-) -> JSONValue:
-    """Search library items as candidates before selected full-load.
-
-    Args:
-        client: Backend HTTP client.
-        query: Search query.
-        item_types: Optional item type filters.
-        tags: Optional tag filters.
-        limit: Maximum candidates to return.
-        offset: Result offset.
-        content_mode: Broad search content mode; candidate is the safe default.
-
-    Returns:
-        Backend candidate search response.
-    """
-    params: JSONObject = {
-        "q": query,
-        "item_types": [] if item_types is None else [item.value for item in item_types],
-        "tags_any": _items_or_empty(tags),
-        "limit": _bounded_library_search_limit(limit),
-        "offset": max(int(offset), 0),
-        "content_mode": content_mode.value,
-    }
-    response = await client.get("/library/search", params=params)
-    return response
-
-
-async def alexandria_search_skills(
-    client: AlexandriaApiClient,
-    query: str,
-    required_tools: list[str] | None = None,
-    risk_level: RiskLevel | None = None,
-    tags: list[str] | None = None,
-    limit: int = DEFAULT_LIBRARY_SEARCH_LIMIT,
-) -> JSONValue:
-    """Search skill candidates without returning skill content.
-
-    Args:
-        client: Backend HTTP client.
-        query: Search query.
-        required_tools: Optional required tool filters.
-        risk_level: Optional skill risk filter.
-        tags: Optional tag filters.
-        limit: Maximum candidates to return.
-
-    Returns:
-        Backend candidate search response.
-    """
-    params: JSONObject = {
-        "q": query,
-        "item_type": ItemType.SKILL.value,
-        "required_tools": _items_or_empty(required_tools),
-        "tags_any": _items_or_empty(tags),
-        "limit": _bounded_library_search_limit(limit),
-        "offset": 0,
-        "content_mode": SearchContentMode.CANDIDATE.value,
-    }
-    if risk_level is not None:
-        params["risk_level"] = risk_level.value
-    response = await client.get("/library/search", params=params)
-    return response
-
-
-async def alexandria_search_prompts(
-    client: AlexandriaApiClient,
-    query: str,
-    prompt_kind: PromptKind | None = None,
-    tags: list[str] | None = None,
-    limit: int = DEFAULT_LIBRARY_SEARCH_LIMIT,
-) -> JSONValue:
-    """Search prompt candidates without returning prompt bodies.
-
-    Args:
-        client: Backend HTTP client.
-        query: Search query.
-        prompt_kind: Optional prompt kind filter.
-        tags: Optional tag filters.
-        limit: Maximum candidates to return.
-
-    Returns:
-        Backend candidate search response.
-    """
-    params: JSONObject = {
-        "q": query,
-        "item_type": ItemType.PROMPT.value,
-        "tags_any": _items_or_empty(tags),
-        "limit": _bounded_library_search_limit(limit),
-        "offset": 0,
-        "content_mode": SearchContentMode.CANDIDATE.value,
-    }
-    if prompt_kind is not None:
-        params["prompt_kind"] = prompt_kind.value
-    response = await client.get("/library/search", params=params)
     return response
 
 
@@ -580,105 +306,6 @@ async def alexandria_complete_skill_acquisition(
         f"/librarians/skill-acquisition-jobs/{_path_segment(job_id)}/complete",
         payload,
     )
-    return response
-
-
-async def alexandria_submit_skill_candidate(
-    client: AlexandriaApiClient,
-    title: str,
-    purpose: str,
-    content: str,
-    summary: str | None = None,
-    evidence_urls: list[str] | None = None,
-    source_summary: str | None = None,
-    created_by_name: str = DEFAULT_CANDIDATE_AUTHOR,
-) -> JSONValue:
-    """Submit a Hermes-authored skill candidate.
-
-    Args:
-        client: Backend HTTP client.
-        title: Candidate title.
-        purpose: Candidate purpose.
-        content: Candidate Markdown content.
-        summary: Optional summary.
-        evidence_urls: Source URLs gathered by Hermes.
-        source_summary: Optional source/evidence summary.
-        created_by_name: Producing agent name.
-
-    Returns:
-        Stored skill response.
-    """
-    candidate_evidence_urls: list[str] = []
-    if evidence_urls is not None:
-        candidate_evidence_urls = [url for url in evidence_urls if url.strip()]
-    request = AgentSubmitSkillRequest(
-        title=title,
-        purpose=purpose,
-        summary=summary,
-        content=content,
-        category_id=None,
-        tags=[McpContextTag.HERMES.value, McpContextTag.CANDIDATE.value],
-        input_schema={},
-        output_schema={},
-        usage_example=None,
-        required_tools=[],
-        risk_level=RiskLevel.LOW,
-        version="1.0.0",
-        created_by_name=created_by_name,
-        activate=False,
-        status=ItemStatus.DRAFT,
-        evidence_urls=candidate_evidence_urls,
-        source_summary=source_summary,
-    )
-    payload = schema_payload(request, exclude_none=True)
-    response = await client.post("/library/skills/submit-by-agent", payload)
-    return response
-
-
-async def alexandria_record_usage(
-    client: AlexandriaApiClient,
-    item_id: str,
-    item_type: str,
-    selection_source: SelectionSource,
-    agent_name: str = DEFAULT_SOURCE_AGENT,
-    success: bool = True,
-    query: str | None = None,
-    librarian_provider: str | None = None,
-    project: str | None = None,
-    task_summary: str | None = None,
-    feedback: str | None = None,
-) -> JSONValue:
-    """Record Hermes usage through the backend usage API.
-
-    Args:
-        client: Backend HTTP client.
-        item_id: Used library item id.
-        item_type: Used item type.
-        selection_source: How Hermes selected the item.
-        agent_name: Agent recording usage.
-        success: Whether the item helped the task.
-        query: Optional search or recall query.
-        librarian_provider: Optional provider involved in selection.
-        project: Optional project scope.
-        task_summary: Optional task summary.
-        feedback: Optional free-form usefulness note.
-
-    Returns:
-        Backend usage record response.
-    """
-    feedback_payload = _usage_feedback(project, task_summary, feedback)
-    request = UsageRecordRequest(
-        item_id=item_id,
-        item_type=item_type,
-        agent_name=agent_name,
-        librarian_provider=librarian_provider,
-        query=query,
-        selection_source=selection_source,
-        success=success,
-        feedback=feedback_payload,
-    )
-    payload = schema_payload(request, exclude_none=True)
-    response = await client.post("/library/usage", payload)
     return response
 
 
@@ -912,6 +539,150 @@ async def alexandria_librarian_oauth_refresh(
     return without_oauth_sensitive_fields(response)
 
 
+async def alexandria_reindex_vault(client: AlexandriaApiClient) -> JSONValue:
+    """Rebuild the Obsidian vault index cache.
+
+    Args:
+        client: Backend HTTP client.
+
+    Returns:
+        Backend reindex response.
+    """
+    return await client.post("/obsidian/index/rebuild", {})
+
+
+async def alexandria_search_vault(
+    client: AlexandriaApiClient,
+    query: str,
+    limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
+    alexandria_type: str | None = None,
+    project: str | None = None,
+    tags: list[str] | None = None,
+) -> JSONValue:
+    """Search Alexandria-managed Obsidian Markdown notes.
+
+    Args:
+        client: Backend HTTP client.
+        query: Search query.
+        limit: Maximum matches.
+        alexandria_type: Optional managed note type.
+        project: Optional project filter.
+        tags: Optional tag filters.
+
+    Returns:
+        Backend search response.
+    """
+    payload: JSONObject = {
+        "query": query,
+        "limit": _bounded_search_limit(limit),
+        "tags": _items_or_empty(tags),
+    }
+    if alexandria_type is not None:
+        payload["alexandria_type"] = alexandria_type
+    if project is not None:
+        payload["project"] = project
+    return await client.post("/obsidian/search", payload)
+
+
+async def alexandria_read_note(
+    client: AlexandriaApiClient,
+    note_id: str | None = None,
+    path: str | None = None,
+) -> JSONValue:
+    """Read one Alexandria-managed Obsidian note by id or path.
+
+    Args:
+        client: Backend HTTP client.
+        note_id: Stable note id.
+        path: Vault-relative path.
+
+    Returns:
+        Backend note response.
+    """
+    if path is not None:
+        return await client.get("/obsidian/notes/by-path", params={"path": path})
+    if note_id is None:
+        raise ValueError("note_id or path is required")
+    return await client.get(f"/obsidian/notes/{_path_segment(note_id)}")
+
+
+async def alexandria_save_note(
+    client: AlexandriaApiClient,
+    title: str,
+    body: str,
+    alexandria_type: str,
+    note_id: str | None = None,
+    path: str | None = None,
+    project: str | None = None,
+    tags: list[str] | None = None,
+) -> JSONValue:
+    """Save one Alexandria-managed Obsidian Markdown note.
+
+    Args:
+        client: Backend HTTP client.
+        title: Note title.
+        body: Markdown body.
+        alexandria_type: Managed note type.
+        note_id: Optional stable id.
+        path: Optional vault-relative path.
+        project: Optional project.
+        tags: Optional tags.
+
+    Returns:
+        Backend saved note response.
+    """
+    payload: JSONObject = {
+        "title": title,
+        "body": body,
+        "alexandria_type": alexandria_type,
+        "tags": _items_or_empty(tags),
+    }
+    if note_id is not None:
+        payload["id"] = note_id
+    if path is not None:
+        payload["path"] = path
+    if project is not None:
+        payload["project"] = project
+    return await client.post("/obsidian/notes", payload)
+
+
+async def alexandria_ask_obsidian_librarian(
+    client: AlexandriaApiClient,
+    query: str,
+    active_note_path: str | None = None,
+    selection: str | None = None,
+    project: str | None = None,
+    save_transcript: bool = False,
+    preferred_alexandria_types: list[str] | None = None,
+) -> JSONValue:
+    """Ask the Obsidian-aware Alexandria librarian.
+
+    Args:
+        client: Backend HTTP client.
+        query: User question.
+        active_note_path: Optional active note path from Obsidian.
+        selection: Optional selected Markdown text.
+        project: Optional project scope.
+        save_transcript: Whether to persist a librarian_chat note.
+        preferred_alexandria_types: Optional type filters.
+
+    Returns:
+        Backend librarian response.
+    """
+    payload: JSONObject = {
+        "query": query,
+        "save_transcript": save_transcript,
+        "preferred_alexandria_types": _items_or_empty(preferred_alexandria_types),
+    }
+    if active_note_path is not None:
+        payload["active_note_path"] = active_note_path
+    if selection is not None:
+        payload["selection"] = selection
+    if project is not None:
+        payload["project"] = project
+    return await client.post("/obsidian/librarian/ask", payload)
+
+
 def _bounded_packet_budget(limit: int) -> int:
     return min(max(int(limit), 1_000), 120_000)
 
@@ -922,11 +693,6 @@ def _bounded_source_ref_limit(limit: int) -> int:
 
 def _bounded_search_limit(limit: int) -> int:
     bounded_limit = min(max(int(limit), 1), 50)
-    return bounded_limit
-
-
-def _bounded_library_search_limit(limit: int) -> int:
-    bounded_limit = min(max(int(limit), 1), 100)
     return bounded_limit
 
 
@@ -954,15 +720,3 @@ def _items_or_empty(items: list[str] | None) -> list[str]:
     if items is None:
         return []
     return items
-
-
-def _usage_feedback(
-    project: str | None,
-    task_summary: str | None,
-    feedback: str | None,
-) -> JSONObject | str | None:
-    return usage_feedback_value(
-        project=project,
-        task_summary=task_summary,
-        feedback=feedback,
-    )

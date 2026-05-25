@@ -36,495 +36,6 @@ def _transport(
     return fake_transport, calls
 
 
-@pytest.mark.parametrize(
-    ("argv", "invalid_value"),
-    [
-        (["library", "list", "--type", "INVALID"], "INVALID"),
-    ],
-)
-def test_cli_rejects_invalid_choice_before_http_request(
-    argv: list[str],
-    invalid_value: str,
-) -> None:
-    """CLI choice validation rejects invalid enum values before HTTP I/O."""
-    transport, calls = _transport({"unexpected": True})
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-
-    exit_code = run(argv, transport=transport, stdout=stdout, stderr=stderr)
-
-    assert exit_code != 0
-    assert invalid_value in stderr.getvalue()
-    assert calls == []
-
-
-def test_cli_deletes_skill_by_id() -> None:
-    """Skill deletion is available from CLI like the detail-page delete action."""
-    transport, calls = _transport(None)
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["skills", "delete", "skill-1"],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "DELETE"
-    assert calls[0][1] == "http://localhost:8000/library/skills/skill-1"
-    assert "deleted skill skill-1" in stdout.getvalue()
-
-
-def test_cli_creates_folder_with_parent_id() -> None:
-    """Folder creation is available from CLI like the UI create-folder action."""
-    transport, calls = _transport(
-        {
-            "id": "folder-1",
-            "name": "Backend",
-            "parent_id": "root-1",
-            "position": 0,
-            "created_at": "2026-05-14T00:00:00Z",
-            "updated_at": "2026-05-14T00:00:00Z",
-        }
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["folders", "create", "--name", "Backend", "--parent-id", "root-1"],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/library/categories"
-    assert loads_json((calls[0][2] or b"{}").decode()) == {
-        "name": "Backend",
-        "parent_id": "root-1",
-    }
-    assert "created folder folder-1: Backend" in stdout.getvalue()
-
-
-def test_cli_ensures_nested_folder_path_without_duplicate_parent_names() -> None:
-    """Path-based folder ensure creates only missing segments under each parent."""
-    calls: list[RecordedCall] = []
-
-    def fake_transport(
-        method: str,
-        url: str,
-        body: bytes | None,
-        headers: HttpHeaders,
-        timeout: float,
-    ) -> tuple[int, bytes]:
-        calls.append((method, url, body, headers, timeout))
-        if method == "GET":
-            return 200, dumps_json(
-                [
-                    {
-                        "id": "root-1",
-                        "name": "Backend",
-                        "parent_id": None,
-                        "children": [],
-                    }
-                ]
-            )
-        request_body = loads_json((body or b"{}").decode())
-        if request_body["name"] == "FastAPI":
-            return 200, dumps_json(
-                {
-                    "id": "folder-2",
-                    "name": "FastAPI",
-                    "parent_id": "root-1",
-                }
-            )
-        return 200, dumps_json(
-            {"id": "folder-3", "name": "OAuth", "parent_id": "folder-2"}
-        )
-
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["--json", "folders", "ensure", "--path", "Backend/FastAPI/OAuth"],
-        transport=fake_transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert [call[0] for call in calls] == ["GET", "POST", "POST"]
-    assert calls[0][1] == "http://localhost:8000/library/categories/tree"
-    assert loads_json((calls[1][2] or b"{}").decode()) == {
-        "name": "FastAPI",
-        "parent_id": "root-1",
-    }
-    assert loads_json((calls[2][2] or b"{}").decode()) == {
-        "name": "OAuth",
-        "parent_id": "folder-2",
-    }
-    assert loads_json(stdout.getvalue()) == {
-        "path": "Backend/FastAPI/OAuth",
-        "created": ["FastAPI", "OAuth"],
-        "existing": ["Backend"],
-        "folder_id": "folder-3",
-    }
-
-
-def test_cli_mkdir_alias_reuses_existing_nested_folder_path() -> None:
-    """The mkdir alias returns the final folder id without duplicating the tree."""
-    transport, calls = _transport(
-        [
-            {
-                "id": "root-1",
-                "name": "Backend",
-                "parent_id": None,
-                "children": [
-                    {
-                        "id": "folder-2",
-                        "name": "FastAPI",
-                        "parent_id": "root-1",
-                        "children": [
-                            {
-                                "id": "folder-3",
-                                "name": "OAuth",
-                                "parent_id": "folder-2",
-                                "children": [],
-                            }
-                        ],
-                    }
-                ],
-            }
-        ]
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["--json", "folders", "mkdir", "Backend/FastAPI/OAuth"],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert len(calls) == 1
-    assert calls[0][0] == "GET"
-    assert calls[0][1] == "http://localhost:8000/library/categories/tree"
-    assert loads_json(stdout.getvalue()) == {
-        "path": "Backend/FastAPI/OAuth",
-        "created": [],
-        "existing": ["Backend", "FastAPI", "OAuth"],
-        "folder_id": "folder-3",
-    }
-
-
-def test_cli_lists_folder_tree_as_json_for_agents() -> None:
-    """Agents can inspect the folder tree in the same hierarchy used by the UI."""
-    transport, calls = _transport(
-        [
-            {
-                "id": "root-1",
-                "name": "Backend",
-                "parent_id": None,
-                "position": 0,
-                "children": [],
-            }
-        ]
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["--json", "folders", "list", "--tree"],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "GET"
-    assert calls[0][1] == "http://localhost:8000/library/categories/tree"
-    assert loads_json(stdout.getvalue())[0]["name"] == "Backend"
-
-
-def test_cli_deletes_folder_by_id() -> None:
-    """Folder deletion is available from CLI like the UI delete-folder action."""
-    transport, calls = _transport(None)
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["folders", "delete", "folder-1"],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "DELETE"
-    assert calls[0][1] == "http://localhost:8000/library/categories/folder-1"
-    assert "deleted folder folder-1" in stdout.getvalue()
-
-
-def test_cli_lists_library_items_with_ui_filters() -> None:
-    """The CLI can browse the same filtered item list exposed to the UI."""
-    transport, calls = _transport(
-        [{"id": "skill-1", "item_type": "SKILL", "title": "FastAPI"}]
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        [
-            "library",
-            "list",
-            "--type",
-            "SKILL",
-            "--folder-id",
-            "folder-1",
-            "--query",
-            "fastapi",
-            "--limit",
-            "5",
-        ],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "GET"
-    assert calls[0][1] == (
-        "http://localhost:8000/library/search?limit=5&offset=0&item_type=SKILL"
-        "&category_id=folder-1&q=fastapi&content_mode=candidate"
-        "&search_fields=title&search_fields=summary&search_fields=content"
-    )
-    assert "skill-1" in stdout.getvalue()
-
-
-def test_cli_searches_library_items() -> None:
-    """The CLI exposes the UI search path for shell and agent use."""
-    transport, calls = _transport(
-        {
-            "items": [{"id": "prompt-1", "item_type": "PROMPT", "title": "Indexing"}],
-            "total": 1,
-            "limit": 10,
-            "offset": 0,
-        }
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        [
-            "library",
-            "search",
-            "postgres index",
-            "--type",
-            "PROMPT",
-            "--limit",
-            "10",
-        ],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "GET"
-    assert calls[0][1] == (
-        "http://localhost:8000/library/search?q=postgres+index&limit=10&offset=0"
-        "&content_mode=candidate&item_type=PROMPT"
-    )
-    assert "prompt-1" in stdout.getvalue()
-
-
-def test_cli_searches_skill_candidates_with_filters() -> None:
-    """Skill search should use candidate search and selected full-load remains separate."""
-    transport, calls = _transport(
-        {
-            "items": [{"id": "skill-1", "item_type": "SKILL", "title": "pytest"}],
-            "total": 1,
-            "limit": 10,
-            "offset": 0,
-        }
-    )
-    stdout = io.StringIO()
-
-    exit_code = run(
-        [
-            "skills",
-            "search",
-            "pytest fixtures",
-            "--tool",
-            "pytest",
-            "--risk-level",
-            "LOW",
-            "--tag",
-            "testing",
-            "--limit",
-            "10",
-        ],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "GET"
-    assert calls[0][1] == (
-        "http://localhost:8000/library/search?q=pytest+fixtures&item_type=SKILL"
-        "&limit=10&offset=0&content_mode=candidate&required_tools=pytest"
-        "&tags_any=testing&risk_level=LOW"
-    )
-    assert "skill-1" in stdout.getvalue()
-
-
-def test_repo_cli_shim_runs_help_without_uv_run() -> None:
-    """Repository shim lets users inspect CLI help without prefixing uv run."""
-    import subprocess
-    from pathlib import Path
-
-    repo_root = Path(__file__).resolve().parents[3]
-    result = subprocess.run(
-        [str(repo_root / "bin" / "alexandria-hermes"), "skills", "--help"],
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert all(
-        command in result.stdout for command in ("list", "search", "get", "delete")
-    )
-
-
-def test_cli_uses_prompt_and_records_usage() -> None:
-    """Prompt use prints content and records usage history for agents."""
-    calls: list[RecordedCall] = []
-
-    def fake_transport(
-        method: str,
-        url: str,
-        body: bytes | None,
-        headers: HttpHeaders,
-        timeout: float,
-    ) -> tuple[int, bytes]:
-        calls.append((method, url, body, headers, timeout))
-        if method == "GET":
-            return 200, dumps_json({"id": "prompt-1", "content": "Use me"})
-        return 200, dumps_json({"id": "usage-1"})
-
-    stdout = io.StringIO()
-
-    exit_code = run(
-        ["prompts", "use", "prompt-1", "--actor-name", "Backend Agent"],
-        transport=fake_transport,
-        stdout=stdout,
-    )
-
-    assert exit_code == 0
-    assert calls[0][0] == "GET"
-    assert calls[0][1] == "http://localhost:8000/library/prompts/prompt-1"
-    assert calls[1][0] == "POST"
-    assert calls[1][1] == "http://localhost:8000/library/usage"
-    assert loads_json((calls[1][2] or b"{}").decode())["item_type"] == "PROMPT"
-    assert "Use me" in stdout.getvalue()
-
-
-def test_prompt_cli_search_version_deprecate_and_diff() -> None:
-    """Prompt CLI should search, version, deprecate, and diff prompt records."""
-    calls: list[RecordedCall] = []
-
-    def fake_transport(
-        method: str,
-        url: str,
-        body: bytes | None,
-        headers: HttpHeaders,
-        timeout: float,
-    ) -> tuple[int, bytes]:
-        calls.append((method, url, body, headers, timeout))
-        if "/library/items" in url:
-            return 200, dumps_json(
-                [{"id": "prompt-1", "item_type": "PROMPT", "title": "FastAPI"}]
-            )
-        if "/library/search" in url:
-            return 200, dumps_json(
-                {
-                    "items": [
-                        {
-                            "id": "prompt-1",
-                            "item_type": "PROMPT",
-                            "title": "FastAPI",
-                        }
-                    ],
-                    "total": 1,
-                    "limit": 3,
-                    "offset": 0,
-                }
-            )
-        if method == "PATCH":
-            return 200, dumps_json({"id": url.rsplit("/", 1)[-1]})
-        content = "old\n" if url.endswith("prompt-old") else "new\n"
-        return 200, dumps_json({"id": url.rsplit("/", 1)[-1], "content": content})
-
-    stdout = io.StringIO()
-
-    search_exit = run(
-        [
-            "--json",
-            "prompts",
-            "search",
-            "FastAPI tests",
-            "--kind",
-            "DEVELOPER",
-            "--tag",
-            "code-review",
-            "--limit",
-            "3",
-        ],
-        transport=fake_transport,
-        stdout=stdout,
-    )
-    version_exit = run(
-        [
-            "--json",
-            "prompts",
-            "version",
-            "prompt-1",
-            "--version",
-            "1.1.0",
-        ],
-        transport=fake_transport,
-        stdout=stdout,
-    )
-    deprecate_exit = run(
-        [
-            "--json",
-            "prompts",
-            "deprecate",
-            "prompt-1",
-            "--reason",
-            "stale",
-        ],
-        transport=fake_transport,
-        stdout=stdout,
-    )
-    diff_exit = run(
-        ["--json", "prompts", "diff", "prompt-old", "prompt-new"],
-        transport=fake_transport,
-        stdout=stdout,
-    )
-
-    version_body = loads_json((calls[1][2] or b"{}").decode())
-    deprecate_body = loads_json((calls[2][2] or b"{}").decode())
-    output = stdout.getvalue()
-    assert search_exit == 0
-    assert version_exit == 0
-    assert deprecate_exit == 0
-    assert diff_exit == 0
-    assert calls[0][0] == "GET"
-    assert calls[0][1] == (
-        "http://localhost:8000/library/search?q=FastAPI+tests&limit=3&offset=0"
-        "&item_type=PROMPT&content_mode=candidate&prompt_kind=DEVELOPER"
-        "&tags_any=code-review"
-    )
-    assert calls[1][0] == "PATCH"
-    assert version_body == {"version": "1.1.0"}
-    assert calls[2][0] == "PATCH"
-    assert deprecate_body == {"status": "DEPRECATED", "change_summary": "stale"}
-    assert "-old" in output
-    assert "+new" in output
-
-
 def test_cli_context_reindex_calls_backend_embedding_reindex() -> None:
     """Context reindex should call the backend embedding backfill endpoint."""
     calls: list[RecordedCall] = []
@@ -663,8 +174,8 @@ def test_cli_context_recall_sends_scope_filters_for_memory_routing() -> None:
     }
 
 
-def test_cli_context_compact_memory_map_and_curate_use_memory_routes() -> None:
-    """Compact, memory-map, and curate should use Context Vault memory APIs."""
+def test_cli_context_memory_map_and_curate_use_read_routes() -> None:
+    """Memory-map and curate should use Context Vault read APIs."""
     calls: list[RecordedCall] = []
 
     def fake_transport(
@@ -675,8 +186,6 @@ def test_cli_context_compact_memory_map_and_curate_use_memory_routes() -> None:
         timeout: float,
     ) -> tuple[int, bytes]:
         calls.append((method, url, body, headers, timeout))
-        if method == "POST":
-            return 201, dumps_json({"id": "compact-1", "kind": "COMPACT"})
         return 200, dumps_json(
             {
                 "items": [
@@ -692,33 +201,6 @@ def test_cli_context_compact_memory_map_and_curate_use_memory_routes() -> None:
 
     stdout = io.StringIO()
 
-    compact_exit = run(
-        [
-            "--json",
-            "context",
-            "compact",
-            "--current-goal",
-            "G003",
-            "--completed",
-            "modular routes",
-            "--in-progress",
-            "Hermes CLI",
-            "--key-decision",
-            "scope memory",
-            "--next-action",
-            "verify",
-            "--risk",
-            "route drift",
-            "--project",
-            "alexandria-hermes",
-            "--scope",
-            "SESSION",
-            "--session-id",
-            "session-1",
-        ],
-        transport=fake_transport,
-        stdout=stdout,
-    )
     memory_map_exit = run(
         [
             "--json",
@@ -736,20 +218,13 @@ def test_cli_context_compact_memory_map_and_curate_use_memory_routes() -> None:
         stdout=stdout,
     )
 
-    compact_body = loads_json((calls[0][2] or b"{}").decode())
-    assert compact_exit == 0
     assert memory_map_exit == 0
     assert curate_exit == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/memory/contexts/prepare-compact"
-    assert compact_body["scope"] == "SESSION"
-    assert compact_body["visibility"] == "SESSION"
-    assert compact_body["session_id"] == "session-1"
-    assert calls[1][1] == (
+    assert calls[0][1] == (
         "http://localhost:8000/memory/contexts?limit=10&offset=0"
         "&include_archived=false&project=alexandria-hermes"
     )
-    assert calls[2][1] == (
+    assert calls[1][1] == (
         "http://localhost:8000/memory/contexts?limit=50&offset=0"
         "&include_archived=false&project=alexandria-hermes"
     )
@@ -786,7 +261,13 @@ def test_hermes_onboard_dry_run_plans_prompts_skill_and_mcp_config(tmp_path) -> 
         "serve",
     ]
     assert "alexandria-hermes/policy.yaml" in payload["planned_files"]
-    assert "alexandria-hermes/prompts/capture-context.md" in payload["planned_files"]
+    assert (
+        "alexandria-hermes/prompts/use-alexandria-library.md"
+        in payload["planned_files"]
+    )
+    assert (
+        "alexandria-hermes/prompts/capture-context.md" not in payload["planned_files"]
+    )
     assert not (hermes_home / "alexandria-hermes").exists()
 
 
@@ -846,15 +327,13 @@ def test_hermes_first_prompt_describes_local_first_onboarding_not_user_coaching(
     assert "매번 Alexandria부터" not in prompt
 
 
-def test_hermes_operating_loop_documents_compact_window_policy() -> None:
-    """Operating-loop prompt should tell agents how to bound Memory Compact time ranges."""
+def test_hermes_operating_loop_documents_context_write_hold() -> None:
+    """Operating-loop prompt should tell agents not to call removed write tools."""
     prompt = alexandria_operating_loop_prompt()
 
-    assert "Compact window policy" in prompt
-    assert "24-hour rolling window" in prompt
-    assert "covered_from" in prompt
-    assert "covered_to" in prompt
-    assert "7-day weekly rollup" in prompt
+    assert "Context write policy" in prompt
+    assert "write/capture tools are intentionally disabled" in prompt
+    assert "Do not call removed Context Vault write tools" in prompt
 
 
 def test_hermes_operating_loop_teaches_long_term_memory_lookup_order() -> None:
@@ -1152,7 +631,9 @@ def test_hermes_install_mcp_uses_api_env_defaults(monkeypatch, tmp_path) -> None
 def test_hermes_install_prompts_skips_existing_file_without_overwrite(tmp_path) -> None:
     """Hermes onboarding never overwrites existing files by default."""
     hermes_home = tmp_path / "hermes"
-    existing = hermes_home / "alexandria-hermes" / "prompts" / "save-context.md"
+    existing = (
+        hermes_home / "alexandria-hermes" / "prompts" / "use-alexandria-library.md"
+    )
     existing.parent.mkdir(parents=True)
     existing.write_text("custom", encoding="utf-8")
     stdout = io.StringIO()
@@ -1171,8 +652,10 @@ def test_hermes_install_prompts_skips_existing_file_without_overwrite(tmp_path) 
     payload = loads_json(stdout.getvalue())
     assert exit_code == 0
     assert existing.read_text(encoding="utf-8") == "custom"
-    assert "alexandria-hermes/prompts/save-context.md" in payload["skipped"]
-    assert "alexandria-hermes/prompts/capture-context.md" in payload["written"]
+    assert "alexandria-hermes/prompts/use-alexandria-library.md" in payload["skipped"]
+    assert (
+        "alexandria-hermes/prompts/request-skill-acquisition.md" in payload["written"]
+    )
 
 
 def test_hermes_install_prompts_includes_self_acquisition_loop(tmp_path) -> None:
@@ -1198,9 +681,6 @@ def test_hermes_install_prompts_includes_self_acquisition_loop(tmp_path) -> None
     request_skill = (
         hermes_home / "alexandria-hermes" / "prompts" / "request-skill-acquisition.md"
     ).read_text(encoding="utf-8")
-    submit_skill = (
-        hermes_home / "alexandria-hermes" / "prompts" / "submit-skill-candidate.md"
-    ).read_text(encoding="utf-8")
     operating_loop = (
         hermes_home / "alexandria-hermes" / "prompts" / "alexandria-operating-loop.md"
     ).read_text(encoding="utf-8")
@@ -1210,11 +690,12 @@ def test_hermes_install_prompts_includes_self_acquisition_loop(tmp_path) -> None
     assert "alexandria_start_skill_acquisition" in request_skill
     assert "alexandria_skill_acquisition_job_status" in request_skill
     assert "alexandria_complete_skill_acquisition" in request_skill
-    assert "alexandria_submit_skill_candidate" in submit_skill
-    assert "--evidence-url" in submit_skill
+    assert "backend no longer persists skill records to SQLite" in request_skill
     assert "mcp_alexandria_alexandria_start_skill_acquisition" in operating_loop
     assert "mcp_alexandria_alexandria_skill_acquisition_job_status" in operating_loop
     assert "mcp_alexandria_alexandria_complete_skill_acquisition" in operating_loop
+    assert "SQLite-backed skill/prompt CRUD has been removed" in operating_loop
+    assert "alexandria_submit_skill_candidate" not in operating_loop
     assert "local/current context first" in operating_loop
     assert "Prompt preservation policy" in operating_loop
 
@@ -1828,7 +1309,7 @@ def test_cli_updates_librarian_profile_specialties_by_reading_current_profile() 
         if method == "GET":
             payload = {
                 "id": "profile-1",
-                "librarian_specialties": ["frontend", "oauth"],
+                "librarian_specialties": ["quality", "oauth"],
             }
         else:
             payload = {
@@ -1849,7 +1330,7 @@ def test_cli_updates_librarian_profile_specialties_by_reading_current_profile() 
             "--add-specialty",
             "security",
             "--remove-specialty",
-            "frontend",
+            "quality",
             "--delegate-limit",
             "3",
         ],
@@ -1896,52 +1377,3 @@ def test_cli_ask_delegate_aliases_map_to_backend_contract() -> None:
     assert body["delegate_to_librarian"] is True
     assert body["max_librarian_agents"] == 2
     assert body["routing_specialties"] == ["fastapi", "oauth"]
-
-
-def test_cli_records_usage_with_project_feedback_as_json() -> None:
-    """Usage record command preserves Hermes project/task context."""
-    transport, calls = _transport({"id": "usage-1"})
-    stdout = io.StringIO()
-
-    exit_code = run(
-        [
-            "--json",
-            "usage",
-            "record",
-            "--item",
-            "skill-1",
-            "--type",
-            "SKILL",
-            "--selection-source",
-            "CONTEXT_RECALL",
-            "--query",
-            "oauth context",
-            "--project",
-            "alexandria-hermes",
-            "--task-summary",
-            "Implement OAuth",
-            "--feedback",
-            "useful",
-        ],
-        transport=transport,
-        stdout=stdout,
-    )
-
-    request_body = loads_json((calls[0][2] or b"{}").decode())
-    assert exit_code == 0
-    assert calls[0][0] == "POST"
-    assert calls[0][1] == "http://localhost:8000/library/usage"
-    assert request_body == {
-        "item_id": "skill-1",
-        "item_type": "SKILL",
-        "agent_name": "Hermes",
-        "selection_source": "CONTEXT_RECALL",
-        "success": True,
-        "query": "oauth context",
-        "feedback": {
-            "project": "alexandria-hermes",
-            "task_summary": "Implement OAuth",
-            "comment": "useful",
-        },
-    }
-    assert loads_json(stdout.getvalue())["id"] == "usage-1"

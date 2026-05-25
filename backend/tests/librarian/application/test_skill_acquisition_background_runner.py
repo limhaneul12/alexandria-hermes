@@ -58,7 +58,7 @@ class FakeSkillAcquisitionService:
             status=SkillAcquisitionJobStatus.COMPLETED,
             provider_id=self.job.provider_id,
             librarian_profile_id=self.job.librarian_profile_id,
-            skill_id="00000000-0000-4000-8000-000000000777",
+            skill_id=None,
             context_id="00000000-0000-4000-8000-000000000888",
             result_summary="Provider returned a skill artifact.",
             evidence_urls=list(artifact.evidence_urls),
@@ -191,7 +191,7 @@ def test_runner_persists_executor_artifact_when_job_is_accepted() -> None:
     completed, requests = anyio.run(run_case)
 
     assert completed.status is SkillAcquisitionJobStatus.COMPLETED
-    assert completed.skill_id == "00000000-0000-4000-8000-000000000777"
+    assert completed.skill_id is None
     assert completed.context_id == "00000000-0000-4000-8000-000000000888"
     assert requests == [
         SkillAcquisitionExecutionRequest(

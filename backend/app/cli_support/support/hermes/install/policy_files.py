@@ -46,7 +46,7 @@ read:
   get_prompt: true
 
 write:
-  auto_capture_context: true
+  auto_capture_context: false
   auto_submit_skill_candidates: true
   auto_capture_prompt_candidates: true
   default_state: DRAFT
@@ -145,7 +145,7 @@ def read_policy(hermes_home: Path) -> HermesPolicyResult:
         autonomous_curation_enabled=_parse_bool_path(
             content,
             path=("write", "auto_capture_context"),
-            default=True,
+            default=False,
         ),
     )
 

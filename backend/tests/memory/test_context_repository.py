@@ -17,7 +17,6 @@ from app.memory.domain.event_enum.context_enums import (
     ContextAccessMethod,
     ContextKind,
     ContextSourceType,
-    ContextStorageStatus,
     RagHealthState,
     RagStrategy,
 )
@@ -25,10 +24,10 @@ from app.memory.infrastructure.models.context_models import ContextChunkORM, Con
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
+from tests.memory.context_seed import seed_context
 from app.retrieval.application.embedding_provider import EmbeddingProvider
 from app.shared.exceptions import (
     MemoryContextNotFoundError,
-    MemoryContextValidationError,
 )
 from app.shared.infrastructure.database import Database
 from sqlalchemy import select
@@ -160,10 +159,10 @@ async def _temporary_database(path: Path) -> AsyncIterator[Database]:
         await database.shutdown()
 
 
-def test_context_repository_saves_searches_accesses_and_archives_contexts(
+def test_context_repository_searches_accesses_and_archives_seeded_contexts(
     tmp_path: Path,
 ) -> None:
-    """Context Vault should preserve rows, chunks, FTS recall, access metadata, and archives."""
+    """Context Vault should recall seeded rows and preserve access/archive behavior."""
 
     async def scenario() -> None:
         async with (
@@ -173,7 +172,8 @@ def test_context_repository_saves_searches_accesses_and_archives_contexts(
             repository = SqlAlchemyContextRepository(session=session)
             service = ContextService(repository=repository)
 
-            saved = await service.save(
+            saved = await seed_context(
+                session,
                 kind=ContextKind.HANDOFF,
                 title="Sprint handoff",
                 summary="Context retrieval uses local searchable memory.",
@@ -254,67 +254,6 @@ def test_context_repository_raises_not_found_when_archive_target_is_missing(
     anyio.run(scenario)
 
 
-def test_context_service_blocks_private_key_contexts_before_persistence(
-    tmp_path: Path,
-) -> None:
-    """High-risk secret content must not be saved raw."""
-
-    async def scenario() -> None:
-        async with (
-            _temporary_database(tmp_path / "secret-context.db") as database,
-            database.session() as session,
-        ):
-            service = ContextService(
-                repository=SqlAlchemyContextRepository(session=session)
-            )
-
-            with pytest.raises(MemoryContextValidationError, match="high-risk secret"):
-                await service.save(
-                    kind=ContextKind.HANDOFF,
-                    title="Unsafe handoff",
-                    summary="Contains a private key.",
-                    content=_handoff_content(
-                        "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"
-                    ),
-                )
-
-            listed, total = await service.list_contexts()
-
-        assert total == 0
-        assert listed == []
-
-    anyio.run(scenario)
-
-
-def test_context_service_redacts_token_like_values_before_persistence(
-    tmp_path: Path,
-) -> None:
-    """Token-like assignments should be masked in stored content."""
-
-    async def scenario() -> None:
-        async with (
-            _temporary_database(tmp_path / "redacted-context.db") as database,
-            database.session() as session,
-        ):
-            service = ContextService(
-                repository=SqlAlchemyContextRepository(session=session)
-            )
-            saved = await service.save(
-                kind=ContextKind.HANDOFF,
-                title="Redacted handoff",
-                summary="Token should be masked.",
-                content=_handoff_content("api_key=abc123456789999999"),
-            )
-            await session.commit()
-            stored = await service.get(saved.id)
-
-        assert stored.status is ContextStorageStatus.REDACTED_AND_SAVED
-        assert "abc123456789999999" not in stored.content
-        assert "api_key=<REDACTED>" in stored.content
-
-    anyio.run(scenario)
-
-
 def test_context_rag_defaults_to_fts_only_when_vector_provider_is_degraded(
     tmp_path: Path,
 ) -> None:
@@ -328,7 +267,8 @@ def test_context_rag_defaults_to_fts_only_when_vector_provider_is_degraded(
             service = ContextService(
                 repository=SqlAlchemyContextRepository(session=session)
             )
-            await service.save(
+            await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="sqlite vec fallback",
                 summary="FTS remains available when vectors degrade.",
@@ -382,7 +322,8 @@ def test_context_vector_search_returns_semantic_match_when_enabled(
                 embedding_provider=KeywordEmbeddingProvider(),
                 vector_retrieval_enabled=True,
             )
-            target = await service.save(
+            target = await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="Semantic target",
                 summary="Embedding-only context.",
@@ -394,8 +335,10 @@ Embedding-only context.
 ## Evidence
 semantic-target carries vector meaning only.
 """,
+                embedding_provider=KeywordEmbeddingProvider(),
             )
-            await service.save(
+            await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="Distractor",
                 summary="Different embedding.",
@@ -407,6 +350,7 @@ Different embedding.
 ## Evidence
 distractor should rank behind the semantic target.
 """,
+                embedding_provider=KeywordEmbeddingProvider(),
             )
             await session.commit()
 
@@ -438,53 +382,6 @@ distractor should rank behind the semantic target.
     anyio.run(scenario)
 
 
-def test_context_save_offloads_blocking_document_embedding_from_event_loop(
-    tmp_path: Path,
-) -> None:
-    """Context save should not block the event loop while embedding chunks."""
-
-    async def scenario() -> None:
-        async with (
-            _temporary_database(tmp_path / "rag-save-embedding-offload.db") as database,
-            database.session() as session,
-        ):
-            provider = BlockingEmbeddingProvider()
-            service = ContextService(
-                repository=SqlAlchemyContextRepository(session=session),
-                embedding_provider=provider,
-                vector_retrieval_enabled=True,
-            )
-            saved: list[str] = []
-
-            async def save_context() -> None:
-                context = await service.save(
-                    kind=ContextKind.RESEARCH,
-                    title="Blocking embedding target",
-                    summary="Save waits on document embeddings.",
-                    content="""# Blocking embedding target
-
-## Summary
-semantic-target should embed without blocking the event loop.
-""",
-                )
-                saved.append(context.id)
-
-            async def release_when_embedding_starts() -> None:
-                while not provider.documents_started.is_set():
-                    await anyio.sleep(0)
-                provider.release_documents()
-
-            with anyio.fail_after(1):
-                async with anyio.create_task_group() as task_group:
-                    task_group.start_soon(save_context)
-                    task_group.start_soon(release_when_embedding_starts)
-
-        assert provider.documents_released_by_async_task is True
-        assert len(saved) == 1
-
-    anyio.run(scenario)
-
-
 def test_context_vector_search_offloads_blocking_query_embedding_from_event_loop(
     tmp_path: Path,
 ) -> None:
@@ -498,12 +395,8 @@ def test_context_vector_search_offloads_blocking_query_embedding_from_event_loop
             database.session() as session,
         ):
             repository = SqlAlchemyContextRepository(session=session)
-            save_service = ContextService(
-                repository=repository,
-                embedding_provider=KeywordEmbeddingProvider(),
-                vector_retrieval_enabled=True,
-            )
-            target = await save_service.save(
+            target = await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="Semantic target",
                 summary="Stored with keyword embeddings.",
@@ -512,6 +405,7 @@ def test_context_vector_search_offloads_blocking_query_embedding_from_event_loop
 ## Summary
 semantic-target carries vector meaning.
 """,
+                embedding_provider=KeywordEmbeddingProvider(),
             )
             await session.commit()
 
@@ -565,7 +459,8 @@ def test_context_vector_search_binds_filter_values_when_project_looks_like_sql(
                 vector_retrieval_enabled=True,
             )
             sql_like_project = "alexandria' OR 1=1 --"
-            target = await service.save(
+            target = await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="Bound parameter target",
                 summary="semantic-target belongs to the SQL-looking project.",
@@ -575,8 +470,10 @@ def test_context_vector_search_binds_filter_values_when_project_looks_like_sql(
 semantic-target belongs to the SQL-looking project.
 """,
                 project=sql_like_project,
+                embedding_provider=KeywordEmbeddingProvider(),
             )
-            await service.save(
+            await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="Other semantic target",
                 summary="semantic-target belongs to another project.",
@@ -586,6 +483,7 @@ semantic-target belongs to the SQL-looking project.
 semantic-target belongs to another project.
 """,
                 project="other-project",
+                embedding_provider=KeywordEmbeddingProvider(),
             )
             await session.commit()
 
@@ -616,7 +514,8 @@ def test_context_fts_search_binds_filter_values_when_project_looks_like_sql(
                 repository=SqlAlchemyContextRepository(session=session)
             )
             sql_like_project = "alexandria' OR 1=1 --"
-            target = await service.save(
+            target = await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="FTS bound target",
                 summary="sharedmarker belongs to the SQL-looking project.",
@@ -627,7 +526,8 @@ sharedmarker belongs to the SQL-looking project.
 """,
                 project=sql_like_project,
             )
-            await service.save(
+            await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="FTS other target",
                 summary="sharedmarker belongs to another project.",
@@ -666,7 +566,8 @@ def test_context_fts_search_treats_operator_words_as_literal_terms(
             service = ContextService(
                 repository=SqlAlchemyContextRepository(session=session)
             )
-            target = await service.save(
+            target = await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="FTS operator target",
                 summary="foo OR bar AND NOT secret should be literal terms.",
@@ -713,8 +614,8 @@ def test_context_reindex_backfills_existing_chunks_for_vector_search(
             database.session() as session,
         ):
             repository = SqlAlchemyContextRepository(session=session)
-            disabled_service = ContextService(repository=repository)
-            target = await disabled_service.save(
+            target = await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="Old semantic target",
                 summary="Saved before vector embedding existed.",
@@ -766,12 +667,8 @@ def test_context_reindex_can_force_rebuild_for_pooling_changes(tmp_path: Path) -
             database.session() as session,
         ):
             repository = SqlAlchemyContextRepository(session=session)
-            legacy_service = ContextService(
-                repository=repository,
-                embedding_provider=KeywordEmbeddingProvider(),
-                vector_retrieval_enabled=True,
-            )
-            saved = await legacy_service.save(
+            saved = await seed_context(
+                session,
                 kind=ContextKind.RESEARCH,
                 title="Pooling upgrade target",
                 summary="Existing vectors should rebuild under the new pooling behavior.",
@@ -780,6 +677,7 @@ def test_context_reindex_can_force_rebuild_for_pooling_changes(tmp_path: Path) -
 ## Summary
 semantic-target was embedded before the pooling change.
 """,
+                embedding_provider=KeywordEmbeddingProvider(),
             )
             await session.commit()
 
@@ -820,7 +718,8 @@ def test_context_list_filters_tags_by_exact_membership(tmp_path: Path) -> None:
             service = ContextService(
                 repository=SqlAlchemyContextRepository(session=session)
             )
-            exact = await service.save(
+            exact = await seed_context(
+                session,
                 kind=ContextKind.HANDOFF,
                 title="API handoff",
                 summary="API tag should match exactly.",
@@ -828,7 +727,8 @@ def test_context_list_filters_tags_by_exact_membership(tmp_path: Path) -> None:
                 tags=["api"],
                 source_type=ContextSourceType.IMPORTED,
             )
-            await service.save(
+            await seed_context(
+                session,
                 kind=ContextKind.HANDOFF,
                 title="Capistrano handoff",
                 summary="Substring should not match.",
@@ -857,14 +757,16 @@ def test_context_list_treats_sql_like_tag_filter_as_data(tmp_path: Path) -> None
                 repository=SqlAlchemyContextRepository(session=session)
             )
             sql_like_tag = "rag' OR 1=1 --"
-            exact = await service.save(
+            exact = await seed_context(
+                session,
                 kind=ContextKind.HANDOFF,
                 title="SQL-looking tag handoff",
                 summary="SQL-looking tag should match exactly.",
                 content=_handoff_content("Injection-looking tag context."),
                 tags=[sql_like_tag],
             )
-            await service.save(
+            await seed_context(
+                session,
                 kind=ContextKind.HANDOFF,
                 title="Plain tag handoff",
                 summary="Plain tag should not leak into SQL-looking filter.",
@@ -892,19 +794,22 @@ def test_context_list_filters_created_and_updated_date_ranges(tmp_path: Path) ->
             service = ContextService(
                 repository=SqlAlchemyContextRepository(session=session)
             )
-            older = await service.save(
+            older = await seed_context(
+                session,
                 kind=ContextKind.HANDOFF,
                 title="Older handoff",
                 summary="Older context outside the requested date window.",
                 content=_handoff_content("Older context."),
             )
-            inside = await service.save(
+            inside = await seed_context(
+                session,
                 kind=ContextKind.HANDOFF,
                 title="Inside handoff",
                 summary="Context inside the requested date window.",
                 content=_handoff_content("Inside context."),
             )
-            newer = await service.save(
+            newer = await seed_context(
+                session,
                 kind=ContextKind.HANDOFF,
                 title="Newer handoff",
                 summary="Newer context outside the requested date window.",

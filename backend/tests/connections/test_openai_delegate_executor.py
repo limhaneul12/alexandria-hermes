@@ -364,7 +364,7 @@ def test_librarian_instructions_require_counts_and_lists_for_inventory_questions
         assert "top 5" in instructions
         assert "numbered list" in instructions
         assert "Do not expose raw API routes" in instructions
-        assert "frontend paths" in instructions
+        assert "UI paths" in instructions
         assert "natural product language" in instructions
 
     anyio.run(scenario)

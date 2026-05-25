@@ -1,26 +1,18 @@
-"""Application service for Context Vault storage and retrieval."""
+"""Application service for Context Vault linting and retrieval."""
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from app.memory.application.context_compact import build_compact_context_content
 from app.memory.application.context_lint import (
     ContextLintInput,
     ContextLintResult,
     lint_context,
 )
-from app.memory.application.harness_context import (
-    build_harness_context_content,
-    harness_context_metadata,
-)
 from app.memory.domain.contracts.context_contracts import (
     ContextAccessCreate,
-    ContextChunkCreate,
     ContextChunkEmbeddingUpdate,
-    ContextCreate,
 )
-from app.memory.domain.contracts.harness_contracts import HarnessCapture
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,
@@ -33,18 +25,12 @@ from app.memory.domain.entities.context_read_models import (
 from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
-    ContextContentFormat,
-    ContextImportance,
     ContextKind,
     ContextScope,
-    ContextSourceType,
-    ContextStorageStatus,
     RagHealthState,
     RagStrategy,
 )
 from app.memory.domain.repositories.context_repository import IContextRepository
-from app.memory.domain.types.context_payload_types import ContextMetadataPayload
-from app.retrieval.application.chunker import chunk_markdown
 from app.retrieval.application.context_pack import build_context_pack
 from app.retrieval.application.context_ranking import merge_hybrid_matches
 from app.retrieval.application.embedding_provider import (
@@ -61,7 +47,7 @@ from asyncer import asyncify
 
 
 class ContextService:
-    """Use cases for Context Vault linting, storage, and retrieval."""
+    """Use cases for Context Vault linting and retrieval."""
 
     def __init__(
         self,
@@ -140,337 +126,6 @@ class ContextService:
             )
         )
         return result
-
-    async def save(
-        self,
-        kind: ContextKind,
-        title: str,
-        content: str,
-        summary: str | None = None,
-        project: str | None = None,
-        scope: ContextScope = ContextScope.PROJECT,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-        visibility: ContextScope = ContextScope.PROJECT,
-        source_agent: str = "Hermes",
-        source_type: ContextSourceType = ContextSourceType.AGENT,
-        importance: ContextImportance = ContextImportance.MEDIUM,
-        tags: list[str] | None = None,
-        expires_at: datetime | None = None,
-        context_metadata: ContextMetadataPayload | None = None,
-    ) -> ContextRecord:
-        """Lint, redact, chunk, and persist a context.
-
-        Args:
-            kind: Context entry kind.
-            title: Human-readable title.
-            content: Markdown content.
-            summary: Optional summary supplied by the caller.
-            project: Optional project scope.
-            scope: Recall-routing scope.
-            workspace_id: Optional workspace identifier.
-            agent_id: Optional agent identifier.
-            user_id: Optional user identifier.
-            session_id: Optional session identifier.
-            visibility: Recall visibility scope.
-            source_agent: Agent that produced the content.
-            source_type: Source category.
-            importance: Recall priority.
-            tags: Caller-provided tags.
-            expires_at: Optional expiration timestamp.
-            context_metadata: Optional metadata payload.
-
-        Returns:
-            Stored context read model.
-        """
-        kind = enum_value(kind, ContextKind, "kind")
-        scope = enum_value(scope, ContextScope, "scope")
-        visibility = enum_value(visibility, ContextScope, "visibility")
-        source_type = enum_value(source_type, ContextSourceType, "source_type")
-        importance = enum_value(importance, ContextImportance, "importance")
-        if tags is None:
-            lint_tags: list[str] = []
-        else:
-            lint_tags = tags
-        lint_result = self.lint(
-            kind=kind,
-            title=title,
-            content=content,
-            summary=summary,
-            project=project,
-            scope=scope,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-            visibility=visibility,
-            source_agent=source_agent,
-            tags=lint_tags,
-        )
-        if lint_result.status is ContextStorageStatus.BLOCKED_SECRET_RISK:
-            raise MemoryContextValidationError(
-                "Context blocked by high-risk secret policy"
-            )
-
-        now = now_utc()
-        normalized_summary = lint_result.normalized["summary"]
-        if normalized_summary == "":
-            normalized_summary = title
-        markdown_chunks = list(
-            chunk_markdown(title=title, content=lint_result.redacted_content)
-        )
-        embedding_fields = await self._chunk_embedding_fields(
-            [chunk.content for chunk in markdown_chunks]
-        )
-        chunks = [
-            ContextChunkCreate(
-                chunk_index=chunk.chunk_index,
-                heading=chunk.heading,
-                content=chunk.content,
-                token_count=chunk.token_count,
-                content_hash=chunk.content_hash,
-                chunk_metadata=chunk.metadata,
-                embedding=embedding,
-                embedding_model=embedding_model,
-                embedding_dimensions=embedding_dimensions,
-                created_at=now,
-            )
-            for chunk, (
-                embedding,
-                embedding_model,
-                embedding_dimensions,
-            ) in zip(markdown_chunks, embedding_fields, strict=True)
-        ]
-        safe_tags = lint_result.normalized["tags"]
-
-        context = await self._repository.create(
-            payload=ContextCreate(
-                kind=kind,
-                title=title.strip(),
-                summary=normalized_summary,
-                content=lint_result.redacted_content,
-                content_format=ContextContentFormat.MARKDOWN,
-                project=project,
-                scope=scope,
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                session_id=session_id,
-                visibility=visibility,
-                source_agent=source_agent,
-                source_type=source_type,
-                importance=importance,
-                tags=safe_tags,
-                status=lint_result.status,
-                quality_score=lint_result.score,
-                warnings=lint_result.warnings,
-                restore_prompt=_extract_restore_prompt(lint_result.redacted_content),
-                context_metadata=_metadata_or_empty(context_metadata),
-                created_at=now,
-                updated_at=now,
-                expires_at=expires_at,
-            ),
-            chunks=chunks,
-        )
-        return context
-
-    async def prepare_compact(
-        self,
-        current_goal: str,
-        completed: list[str],
-        in_progress: list[str],
-        key_decisions: list[str],
-        next_actions: list[str],
-        risks: list[str],
-        project: str | None = None,
-        scope: ContextScope = ContextScope.PROJECT,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-        visibility: ContextScope = ContextScope.PROJECT,
-        source_agent: str = "Hermes",
-    ) -> ContextRecord:
-        """Build and save a compact handoff context from structured state.
-
-        Args:
-            current_goal: Current work goal.
-            completed: Completed work bullets.
-            in_progress: Active work bullets.
-            key_decisions: Decision bullets.
-            next_actions: Next action bullets.
-            risks: Risk/watchout bullets.
-            project: Optional project scope.
-            scope: Recall-routing scope.
-            workspace_id: Optional workspace identifier.
-            agent_id: Optional agent identifier.
-            user_id: Optional user identifier.
-            session_id: Optional session identifier.
-            visibility: Recall visibility scope.
-            source_agent: Agent that produced the compact context.
-
-        Returns:
-            Stored compact context read model.
-        """
-        context = await self.save(
-            kind=ContextKind.COMPACT,
-            title=f"Compact: {current_goal}",
-            summary="Compact handoff prepared for Alexandria-Hermes.",
-            content=build_compact_context_content(
-                current_goal=current_goal,
-                completed=completed,
-                in_progress=in_progress,
-                key_decisions=key_decisions,
-                next_actions=next_actions,
-                risks=risks,
-            ),
-            project=project,
-            scope=scope,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-            visibility=visibility,
-            source_agent=source_agent,
-            source_type=ContextSourceType.AGENT,
-            importance=ContextImportance.HIGH,
-            tags=["compact", "handoff"],
-        )
-        return context
-
-    async def capture_harness(self, payload: HarnessCapture) -> ContextRecord:
-        """Save an agent-owned execution harness as Context Vault memory.
-
-        Args:
-            payload: Harness capture command.
-
-        Returns:
-            Stored HARNESS context read model.
-        """
-        scope = enum_value(payload.scope, ContextScope, "scope")
-        context = await self.save(
-            kind=ContextKind.HARNESS,
-            title=f"Harness: {payload.task_goal.strip()}",
-            summary=payload.summary,
-            content=build_harness_context_content(payload),
-            project=payload.project,
-            scope=scope,
-            workspace_id=payload.workspace_id,
-            agent_id=payload.agent_id,
-            user_id=payload.user_id,
-            session_id=payload.session_id,
-            visibility=scope,
-            source_agent=payload.source_agent,
-            source_type=ContextSourceType.AGENT,
-            importance=ContextImportance.HIGH,
-            tags=["harness", *_clean_harness_tags(payload.recall_keywords)],
-            context_metadata=harness_context_metadata(payload),
-        )
-        return context
-
-    def check_harness(self, payload: HarnessCapture) -> ContextLintResult:
-        """Validate a harness without persisting it.
-
-        Args:
-            payload: Harness capture command.
-
-        Returns:
-            Lint result for the generated HARNESS context content.
-        """
-        scope = enum_value(payload.scope, ContextScope, "scope")
-        result = self.lint(
-            kind=ContextKind.HARNESS,
-            title=f"Harness: {payload.task_goal.strip()}",
-            content=build_harness_context_content(payload),
-            summary=payload.summary,
-            project=payload.project,
-            scope=scope,
-            workspace_id=payload.workspace_id,
-            agent_id=payload.agent_id,
-            user_id=payload.user_id,
-            session_id=payload.session_id,
-            visibility=scope,
-            source_agent=payload.source_agent,
-            tags=["harness", *_clean_harness_tags(payload.recall_keywords)],
-        )
-        return result
-
-    async def list_harnesses(
-        self,
-        limit: int = 50,
-        offset: int = 0,
-        project: str | None = None,
-        scope: ContextScope | None = None,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-        source_agent: str | None = None,
-        tag: str | None = None,
-        include_archived: bool = False,
-    ) -> tuple[list[ContextRecord], int]:
-        """List saved execution harness contexts.
-
-        Args:
-            limit: Maximum returned entries.
-            offset: Pagination offset.
-            project: Optional project scope.
-            scope: Optional recall scope.
-            workspace_id: Optional workspace filter.
-            agent_id: Optional agent filter.
-            user_id: Optional user filter.
-            session_id: Optional session filter.
-            source_agent: Optional producing-agent filter.
-            tag: Optional tag filter.
-            include_archived: Whether archived harnesses are included.
-
-        Returns:
-            Matching HARNESS context rows and total count.
-        """
-        result = await self.list_contexts(
-            limit=limit,
-            offset=offset,
-            kind=ContextKind.HARNESS,
-            project=project,
-            scope=scope,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-            source_agent=source_agent,
-            tag=tag,
-            include_archived=include_archived,
-        )
-        return result
-
-    async def get_harness(self, context_id: str) -> ContextRecord:
-        """Return one HARNESS context or raise not-found.
-
-        Args:
-            context_id: Context identifier.
-
-        Returns:
-            Stored HARNESS context read model.
-        """
-        context = await self.get(context_id)
-        if context.kind is not ContextKind.HARNESS:
-            raise MemoryContextNotFoundError(f"Harness not found: {context_id}")
-        return context
-
-    async def archive_harness(self, context_id: str) -> ContextRecord:
-        """Archive one HARNESS context.
-
-        Args:
-            context_id: Context identifier.
-
-        Returns:
-            Archived HARNESS context read model.
-        """
-        await self.get_harness(context_id)
-        context = await self.archive(context_id)
-        return context
 
     async def get(self, context_id: str) -> ContextRecord:
         """Return one context or raise not-found.
@@ -846,33 +501,6 @@ class ContextService:
         )
         return result
 
-    async def _chunk_embedding_fields(
-        self,
-        chunk_contents: list[str],
-    ) -> list[tuple[str | None, str | None, int | None]]:
-        if not self._vector_retrieval_enabled or self._embedding_provider is None:
-            return [(None, None, None) for _ in chunk_contents]
-
-        provider = self._embedding_provider
-        embeddings = await _embed_documents(provider, chunk_contents)
-        if len(embeddings) != len(chunk_contents):
-            raise MemoryContextValidationError(
-                "Embedding provider returned an unexpected vector count"
-            )
-
-        fields: list[tuple[str | None, str | None, int | None]] = []
-        for embedding in embeddings:
-            if len(embedding) != provider.dimensions:
-                raise MemoryContextValidationError(
-                    "Embedding provider returned an unexpected dimension"
-                )
-            try:
-                serialized = vector_to_sqlite_json(embedding)
-            except ValueError as exc:
-                raise MemoryContextValidationError(str(exc)) from exc
-            fields.append((serialized, provider.model_name, provider.dimensions))
-        return fields
-
     async def _search_vector(
         self,
         *,
@@ -919,27 +547,3 @@ async def _embed_documents(
 
 async def _embed_query(provider: EmbeddingProvider, text: str) -> list[float]:
     return await asyncify(provider.embed_query, abandon_on_cancel=True)(text)
-
-
-def _extract_restore_prompt(content: str) -> str | None:
-    marker = "## Restore Prompt"
-    if marker not in content:
-        return None
-    tail = content.split(marker, maxsplit=1)[1].strip()
-    if not tail:
-        return None
-    next_heading = tail.find("\n## ")
-    return tail if next_heading == -1 else tail[:next_heading].strip()
-
-
-def _metadata_or_empty(
-    metadata: ContextMetadataPayload | None,
-) -> ContextMetadataPayload:
-    if metadata is None:
-        empty_metadata: ContextMetadataPayload = {}
-        return empty_metadata
-    return metadata
-
-
-def _clean_harness_tags(values: list[str]) -> list[str]:
-    return sorted({value.strip() for value in values if value.strip()})

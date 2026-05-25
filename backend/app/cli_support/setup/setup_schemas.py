@@ -24,6 +24,8 @@ class SetupSummary(StrictSchemaModel):
     env_written: bool
     database_path: str
     database_url: str
+    obsidian_vault_path: str
+    alexandria_obsidian_root: str
     backend_log_path: str
     run_dir: str
     guidebook_path: str

@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Alexandria-Hermes is a local-first agent-native library/control plane for reusable skills, prompts, context, memory compacts, usage history, and optional librarian curation. It is not an autonomous agent runtime, prompt marketplace, MCP marketplace, or generic hosted memory API.
+        Alexandria-Hermes is a local-first agent-native library/control plane for context, memory compacts, skill-acquisition jobs, and optional librarian curation. It is not an autonomous agent runtime, prompt marketplace, MCP marketplace, or generic hosted memory API.
   - type: textarea
     id: problem
     attributes:
@@ -29,7 +29,6 @@ body:
       options:
         - Backend / API
         - CLI / MCP
-        - Frontend UI
         - Context Vault / RAG
         - Memory Compacts
         - Library skills/prompts

@@ -8,7 +8,7 @@ from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
 from app.memory.infrastructure.repositories.memory_compact_repository import (
-    SqlAlchemyMemoryCompactRepository,
+    ObsidianMemoryCompactRepository,
 )
 from app.platform.config.app_config import AppConfig
 from app.retrieval.application.embedding_factory import create_embedding_provider
@@ -31,8 +31,9 @@ class MemoryContainer(containers.DeclarativeContainer):
     )
     context_repo = providers.Factory(SqlAlchemyContextRepository, session=db_session)
     memory_compact_repo = providers.Factory(
-        SqlAlchemyMemoryCompactRepository,
-        session=db_session,
+        ObsidianMemoryCompactRepository,
+        vault_path=app_config.provided.obsidian_vault_path,
+        relative_dir=app_config.provided.memory_compact_note_dir,
     )
     context_service = providers.Factory(
         ContextService,

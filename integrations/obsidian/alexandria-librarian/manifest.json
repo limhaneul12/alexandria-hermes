@@ -1,0 +1,10 @@
+{
+  "id": "alexandria-librarian",
+  "name": "Alexandria Librarian",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Talk to the local Alexandria-Hermes librarian from an Obsidian side pane.",
+  "author": "Alexandria-Hermes",
+  "authorUrl": "https://github.com/",
+  "isDesktopOnly": false
+}

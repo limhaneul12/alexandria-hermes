@@ -1,69 +1,19 @@
-# Library Assets Guide 01 — skills/prompts candidate search와 full load
+# Library Assets Guide 01 — Markdown/Obsidian first
 
 ## 목적
 
-Alexandria-Hermes의 library asset 흐름을 이해한다.
+Skill/prompt 자산은 더 이상 Alexandria-Hermes SQLite CRUD로 저장하지 않는다.
+기본 보관 위치는 로컬 Markdown 또는 Obsidian vault이며, Alexandria-Hermes는 agent가 필요한 배경 기억을 찾고 librarian/skill-acquisition job을 연결하는 역할을 맡는다.
 
-핵심 원칙:
+## 조회 순서
 
-```text
-검색은 thin candidate 중심
-선택된 skill/prompt만 full load
-사용 후 usage history 기록
-```
+1. 현재 세션과 로컬 Hermes skills/prompts를 먼저 확인한다.
+2. 로컬 Markdown/Obsidian vault에서 skill/prompt 파일을 검색한다.
+3. 필요한 프로젝트 배경, 결정, handoff, research note는 Alexandria Context Vault/Memory Compact에서 recall한다.
+4. 그래도 없으면 `alexandria_start_skill_acquisition`으로 사서/agent skill-acquisition job을 시작하거나 직접 Markdown 자산을 작성한다.
 
-즉 모든 skill/prompt 본문을 RAG chunk처럼 무조건 밀어 넣는 구조가 아니다.
+## 저장 원칙
 
-## 언제 사용하나
-
-- Hermes/local skill만으로 부족한 reusable 절차를 찾을 때
-- prompt/skill 후보를 훑은 뒤 하나만 자세히 읽고 싶을 때
-- agent가 선택한 asset 사용 이력을 남기고 싶을 때
-
-## 후보 검색
-
-```bash
-alexandria-hermes library search "FastAPI dependency injection" \
-  --type SKILL \
-  --content-mode candidate \
-  --limit 10
-```
-
-성공 기준:
-
-- title/summary/tags/details 중심의 후보 목록을 받는다.
-- full body를 전부 읽기 전에 후보를 좁힌다.
-
-## 선택 항목 full load
-
-```bash
-alexandria-hermes --json skills get <skill-id>
-alexandria-hermes --json prompts get <prompt-id>
-```
-
-## MCP/Hermes에서의 기대 흐름
-
-```text
-mcp_alexandria_alexandria_search
-→ candidate 목록 확인
-→ mcp_alexandria_alexandria_get_skill 또는 get_prompt
-→ 필요한 경우 record_usage
-```
-
-## Self-acquisition fallback
-
-검색 결과가 없으면 사서를 필수로 호출하지 않는다.
-
-```text
-Hermes가 직접 조사
-→ reusable candidate 작성
-→ evidence_urls/source_summary 포함
-→ alexandria_submit_skill_candidate
-→ DRAFT/PENDING_REVIEW로 저장
-```
-
-## 금지
-
-- raw secret/API key/token을 skill/prompt/context에 저장하지 않는다.
-- 전체 대화 로그를 asset으로 저장하지 않는다.
-- evidence 없는 skill candidate를 OSS 예제로 홍보하지 않는다.
+- 재사용 가능한 skill/prompt는 Markdown 파일로 저장한다.
+- Alexandria-Hermes backend에는 SQLite skill/prompt CRUD로 등록하지 않는다.
+- skill-acquisition job 완료 시에는 resume context id와 evidence를 남겨 다음 agent가 이어서 사용할 수 있게 한다.

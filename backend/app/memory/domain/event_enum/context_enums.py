@@ -16,7 +16,6 @@ class ContextKind(StrEnum):
     RESEARCH = "RESEARCH"
     USAGE = "USAGE"
     MEMORY = "MEMORY"
-    HARNESS = "HARNESS"
 
 
 class ContextSourceType(StrEnum):

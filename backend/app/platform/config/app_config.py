@@ -81,3 +81,11 @@ class AppConfig(BaseSettings):
     rag_embedding_dimensions: int = Field(default=DEFAULT_EMBEDDING_DIMENSIONS, ge=1)
     # Optional local FastEmbed cache directory.
     rag_embedding_cache_dir: str | None = Field(default=None)
+    # Obsidian vault root used as the canonical Markdown storage location.
+    obsidian_vault_path: str = Field(default="./data/obsidian-vault", min_length=1)
+    # Folder inside the Obsidian vault managed by Alexandria-Hermes.
+    alexandria_obsidian_root: str = Field(default="Alexandria", min_length=1)
+    # Folder inside the Obsidian vault for Memory Compact notes.
+    memory_compact_note_dir: str = Field(
+        default="Alexandria/Memory Compacts", min_length=1
+    )

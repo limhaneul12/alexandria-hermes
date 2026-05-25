@@ -5,16 +5,17 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from dependency_injector import containers, providers
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.connections.containers import ConnectionsContainer
 from app.librarian.containers import LibrarianContainer
-from app.library.containers import LibraryContainer
 from app.memory.containers import MemoryContainer
+from app.obsidian.containers import ObsidianContainer
 from app.platform.config.app_config import AppConfig
 from app.platform.config.database_config import DatabaseConfig
 from app.shared.infrastructure.database import Database
 from app.shared.security.secret_cipher import SecretCipher, SecretCipherSettings
-from dependency_injector import containers, providers
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @asynccontextmanager
@@ -72,8 +73,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         packages=[
             "app.connections.interface.routers",
             "app.librarian.interface.routers",
-            "app.library.interface.routers",
             "app.memory.interface.routers",
+            "app.obsidian.interface.routers",
         ],
     )
 
@@ -86,12 +87,13 @@ class ApplicationContainer(containers.DeclarativeContainer):
     )
     db_session = providers.Factory(create_session, database=database)
 
-    library = providers.Container(
-        LibraryContainer,
-        db_session=db_session,
-    )
     memory = providers.Container(
         MemoryContainer,
+        db_session=db_session,
+        app_config=app_config,
+    )
+    obsidian = providers.Container(
+        ObsidianContainer,
         db_session=db_session,
         app_config=app_config,
     )
@@ -105,7 +107,5 @@ class ApplicationContainer(containers.DeclarativeContainer):
         db_session=db_session,
         librarian_provider_repo=connections.librarian_provider_repo,
         provider_secret_repo=connections.provider_secret_repo,
-        skill_service=library.skill_service,
-        context_service=memory.context_service,
         memory_compact_service=memory.memory_compact_service,
     )

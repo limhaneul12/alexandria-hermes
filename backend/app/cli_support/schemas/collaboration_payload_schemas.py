@@ -3,20 +3,6 @@
 from __future__ import annotations
 
 from app.shared.schemas.common_schemas import StrictSchemaModel
-from app.shared.types.extra_types import JSONObject
-
-
-class UsageRecordBody(StrictSchemaModel):
-    """Backend usage-record request body emitted by CLI adapters."""
-
-    item_id: str
-    item_type: str
-    agent_name: str
-    selection_source: str
-    success: bool
-    query: str | None = None
-    librarian_provider: str | None = None
-    feedback: str | JSONObject | None = None
 
 
 class LibrarianAskBody(StrictSchemaModel):

@@ -6,9 +6,7 @@ from datetime import UTC, datetime
 
 from app.memory.domain.contracts.context_contracts import (
     ContextAccessCreate,
-    ContextChunkCreate,
     ContextChunkEmbeddingUpdate,
-    ContextCreate,
 )
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
@@ -37,10 +35,7 @@ from app.memory.infrastructure.repositories.contexts.fts import (
 from app.memory.infrastructure.repositories.contexts.fts_search import (
     search_context_fts,
 )
-from app.memory.infrastructure.repositories.contexts.fts_sync import (
-    remove_context_fts,
-    upsert_chunk_fts,
-)
+from app.memory.infrastructure.repositories.contexts.fts_sync import remove_context_fts
 from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
@@ -66,80 +61,6 @@ class SqlAlchemyContextRepository(IContextRepository):
             None.
         """
         await ensure_context_chunk_fts_table(session=self._session)
-
-    async def create(
-        self,
-        *,
-        payload: ContextCreate,
-        chunks: list[ContextChunkCreate],
-    ) -> ContextRecord:
-        """Persist a context and keep chunk FTS rows synchronized.
-
-        Args:
-            payload: Context fields to persist.
-            chunks: Search chunks derived from the context content.
-
-        Returns:
-            Stored context read model.
-        """
-        await self.ensure_search_tables()
-        model = ContextORM(
-            kind=payload.kind.value,
-            title=payload.title,
-            summary=payload.summary,
-            content=payload.content,
-            content_format=payload.content_format.value,
-            project=payload.project,
-            scope=payload.scope.value,
-            workspace_id=payload.workspace_id,
-            agent_id=payload.agent_id,
-            user_id=payload.user_id,
-            session_id=payload.session_id,
-            visibility=payload.visibility.value,
-            source_agent=payload.source_agent,
-            source_type=payload.source_type.value,
-            importance=payload.importance.value,
-            tags=payload.tags,
-            status=payload.status.value,
-            quality_score=payload.quality_score,
-            warnings=payload.warnings,
-            restore_prompt=payload.restore_prompt,
-            context_metadata=payload.context_metadata,
-            created_at=payload.created_at,
-            updated_at=payload.updated_at,
-            expires_at=payload.expires_at,
-            access_count=0,
-            is_archived=False,
-        )
-        self._session.add(model)
-        await self._session.flush()
-
-        chunk_rows = [
-            ContextChunkORM(
-                context_id=model.id,
-                chunk_index=chunk.chunk_index,
-                heading=chunk.heading,
-                content=chunk.content,
-                token_count=chunk.token_count,
-                content_hash=chunk.content_hash,
-                embedding=chunk.embedding,
-                embedding_model=chunk.embedding_model,
-                embedding_dimensions=chunk.embedding_dimensions,
-                chunk_metadata=chunk.chunk_metadata,
-                created_at=chunk.created_at,
-            )
-            for chunk in chunks
-        ]
-        self._session.add_all(chunk_rows)
-        await self._session.flush()
-        for chunk_row in chunk_rows:
-            await upsert_chunk_fts(
-                session=self._session,
-                context=model,
-                chunk=chunk_row,
-            )
-        context = map_context_row(model)
-        return context
 
     async def get(self, context_id: str) -> ContextRecord | None:
         """Return one context by primary key.

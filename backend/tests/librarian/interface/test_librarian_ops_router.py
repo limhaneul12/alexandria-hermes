@@ -95,7 +95,7 @@ class FakeSkillAcquisitionService:
         return self.job
 
     async def complete_with_skill_artifact(self, job_id, artifact):  # type: ignore[no-untyped-def]
-        """Return a completed job with sanitized skill and context handles."""
+        """Return a completed job with a sanitized resume context handle."""
         _ = job_id
         self.job = SkillAcquisitionJob(
             id=self.job.id,
@@ -106,9 +106,9 @@ class FakeSkillAcquisitionService:
             status=SkillAcquisitionJobStatus.COMPLETED,
             provider_id=self.job.provider_id,
             librarian_profile_id=self.job.librarian_profile_id,
-            skill_id="00000000-0000-4000-8000-000000000777",
+            skill_id=None,
             context_id="00000000-0000-4000-8000-000000000888",
-            result_summary=f"Persisted {artifact.title}.",
+            result_summary=f"Generated {artifact.title}.",
             evidence_urls=list(artifact.evidence_urls),
             error_message=None,
             created_at=self.job.created_at,
@@ -203,7 +203,7 @@ def test_skill_acquisition_job_does_not_schedule_background_runner_for_non_accep
 
 
 def test_skill_acquisition_completion_route_returns_resume_handles() -> None:
-    """Completion route should return persisted skill and context handles."""
+    """Completion route should return a resume context handle."""
     service = FakeSkillAcquisitionService()
 
     with (
@@ -216,7 +216,7 @@ def test_skill_acquisition_completion_route_returns_resume_handles() -> None:
                 "title": "Browser automation skill",
                 "purpose": "Use browser automation deterministically.",
                 "content": "Use a real browser boundary and stable selectors.",
-                "summary": "Skill persisted from async acquisition.",
+                "summary": "Skill artifact generated from async acquisition.",
                 "tags": ["browser"],
                 "evidence_urls": ["https://example.com/browser"],
                 "source_summary": "Provider returned a sanitized artifact.",
@@ -235,7 +235,7 @@ def test_skill_acquisition_completion_route_returns_resume_handles() -> None:
     } == {
         "status": "COMPLETED",
         "result_available": True,
-        "skill_id": "00000000-0000-4000-8000-000000000777",
+        "skill_id": None,
         "context_id": "00000000-0000-4000-8000-000000000888",
         "evidence_urls": ["https://example.com/browser"],
     }
@@ -261,7 +261,7 @@ def test_skill_acquisition_status_route_returns_resume_handles_after_completion(
                 "title": "Browser automation skill",
                 "purpose": "Use browser automation deterministically.",
                 "content": "Use a real browser boundary and stable selectors.",
-                "summary": "Skill persisted from async acquisition.",
+                "summary": "Skill artifact generated from async acquisition.",
             },
         )
         status_response = client.get(
@@ -273,7 +273,7 @@ def test_skill_acquisition_status_route_returns_resume_handles_after_completion(
     assert status_response.status_code == 200
     assert status_response.json()["status"] == "COMPLETED"
     assert status_response.json()["result_available"] is True
-    assert status_response.json()["skill_id"] == "00000000-0000-4000-8000-000000000777"
+    assert status_response.json()["skill_id"] is None
     assert (
         status_response.json()["context_id"] == "00000000-0000-4000-8000-000000000888"
     )

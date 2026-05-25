@@ -13,13 +13,12 @@ from sqlalchemy import (
     column,
     delete,
     func,
-    insert,
     select,
     table,
     text,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.dml import Delete, Insert
+from sqlalchemy.sql.dml import Delete
 from sqlalchemy.sql.elements import ColumnElement
 
 MAX_FTS_TOKEN_COUNT = 32
@@ -112,17 +111,6 @@ async def ensure_context_chunk_fts_table(*, session: AsyncSession) -> None:
     await session.execute(text(CONTEXT_CHUNK_FTS_SQL))
 
 
-def delete_chunk_fts_statement() -> Delete:
-    """Build a bound Core delete statement for one FTS chunk row.
-
-    Returns:
-        SQLAlchemy delete statement.
-    """
-    return delete(CONTEXT_CHUNK_FTS_TABLE).where(
-        CONTEXT_CHUNK_FTS_TABLE.c.chunk_id == bindparam("chunk_id")
-    )
-
-
 def delete_context_fts_statement() -> Delete:
     """Build a bound Core delete statement for all FTS rows of a context.
 
@@ -131,31 +119,6 @@ def delete_context_fts_statement() -> Delete:
     """
     return delete(CONTEXT_CHUNK_FTS_TABLE).where(
         CONTEXT_CHUNK_FTS_TABLE.c.context_id == bindparam("context_id")
-    )
-
-
-def insert_chunk_fts_statement() -> Insert:
-    """Build a Core insert statement for one FTS chunk row.
-
-    Returns:
-        SQLAlchemy insert statement.
-    """
-    return insert(CONTEXT_CHUNK_FTS_TABLE).values(
-        chunk_id=bindparam("chunk_id"),
-        context_id=bindparam("context_id"),
-        title=bindparam("title"),
-        summary=bindparam("summary"),
-        content=bindparam("content"),
-        kind=bindparam("kind"),
-        project=bindparam("project"),
-        source_agent=bindparam("source_agent"),
-        tags=bindparam("tags"),
-        scope=bindparam("scope"),
-        workspace_id=bindparam("workspace_id"),
-        agent_id=bindparam("agent_id"),
-        user_id=bindparam("user_id"),
-        session_id=bindparam("session_id"),
-        heading=bindparam("heading"),
     )
 
 

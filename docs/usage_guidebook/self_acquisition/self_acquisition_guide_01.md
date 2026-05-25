@@ -13,7 +13,7 @@ local Hermes skill 확인
 → Hermes가 직접 docs/web/source 조사
 → skill/prompt/context candidate 작성
 → Alexandria에 DRAFT/PENDING_REVIEW로 제출
-→ candidate id와 harness status 보고
+→ job id, result status, evidence, resume context id 보고
 ```
 
 ## 테스트 프롬프트 예
@@ -30,7 +30,7 @@ pytest fixture cleanup strategy
 3. Alexandria에서 관련 skill/prompt/context를 검색하세요.
 4. 적절한 항목이 없으면 직접 reusable skill candidate를 작성하세요.
 5. evidence_urls 최소 1개와 source_summary를 포함하세요.
-6. candidate id와 harness status를 알려주세요.
+6. job id, result status, evidence, resume context id를 알려주세요.
 7. librarian tool은 호출하지 마세요.
 ```
 
@@ -41,7 +41,7 @@ pytest fixture cleanup strategy
 ```text
 mcp_alexandria_alexandria_rag_status
 mcp_alexandria_alexandria_search
-mcp_alexandria_alexandria_submit_skill_candidate
+mcp_alexandria_alexandria_start_skill_acquisition / mcp_alexandria_alexandria_complete_skill_acquisition
 ```
 
 ## 후보에 포함할 내용
@@ -67,8 +67,8 @@ mcp_alexandria_alexandria_submit_skill_candidate
 - RAG status: FTS healthy, vector disabled
 - 검색 결과: 직접 맞는 skill 없음
 - self-acquisition: 수행함
-- candidate id: <candidate-id>
-- harness status: PENDING_REVIEW
+- job id: <job-id>
+- resume context id: <context-id>
 - evidence URLs: <url 목록>
 - UI 확인 위치: Library → candidate detail
 ```

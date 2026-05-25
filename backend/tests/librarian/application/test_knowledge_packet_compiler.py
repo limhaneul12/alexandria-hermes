@@ -13,7 +13,7 @@ def _ref(source_id: str, *, preview: str = "preview") -> SourceRef:
         source_type=SourceRefType.LIBRARY_ITEM,
         source_id=source_id,
         title=f"Item {source_id}",
-        detail_path=f"/library/items/{source_id}",
+        detail_path=f"obsidian://library/{source_id}",
         preview=preview,
     )
 

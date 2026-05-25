@@ -5,11 +5,6 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from app.library.domain.event_enum.item_enums import ItemType
-from app.library.domain.event_enum.prompt_enums import PromptKind
-from app.library.domain.event_enum.search_enums import SearchContentMode
-from app.library.domain.event_enum.skill_enums import RiskLevel
-from app.library.domain.event_enum.usage_enums import SelectionSource
 from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
 from app.mcp_server.mcp_protocol_enums import McpTransport
@@ -39,10 +34,11 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
     else:
         api_client = client
     server = FastMCP(
-        "Alexandria-Hermes Library",
+        "Alexandria-Hermes",
         instructions=(
-            "Use these tools to search Alexandria-Hermes skills, prompts, and "
-            "Context Vault entries through the backend HTTP API. Do not hard delete."
+            "Use these tools for Context Vault, Memory Compact, and librarian "
+            "workflows through the backend HTTP API. Do not hard delete unless "
+            "a tool name explicitly says delete."
         ),
         json_response=True,
     )
@@ -89,117 +85,6 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             agent_id,
             user_id,
             session_id,
-        )
-
-    @server.tool(name="alexandria_get_skill")
-    async def _tool_get_skill(item_id: str) -> JSONValue:
-        """Read one Alexandria skill by id.
-
-        Args:
-            item_id: Skill item identifier.
-
-        Returns:
-            Backend skill response.
-        """
-        return await backend_tool_gateway.alexandria_get_skill(api_client, item_id)
-
-    @server.tool(name="alexandria_get_prompt")
-    async def _tool_get_prompt(item_id: str) -> JSONValue:
-        """Read one Alexandria prompt by id.
-
-        Args:
-            item_id: Prompt item identifier.
-
-        Returns:
-            Backend prompt response.
-        """
-        return await backend_tool_gateway.alexandria_get_prompt(api_client, item_id)
-
-    @server.tool(name="alexandria_search_library")
-    async def _tool_search_library(
-        query: str,
-        item_types: list[ItemType] | None = None,
-        tags: list[str] | None = None,
-        limit: int = backend_tool_gateway.DEFAULT_LIBRARY_SEARCH_LIMIT,
-        offset: int = 0,
-        content_mode: SearchContentMode = SearchContentMode.CANDIDATE,
-    ) -> JSONValue:
-        """Search library candidates first; get selected items for full content.
-
-        Args:
-            query: Search query.
-            item_types: Optional item type filters.
-            tags: Optional tag filters.
-            limit: Maximum candidate count.
-            offset: Candidate offset.
-            content_mode: Broad search content mode.
-
-        Returns:
-            Backend candidate search response without full content.
-        """
-        return await backend_tool_gateway.alexandria_search_library(
-            api_client,
-            query,
-            item_types,
-            tags,
-            limit,
-            offset,
-            content_mode,
-        )
-
-    @server.tool(name="alexandria_search_skills")
-    async def _tool_search_skills(
-        query: str,
-        required_tools: list[str] | None = None,
-        risk_level: RiskLevel | None = None,
-        tags: list[str] | None = None,
-        limit: int = backend_tool_gateway.DEFAULT_LIBRARY_SEARCH_LIMIT,
-    ) -> JSONValue:
-        """Search skill candidates first; call alexandria_get_skill for content.
-
-        Args:
-            query: Search query.
-            required_tools: Optional required tool filters.
-            risk_level: Optional skill risk filter.
-            tags: Optional tag filters.
-            limit: Maximum candidate count.
-
-        Returns:
-            Backend skill candidate response without full content.
-        """
-        return await backend_tool_gateway.alexandria_search_skills(
-            api_client,
-            query,
-            required_tools,
-            risk_level,
-            tags,
-            limit,
-        )
-
-    @server.tool(name="alexandria_search_prompts")
-    async def _tool_search_prompts(
-        query: str,
-        prompt_kind: PromptKind | None = None,
-        tags: list[str] | None = None,
-        limit: int = backend_tool_gateway.DEFAULT_LIBRARY_SEARCH_LIMIT,
-    ) -> JSONValue:
-        """Search prompt candidates first; call alexandria_get_prompt for body.
-
-        Args:
-            query: Search query.
-            prompt_kind: Optional prompt kind filter.
-            tags: Optional tag filters.
-            limit: Maximum candidate count.
-
-        Returns:
-            Backend prompt candidate response without full content.
-        """
-        return await backend_tool_gateway.alexandria_search_prompts(
-            api_client,
-            query,
-            prompt_kind,
-            tags,
-            limit,
         )
 
     @server.tool(name="alexandria_recall_context")
@@ -269,250 +154,6 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             api_client, query, strategy, limit, project, kind, include_scopes
         )
 
-    @server.tool(name="alexandria_capture_context")
-    async def _tool_capture_context(
-        title: str,
-        content: str,
-        kind: ContextKind = backend_tool_gateway.DEFAULT_CAPTURE_KIND,
-        summary: str | None = None,
-        project: str | None = None,
-        scope: ContextScope = ContextScope.PROJECT,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-        source_agent: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
-    ) -> JSONValue:
-        """Capture a Context Vault entry.
-
-        Args:
-            title: Context title.
-            content: Markdown content to store.
-            kind: Context kind.
-            summary: Optional context summary.
-            project: Optional project scope.
-            scope: Recall-routing scope.
-            workspace_id: Optional workspace identifier.
-            agent_id: Optional agent identifier.
-            user_id: Optional user identifier.
-            session_id: Optional session identifier.
-            source_agent: Producing agent name.
-
-        Returns:
-            Stored context response.
-        """
-        return await backend_tool_gateway.alexandria_capture_context(
-            api_client,
-            title,
-            content,
-            kind,
-            summary,
-            project,
-            scope,
-            workspace_id,
-            agent_id,
-            user_id,
-            session_id,
-            source_agent,
-        )
-
-    @server.tool(name="alexandria_capture_harness")
-    async def _tool_capture_harness(
-        task_goal: str,
-        reusable_procedure: str,
-        summary: str | None = None,
-        project: str | None = None,
-        scope: ContextScope = ContextScope.PROJECT,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-        source_agent: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
-        environment: str | None = None,
-        trigger_context: str | None = None,
-        steps: list[str] | None = None,
-        commands: list[str] | None = None,
-        tests: list[str] | None = None,
-        failures: list[str] | None = None,
-        fixes: list[str] | None = None,
-        artifacts: list[str] | None = None,
-        recall_keywords: list[str] | None = None,
-        safety_notes: list[str] | None = None,
-    ) -> JSONValue:
-        """Capture an agent-owned execution harness.
-
-        Args:
-            task_goal: Goal the agent executed.
-            reusable_procedure: Procedure future agents can reuse.
-            summary: Optional summary.
-            project: Optional project scope.
-            scope: Recall-routing scope.
-            workspace_id: Optional workspace identifier.
-            agent_id: Optional agent identifier.
-            user_id: Optional user identifier.
-            session_id: Optional session identifier.
-            source_agent: Producing agent name.
-            environment: Optional environment description.
-            trigger_context: Why this harness was created.
-            steps: Ordered execution steps.
-            commands: Commands that were run.
-            tests: Tests or checks that were run.
-            failures: Failures encountered.
-            fixes: Fixes applied.
-            artifacts: Relevant artifact handles.
-            recall_keywords: Keywords for later recall.
-            safety_notes: Safety and side-effect notes.
-
-        Returns:
-            Stored HARNESS context response.
-        """
-        return await backend_tool_gateway.alexandria_capture_harness(
-            api_client,
-            task_goal,
-            reusable_procedure,
-            summary,
-            project,
-            scope,
-            workspace_id,
-            agent_id,
-            user_id,
-            session_id,
-            source_agent,
-            environment,
-            trigger_context,
-            steps,
-            commands,
-            tests,
-            failures,
-            fixes,
-            artifacts,
-            recall_keywords,
-            safety_notes,
-        )
-
-    @server.tool(name="alexandria_check_harness")
-    async def _tool_check_harness(
-        task_goal: str,
-        reusable_procedure: str,
-        summary: str | None = None,
-        project: str | None = None,
-        scope: ContextScope = ContextScope.PROJECT,
-        source_agent: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
-        environment: str | None = None,
-        trigger_context: str | None = None,
-        steps: list[str] | None = None,
-        commands: list[str] | None = None,
-        tests: list[str] | None = None,
-        failures: list[str] | None = None,
-        fixes: list[str] | None = None,
-        artifacts: list[str] | None = None,
-        recall_keywords: list[str] | None = None,
-        safety_notes: list[str] | None = None,
-    ) -> JSONValue:
-        """Validate an execution harness without saving it.
-
-        Args:
-            task_goal: Goal the harness solves.
-            reusable_procedure: Procedure future agents can reuse.
-            summary: Optional summary.
-            project: Optional project scope.
-            scope: Recall-routing scope.
-            source_agent: Producing agent name.
-            environment: Optional environment description.
-            trigger_context: Why this harness was created.
-            steps: Ordered execution steps.
-            commands: Commands that were run.
-            tests: Tests or checks that were run.
-            failures: Failures encountered.
-            fixes: Fixes applied.
-            artifacts: Relevant artifact handles.
-            recall_keywords: Keywords for later recall.
-            safety_notes: Safety and side-effect notes.
-
-        Returns:
-            Harness lint response.
-        """
-        return await backend_tool_gateway.alexandria_check_harness(
-            api_client,
-            task_goal,
-            reusable_procedure,
-            summary,
-            project,
-            scope,
-            source_agent,
-            environment,
-            trigger_context,
-            steps,
-            commands,
-            tests,
-            failures,
-            fixes,
-            artifacts,
-            recall_keywords,
-            safety_notes,
-        )
-
-    @server.tool(name="alexandria_list_harnesses")
-    async def _tool_list_harnesses(
-        project: str | None = None,
-        scope: ContextScope | None = None,
-        source_agent: str | None = None,
-        tag: str | None = None,
-        limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
-        offset: int = 0,
-        include_archived: bool = False,
-    ) -> JSONValue:
-        """List saved execution harnesses.
-
-        Args:
-            project: Optional project filter.
-            scope: Optional recall scope filter.
-            source_agent: Optional producing-agent filter.
-            tag: Optional tag filter.
-            limit: Maximum harnesses to return.
-            offset: Pagination offset.
-            include_archived: Whether archived harnesses are included.
-
-        Returns:
-            Backend harness list response.
-        """
-        return await backend_tool_gateway.alexandria_list_harnesses(
-            api_client,
-            project,
-            scope,
-            source_agent,
-            tag,
-            limit,
-            offset,
-            include_archived,
-        )
-
-    @server.tool(name="alexandria_get_harness")
-    async def _tool_get_harness(context_id: str) -> JSONValue:
-        """Read one saved execution harness.
-
-        Args:
-            context_id: Harness context identifier.
-
-        Returns:
-            Backend harness response.
-        """
-        return await backend_tool_gateway.alexandria_get_harness(api_client, context_id)
-
-    @server.tool(name="alexandria_archive_harness")
-    async def _tool_archive_harness(context_id: str) -> JSONValue:
-        """Archive one saved execution harness.
-
-        Args:
-            context_id: Harness context identifier.
-
-        Returns:
-            Archived harness response.
-        """
-        return await backend_tool_gateway.alexandria_archive_harness(
-            api_client, context_id
-        )
-
     @server.tool(name="alexandria_list_memory_compact_artifacts")
     async def _tool_list_memory_compact_artifacts(
         project: str | None = None,
@@ -546,20 +187,6 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
         """Hard delete one selected Memory Compact by id."""
         return await backend_tool_gateway.alexandria_delete_memory_compact(
             api_client, compact_id
-        )
-
-    @server.tool(name="alexandria_prepare_compact")
-    async def _tool_prepare_compact(current_goal: str) -> JSONValue:
-        """Prepare and save a compact handoff context.
-
-        Args:
-            current_goal: Current work goal to compact.
-
-        Returns:
-            Stored compact context response.
-        """
-        return await backend_tool_gateway.alexandria_prepare_compact(
-            api_client, current_goal
         )
 
     @server.tool(name="alexandria_start_skill_acquisition")
@@ -650,82 +277,6 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             next_steps=next_steps,
             tags=tags,
             required_tools=required_tools,
-        )
-
-    @server.tool(name="alexandria_submit_skill_candidate")
-    async def _tool_submit_skill_candidate(
-        title: str,
-        purpose: str,
-        content: str,
-        summary: str | None = None,
-        evidence_urls: list[str] | None = None,
-        source_summary: str | None = None,
-    ) -> JSONValue:
-        """Submit a Hermes-authored skill candidate.
-
-        Args:
-            title: Candidate title.
-            purpose: Candidate purpose.
-            content: Candidate Markdown content.
-            summary: Optional candidate summary.
-            evidence_urls: Source URLs gathered by Hermes.
-            source_summary: Optional source/evidence summary.
-
-        Returns:
-            Stored skill response.
-        """
-        return await backend_tool_gateway.alexandria_submit_skill_candidate(
-            api_client,
-            title=title,
-            purpose=purpose,
-            content=content,
-            summary=summary,
-            evidence_urls=evidence_urls,
-            source_summary=source_summary,
-        )
-
-    @server.tool(name="alexandria_record_usage")
-    async def _tool_record_usage(
-        item_id: str,
-        item_type: str,
-        selection_source: SelectionSource,
-        agent_name: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
-        success: bool = True,
-        query: str | None = None,
-        librarian_provider: str | None = None,
-        project: str | None = None,
-        task_summary: str | None = None,
-        feedback: str | None = None,
-    ) -> JSONValue:
-        """Record that Hermes used a skill, prompt, or context.
-
-        Args:
-            item_id: Used library item id.
-            item_type: Used item type.
-            selection_source: How Hermes selected the item.
-            agent_name: Agent recording usage.
-            success: Whether the item helped the task.
-            query: Optional search or recall query.
-            librarian_provider: Optional provider involved in selection.
-            project: Optional project scope.
-            task_summary: Optional task summary.
-            feedback: Optional usefulness note.
-
-        Returns:
-            Backend usage record response.
-        """
-        return await backend_tool_gateway.alexandria_record_usage(
-            api_client,
-            item_id,
-            item_type,
-            selection_source,
-            agent_name,
-            success,
-            query,
-            librarian_provider,
-            project,
-            task_summary,
-            feedback,
         )
 
     @server.tool(name="alexandria_ask_librarian")
@@ -947,6 +498,69 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             Backend RAG health response.
         """
         return await backend_tool_gateway.alexandria_rag_status(api_client)
+
+    @server.tool(name="alexandria_reindex_vault")
+    async def _tool_reindex_vault() -> JSONValue:
+        """Rebuild the Obsidian vault index cache."""
+        return await backend_tool_gateway.alexandria_reindex_vault(api_client)
+
+    @server.tool(name="alexandria_search_vault")
+    async def _tool_search_vault(
+        query: str,
+        limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
+        alexandria_type: str | None = None,
+        project: str | None = None,
+        tags: list[str] | None = None,
+    ) -> JSONValue:
+        """Search Alexandria-managed Obsidian Markdown notes."""
+        return await backend_tool_gateway.alexandria_search_vault(
+            api_client, query, limit, alexandria_type, project, tags
+        )
+
+    @server.tool(name="alexandria_read_note")
+    async def _tool_read_note(
+        note_id: str | None = None,
+        path: str | None = None,
+    ) -> JSONValue:
+        """Read one Alexandria-managed Obsidian note by id or path."""
+        return await backend_tool_gateway.alexandria_read_note(
+            api_client, note_id, path
+        )
+
+    @server.tool(name="alexandria_save_note")
+    async def _tool_save_note(
+        title: str,
+        body: str,
+        alexandria_type: str,
+        note_id: str | None = None,
+        path: str | None = None,
+        project: str | None = None,
+        tags: list[str] | None = None,
+    ) -> JSONValue:
+        """Save one Alexandria-managed Obsidian Markdown note."""
+        return await backend_tool_gateway.alexandria_save_note(
+            api_client, title, body, alexandria_type, note_id, path, project, tags
+        )
+
+    @server.tool(name="alexandria_ask_obsidian_librarian")
+    async def _tool_ask_obsidian_librarian(
+        query: str,
+        active_note_path: str | None = None,
+        selection: str | None = None,
+        project: str | None = None,
+        save_transcript: bool = False,
+        preferred_alexandria_types: list[str] | None = None,
+    ) -> JSONValue:
+        """Ask the Obsidian-aware Alexandria librarian."""
+        return await backend_tool_gateway.alexandria_ask_obsidian_librarian(
+            api_client,
+            query,
+            active_note_path,
+            selection,
+            project,
+            save_transcript,
+            preferred_alexandria_types,
+        )
 
     return server
 

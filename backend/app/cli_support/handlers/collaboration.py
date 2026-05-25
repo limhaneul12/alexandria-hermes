@@ -15,7 +15,6 @@ from app.cli_support.contracts.librarian_command_contracts import (
     LibrarianProviderConnectCodexOAuthCommand,
     LibrarianProviderCreateCommand,
     LibrarianRoutePreviewCommand,
-    UsageRecordCliCommand,
 )
 from app.cli_support.contracts.runtime_contracts import CommandContext
 from app.cli_support.handlers.collaboration_helpers import (
@@ -26,7 +25,6 @@ from app.cli_support.handlers.collaboration_helpers import (
     profile_create_body,
     profile_update_body,
     provider_create_body,
-    usage_record_body,
 )
 from app.cli_support.presentation.output_renderers import (
     print_json,
@@ -36,30 +34,6 @@ from app.cli_support.presentation.output_renderers import (
 from app.cli_support.url_paths import quote_path
 from app.shared.types.extra_types import JSONObject
 from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
-
-
-def handle_usage_record(
-    command: UsageRecordCliCommand,
-    context: CommandContext,
-    client: CliBackendApiClient,
-) -> int:
-    """Run the usage record CLI command.
-
-    Args:
-        command: Typed CLI command contract for the operation.
-        context: CLI runtime context with output settings.
-        client: Backend API client used for HTTP requests.
-
-    Returns:
-        Process-style exit code.
-    """
-    payload = client.post("/library/usage", usage_record_body(command))
-    if context.json_output:
-        print_json(payload, context.stdout)
-    else:
-        usage_id = text_field(payload, "id")
-        print(f"recorded usage {usage_id}", file=context.stdout)
-    return 0
 
 
 def handle_librarian_brief_preview(

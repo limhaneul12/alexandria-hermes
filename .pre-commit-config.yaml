@@ -11,22 +11,3 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
-
-      - id: frontend-github-actions-gate
-        name: frontend github actions gate
-        entry: >-
-          bash -lc 'cd frontend &&
-          npm ci --ignore-scripts --no-audit --no-fund &&
-          npm run security:npm-supply-chain &&
-          npm run lint &&
-          npm run test:ui-contract &&
-          npm run test:librarian-chat &&
-          npm run test:library-ui-navigation &&
-          npm run test:content-viewer &&
-          npm run test:library-category-filter &&
-          npm run test:ask-librarian-widget &&
-          npm run test:agent-route-payload &&
-          npm run build'
-        language: system
-        pass_filenames: false
-        stages: [pre-push]

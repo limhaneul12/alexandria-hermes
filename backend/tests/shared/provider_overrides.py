@@ -17,6 +17,7 @@ _PROVIDER_CONTAINER_BY_NAME: Final[dict[str, str]] = {
     "item_search_service": "library",
     "item_service": "library",
     "memory_compact_service": "memory",
+    "obsidian_service": "obsidian",
     "librarian_oauth_service": "connections",
     "skill_acquisition_service": "librarian",
     "librarian_service": "connections",
@@ -41,6 +42,8 @@ def override_library_provider(provider_name: str, value: object) -> Iterator[Non
         provider = root_container.librarian.providers[provider_name]
     elif container_name == "memory":
         provider = root_container.memory.providers[provider_name]
+    elif container_name == "obsidian":
+        provider = root_container.obsidian.providers[provider_name]
     else:
         provider = root_container.library.providers[provider_name]
     with provider.override(providers.Object(value)):

@@ -4,24 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.library.domain.event_enum.usage_enums import SelectionSource
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class UsageRecordCliCommand:
-    """Parameters for recording usage from the CLI."""
-
-    item_id: str
-    item_type: str
-    selection_source: SelectionSource
-    agent_name: str
-    success: bool
-    query: str | None
-    librarian_provider: str | None
-    project: str | None
-    task_summary: str | None
-    feedback: str | None
-
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class LibrarianBriefPreviewCommand:

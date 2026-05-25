@@ -31,8 +31,8 @@ def test_librarian_brief_preview_returns_budgeted_packet() -> None:
                         "source_type": "SKILL",
                         "source_id": "skill-1",
                         "title": "OAuth skill",
-                        "detail_path": "/library/skills/skill-1",
-                        "preview": "Candidate only; detail endpoint full-loads it.",
+                        "detail_path": "obsidian://skills/oauth-skill",
+                        "preview": "Markdown candidate preview; local vault full-loads it.",
                     }
                 ],
             },

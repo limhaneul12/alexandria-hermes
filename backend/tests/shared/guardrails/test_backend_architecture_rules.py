@@ -19,6 +19,10 @@ BOUNDED_INTERFACE_ROOTS = tuple(
 )
 SHARED_EXCEPTIONS = APP_ROOT / "shared" / "exceptions"
 ALLOWED_INIT_FILES = {
+    "__init__.py": (
+        "The top-level package marker is required so the installed console "
+        "script imports from outside the project root."
+    ),
     "cli_support/contracts/__init__.py": (
         "CLI command contracts intentionally expose a package-level broad import surface."
     ),
@@ -58,10 +62,6 @@ OVERSIZED_MODULE_ALLOWLIST = {
     "memory/application/context_service.py": (
         "Context service coordinates lint/save/search/archive lifecycle; extract recall "
         "and archive operations before adding memory features."
-    ),
-    "memory/interface/routers/context_router.py": (
-        "Context router exposes the full Context Vault surface; split route modules by "
-        "lint/save/search/archive when changing context routes."
     ),
 }
 
@@ -355,18 +355,17 @@ def test_backend_app_does_not_use_unjustified_lazy_imports() -> None:
     check_lazy_import_usage.ensure_clean(BACKEND_ROOT)
 
 
-def test_library_item_listing_does_not_reintroduce_like_based_text_search() -> None:
-    query_source = (
+def test_library_item_listing_sqlite_search_surface_is_removed() -> None:
+    queries_path = (
         APP_ROOT
         / "library"
         / "infrastructure"
         / "repositories"
         / "items"
         / "queries.py"
-    ).read_text(encoding="utf-8")
+    )
 
-    assert "search_query" not in query_source
-    assert ".like(" not in query_source
+    assert not queries_path.exists()
 
 
 def test_library_interface_router_folders_are_only_for_multi_module_concepts() -> None:

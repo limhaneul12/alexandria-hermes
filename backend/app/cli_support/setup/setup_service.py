@@ -21,6 +21,7 @@ from app.shared.exceptions.cli_exceptions import CliInputError
 ASSET_SKILL_TARGET = "skills/alexandria-hermes/alexandria-library/SKILL.md"
 ASSET_POLICY_TARGET = "alexandria-hermes/policy.yaml"
 PROMPT_TARGET_PREFIX = "prompts/alexandria-hermes"
+DEFAULT_ALEXANDRIA_OBSIDIAN_ROOT = "Alexandria"
 
 
 def handle_setup(command: SetupCommand) -> SetupSummary:
@@ -39,6 +40,9 @@ def handle_setup(command: SetupCommand) -> SetupSummary:
         )
     selected_mode = command.mode or SetupRuntimeMode.BACKEND_DAEMON
     state = resolve_local_state(command.hermes_home)
+    obsidian_vault_path = _resolved_obsidian_vault_path(command, state)
+    alexandria_obsidian_root = _alexandria_obsidian_root(command)
+    memory_compact_note_dir = _memory_compact_note_dir(alexandria_obsidian_root)
     planned_assets = _planned_hermes_asset_files(command.install_hermes_assets)
     should_apply = command.apply and not command.dry_run
     env_written = False
@@ -46,13 +50,31 @@ def handle_setup(command: SetupCommand) -> SetupSummary:
     written_assets: list[str] = []
     if should_apply:
         state.root.mkdir(parents=True, exist_ok=True)
-        for directory in (state.data_dir, state.logs_dir, state.run_dir):
+        for directory in (
+            state.data_dir,
+            obsidian_vault_path,
+            state.logs_dir,
+            state.run_dir,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
-        _write_env(command, selected_mode, state)
+        _write_env(
+            command,
+            selected_mode,
+            state,
+            obsidian_vault_path,
+            alexandria_obsidian_root,
+            memory_compact_note_dir,
+        )
         env_written = True
         if command.write_guidebook:
             state.guidebook_path.write_text(
-                _guidebook_text(selected_mode, state),
+                _guidebook_text(
+                    selected_mode,
+                    state,
+                    obsidian_vault_path,
+                    alexandria_obsidian_root,
+                    memory_compact_note_dir,
+                ),
                 encoding="utf-8",
             )
             guidebook_written = True
@@ -68,6 +90,8 @@ def handle_setup(command: SetupCommand) -> SetupSummary:
         env_written=env_written,
         database_path=str(state.database_path),
         database_url=state.database_url,
+        obsidian_vault_path=str(obsidian_vault_path),
+        alexandria_obsidian_root=alexandria_obsidian_root,
         backend_log_path=str(state.backend_log_path),
         run_dir=str(state.run_dir),
         guidebook_path=str(state.guidebook_path),
@@ -85,10 +109,23 @@ def _write_env(
     command: SetupCommand,
     selected_mode: SetupRuntimeMode,
     state: AlexandriaLocalState,
+    obsidian_vault_path: Path,
+    alexandria_obsidian_root: str,
+    memory_compact_note_dir: str,
 ) -> None:
     env_path = _resolved_env_path(command, state)
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    env_path.write_text(_env_text(command, selected_mode, state), encoding="utf-8")
+    env_path.write_text(
+        _env_text(
+            command,
+            selected_mode,
+            state,
+            obsidian_vault_path,
+            alexandria_obsidian_root,
+            memory_compact_note_dir,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _resolved_env_path(command: SetupCommand, state: AlexandriaLocalState) -> Path:
@@ -97,10 +134,33 @@ def _resolved_env_path(command: SetupCommand, state: AlexandriaLocalState) -> Pa
     return Path(command.env_path).expanduser().resolve()
 
 
+def _resolved_obsidian_vault_path(
+    command: SetupCommand, state: AlexandriaLocalState
+) -> Path:
+    if command.obsidian_vault_path is None:
+        return state.obsidian_vault_path
+    return Path(command.obsidian_vault_path).expanduser().resolve()
+
+
+def _alexandria_obsidian_root(command: SetupCommand) -> str:
+    if command.alexandria_obsidian_root is None:
+        return DEFAULT_ALEXANDRIA_OBSIDIAN_ROOT
+    return command.alexandria_obsidian_root
+
+
+def _memory_compact_note_dir(alexandria_obsidian_root: str) -> str:
+    if alexandria_obsidian_root in {"", "."}:
+        return "Memory Compacts"
+    return f"{alexandria_obsidian_root}/Memory Compacts"
+
+
 def _env_text(
     command: SetupCommand,
     selected_mode: SetupRuntimeMode,
     state: AlexandriaLocalState,
+    obsidian_vault_path: Path,
+    alexandria_obsidian_root: str,
+    memory_compact_note_dir: str,
 ) -> str:
     api_url = command.api_url or "http://127.0.0.1:8000"
     operator_api_key = command.operator_api_key or secrets.token_urlsafe(32)
@@ -113,6 +173,9 @@ def _env_text(
             f"ALEXANDRIA_OPERATOR_API_KEY={operator_api_key}",
             f"HERMES_API_URL={api_url}",
             f"ALEXANDRIA_STATE_HOME={state.root}",
+            f"SERVICE_OBSIDIAN_VAULT_PATH={obsidian_vault_path}",
+            f"SERVICE_ALEXANDRIA_OBSIDIAN_ROOT={alexandria_obsidian_root}",
+            f"SERVICE_MEMORY_COMPACT_NOTE_DIR={memory_compact_note_dir}",
             f"ALEXANDRIA_BACKEND_LOG={state.backend_log_path}",
             "",
         ]
@@ -153,13 +216,6 @@ def _next_steps(mode: SetupRuntimeMode, state: AlexandriaLocalState) -> list[str
         "Run alexandria-hermes hermes onboard when you want Hermes prompt/MCP integration assets installed.",
     ]
     per_mode = {
-        SetupRuntimeMode.FULLSTACK_COMPOSE: [
-            "Run docker compose up --build for the supported full-stack runtime.",
-            "Use the frontend and backend together as a first-class supported runtime.",
-        ],
-        SetupRuntimeMode.FULLSTACK_SEPARATE: [
-            "Start the backend and frontend separately for the supported full-stack runtime.",
-        ],
         SetupRuntimeMode.BACKEND_DAEMON: [
             f"Use {state.env_path} for local Backend + SQLite daemon configuration.",
             "Start the backend daemon with the generated env file before connecting Hermes.",
@@ -171,8 +227,19 @@ def _next_steps(mode: SetupRuntimeMode, state: AlexandriaLocalState) -> list[str
     return [*per_mode[mode], *shared]
 
 
-def _guidebook_text(mode: SetupRuntimeMode, state: AlexandriaLocalState) -> str:
+def _guidebook_text(
+    mode: SetupRuntimeMode,
+    state: AlexandriaLocalState,
+    obsidian_vault_path: Path,
+    alexandria_obsidian_root: str,
+    memory_compact_note_dir: str,
+) -> str:
     steps = "\n".join(f"- {step}" for step in _next_steps(mode, state))
+    root_hint = (
+        "The vault root itself is managed because `SERVICE_ALEXANDRIA_OBSIDIAN_ROOT=.`."
+        if alexandria_obsidian_root == "."
+        else f"Alexandria-managed notes live under `{alexandria_obsidian_root}/`."
+    )
     return f"""# Alexandria-Hermes Local Guidebook
 
 ## Selected runtime
@@ -183,8 +250,13 @@ def _guidebook_text(mode: SetupRuntimeMode, state: AlexandriaLocalState) -> str:
 
 - Env: `{state.env_path}`
 - SQLite database: `{state.database_path}`
+- Obsidian vault: `{obsidian_vault_path}`
+- Alexandria root in vault: `{alexandria_obsidian_root}`
+- Memory Compact folder: `{memory_compact_note_dir}`
 - Backend log: `{state.backend_log_path}`
 - Run dir: `{state.run_dir}`
+
+{root_hint}
 
 ## Commands
 
@@ -199,13 +271,17 @@ def _guidebook_text(mode: SetupRuntimeMode, state: AlexandriaLocalState) -> str:
 ## Hermes awareness
 
 Alexandria installation alone does not make Hermes use it. Run `alexandria-hermes hermes onboard` or install the `skills_alexandria` assets so Hermes has the skill/prompt contract.
+
+## Obsidian
+
+- Install/open Obsidian, then open the generated vault path above.
+- Initialize folders with `alexandria-hermes obsidian init` after the backend is running.
+- Rebuild search with `alexandria-hermes obsidian reindex`.
 """
 
 
 def _mode_title(mode: SetupRuntimeMode) -> str:
     titles = {
-        SetupRuntimeMode.FULLSTACK_COMPOSE: "Full-stack compose",
-        SetupRuntimeMode.FULLSTACK_SEPARATE: "Full-stack separate processes",
         SetupRuntimeMode.BACKEND_DAEMON: "Backend + SQLite daemon",
         SetupRuntimeMode.GUIDEBOOK_ONLY: "Guidebook-only planning",
     }

@@ -56,6 +56,10 @@ def test_setup_backend_daemon_dry_run_reports_sqlite_local_state(
     assert payload["database_path"] == str(
         hermes_home / "alexandria-hermes" / "data" / "alexandria_hermes.db"
     )
+    assert payload["obsidian_vault_path"] == str(
+        hermes_home / "alexandria-hermes" / "data" / "obsidian-vault"
+    )
+    assert payload["alexandria_obsidian_root"] == "Alexandria"
     assert str(payload["database_url"]).startswith("sqlite+aiosqlite:////")
     assert "postgres" not in dumps_json(payload).decode().lower()
     assert not (hermes_home / "alexandria-hermes" / ".env").exists()
@@ -95,12 +99,58 @@ def test_setup_backend_daemon_apply_writes_env_and_guidebook(
         in env_text
     )
     assert "DATABASE_URL=sqlite+aiosqlite:///" in env_text
+    assert "SERVICE_OBSIDIAN_VAULT_PATH=" in env_text
+    assert "SERVICE_ALEXANDRIA_OBSIDIAN_ROOT=Alexandria" in env_text
+    assert "SERVICE_MEMORY_COMPACT_NOTE_DIR=Alexandria/Memory Compacts" in env_text
     assert "POSTGRES" not in env_text.upper()
-    assert "Backend + SQLite daemon" in guidebook_path.read_text(encoding="utf-8")
+    guidebook_text = guidebook_path.read_text(encoding="utf-8")
+    assert "Backend + SQLite daemon" in guidebook_text
+    assert "alexandria-hermes obsidian init" in guidebook_text
 
 
-def test_setup_fullstack_compose_reports_compose_next_step(tmp_path: Path) -> None:
-    """Full-stack compose remains a first-class setup mode."""
+def test_setup_backend_daemon_targets_existing_obsidian_vault_root(
+    tmp_path: Path,
+) -> None:
+    """Setup can attach Alexandria directly to an existing Obsidian vault."""
+    hermes_home = tmp_path / "hermes"
+    vault_path = tmp_path / "Alexandria"
+    hermes_home.mkdir()
+
+    exit_code, payload, stderr = _json_stdout(
+        [
+            "setup",
+            "--mode",
+            "backend-daemon",
+            "--hermes-home",
+            str(hermes_home),
+            "--obsidian-vault-path",
+            str(vault_path),
+            "--alexandria-obsidian-root",
+            ".",
+            "--apply",
+            "--write-guidebook",
+            "--operator-api-key",
+            "test-operator-api-key-for-setup-000000000000",
+        ]
+    )
+
+    env_path = hermes_home / "alexandria-hermes" / ".env"
+    guidebook_path = hermes_home / "alexandria-hermes" / "GUIDEBOOK.md"
+    env_text = env_path.read_text(encoding="utf-8")
+    guidebook_text = guidebook_path.read_text(encoding="utf-8")
+    assert exit_code == 0, stderr
+    assert vault_path.exists()
+    assert payload["obsidian_vault_path"] == str(vault_path.resolve())
+    assert payload["alexandria_obsidian_root"] == "."
+    assert f"SERVICE_OBSIDIAN_VAULT_PATH={vault_path.resolve()}" in env_text
+    assert "SERVICE_ALEXANDRIA_OBSIDIAN_ROOT=." in env_text
+    assert "SERVICE_MEMORY_COMPACT_NOTE_DIR=Memory Compacts" in env_text
+    assert "Alexandria root in vault: `.`" in guidebook_text
+    assert "`SERVICE_ALEXANDRIA_OBSIDIAN_ROOT=.`" in guidebook_text
+
+
+def test_setup_guidebook_only_reports_planning_next_step(tmp_path: Path) -> None:
+    """Guidebook-only remains a supported planning mode after frontend removal."""
     hermes_home = tmp_path / "hermes"
     hermes_home.mkdir()
 
@@ -108,7 +158,7 @@ def test_setup_fullstack_compose_reports_compose_next_step(tmp_path: Path) -> No
         [
             "setup",
             "--mode",
-            "fullstack-compose",
+            "guidebook-only",
             "--hermes-home",
             str(hermes_home),
             "--dry-run",
@@ -117,9 +167,9 @@ def test_setup_fullstack_compose_reports_compose_next_step(tmp_path: Path) -> No
 
     next_steps = "\n".join(str(step) for step in payload["next_steps"])
     assert exit_code == 0, stderr
-    assert payload["mode"] == "fullstack-compose"
-    assert "docker compose up --build" in next_steps
-    assert "demo-only" not in next_steps.lower()
+    assert payload["mode"] == "guidebook-only"
+    assert "choose a runtime mode" in next_steps
+    assert "frontend" not in next_steps.lower()
 
 
 def test_setup_invalid_runtime_mode_is_rejected() -> None:

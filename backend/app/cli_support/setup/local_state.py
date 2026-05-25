@@ -17,6 +17,7 @@ class AlexandriaLocalState:
     data_dir: Path
     database_path: Path
     database_url: str
+    obsidian_vault_path: Path
     logs_dir: Path
     backend_log_path: Path
     run_dir: Path
@@ -37,6 +38,7 @@ def resolve_local_state(hermes_home: str | None) -> AlexandriaLocalState:
     root = resolved_home / "alexandria-hermes"
     data_dir = root / "data"
     database_path = data_dir / "alexandria_hermes.db"
+    obsidian_vault_path = data_dir / "obsidian-vault"
     logs_dir = root / "logs"
     run_dir = root / "run"
     return AlexandriaLocalState(
@@ -46,6 +48,7 @@ def resolve_local_state(hermes_home: str | None) -> AlexandriaLocalState:
         data_dir=data_dir,
         database_path=database_path,
         database_url=f"sqlite+aiosqlite:///{database_path}",
+        obsidian_vault_path=obsidian_vault_path,
         logs_dir=logs_dir,
         backend_log_path=logs_dir / "backend.log",
         run_dir=run_dir,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import typer
 from app.cli_support.contracts.memory_command_contracts import (
-    ContextCompactCommand,
     ContextCurateCommand,
     ContextIdCommand,
     ContextMemoryMapCommand,
@@ -13,7 +12,6 @@ from app.cli_support.contracts.memory_command_contracts import (
 )
 from app.cli_support.handlers.context import (
     handle_context_chunks,
-    handle_context_compact,
     handle_context_curate,
     handle_context_delete,
     handle_context_doctor_rag,
@@ -26,7 +24,6 @@ from app.cli_support.typer_commands.typer_runtime import (
     run_client,
     run_context,
     run_local,
-    values,
 )
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
@@ -179,68 +176,6 @@ def context_delete(ctx: typer.Context, context_id: str) -> None:
         None.
     """
     run_client(ctx, ContextIdCommand(context_id=context_id), handle_context_delete)
-
-
-@context_app.command("compact")
-def context_compact(
-    ctx: typer.Context,
-    current_goal: str = typer.Option(..., "--current-goal"),
-    completed: list[str] | None = typer.Option(None, "--completed"),
-    in_progress: list[str] | None = typer.Option(None, "--in-progress"),
-    key_decision: list[str] | None = typer.Option(None, "--key-decision"),
-    next_action: list[str] | None = typer.Option(None, "--next-action"),
-    risk: list[str] | None = typer.Option(None, "--risk"),
-    project: str | None = typer.Option(None, "--project"),
-    scope: ContextScope = typer.Option(ContextScope.SESSION, "--scope"),
-    workspace_id: str | None = typer.Option(None, "--workspace-id"),
-    agent_id: str | None = typer.Option(None, "--agent-id"),
-    user_id: str | None = typer.Option(None, "--user-id"),
-    session_id: str | None = typer.Option(None, "--session-id"),
-    visibility: ContextScope = typer.Option(ContextScope.SESSION, "--visibility"),
-    source_agent: str = typer.Option("Hermes", "--source-agent"),
-) -> None:
-    """Prepare and save a compact handoff context.
-
-    Args:
-        ctx: Typer context.
-        current_goal: Current goal summary.
-        completed: Repeatable completed work bullet.
-        in_progress: Repeatable in-progress work bullet.
-        key_decision: Repeatable key decision bullet.
-        next_action: Repeatable next action bullet.
-        risk: Repeatable risk bullet.
-        project: Optional project scope.
-        scope: Recall-routing scope.
-        workspace_id: Optional workspace identifier.
-        agent_id: Optional agent identifier.
-        user_id: Optional user identifier.
-        session_id: Optional session identifier.
-        visibility: Recall visibility scope.
-        source_agent: Agent creating the compact.
-
-    Returns:
-        None.
-    """
-    run_client(
-        ctx,
-        ContextCompactCommand(
-            current_goal=current_goal,
-            completed=values(completed),
-            in_progress=values(in_progress),
-            key_decisions=values(key_decision),
-            next_actions=values(next_action),
-            risks=values(risk),
-            project=project,
-            scope=scope,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-            visibility=visibility,
-            source_agent=source_agent,
-        ),
-        handle_context_compact,
-    )
 
 
 @context_app.command("memory-map")

@@ -7,6 +7,8 @@ from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager
 from typing import cast
 
+from fastapi import FastAPI
+
 from app.connections.interface.routers.librarian_oauth_router import (
     router as librarian_oauth_router,
 )
@@ -21,18 +23,11 @@ from app.librarian.interface.routers.librarian_brief_router import (
 from app.librarian.interface.routers.librarian_ops_router import (
     router as librarian_ops_router,
 )
-from app.library.interface.routers.category_router import router as category_router
-from app.library.interface.routers.item_router import router as item_router
-from app.library.interface.routers.item_search_router import (
-    router as item_search_router,
-)
-from app.library.interface.routers.prompt_router import router as prompt_router
-from app.library.interface.routers.skill_router import router as skill_router
-from app.library.interface.routers.usage_router import router as usage_router
 from app.memory.interface.routers.context_router import router as context_router
 from app.memory.interface.routers.memory_compact_router import (
     router as memory_compact_router,
 )
+from app.obsidian.interface.routers.obsidian_router import router as obsidian_router
 from app.platform.config.app_config import AppConfig
 from app.platform.health_router import install_health_routes
 from app.platform.lifecycle.state import LifecycleState
@@ -40,7 +35,6 @@ from app.platform.logging.formatter.config import configure_logging
 from app.platform.middleware.database_session import install_database_session_middleware
 from app.platform.middleware.request_logging import install_request_logging_middleware
 from app.shared.infrastructure.database import Database
-from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +131,8 @@ def create_app(app_config: AppConfig) -> FastAPI:
         packages=[
             "app.connections.interface.routers",
             "app.librarian.interface.routers",
-            "app.library.interface.routers",
             "app.memory.interface.routers",
+            "app.obsidian.interface.routers",
         ]
     )
 
@@ -150,14 +144,9 @@ def create_app(app_config: AppConfig) -> FastAPI:
         refresh_dependency_health=refresh_dependency_health,
     )
 
-    app.include_router(category_router)
     app.include_router(context_router)
     app.include_router(memory_compact_router)
-    app.include_router(item_router)
-    app.include_router(item_search_router)
-    app.include_router(skill_router)
-    app.include_router(prompt_router)
-    app.include_router(usage_router)
+    app.include_router(obsidian_router)
     app.include_router(agent_router)
     app.include_router(librarian_router)
     app.include_router(librarian_oauth_router)

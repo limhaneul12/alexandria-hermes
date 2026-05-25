@@ -33,9 +33,13 @@ class SkillAcquisitionJob:
 
     @property
     def result_available(self) -> bool:
-        """Return whether the job produced a persisted result.
+        """Return whether the job produced a completed result.
 
         Returns:
-            True when a skill or context result is available.
+            True when completion produced a summary or durable result handle.
         """
-        return self.skill_id is not None or self.context_id is not None
+        return self.status is SkillAcquisitionJobStatus.COMPLETED and (
+            self.result_summary is not None
+            or self.skill_id is not None
+            or self.context_id is not None
+        )

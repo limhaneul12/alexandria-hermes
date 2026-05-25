@@ -72,64 +72,6 @@ class ContextLintResponse(StrictSchemaModel):
     normalized: ContextLintNormalizedPayload
 
 
-class ContextSaveRequest(ContextLintRequest):
-    """Payload for saving a context."""
-
-    source_type: ContextSourceType = ContextSourceType.AGENT
-    importance: ContextImportance = ContextImportance.MEDIUM
-    expires_at: AwareTimestamp | None = None
-    metadata: JSONObject = Field(default_factory=dict)
-
-
-class ContextCaptureRequest(ContextSaveRequest):
-    """Payload for capture-semantics context saving."""
-
-
-class HarnessCaptureRequest(StrictSchemaModel):
-    """Payload for saving an agent-owned execution harness."""
-
-    task_goal: str = Field(min_length=1)
-    reusable_procedure: str = Field(min_length=1)
-    summary: str | None = None
-    project: str | None = None
-    scope: ContextScope = ContextScope.PROJECT
-    workspace_id: str | None = None
-    agent_id: str | None = None
-    user_id: str | None = None
-    session_id: str | None = None
-    source_agent: str = "Hermes"
-    environment: str | None = None
-    trigger_context: str | None = None
-    steps: list[str] = Field(default_factory=list)
-    commands: list[str] = Field(default_factory=list)
-    tests: list[str] = Field(default_factory=list)
-    failures: list[str] = Field(default_factory=list)
-    fixes: list[str] = Field(default_factory=list)
-    artifacts: list[str] = Field(default_factory=list)
-    recall_keywords: list[str] = Field(default_factory=list)
-    safety_notes: list[str] = Field(default_factory=list)
-    metadata: JSONObject = Field(default_factory=dict)
-
-
-class ContextPrepareCompactRequest(StrictSchemaModel):
-    """Payload for generating and saving a compact context."""
-
-    project: str | None = None
-    scope: ContextScope = ContextScope.PROJECT
-    workspace_id: str | None = None
-    agent_id: str | None = None
-    user_id: str | None = None
-    session_id: str | None = None
-    visibility: ContextScope = ContextScope.PROJECT
-    source_agent: str = "Hermes"
-    current_goal: str = Field(min_length=1)
-    completed: list[str] = Field(default_factory=list)
-    in_progress: list[str] = Field(default_factory=list)
-    key_decisions: list[str] = Field(default_factory=list)
-    next_actions: list[str] = Field(default_factory=list)
-    risks: list[str] = Field(default_factory=list)
-
-
 class ContextResponse(StrictSchemaModel):
     """Stored context response."""
 

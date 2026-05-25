@@ -11,8 +11,6 @@ from app.mcp_server.mcp_protocol_enums import McpTransport
 class SetupRuntimeMode(StrEnum):
     """Supported Alexandria-Hermes runtime setup modes."""
 
-    FULLSTACK_COMPOSE = "fullstack-compose"
-    FULLSTACK_SEPARATE = "fullstack-separate"
     BACKEND_DAEMON = "backend-daemon"
     GUIDEBOOK_ONLY = "guidebook-only"
 
@@ -54,6 +52,8 @@ class SetupCommand:
     hermes_home: str | None
     env_path: str | None
     api_url: str | None
+    obsidian_vault_path: str | None
+    alexandria_obsidian_root: str | None
     operator_api_key: str | None
     non_interactive: bool
     dry_run: bool

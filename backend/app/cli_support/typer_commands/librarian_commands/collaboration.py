@@ -15,7 +15,6 @@ from app.cli_support.contracts.librarian_command_contracts import (
     LibrarianProviderConnectCodexOAuthCommand,
     LibrarianProviderCreateCommand,
     LibrarianRoutePreviewCommand,
-    UsageRecordCliCommand,
 )
 from app.cli_support.handlers.collaboration import (
     handle_librarian_ask,
@@ -39,15 +38,12 @@ from app.cli_support.handlers.collaboration import (
     handle_librarian_provider_test,
     handle_librarian_providers_list,
     handle_librarian_route_preview,
-    handle_usage_record,
 )
 from app.cli_support.typer_commands.typer_runtime import run_client, run_context, values
-from app.library.domain.event_enum.usage_enums import SelectionSource
 
 librarian_app = typer.Typer(help="Collaborate with the configured librarian")
 providers_app = typer.Typer(help="Manage librarian provider connections")
 profiles_app = typer.Typer(help="Manage librarian routing profiles")
-usage_app = typer.Typer(help="Record Hermes usage history")
 
 librarian_app.add_typer(providers_app, name="providers")
 librarian_app.add_typer(profiles_app, name="profiles")
@@ -514,44 +510,4 @@ def profiles_disable(ctx: typer.Context, profile_id: str) -> None:
         ctx,
         LibrarianProfileActionCommand(profile_id=profile_id),
         handle_librarian_profile_disable,
-    )
-
-
-@usage_app.command("record")
-def usage_record(
-    ctx: typer.Context,
-    item_id: str = typer.Option(..., "--item"),
-    item_type: str = typer.Option(..., "--type"),
-    selection_source: SelectionSource = typer.Option(
-        SelectionSource.SEARCH,
-        "--selection-source",
-    ),
-    agent_name: str = typer.Option("Hermes", "--agent-name"),
-    success: bool = typer.Option(True, "--success/--failure"),
-    query: str | None = typer.Option(None, "--query"),
-    librarian_provider: str | None = typer.Option(None, "--librarian-provider"),
-    project: str | None = typer.Option(None, "--project"),
-    task_summary: str | None = typer.Option(None, "--task-summary"),
-    feedback: str | None = typer.Option(None, "--feedback"),
-) -> None:
-    """Record one Hermes usage event.
-
-    Args:
-        ctx: Typer callback context and command-line option values.
-    """
-    run_client(
-        ctx,
-        UsageRecordCliCommand(
-            item_id=item_id,
-            item_type=item_type,
-            selection_source=selection_source,
-            agent_name=agent_name,
-            success=success,
-            query=query,
-            librarian_provider=librarian_provider,
-            project=project,
-            task_summary=task_summary,
-            feedback=feedback,
-        ),
-        handle_usage_record,
     )

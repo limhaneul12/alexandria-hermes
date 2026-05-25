@@ -42,7 +42,7 @@ def test_database_initialize_does_not_create_archive_schema_without_explicit_opt
 def test_database_initialize_can_create_schema_for_isolated_repository_tests(
     tmp_path: Path,
 ) -> None:
-    """Repository tests can still request throwaway schema creation explicitly."""
+    """Repository tests can still request throwaway backend schema creation."""
 
     async def scenario() -> None:
         database_path = tmp_path / "test.db"
@@ -53,7 +53,11 @@ def test_database_initialize_can_create_schema_for_isolated_repository_tests(
         await database.initialize()
         await database.shutdown()
 
-        assert "library_items" in _table_names(database_path)
-        assert "item_search_fts" in _table_names(database_path)
+        table_names = _table_names(database_path)
+        assert "contexts" in table_names
+        assert "memory_compacts" not in table_names
+        assert "memory_compact_source_refs" not in table_names
+        assert "library_items" not in table_names
+        assert "item_search_fts" not in table_names
 
     anyio.run(scenario)

@@ -91,17 +91,18 @@ hermes mcp add alexandria \
 ### 증상
 
 ```text
-Unknown system error -11, scandir '.next/static/chunks ...'
+정적 검사나 테스트가 실패한다.
 ```
 
 ### 조치
 
-생성 산출물 문제일 수 있으므로 `.next`만 지우고 다시 build한다.
+현재 런타임은 backend/CLI/MCP만 남아 있으므로 backend 검증을 다시 실행한다.
 
 ```bash
-cd frontend
-rm -rf .next
-npm run build
+cd backend
+uv run ruff check .
+uv run pyrefly check
+uv run pytest -q
 ```
 
 ## Protected route가 401

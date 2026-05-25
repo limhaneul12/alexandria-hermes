@@ -24,10 +24,6 @@ from app.librarian.domain.event_enum.collaboration_enums import (
 from app.librarian.domain.repositories.skill_acquisition_job_repository import (
     ISkillAcquisitionJobRepository,
 )
-from app.library.application.skill_service import SkillService
-from app.library.domain.event_enum.item_enums import ItemStatus
-from app.memory.application.context_service import ContextService
-from app.memory.domain.entities.context_read_models import ContextRecord
 from app.shared.exceptions import (
     LibrarianResourceNotFoundError,
     LibrarianValidationError,
@@ -55,8 +51,6 @@ class SkillAcquisitionService:
         repository: ISkillAcquisitionJobRepository,
         provider_repo: ILibrarianProviderRepository,
         secret_repo: IProviderSecretRepository,
-        skill_service: SkillService,
-        context_service: ContextService,
         now_provider: Callable[[], datetime] = now_utc,
     ) -> None:
         """Initialize service dependencies.
@@ -65,15 +59,11 @@ class SkillAcquisitionService:
             repository: Durable job persistence port.
             provider_repo: Provider settings repository.
             secret_repo: Provider secret repository.
-            skill_service: Existing library skill submission use case.
-            context_service: Context Vault service for resume packets.
             now_provider: Clock boundary for deterministic tests.
         """
         self._repository = repository
         self._provider_repo = provider_repo
         self._secret_repo = secret_repo
-        self._skill_service = skill_service
-        self._context_service = context_service
         self._now_provider = now_provider
 
     async def request_job(
@@ -170,7 +160,8 @@ class SkillAcquisitionService:
             job_id: Job identifier.
             result_summary: Sanitized result summary.
             evidence_urls: Optional source URLs.
-            skill_id: Optional persisted skill identifier.
+            skill_id: Deprecated persisted skill identifier; normally None after
+                SQLite skill CRUD removal.
             context_id: Optional persisted resume context identifier.
 
         Returns:
@@ -229,14 +220,14 @@ class SkillAcquisitionService:
         job_id: str,
         artifact: SkillAcquisitionArtifact,
     ) -> SkillAcquisitionJob:
-        """Persist an acquired skill and capture the resume packet for the job.
+        """Complete a job from an acquired skill artifact.
 
         Args:
             job_id: Durable job identifier.
             artifact: Structured acquired skill payload.
 
         Returns:
-            Completed job with persisted skill/context handles.
+            Completed job with no SQLite skill/context record.
         """
         job = await self.get_job(job_id)
         if job.status is SkillAcquisitionJobStatus.COMPLETED:
@@ -248,44 +239,14 @@ class SkillAcquisitionService:
             raise LibrarianValidationError("Skill acquisition job is not completable")
 
         evidence_urls = _clean_items(artifact.evidence_urls)
-        created_by_name = _created_by_name(job, artifact)
-        skill = await self._skill_service.create_skill_by_agent(
-            title=artifact.title,
-            content=artifact.content,
-            summary=artifact.summary,
-            category_id=artifact.category_id,
-            tags=_completion_tags(artifact.tags),
-            purpose=artifact.purpose,
-            input_schema=artifact.input_schema,
-            output_schema=artifact.output_schema,
-            usage_example=artifact.usage_example,
-            required_tools=_clean_items(artifact.required_tools),
-            risk_level=artifact.risk_level,
-            version=artifact.version,
-            created_by_name=created_by_name,
-            activate=artifact.activate,
-            status=artifact.status,
-            evidence_urls=evidence_urls,
-            source_summary=artifact.source_summary,
-        )
-        resume_context = await _capture_resume_packet(
-            context_service=self._context_service,
-            job=job,
-            skill_id=skill["id"],
-            skill_title=skill["title"],
-            artifact=artifact,
-            evidence_urls=evidence_urls,
-        )
         result_summary = _completion_summary(
-            skill_title=skill["title"],
             artifact=artifact,
         )
         completed = await self.complete_job(
             job_id=job_id,
             result_summary=result_summary,
             evidence_urls=evidence_urls,
-            skill_id=skill["id"],
-            context_id=resume_context.id,
+            context_id=None,
         )
         return completed
 
@@ -311,93 +272,13 @@ def _job_id(*, prompt: str, agent_name: str, now: datetime) -> str:
     return f"{_JOB_PREFIX}{digest[:18]}"
 
 
-async def _capture_resume_packet(
-    *,
-    context_service: ContextService,
-    job: SkillAcquisitionJob,
-    skill_id: str,
-    skill_title: str,
-    artifact: SkillAcquisitionArtifact,
-    evidence_urls: list[str],
-) -> ContextRecord:
-    next_steps = _clean_items(artifact.next_steps)
-    if not next_steps:
-        next_steps = [
-            f"Review and apply skill {skill_id} to the original missing capability.",
-            "Archive or supersede the skill later if it is not reusable.",
-        ]
-    context = await context_service.prepare_compact(
-        current_goal=f"Resume after skill acquisition job {job.id}",
-        completed=[
-            f"Original prompt: {job.prompt}",
-            f"Persisted acquired skill: {skill_title} ({skill_id})",
-            f"Source summary: {_optional_text(artifact.source_summary)}",
-            f"Evidence URLs: {_joined_or_not_recorded(evidence_urls)}",
-        ],
-        in_progress=_job_task_lines(job),
-        key_decisions=[
-            "Persisted the acquired capability through the existing agent skill submission path.",
-            f"Skill publication status: {ItemStatus(artifact.status).value}",
-        ],
-        next_actions=next_steps,
-        risks=[
-            "Agent/librarian-authored skills should be reviewed before high-risk use.",
-        ],
-        project=job.project,
-        source_agent=job.agent_name,
-    )
-    return context
-
-
-def _created_by_name(
-    job: SkillAcquisitionJob,
-    artifact: SkillAcquisitionArtifact,
-) -> str:
-    if artifact.created_by_name is not None and artifact.created_by_name.strip():
-        return artifact.created_by_name.strip()
-    return job.agent_name
-
-
-def _completion_tags(tags: list[str]) -> list[str]:
-    return sorted(
-        {
-            "skill-acquisition",
-            *[tag.strip() for tag in tags if tag.strip()],
-        }
-    )
-
-
 def _completion_summary(
     *,
-    skill_title: str,
     artifact: SkillAcquisitionArtifact,
 ) -> str:
     if artifact.source_summary is not None and artifact.source_summary.strip():
         return artifact.source_summary.strip()
-    return f"Acquired skill persisted: {skill_title}"
-
-
-def _job_task_lines(job: SkillAcquisitionJob) -> list[str]:
-    lines: list[str] = []
-    if job.task_summary is not None and job.task_summary.strip():
-        lines.append(f"Task summary: {job.task_summary.strip()}")
-    if job.provider_id is not None:
-        lines.append(f"Provider: {job.provider_id}")
-    if not lines:
-        lines.append("Return to the original task with the persisted skill available.")
-    return lines
-
-
-def _joined_or_not_recorded(values: list[str]) -> str:
-    if not values:
-        return "Not recorded."
-    return ", ".join(values)
-
-
-def _optional_text(value: str | None) -> str:
-    if value is None or not value.strip():
-        return "Not recorded."
-    return value.strip()
+    return f"Acquired skill artifact generated: {artifact.title}"
 
 
 def _clean_items(values: list[str]) -> list[str]:
