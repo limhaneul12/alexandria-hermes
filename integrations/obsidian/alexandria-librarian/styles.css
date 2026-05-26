@@ -10,6 +10,7 @@
 .alexandria-answer,
 .alexandria-delegate,
 .alexandria-history,
+.alexandria-oauth,
 .alexandria-sources {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
@@ -113,4 +114,18 @@
 .alexandria-workflow-form {
   display: grid;
   gap: 8px;
+}
+
+.alexandria-oauth-row {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.alexandria-oauth-provider {
+  width: 100%;
+}
+
+.alexandria-oauth-details {
+  margin-top: 8px;
 }

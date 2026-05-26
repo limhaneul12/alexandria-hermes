@@ -76,6 +76,9 @@ class AlexandriaLibrarianView extends ItemView {
     this.relatedContainer = null;
     this.graphActionContainer = null;
     this.workflowContainer = null;
+    this.oauthContainer = null;
+    this.oauthStartPayload = null;
+    this.oauthStatusPayload = null;
   }
 
   getViewType() {
@@ -117,6 +120,9 @@ class AlexandriaLibrarianView extends ItemView {
     if (this.plugin.settings.showRelatedNotes) {
       this.refreshRelated();
     }
+
+    this.oauthContainer = container.createDiv({ cls: "alexandria-oauth" });
+    this.renderOAuthPanel();
 
     this.historyContainer = container.createDiv({ cls: "alexandria-history" });
     this.renderHistory();
@@ -285,6 +291,170 @@ class AlexandriaLibrarianView extends ItemView {
       return "muted";
     }
     return "default";
+  }
+
+
+  providerReference() {
+    return this.plugin.settings.preferredProviderId || "codex-oauth";
+  }
+
+  renderOAuthPanel() {
+    if (!this.oauthContainer) {
+      return;
+    }
+    this.oauthContainer.empty();
+    this.oauthContainer.createEl("h3", { text: "GPT OAuth connection" });
+    this.oauthContainer.createEl("p", {
+      cls: "alexandria-muted",
+      text:
+        "Connect the GPT OAuth provider from Obsidian. Tokens stay in the local backend, not in the vault.",
+    });
+
+    const providerRow = this.oauthContainer.createDiv({ cls: "alexandria-oauth-row" });
+    providerRow.createEl("label", {
+      cls: "alexandria-muted",
+      text: "Provider id/name",
+    });
+    const providerInput = providerRow.createEl("input", {
+      cls: "alexandria-inline-input alexandria-oauth-provider",
+      attr: { placeholder: "codex-oauth" },
+    });
+    providerInput.value = this.providerReference();
+    providerInput.addEventListener("change", async () => {
+      this.plugin.settings.preferredProviderId = providerInput.value.trim();
+      await this.plugin.saveSettings();
+      this.oauthStartPayload = null;
+      this.oauthStatusPayload = null;
+      this.renderOAuthPanel();
+    });
+
+    const buttonRow = this.oauthContainer.createDiv({ cls: "alexandria-controls" });
+    this.actionButton(buttonRow, "Check OAuth status", () => this.checkOAuthStatus());
+    this.actionButton(buttonRow, "Start OAuth login", () => this.startOAuthLogin());
+    this.actionButton(buttonRow, "Poll after login", () => this.pollOAuthLogin());
+    this.actionButton(buttonRow, "Refresh token", () => this.refreshOAuthToken());
+
+    this.renderOAuthPayloads();
+  }
+
+  renderOAuthPayloads() {
+    if (!this.oauthContainer) {
+      return;
+    }
+    const details = this.oauthContainer.createDiv({ cls: "alexandria-oauth-details" });
+    if (this.oauthStatusPayload) {
+      const status = this.oauthStatusPayload.status || "unknown";
+      this.badge(details, status);
+      details.createEl("p", {
+        cls: "alexandria-muted",
+        text: this.oauthStatusText(this.oauthStatusPayload),
+      });
+    } else {
+      details.createEl("p", {
+        cls: "alexandria-muted",
+        text: "Status not checked yet.",
+      });
+    }
+
+    if (!this.oauthStartPayload) {
+      return;
+    }
+    const startCard = details.createDiv({ cls: "alexandria-action-card" });
+    startCard.createEl("strong", { text: "Device login started" });
+    this.badge(startCard, this.oauthStartPayload.status || "pending");
+    if (this.oauthStartPayload.user_code) {
+      startCard.createEl("p", {
+        text: `Code: ${this.oauthStartPayload.user_code}`,
+      });
+    }
+    if (this.oauthStartPayload.verification_uri) {
+      startCard.createEl("p", {
+        cls: "alexandria-muted",
+        text: this.oauthStartPayload.verification_uri,
+      });
+    }
+    if (this.oauthStartPayload.expires_at) {
+      startCard.createEl("p", {
+        cls: "alexandria-muted",
+        text: `Expires: ${this.oauthStartPayload.expires_at}`,
+      });
+    }
+    const linkRow = startCard.createDiv({ cls: "alexandria-controls" });
+    this.actionButton(linkRow, "Open login page", () => this.openOAuthLoginPage());
+    this.actionButton(linkRow, "Copy code", () => this.copyOAuthUserCode());
+  }
+
+  oauthStatusText(payload) {
+    const connected = payload.connected ? "connected" : "not connected";
+    const expiry = payload.expires_at ? ` · expires ${payload.expires_at}` : "";
+    const refresh = payload.refresh_required ? " · refresh required" : "";
+    const message = payload.message ? ` · ${payload.message}` : "";
+    return `${this.providerReference()}: ${connected}${expiry}${refresh}${message}`;
+  }
+
+  async checkOAuthStatus() {
+    this.setStatus("Checking OAuth status...");
+    this.oauthStatusPayload = await this.getJson(
+      `/settings/connections/${encodeURIComponent(this.providerReference())}/oauth/status`
+    );
+    this.renderOAuthPanel();
+    this.setStatus(this.oauthStatusText(this.oauthStatusPayload));
+  }
+
+  async startOAuthLogin() {
+    this.setStatus("Starting OAuth device login...");
+    this.oauthStartPayload = await this.postJson(
+      `/settings/connections/${encodeURIComponent(this.providerReference())}/oauth/start`,
+      {}
+    );
+    this.oauthStatusPayload = null;
+    this.renderOAuthPanel();
+    this.openOAuthLoginPage();
+    this.setStatus("OAuth started. Complete login, then click Poll after login.");
+  }
+
+  async pollOAuthLogin() {
+    this.setStatus("Polling OAuth login...");
+    this.oauthStatusPayload = await this.postJson(
+      `/settings/connections/${encodeURIComponent(this.providerReference())}/oauth/poll`,
+      {}
+    );
+    this.renderOAuthPanel();
+    this.setStatus(this.oauthStatusText(this.oauthStatusPayload));
+  }
+
+  async refreshOAuthToken() {
+    this.setStatus("Refreshing OAuth token if needed...");
+    this.oauthStatusPayload = await this.postJson(
+      `/settings/connections/${encodeURIComponent(this.providerReference())}/oauth/refresh`,
+      {}
+    );
+    this.renderOAuthPanel();
+    this.setStatus(this.oauthStatusText(this.oauthStatusPayload));
+  }
+
+  openOAuthLoginPage() {
+    const payload = this.oauthStartPayload || {};
+    const url = payload.verification_uri_complete || payload.verification_uri;
+    if (!url) {
+      new Notice("Start OAuth login first.");
+      return;
+    }
+    window.open(url, "_blank");
+  }
+
+  async copyOAuthUserCode() {
+    const code = this.oauthStartPayload?.user_code;
+    if (!code) {
+      new Notice("Start OAuth login first.");
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      new Notice(`OAuth code: ${code}`);
+      return;
+    }
+    await navigator.clipboard.writeText(code);
+    new Notice("OAuth user code copied.");
   }
 
   activeView() {

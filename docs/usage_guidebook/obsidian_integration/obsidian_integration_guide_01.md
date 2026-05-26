@@ -255,7 +255,7 @@ uv run alexandria-hermes obsidian install-local \
 
 Use `copy` for normal installs so plugin settings/data stay in the vault copy instead of the repo. Use `symlink` only when developing the plugin.
 
-Then enable **Alexandria Librarian** from Obsidian Community plugins and run command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, and transcript preference to the local backend.
+Then enable **Alexandria Librarian** from Obsidian Community plugins and run command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, and transcript preference to the local backend. It also has a **GPT OAuth connection** card for checking status, starting the device login, opening the verification page, copying the user code, polling after login, and refreshing the backend token.
 
 The side pane now behaves like a small local chat/workflow console:
 
@@ -305,6 +305,15 @@ POST /obsidian/librarian/workflows/{thread_id}/cancel
 ```
 
 The backend uses `StateGraph` nodes (`collect_context -> plan_actions -> approval_gate -> execute_approved_actions -> finalize`), pauses with `interrupt(...)`, and resumes with `Command(resume={"approved_actions": [...]})`. LangGraph checkpoints persist in `SERVICE_OBSIDIAN_LIBRARIAN_LANGGRAPH_CHECKPOINT_PATH` (default `./data/obsidian_librarian_langgraph.sqlite`), while `obsidian_librarian_workflows` stores API-visible state. Only approved actions are written to Obsidian. Approving `ask_oauth_librarian` calls the backend GPT/OAuth librarian provider/profile through `HermesCollaborationService`; tokens remain in backend provider storage and are never written to the vault or plugin settings. Missing provider/profile settings return `GUIDANCE_ONLY` instead of failing the workflow.
+
+To connect from Obsidian, bootstrap the default provider/profile set once if needed:
+
+```bash
+cd backend
+uv run alexandria-hermes librarian bootstrap-obsidian-oauth --provider-name codex-oauth
+```
+
+Set the plugin **Operator API key** to the local backend `ALEXANDRIA_OPERATOR_API_KEY` first; OAuth lifecycle endpoints are protected. Then use the side-pane **GPT OAuth connection** card: **Start OAuth login** -> finish browser login -> **Poll after login**.
 
 ## 10. Librarian chat model
 
