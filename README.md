@@ -85,7 +85,7 @@ uv run alexandria-hermes obsidian install-local \
 
 `copy` is the default and avoids Obsidian writing plugin `data.json` into the repo. Use `--plugin-install-mode symlink` only for plugin development.
 
-Then open Obsidian, enable Community plugins, enable **Alexandria Librarian**, and run the command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, transcript preference, optional provider/profile ids, and explicit OAuth-delegate flag to the local backend. The pane also includes a **GPT OAuth connection** card for status, device-login start, browser verification, polling, and refresh; OAuth tokens remain in backend provider storage, not in Obsidian.
+Then open Obsidian, enable Community plugins, enable **Alexandria Librarian**, and run the command palette action `Ask Alexandria Librarian`. The pane now defaults to **Whole vault** scope so the librarian searches indexed memory, skills, prompts, plans, and context notes before citing source notes. Switch to active-note or selection scope only when the current note should be pinned as extra context. The pane sends the question, project, scope-derived context, note-type filter, source count, transcript preference, optional provider/profile ids, and explicit OAuth-delegate flag to the local backend. It also includes a **GPT OAuth connection** card for status, device-login start, browser verification, polling, and refresh; OAuth tokens remain in backend provider storage, not in Obsidian.
 
 ## Canonical memory, skills, and prompts
 

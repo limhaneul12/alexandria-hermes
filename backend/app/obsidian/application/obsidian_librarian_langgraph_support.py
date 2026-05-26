@@ -14,6 +14,14 @@ from app.librarian.domain.types.hermes_collaboration_payload_types import (
     HermesLibrarianAskPayload,
 )
 from app.obsidian.application.obsidian_graph_relations import source_refs_from_json
+from app.obsidian.application.obsidian_librarian_state_access import (
+    state_int as _state_int,
+    state_json_object_list as _state_json_object_list,
+    state_note_types as _state_note_types,
+    state_object as _state_object,
+    state_optional_string as _state_optional_string,
+    state_string as _state_string,
+)
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
     ObsidianSaveNote,
@@ -54,6 +62,7 @@ class ObsidianLibrarianGraphState(TypedDict, total=False):
     selection: str | None
     project: str | None
     preferred_alexandria_types: list[str]
+    max_source_refs: int
     delegate_requested: bool
     provider_id: str | None
     profile_id: str | None
@@ -91,6 +100,7 @@ def _initial_graph_state(
         "preferred_alexandria_types": [
             note_type.value for note_type in ask.preferred_alexandria_types
         ],
+        "max_source_refs": ask.max_source_refs,
         "delegate_requested": ask.delegate_to_librarian,
         "provider_id": ask.provider_id,
         "profile_id": ask.profile_id,
@@ -194,7 +204,8 @@ def _ask_from_state(state: ObsidianLibrarianGraphState) -> ObsidianLibrarianAsk:
         active_note_path=_state_optional_string(state, "active_note_path"),
         selection=_state_optional_string(state, "selection"),
         project=_state_optional_string(state, "project"),
-        preferred_alexandria_types=[],
+        preferred_alexandria_types=_state_note_types(state),
+        max_source_refs=_state_int(state, "max_source_refs", 12),
         delegate_to_librarian=bool(state.get("delegate_requested")),
         provider_id=_state_optional_string(state, "provider_id"),
         profile_id=_state_optional_string(state, "profile_id"),
@@ -395,49 +406,6 @@ def _append_delegate_summary(
             "\n\n".join(summaries),
         ]
     )
-
-
-def _state_string(state: ObsidianLibrarianGraphState, key: str) -> str:
-    """Read a string state field or return an empty string."""
-    value = state.get(key)
-    return value if isinstance(value, str) else ""
-
-
-def _state_optional_string(
-    state: ObsidianLibrarianGraphState,
-    key: str,
-) -> str | None:
-    """Read a non-empty optional string state field."""
-    value = state.get(key)
-    return value if isinstance(value, str) and value else None
-
-
-def _state_object(state: ObsidianLibrarianGraphState, key: str) -> JSONObject:
-    """Read a JSON object state field."""
-    value = state.get(key)
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _state_list(state: ObsidianLibrarianGraphState, key: str) -> list[JSONValue]:
-    """Read a JSON list state field."""
-    value = state.get(key)
-    return list(value) if isinstance(value, list) else []
-
-
-def _state_string_list(
-    state: ObsidianLibrarianGraphState,
-    key: str,
-) -> list[str]:
-    """Read a string list state field."""
-    return [item for item in _state_list(state, key) if isinstance(item, str)]
-
-
-def _state_json_object_list(
-    state: ObsidianLibrarianGraphState,
-    key: str,
-) -> list[JSONObject]:
-    """Read a JSON object list state field."""
-    return [dict(item) for item in _state_list(state, key) if isinstance(item, dict)]
 
 
 def _action(action_id: str, label: str, action_type: str) -> JSONObject:

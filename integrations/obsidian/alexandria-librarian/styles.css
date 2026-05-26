@@ -7,6 +7,7 @@
 }
 
 .alexandria-card,
+.alexandria-ask-card,
 .alexandria-answer,
 .alexandria-delegate,
 .alexandria-history,
@@ -20,7 +21,7 @@
 
 .alexandria-query {
   box-sizing: border-box;
-  margin: 12px 0;
+  margin: 8px 0 12px;
   min-height: 120px;
   width: 100%;
 }
@@ -128,4 +129,29 @@
 
 .alexandria-oauth-details {
   margin-top: 8px;
+}
+
+.alexandria-ask-card {
+  background: var(--background-primary-alt);
+}
+
+.alexandria-control-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  margin: 8px 0;
+}
+
+.alexandria-field {
+  display: grid;
+  gap: 4px;
+}
+
+.alexandria-field span {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.alexandria-field select {
+  width: 100%;
 }

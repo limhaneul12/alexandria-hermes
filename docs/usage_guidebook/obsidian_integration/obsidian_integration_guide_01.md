@@ -255,7 +255,7 @@ uv run alexandria-hermes obsidian install-local \
 
 Use `copy` for normal installs so plugin settings/data stay in the vault copy instead of the repo. Use `symlink` only when developing the plugin.
 
-Then enable **Alexandria Librarian** from Obsidian Community plugins and run command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, and transcript preference to the local backend. It also has a **GPT OAuth connection** card for checking status, starting the device login, opening the verification page, copying the user code, polling after login, and refreshing the backend token.
+Then enable **Alexandria Librarian** from Obsidian Community plugins and run command palette action `Ask Alexandria Librarian`. The pane defaults to **Whole vault** scope: it searches indexed memory, skills, prompts, plans, and context notes, then cites the strongest source notes. Use active-note or selection scope only when the current note should be pinned as extra context. The pane sends the question, project, scope-derived context, note-type filter, source count, and transcript preference to the local backend. It also has a **GPT OAuth connection** card for checking status, starting the device login, opening the verification page, copying the user code, polling after login, and refreshing the backend token.
 
 The side pane now behaves like a small local chat/workflow console:
 

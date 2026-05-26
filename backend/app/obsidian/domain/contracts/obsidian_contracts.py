@@ -95,6 +95,7 @@ class ObsidianLibrarianAsk:
     selection: str | None = None
     project: str | None = None
     preferred_alexandria_types: list[AlexandriaNoteType] = field(default_factory=list)
+    max_source_refs: int = 12
     save_transcript: bool = False
     delegate_to_librarian: bool = False
     provider_id: str | None = None

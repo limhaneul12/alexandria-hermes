@@ -21,6 +21,9 @@ const DEFAULT_SETTINGS = {
   useLangGraphWorkflow: true,
   showRelatedNotes: true,
   autoRefreshRelated: true,
+  contextScope: "vault",
+  sourceLimit: 12,
+  noteTypeFilter: "",
 };
 
 module.exports = class AlexandriaLibrarianPlugin extends Plugin {
@@ -107,32 +110,76 @@ class AlexandriaLibrarianView extends ItemView {
     container.createEl("h2", { text: "Alexandria Librarian" });
     container.createEl("p", {
       cls: "alexandria-muted",
-      text: "Ask against the local Alexandria-Hermes Obsidian vault index.",
+      text:
+        "Default mode scans the whole indexed Alexandria vault, then cites the strongest notes.",
     });
 
     const activeInfo = container.createDiv({ cls: "alexandria-card" });
-    activeInfo.createEl("strong", { text: "Active note" });
+    activeInfo.createEl("strong", { text: "Current context" });
     activeInfo.createEl("div", {
       text: this.activePath() || "No active Markdown note",
     });
-
-    this.relatedContainer = container.createDiv({ cls: "alexandria-related" });
-    if (this.plugin.settings.showRelatedNotes) {
-      this.refreshRelated();
-    }
-
-    this.oauthContainer = container.createDiv({ cls: "alexandria-oauth" });
-    this.renderOAuthPanel();
-
-    this.historyContainer = container.createDiv({ cls: "alexandria-history" });
-    this.renderHistory();
-
-    const queryInput = container.createEl("textarea", {
-      cls: "alexandria-query",
-      attr: { rows: "6", placeholder: "Ask the librarian..." },
+    activeInfo.createEl("p", {
+      cls: "alexandria-muted",
+      text:
+        "Whole-vault mode does not depend on the active note. Switch scope only when you want note/selection context included.",
     });
 
-    const controls = container.createDiv({ cls: "alexandria-controls" });
+    const askCard = container.createDiv({ cls: "alexandria-ask-card" });
+    askCard.createEl("h3", { text: "Ask the whole vault" });
+    const queryInput = askCard.createEl("textarea", {
+      cls: "alexandria-query",
+      attr: {
+        rows: "6",
+        placeholder: "Ask across memory, skills, prompts, plans, and notes...",
+      },
+    });
+
+    const scopeGrid = askCard.createDiv({ cls: "alexandria-control-grid" });
+    const scopeLabel = scopeGrid.createEl("label", { cls: "alexandria-field" });
+    scopeLabel.createSpan({ text: "Scope" });
+    const scopeSelect = scopeLabel.createEl("select");
+    this.selectOption(scopeSelect, "vault", "Whole vault");
+    this.selectOption(scopeSelect, "active", "Active note + vault");
+    this.selectOption(scopeSelect, "selection", "Selection + vault");
+    scopeSelect.value = this.contextScope();
+    scopeSelect.addEventListener("change", async () => {
+      this.plugin.settings.contextScope = scopeSelect.value;
+      await this.plugin.saveSettings();
+      this.renderScopeHint(scopeHint, scopeSelect.value);
+    });
+
+    const typeLabel = scopeGrid.createEl("label", { cls: "alexandria-field" });
+    typeLabel.createSpan({ text: "Note type" });
+    const typeSelect = typeLabel.createEl("select");
+    this.selectOption(typeSelect, "", "All note types");
+    this.selectOption(typeSelect, "context", "Context");
+    this.selectOption(typeSelect, "memory_compact", "Memory compacts");
+    this.selectOption(typeSelect, "skill", "Skills");
+    this.selectOption(typeSelect, "prompt", "Prompts");
+    this.selectOption(typeSelect, "job_plan", "Job plans");
+    typeSelect.value = this.plugin.settings.noteTypeFilter || "";
+    typeSelect.addEventListener("change", async () => {
+      this.plugin.settings.noteTypeFilter = typeSelect.value;
+      await this.plugin.saveSettings();
+    });
+
+    const limitLabel = scopeGrid.createEl("label", { cls: "alexandria-field" });
+    limitLabel.createSpan({ text: "Sources" });
+    const limitSelect = limitLabel.createEl("select");
+    for (const value of [8, 12, 20, 30]) {
+      this.selectOption(limitSelect, String(value), String(value));
+    }
+    limitSelect.value = String(this.sourceLimit());
+    limitSelect.addEventListener("change", async () => {
+      this.plugin.settings.sourceLimit = Number(limitSelect.value) || 12;
+      await this.plugin.saveSettings();
+    });
+
+    const scopeHint = askCard.createDiv({ cls: "alexandria-muted" });
+    this.renderScopeHint(scopeHint, scopeSelect.value);
+
+    const controls = askCard.createDiv({ cls: "alexandria-controls" });
     const saveLabel = controls.createEl("label", { cls: "alexandria-checkbox" });
     const saveInput = saveLabel.createEl("input", { type: "checkbox" });
     saveInput.checked = this.plugin.settings.autoSaveTranscripts;
@@ -140,30 +187,28 @@ class AlexandriaLibrarianView extends ItemView {
 
     const delegateLabel = controls.createEl("label", { cls: "alexandria-checkbox" });
     const delegateInput = delegateLabel.createEl("input", { type: "checkbox" });
+    delegateInput.checked = this.oauthStatusPayload?.connected === true;
     delegateLabel.createSpan({ text: "Ask OAuth librarian" });
 
     const workflowLabel = controls.createEl("label", { cls: "alexandria-checkbox" });
     const workflowInput = workflowLabel.createEl("input", { type: "checkbox" });
     workflowInput.checked = this.plugin.settings.useLangGraphWorkflow;
-    workflowLabel.createSpan({ text: "Use LangGraph approval" });
+    workflowLabel.createSpan({ text: "Approval workflow" });
 
     const providerInput = controls.createEl("input", {
       cls: "alexandria-inline-input",
-      attr: { placeholder: "provider id or name" },
+      attr: { placeholder: "provider id/name" },
     });
-    providerInput.value = this.plugin.settings.preferredProviderId || "";
+    providerInput.value = this.providerReference();
 
     const profileInput = controls.createEl("input", {
       cls: "alexandria-inline-input",
-      attr: { placeholder: "profile id or name" },
+      attr: { placeholder: "profile id/name" },
     });
-    profileInput.value = this.plugin.settings.preferredProfileId || "";
-
-    const refreshButton = controls.createEl("button", { text: "Refresh related" });
-    refreshButton.addEventListener("click", async () => this.refreshRelated());
+    profileInput.value = this.plugin.settings.preferredProfileId || "research-critic";
 
     const askButton = controls.createEl("button", {
-      text: "Ask",
+      text: "Ask vault",
       cls: "mod-cta",
     });
     askButton.addEventListener("click", async () => {
@@ -173,8 +218,15 @@ class AlexandriaLibrarianView extends ItemView {
         providerId: providerInput.value.trim(),
         profileId: profileInput.value.trim(),
         useWorkflow: workflowInput.checked,
+        contextScope: scopeSelect.value,
+        noteTypeFilter: typeSelect.value,
+        sourceLimit: Number(limitSelect.value) || 12,
       });
     });
+
+    const utilityActions = askCard.createDiv({ cls: "alexandria-actions" });
+    this.actionButton(utilityActions, "Refresh related", () => this.refreshRelated());
+    this.actionButton(utilityActions, "Check OAuth", () => this.checkOAuthStatus());
 
     this.statusEl = container.createDiv({ cls: "alexandria-status" });
     this.answerContainer = container.createDiv({ cls: "alexandria-answer" });
@@ -186,13 +238,59 @@ class AlexandriaLibrarianView extends ItemView {
     const actions = container.createDiv({ cls: "alexandria-actions" });
     this.actionButton(actions, "Append to current note", () => this.appendAnswer());
     this.actionButton(actions, "Link sources to current note", () => this.appendGraphLinks());
-    this.actionButton(actions, "Create context note", () =>
-      this.createNote("context")
-    );
+    this.actionButton(actions, "Create context note", () => this.createNote("context"));
     this.actionButton(actions, "Create skill draft", () => this.createNote("skill"));
-    this.actionButton(actions, "Create prompt template", () =>
-      this.createNote("prompt")
-    );
+    this.actionButton(actions, "Create prompt template", () => this.createNote("prompt"));
+
+    this.relatedContainer = container.createDiv({ cls: "alexandria-related" });
+    if (this.plugin.settings.showRelatedNotes) {
+      this.refreshRelated();
+    }
+
+    this.historyContainer = container.createDiv({ cls: "alexandria-history" });
+    this.renderHistory();
+
+    this.oauthContainer = container.createDiv({ cls: "alexandria-oauth" });
+    this.renderOAuthPanel();
+  }
+
+  selectOption(select, value, text) {
+    const option = select.createEl("option", { text });
+    option.value = value;
+    return option;
+  }
+
+  contextScope() {
+    const scope = this.plugin.settings.contextScope || "vault";
+    return ["vault", "active", "selection"].includes(scope) ? scope : "vault";
+  }
+
+  sourceLimit() {
+    const limit = Number(this.plugin.settings.sourceLimit) || 12;
+    return Math.min(Math.max(limit, 1), 50);
+  }
+
+  typeFilters(noteTypeFilter) {
+    return noteTypeFilter ? [noteTypeFilter] : [];
+  }
+
+  activePathForScope(scope) {
+    return scope === "active" || scope === "selection" ? this.activePath() : null;
+  }
+
+  selectionForScope(scope) {
+    return scope === "selection" ? this.selectionText() : null;
+  }
+
+  renderScopeHint(element, scope) {
+    element.empty();
+    const text =
+      scope === "active"
+        ? "The librarian searches the whole vault and also pins the active note as context."
+        : scope === "selection"
+          ? "The librarian searches the whole vault using the selected text as extra context."
+          : "The librarian searches the whole indexed vault without requiring an active note.";
+    element.setText(text);
   }
 
   actionButton(parent, text, handler) {
@@ -487,9 +585,11 @@ class AlexandriaLibrarianView extends ItemView {
     }
     const response = await this.postJson("/obsidian/librarian/ask", {
       query,
-      active_note_path: this.activePath(),
-      selection: this.selectionText(),
+      active_note_path: this.activePathForScope(options.contextScope),
+      selection: this.selectionForScope(options.contextScope),
       project: this.plugin.settings.defaultProject || null,
+      preferred_alexandria_types: this.typeFilters(options.noteTypeFilter),
+      max_source_refs: options.sourceLimit || this.sourceLimit(),
       save_transcript: options.saveTranscript,
       delegate_to_librarian: options.delegateToLibrarian,
       provider_id: options.providerId || null,
@@ -508,9 +608,11 @@ class AlexandriaLibrarianView extends ItemView {
   async startWorkflow(query, options) {
     const workflow = await this.postJson("/obsidian/librarian/workflows", {
       query,
-      active_note_path: this.activePath(),
-      selection: this.selectionText(),
+      active_note_path: this.activePathForScope(options.contextScope),
+      selection: this.selectionForScope(options.contextScope),
       project: this.plugin.settings.defaultProject || null,
+      preferred_alexandria_types: this.typeFilters(options.noteTypeFilter),
+      max_source_refs: options.sourceLimit || this.sourceLimit(),
       save_transcript: false,
       delegate_to_librarian: options.delegateToLibrarian,
       provider_id: options.providerId || null,
@@ -989,7 +1091,7 @@ class AlexandriaLibrarianSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Operator API key")
       .setDesc(
-        "Optional local Obsidian setting. Leave blank for read-only librarian chat."
+        "Required for OAuth/provider operations. Tokens still stay in the backend; this key only authorizes local admin calls."
       )
       .addText((text) =>
         text
@@ -1036,6 +1138,55 @@ class AlexandriaLibrarianSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.preferredProfileId)
           .onChange(async (value) => {
             this.plugin.settings.preferredProfileId = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Default librarian scope")
+      .setDesc("Whole vault is the default librarian mode; active note/selection only add extra context.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("vault", "Whole vault")
+          .addOption("active", "Active note + vault")
+          .addOption("selection", "Selection + vault")
+          .setValue(this.plugin.settings.contextScope || DEFAULT_SETTINGS.contextScope)
+          .onChange(async (value) => {
+            this.plugin.settings.contextScope = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Default source count")
+      .setDesc("Maximum source notes the librarian can cite from the vault.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("8", "8")
+          .addOption("12", "12")
+          .addOption("20", "20")
+          .addOption("30", "30")
+          .setValue(String(this.plugin.settings.sourceLimit || DEFAULT_SETTINGS.sourceLimit))
+          .onChange(async (value) => {
+            this.plugin.settings.sourceLimit = Number(value) || DEFAULT_SETTINGS.sourceLimit;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Default note type filter")
+      .setDesc("Optional narrow filter. Leave as all types for normal librarian use.")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("", "All note types")
+          .addOption("context", "Context")
+          .addOption("memory_compact", "Memory compacts")
+          .addOption("skill", "Skills")
+          .addOption("prompt", "Prompts")
+          .addOption("job_plan", "Job plans")
+          .setValue(this.plugin.settings.noteTypeFilter || DEFAULT_SETTINGS.noteTypeFilter)
+          .onChange(async (value) => {
+            this.plugin.settings.noteTypeFilter = value;
             await this.plugin.saveSettings();
           })
       );

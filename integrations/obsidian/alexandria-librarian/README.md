@@ -22,8 +22,10 @@ Minimal Obsidian community-plugin bridge for the local Alexandria-Hermes backend
 ## What it does
 
 - Opens a right-side `ItemView` chat pane.
+- Defaults to **Whole vault** scope: the librarian searches indexed memory, skills, prompts, plans, and context notes before citing source notes.
+- Can switch to active-note or selection context when the current note should be pinned.
+- Lets you choose note type filters and source count from the pane.
 - Keeps a local in-pane conversation history for the current Obsidian session.
-- Reads the active Markdown note path and selected text.
 - Calls `POST /obsidian/librarian/workflows` by default for LangGraph approval, or `POST /obsidian/librarian/ask` when workflow mode is disabled.
 - Renders the Markdown answer, source wikilinks, workflow status badges, and a separate GPT OAuth librarian result panel.
 - Provides an in-pane GPT OAuth connection card: check status, start device login, open the verification page, copy the user code, poll after login, and refresh the backend token.

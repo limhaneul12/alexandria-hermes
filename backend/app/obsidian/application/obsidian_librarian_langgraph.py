@@ -30,9 +30,11 @@ from app.obsidian.application.obsidian_librarian_langgraph_support import (
     _state_object as state_object,
     _state_optional_string as state_optional_string,
     _state_string as state_string,
-    _state_string_list as state_string_list,
     _transcript_body as transcript_body,
     _workflow_snapshot_from_state as workflow_snapshot_from_state,
+)
+from app.obsidian.application.obsidian_librarian_state_access import (
+    state_string_list,
 )
 from app.obsidian.application.obsidian_note_templates import conversation_id
 from app.obsidian.application.obsidian_service import ObsidianService
@@ -173,6 +175,7 @@ class ObsidianLibrarianLangGraphExecutor:
                 selection=ask.selection,
                 project=ask.project,
                 preferred_alexandria_types=ask.preferred_alexandria_types,
+                max_source_refs=ask.max_source_refs,
                 save_transcript=False,
                 delegate_to_librarian=ask.delegate_to_librarian,
                 provider_id=ask.provider_id,

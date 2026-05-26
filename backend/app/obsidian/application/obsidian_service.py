@@ -360,7 +360,7 @@ class ObsidianService:
                 for part in [payload.query, payload.selection]
                 if part is not None and part.strip()
             ),
-            limit=5,
+            limit=payload.max_source_refs,
             alexandria_type=preferred,
             project=payload.project,
         )

@@ -278,6 +278,7 @@ class ObsidianLibrarianAskRequest(StrictSchemaModel):
     selection: str | None = None
     project: str | None = None
     preferred_alexandria_types: list[AlexandriaNoteType] = Field(default_factory=list)
+    max_source_refs: int = Field(default=12, ge=1, le=50)
     save_transcript: bool = False
     delegate_to_librarian: bool = False
     provider_id: str | None = None
@@ -297,6 +298,7 @@ class ObsidianLibrarianAskRequest(StrictSchemaModel):
             preferred_alexandria_types=[
                 _note_type(note_type) for note_type in self.preferred_alexandria_types
             ],
+            max_source_refs=self.max_source_refs,
             save_transcript=self.save_transcript,
             delegate_to_librarian=self.delegate_to_librarian,
             provider_id=self.provider_id,

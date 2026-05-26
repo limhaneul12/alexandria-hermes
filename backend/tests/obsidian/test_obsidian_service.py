@@ -435,6 +435,38 @@ def test_obsidian_librarian_ask_uses_active_note_as_source(tmp_path: Path) -> No
     anyio.run(scenario)
 
 
+def test_obsidian_librarian_ask_respects_max_source_refs(tmp_path: Path) -> None:
+    """Whole-vault librarian asks should be able to retrieve more than the old tiny UI limit."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            for index in range(6):
+                await service.save_note(
+                    ObsidianSaveNote(
+                        title=f"Vault Scope Source {index}",
+                        body="# Vault Scope\n\nwhole vault librarian scope marker",
+                        alexandria_type=AlexandriaNoteType.CONTEXT,
+                        note_id=f"ctx_vault_scope_{index}",
+                        project="alexandria-hermes",
+                    )
+                )
+            response = await service.ask_librarian(
+                ObsidianLibrarianAsk(
+                    query="whole vault librarian scope marker",
+                    project="alexandria-hermes",
+                    max_source_refs=4,
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        assert len(response["source_refs"]) == 4
+
+    anyio.run(scenario)
+
+
 def test_obsidian_librarian_ask_can_save_transcript(tmp_path: Path) -> None:
     """The Obsidian librarian adapter should return sources and save transcript notes."""
 
