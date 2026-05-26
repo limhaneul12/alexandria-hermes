@@ -22,13 +22,14 @@ Minimal Obsidian community-plugin bridge for the local Alexandria-Hermes backend
 ## What it does
 
 - Opens a right-side `ItemView` chat pane.
+- Keeps a local in-pane conversation history for the current Obsidian session.
 - Reads the active Markdown note path and selected text.
 - Calls `POST /obsidian/librarian/workflows` by default for LangGraph approval, or `POST /obsidian/librarian/ask` when workflow mode is disabled.
-- Renders the Markdown answer and source wikilinks.
+- Renders the Markdown answer, source wikilinks, workflow status badges, and a separate GPT OAuth librarian result panel.
 - Shows related notes from `GET /obsidian/notes/by-path/related`.
 - Can append the answer to the current note.
 - Can add managed Alexandria source wikilinks to the current note.
-- Can create context or skill draft notes through `POST /obsidian/notes`.
-- Can resume approved LangGraph actions, including GPT/OAuth librarian delegation, without storing OAuth tokens.
+- Can create context, skill draft, or prompt template notes through `POST /obsidian/notes`.
+- Can resume approved LangGraph action cards, including GPT/OAuth librarian delegation, without storing OAuth tokens.
 
 No npm build step is required; `main.js`, `manifest.json`, and `styles.css` are loaded directly by Obsidian.

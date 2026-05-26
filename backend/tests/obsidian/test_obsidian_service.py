@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import anyio
+from app.memory.application.memory_compact_service import MemoryCompactService
+from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
+from app.memory.domain.repositories.memory_compact_repository import (
+    MemoryCompactCreate,
+    MemoryCompactSourceRefCreate,
+)
+from app.memory.infrastructure.repositories.memory_compact_repository import (
+    ObsidianMemoryCompactRepository,
+)
 from app.obsidian.application.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
@@ -142,6 +152,148 @@ def test_obsidian_save_note_writes_markdown_and_reindexes(tmp_path: Path) -> Non
     anyio.run(scenario)
 
 
+def test_obsidian_roundtrips_memory_skill_prompt_after_sqlite_rebuild(
+    tmp_path: Path,
+) -> None:
+    """Canonical artifact notes should survive SQLite cache deletion/rebuild."""
+
+    async def scenario() -> None:
+        vault_path = tmp_path / "vault"
+        memory_service = MemoryCompactService(
+            repository=ObsidianMemoryCompactRepository(
+                vault_path=vault_path,
+                relative_dir="Alexandria/Memory Compacts",
+            )
+        )
+        compact = await memory_service.create(
+            MemoryCompactCreate(
+                project="alexandria-hermes",
+                covered_from=datetime(2026, 5, 25, tzinfo=UTC),
+                covered_to=datetime(2026, 5, 26, tzinfo=UTC),
+                markdown_body=(
+                    "# Current Memory Compact\n\n"
+                    "Obsidian canonical memory survives SQLite rebuild."
+                ),
+                status=MemoryCompactStatus.CURRENT,
+                source_refs=[
+                    MemoryCompactSourceRefCreate(
+                        source_type="context",
+                        source_id="ctx-storage",
+                        title="Storage decision",
+                        detail_path="Alexandria/Contexts/Decisions/Storage.md",
+                    )
+                ],
+            )
+        )
+
+        first_database = Database(
+            database_url=_database_url(tmp_path / "first.db"),
+            create_schema=True,
+        )
+        await first_database.initialize()
+        first_session = first_database.session()
+        try:
+            first_service = ObsidianService(
+                repository=SqlAlchemyObsidianIndexRepository(session=first_session),
+                vault_path=str(vault_path),
+                alexandria_root="Alexandria",
+            )
+            skill = await first_service.save_note(
+                ObsidianSaveNote(
+                    title="Browser Verification Skill",
+                    body=(
+                        "# Browser Verification Skill\n\n"
+                        "Use deterministic browser checks and bounded waits."
+                    ),
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_browser_verification",
+                    project="alexandria-hermes",
+                    tags=["skill", "verification"],
+                    source="import",
+                    frontmatter={
+                        "artifact_kind": "skill",
+                        "skill_status": "draft",
+                    },
+                )
+            )
+            prompt = await first_service.save_note(
+                ObsidianSaveNote(
+                    title="Release Review Prompt",
+                    body=(
+                        "# Release Review Prompt\n\n"
+                        "Check changelog, tests, and rollback notes before release."
+                    ),
+                    alexandria_type=AlexandriaNoteType.PROMPT,
+                    note_id="prompt_release_review",
+                    project="alexandria-hermes",
+                    tags=["prompt", "release"],
+                    source="import",
+                    frontmatter={
+                        "artifact_kind": "prompt",
+                        "prompt_kind": "template",
+                    },
+                )
+            )
+        finally:
+            await first_session.close()
+            await first_database.shutdown()
+
+        rebuild_database = Database(
+            database_url=_database_url(tmp_path / "rebuilt.db"),
+            create_schema=True,
+        )
+        await rebuild_database.initialize()
+        rebuild_session = rebuild_database.session()
+        try:
+            rebuilt_service = ObsidianService(
+                repository=SqlAlchemyObsidianIndexRepository(session=rebuild_session),
+                vault_path=str(vault_path),
+                alexandria_root="Alexandria",
+            )
+            reindex = await rebuilt_service.reindex()
+            memory_hits = await rebuilt_service.search(
+                ObsidianSearchQuery(
+                    query="canonical memory survives",
+                    alexandria_type=AlexandriaNoteType.MEMORY_COMPACT,
+                    project="alexandria-hermes",
+                ),
+                refresh=False,
+            )
+            skill_hits = await rebuilt_service.search(
+                ObsidianSearchQuery(
+                    query="deterministic browser checks",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                ),
+                refresh=False,
+            )
+            prompt_hits = await rebuilt_service.search(
+                ObsidianSearchQuery(
+                    query="rollback notes before release",
+                    alexandria_type=AlexandriaNoteType.PROMPT,
+                ),
+                refresh=False,
+            )
+            memory_note = await rebuilt_service.read_note_by_path(
+                f"Alexandria/Memory Compacts/{compact.id}.md"
+            )
+            skill_note = await rebuilt_service.read_note(skill.note_id)
+            prompt_note = await rebuilt_service.read_note(prompt.note_id)
+        finally:
+            await rebuild_session.close()
+            await rebuild_database.shutdown()
+
+        assert reindex.files_indexed == 3
+        assert memory_hits[0].note.note_id == compact.id
+        assert skill_hits[0].note.note_id == "skill_browser_verification"
+        assert prompt_hits[0].note.note_id == "prompt_release_review"
+        assert memory_note.alexandria_type is AlexandriaNoteType.MEMORY_COMPACT
+        assert memory_note.body.startswith("# Current Memory Compact")
+        assert skill_note.frontmatter["skill_status"] == "draft"
+        assert prompt_note.frontmatter["prompt_kind"] == "template"
+
+    anyio.run(scenario)
+
+
 def test_obsidian_save_existing_default_path_reuses_note_id(tmp_path: Path) -> None:
     """Saving the same generated path twice should update instead of path-conflict."""
 
@@ -204,6 +356,42 @@ def test_obsidian_read_rejects_indexed_note_missing_frontmatter(tmp_path: Path) 
             await database.shutdown()
 
         assert "missing Alexandria frontmatter" in message
+
+    anyio.run(scenario)
+
+
+def test_obsidian_save_note_redacts_secret_like_frontmatter_values(
+    tmp_path: Path,
+) -> None:
+    """Secret-like frontmatter strings should not be written raw."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            saved = await service.save_note(
+                ObsidianSaveNote(
+                    title="Frontmatter Redaction",
+                    body="# Frontmatter Redaction\n\nSafe body.",
+                    alexandria_type=AlexandriaNoteType.PROMPT,
+                    note_id="prompt_frontmatter_redaction",
+                    frontmatter={
+                        "prompt_kind": "template",
+                        "metadata": {
+                            "api_key": "sk-" + ("x" * 60),
+                        },
+                    },
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        note_text = (tmp_path / "vault" / saved.relative_path).read_text(
+            encoding="utf-8"
+        )
+        assert "sk-" + ("x" * 60) not in note_text
+        assert "<REDACTED_LONG_VALUE>" in note_text
+        assert "potential secret-like content was redacted" in note_text
 
     anyio.run(scenario)
 

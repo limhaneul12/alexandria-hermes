@@ -135,6 +135,12 @@ def test_cli_obsidian_save_reads_markdown_body(tmp_path: Path) -> None:
             "Alexandria/Skills/Durable Skill.md",
             "--tag",
             "skill",
+            "--status",
+            "draft",
+            "--source",
+            "migration",
+            "--frontmatter-json",
+            '{"skill_status":"draft"}',
         ],
         transport=transport,
         stdout=stdout,
@@ -147,6 +153,87 @@ def test_cli_obsidian_save_reads_markdown_body(tmp_path: Path) -> None:
     assert request_body["alexandria_type"] == "skill"
     assert request_body["id"] == "skill_1"
     assert request_body["tags"] == ["skill"]
+    assert request_body["status"] == "draft"
+    assert request_body["source"] == "migration"
+    assert request_body["frontmatter"] == {"skill_status": "draft"}
+
+
+def test_cli_obsidian_capture_posts_canonical_artifact_defaults(
+    tmp_path: Path,
+) -> None:
+    """Capture command writes typed frontmatter/tags for canonical artifacts."""
+    body_file = tmp_path / "prompt.md"
+    body_file.write_text("# Prompt\n\nReview release notes.", encoding="utf-8")
+    transport, calls = _transport({"id": "prompt_release"})
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "obsidian",
+            "capture",
+            "Release Review Prompt",
+            "--body-file",
+            str(body_file),
+            "--type",
+            "prompt",
+            "--id",
+            "prompt_release",
+            "--project",
+            "alexandria-hermes",
+            "--tag",
+            "review",
+            "--prompt-kind",
+            "template",
+        ],
+        transport=transport,
+        stdout=stdout,
+    )
+
+    request_body = loads_json((calls[0][2] or b"{}").decode())
+    assert exit_code == 0
+    assert calls[0][1] == "http://localhost:8000/obsidian/notes"
+    assert request_body == {
+        "title": "Release Review Prompt",
+        "body": "# Prompt\n\nReview release notes.",
+        "alexandria_type": "prompt",
+        "tags": ["alexandria", "prompt", "template", "review"],
+        "status": "draft",
+        "source": "import",
+        "frontmatter": {
+            "artifact_kind": "prompt",
+            "prompt_kind": "template",
+        },
+        "id": "prompt_release",
+        "project": "alexandria-hermes",
+    }
+
+
+def test_cli_obsidian_capture_rejects_non_artifact_type(tmp_path: Path) -> None:
+    """Capture should be limited to memory, skill, and prompt artifacts."""
+    body_file = tmp_path / "context.md"
+    body_file.write_text("# Context", encoding="utf-8")
+    transport, calls = _transport({"id": "ctx"})
+    stderr = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "obsidian",
+            "capture",
+            "Not Artifact",
+            "--body-file",
+            str(body_file),
+            "--type",
+            "context",
+        ],
+        transport=transport,
+        stderr=stderr,
+    )
+
+    assert exit_code == 1
+    assert calls == []
+    assert "capture --type must be one of" in stderr.getvalue()
 
 
 def test_cli_obsidian_ask_posts_librarian_context() -> None:

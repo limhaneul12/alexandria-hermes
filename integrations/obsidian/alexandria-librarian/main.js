@@ -66,7 +66,11 @@ class AlexandriaLibrarianView extends ItemView {
     this.plugin = plugin;
     this.lastResponse = null;
     this.lastWorkflow = null;
+    this.history = [];
+    this.currentQuery = "";
     this.answerContainer = null;
+    this.delegateContainer = null;
+    this.historyContainer = null;
     this.sourceContainer = null;
     this.statusEl = null;
     this.relatedContainer = null;
@@ -114,6 +118,9 @@ class AlexandriaLibrarianView extends ItemView {
       this.refreshRelated();
     }
 
+    this.historyContainer = container.createDiv({ cls: "alexandria-history" });
+    this.renderHistory();
+
     const queryInput = container.createEl("textarea", {
       cls: "alexandria-query",
       attr: { rows: "6", placeholder: "Ask the librarian..." },
@@ -136,13 +143,13 @@ class AlexandriaLibrarianView extends ItemView {
 
     const providerInput = controls.createEl("input", {
       cls: "alexandria-inline-input",
-      attr: { placeholder: "provider id" },
+      attr: { placeholder: "provider id or name" },
     });
     providerInput.value = this.plugin.settings.preferredProviderId || "";
 
     const profileInput = controls.createEl("input", {
       cls: "alexandria-inline-input",
-      attr: { placeholder: "profile id" },
+      attr: { placeholder: "profile id or name" },
     });
     profileInput.value = this.plugin.settings.preferredProfileId || "";
 
@@ -165,6 +172,7 @@ class AlexandriaLibrarianView extends ItemView {
 
     this.statusEl = container.createDiv({ cls: "alexandria-status" });
     this.answerContainer = container.createDiv({ cls: "alexandria-answer" });
+    this.delegateContainer = container.createDiv({ cls: "alexandria-delegate" });
     this.sourceContainer = container.createDiv({ cls: "alexandria-sources" });
     this.workflowContainer = container.createDiv({ cls: "alexandria-workflow" });
     this.graphActionContainer = container.createDiv({ cls: "alexandria-graph-actions" });
@@ -176,6 +184,9 @@ class AlexandriaLibrarianView extends ItemView {
       this.createNote("context")
     );
     this.actionButton(actions, "Create skill draft", () => this.createNote("skill"));
+    this.actionButton(actions, "Create prompt template", () =>
+      this.createNote("prompt")
+    );
   }
 
   actionButton(parent, text, handler) {
@@ -187,6 +198,93 @@ class AlexandriaLibrarianView extends ItemView {
         this.showError(error);
       }
     });
+  }
+
+  recordHistory(query, response, workflow) {
+    const entryId =
+      workflow?.thread_id ||
+      response?.conversation_id ||
+      `local-${Date.now().toString()}`;
+    const entry = {
+      id: entryId,
+      query,
+      response,
+      workflow,
+      status: workflow?.status || "answered",
+      delegateStatus: response?.delegate_status || "local_only",
+      transcriptPath: response?.transcript_path || null,
+      timestamp: new Date().toLocaleTimeString(),
+    };
+    const existingIndex = this.history.findIndex((item) => item.id === entryId);
+    if (existingIndex >= 0) {
+      this.history.splice(existingIndex, 1);
+    }
+    this.history.unshift(entry);
+    this.history = this.history.slice(0, 20);
+    this.renderHistory();
+  }
+
+  renderHistory() {
+    if (!this.historyContainer) {
+      return;
+    }
+    this.historyContainer.empty();
+    this.historyContainer.createEl("h3", { text: "Conversation history" });
+    if (this.history.length === 0) {
+      this.historyContainer.createEl("p", {
+        cls: "alexandria-muted",
+        text: "No local chat history yet. History stays in this pane only.",
+      });
+      return;
+    }
+    for (const entry of this.history) {
+      const row = this.historyContainer.createDiv({ cls: "alexandria-history-row" });
+      const button = row.createEl("button", {
+        cls: "alexandria-history-button",
+        text: this.truncate(entry.query, 72),
+      });
+      button.addEventListener("click", async () => {
+        this.lastResponse = entry.response;
+        this.lastWorkflow = entry.workflow;
+        await this.renderAnswer(entry.response);
+        await this.renderGraphActions(entry.response, entry.workflow);
+        await this.renderDelegateResult(entry.response);
+        this.renderWorkflowStatus(entry.workflow, entry.response);
+        this.setStatus(`Restored ${entry.timestamp}`);
+      });
+      this.badge(row, entry.status);
+      this.badge(row, `delegate:${entry.delegateStatus}`);
+      if (entry.transcriptPath) {
+        this.badge(row, "saved");
+      }
+      row.createSpan({ cls: "alexandria-muted", text: ` ${entry.timestamp}` });
+    }
+  }
+
+  truncate(value, maxLength) {
+    const text = String(value || "");
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  }
+
+  badge(parent, text) {
+    return parent.createSpan({
+      cls: `alexandria-pill alexandria-pill-${this.badgeKind(text)}`,
+      text: String(text || "unknown"),
+    });
+  }
+
+  badgeKind(text) {
+    const normalized = String(text || "").toLowerCase();
+    if (normalized.includes("complete") || normalized.includes("saved")) {
+      return "success";
+    }
+    if (normalized.includes("waiting") || normalized.includes("pending")) {
+      return "warning";
+    }
+    if (normalized.includes("guidance") || normalized.includes("unavailable")) {
+      return "muted";
+    }
+    return "default";
   }
 
   activeView() {
@@ -211,6 +309,7 @@ class AlexandriaLibrarianView extends ItemView {
       new Notice("Ask Alexandria Librarian: enter a question first.");
       return;
     }
+    this.currentQuery = query.trim();
     this.setStatus("Asking Alexandria...");
     if (options.useWorkflow) {
       await this.startWorkflow(query, options);
@@ -228,8 +327,11 @@ class AlexandriaLibrarianView extends ItemView {
     });
     this.lastResponse = response;
     this.lastWorkflow = null;
+    this.recordHistory(this.currentQuery, response, null);
     await this.renderAnswer(response);
     await this.renderGraphActions(response, null);
+    await this.renderDelegateResult(response);
+    this.renderWorkflowStatus(null, response);
     this.setStatus(response.transcript_path ? `Saved: ${response.transcript_path}` : "Ready");
   }
 
@@ -246,8 +348,11 @@ class AlexandriaLibrarianView extends ItemView {
     });
     this.lastWorkflow = workflow;
     this.lastResponse = this.responseFromWorkflow(workflow);
+    this.recordHistory(this.currentQuery, this.lastResponse, workflow);
     await this.renderAnswer(this.lastResponse);
     await this.renderGraphActions(this.lastResponse, workflow);
+    await this.renderDelegateResult(this.lastResponse);
+    this.renderWorkflowStatus(workflow, this.lastResponse);
     this.setStatus(`Workflow waiting: ${workflow.thread_id}`);
   }
 
@@ -337,6 +442,90 @@ class AlexandriaLibrarianView extends ItemView {
   }
 
 
+  async renderDelegateResult(response) {
+    if (!this.delegateContainer) {
+      return;
+    }
+    this.delegateContainer.empty();
+    this.delegateContainer.createEl("h3", { text: "GPT OAuth Librarian" });
+    const status = response.delegate_status || "local_only";
+    this.badge(this.delegateContainer, status);
+    if (response.provider_id || response.profile_id) {
+      this.delegateContainer.createEl("p", {
+        cls: "alexandria-muted",
+        text: `Provider ${response.provider_id || "auto"} · profile ${
+          response.profile_id || "auto"
+        }`,
+      });
+    }
+    const delegateMarkdown = this.delegateMarkdown(response.answer_markdown || "");
+    if (!delegateMarkdown) {
+      this.delegateContainer.createEl("p", {
+        cls: "alexandria-muted",
+        text:
+          status === "local_only"
+            ? "No GPT OAuth delegate result yet."
+            : "Delegate status is available, but no delegate summary was returned.",
+      });
+      return;
+    }
+    const target = this.delegateContainer.createDiv({
+      cls: "alexandria-delegate-body",
+    });
+    await MarkdownRenderer.render(
+      this.app,
+      delegateMarkdown,
+      target,
+      this.activePath() || "",
+      this
+    );
+  }
+
+  delegateMarkdown(answerMarkdown) {
+    const match = String(answerMarkdown).match(
+      /(?:^|\n)## GPT OAuth Librarian\s*\n([\s\S]*)/u
+    );
+    return match ? match[1].trim() : "";
+  }
+
+  renderWorkflowStatus(workflow, response) {
+    if (!this.workflowContainer) {
+      return;
+    }
+    this.workflowContainer.empty();
+    this.workflowContainer.createEl("h3", { text: "Workflow status" });
+    if (!workflow) {
+      this.workflowContainer.createEl("p", {
+        cls: "alexandria-muted",
+        text: `Direct ask · ${response.conversation_id || "local"}`,
+      });
+      this.badge(this.workflowContainer, response.delegate_status || "local_only");
+      return;
+    }
+    const header = this.workflowContainer.createDiv({
+      cls: "alexandria-workflow-badges",
+    });
+    this.badge(header, workflow.status || "unknown");
+    this.badge(header, response.delegate_status || "local_only");
+    if (workflow.transcript_path || response.transcript_path) {
+      this.badge(header, "saved");
+    }
+    this.workflowContainer.createEl("p", {
+      cls: "alexandria-muted",
+      text: `Thread ${workflow.thread_id}`,
+    });
+    const completed = Array.isArray(workflow.completed_actions)
+      ? workflow.completed_actions
+      : [];
+    if (completed.length > 0) {
+      const list = this.workflowContainer.createEl("ul");
+      for (const action of completed) {
+        list.createEl("li", { text: String(action) });
+      }
+    }
+  }
+
+
   async renderGraphActions(response, workflow) {
     if (!this.graphActionContainer) {
       return;
@@ -383,7 +572,8 @@ class AlexandriaLibrarianView extends ItemView {
       if (!actionId) {
         continue;
       }
-      const label = form.createEl("label", { cls: "alexandria-checkbox" });
+      const card = form.createDiv({ cls: "alexandria-action-card" });
+      const label = card.createEl("label", { cls: "alexandria-checkbox" });
       const input = label.createEl("input", { type: "checkbox" });
       if (actionId === "save_transcript" && this.plugin.settings.autoSaveTranscripts) {
         input.checked = true;
@@ -400,7 +590,12 @@ class AlexandriaLibrarianView extends ItemView {
           selected.delete(actionId);
         }
       });
-      label.createSpan({ text: action.label || actionId });
+      label.createEl("strong", { text: action.label || actionId });
+      this.badge(card, action.type || "action");
+      card.createEl("p", {
+        cls: "alexandria-muted",
+        text: this.actionDescription(actionId),
+      });
     }
     const resumeButton = form.createEl("button", {
       text: "Resume approved actions",
@@ -415,6 +610,22 @@ class AlexandriaLibrarianView extends ItemView {
     });
   }
 
+  actionDescription(actionId) {
+    if (actionId === "save_transcript") {
+      return "Save the current conversation as an Obsidian librarian_chat note.";
+    }
+    if (actionId === "create_context_note") {
+      return "Create a context note from the local librarian answer.";
+    }
+    if (actionId === "add_graph_links") {
+      return "Apply approved Alexandria graph/source links to the active note.";
+    }
+    if (actionId === "ask_oauth_librarian") {
+      return "Ask the configured GPT OAuth librarian; tokens remain in the backend.";
+    }
+    return "Approve this backend workflow action.";
+  }
+
   async resumeWorkflow(approvedActions) {
     if (!this.lastWorkflow?.thread_id) {
       new Notice("Start a LangGraph workflow first.");
@@ -427,8 +638,11 @@ class AlexandriaLibrarianView extends ItemView {
     );
     this.lastWorkflow = workflow;
     this.lastResponse = this.responseFromWorkflow(workflow);
+    this.recordHistory(workflow.query || this.currentQuery, this.lastResponse, workflow);
     await this.renderAnswer(this.lastResponse);
     await this.renderGraphActions(this.lastResponse, workflow);
+    await this.renderDelegateResult(this.lastResponse);
+    this.renderWorkflowStatus(workflow, this.lastResponse);
     this.setStatus(`Workflow ${workflow.status}: ${workflow.thread_id}`);
   }
 
@@ -443,6 +657,8 @@ class AlexandriaLibrarianView extends ItemView {
       conversation_id: response.conversation_id || workflow.thread_id,
       transcript_path: workflow.transcript_path || response.transcript_path || null,
       delegate_status: delegateStatus,
+      provider_id: response.provider_id || workflow.provider_id || null,
+      profile_id: response.profile_id || workflow.profile_id || null,
     });
   }
 
@@ -511,12 +727,17 @@ class AlexandriaLibrarianView extends ItemView {
       new Notice("Ask the librarian before creating a note.");
       return;
     }
-    const title = alexandriaType === "skill" ? "Skill Draft" : "Context Note";
+    const titles = {
+      context: "Context Note",
+      skill: "Skill Draft",
+      prompt: "Prompt Template",
+    };
+    const title = titles[alexandriaType] || "Context Note";
     const response = await this.postJson("/obsidian/notes", {
       title: `Alexandria ${title}`,
       body: this.lastResponse.answer_markdown,
       alexandria_type: alexandriaType,
-      tags: ["alexandria", "librarian"],
+      tags: ["alexandria", "librarian", alexandriaType],
       project: this.plugin.settings.defaultProject || null,
       source: "obsidian-plugin",
     });

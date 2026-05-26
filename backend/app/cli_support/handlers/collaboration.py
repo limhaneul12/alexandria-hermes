@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from app.cli_support.backend_api_client import CliBackendApiClient
 from app.cli_support.contracts.librarian_command_contracts import (
     LibrarianAskCommand,
+    LibrarianBootstrapObsidianOAuthCommand,
     LibrarianBriefPreviewCommand,
     LibrarianJobStatusCommand,
     LibrarianOAuthCommand,
@@ -27,6 +30,7 @@ from app.cli_support.handlers.collaboration_helpers import (
     provider_create_body,
 )
 from app.cli_support.presentation.output_renderers import (
+    json_list,
     print_json,
     print_json_or_summary,
     text_field,
@@ -34,6 +38,58 @@ from app.cli_support.presentation.output_renderers import (
 from app.cli_support.url_paths import quote_path
 from app.shared.types.extra_types import JSONObject
 from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
+
+
+@dataclass(frozen=True, slots=True)
+class _BootstrapProfileDefault:
+    """Static Obsidian librarian profile default used by the bootstrap CLI."""
+
+    name: str
+    role: str
+    specialties: tuple[str, ...]
+    delegate_limit: int
+    role_prompt: str
+    routing_priority: int
+
+
+_BOOTSTRAP_PROFILES: tuple[_BootstrapProfileDefault, ...] = (
+    _BootstrapProfileDefault(
+        name="research-critic",
+        role="SPECIALIST",
+        specialties=("research", "critic", "oauth", "gpt", "obsidian", "graph"),
+        delegate_limit=1,
+        role_prompt=(
+            "Review the proposed answer or Obsidian workflow against available "
+            "evidence. Prefer precise risks, missing citations, and safe next "
+            "actions over broad prose."
+        ),
+        routing_priority=10,
+    ),
+    _BootstrapProfileDefault(
+        name="obsidian-librarian",
+        role="DEFAULT_SEARCH",
+        specialties=("obsidian", "memory", "skill", "prompt", "librarian"),
+        delegate_limit=1,
+        role_prompt=(
+            "Use Obsidian Markdown as canonical project memory. Search existing "
+            "notes first, preserve frontmatter semantics, and recommend exact "
+            "notes or folders to update."
+        ),
+        routing_priority=20,
+    ),
+    _BootstrapProfileDefault(
+        name="graph-curator",
+        role="ARCHIVIST_CURATOR",
+        specialties=("graph", "relation", "obsidian", "edge", "curation"),
+        delegate_limit=1,
+        role_prompt=(
+            "Curate Obsidian graph relations. Prefer explicit typed edges, "
+            "bidirectional links where useful, and no note mutation unless the "
+            "operator approved the graph action."
+        ),
+        routing_priority=30,
+    ),
+)
 
 
 def handle_librarian_brief_preview(
@@ -297,6 +353,120 @@ def handle_librarian_provider_connect_codex_oauth(
             file=context.stdout,
         )
     return 0
+
+
+def handle_librarian_bootstrap_obsidian_oauth(
+    command: LibrarianBootstrapObsidianOAuthCommand,
+    context: CommandContext,
+    client: CliBackendApiClient,
+) -> int:
+    """Create or verify Obsidian GPT OAuth librarian defaults.
+
+    Args:
+        command: Typed CLI command contract for the operation.
+        context: CLI runtime context with output settings.
+        client: Backend API client used for HTTP requests.
+
+    Returns:
+        Process-style exit code.
+    """
+    provider = _ensure_bootstrap_provider(command, client)
+    profiles = _ensure_bootstrap_profiles(command, client)
+    oauth = None
+    if command.start_oauth:
+        oauth_payload = client.post(oauth_path(command.provider_name, "start"), {})
+        oauth = without_oauth_sensitive_fields(
+            oauth_payload,
+            keep_device_user_instructions=True,
+        )
+
+    combined: JSONObject = {
+        "provider": provider,
+        "profiles": profiles,
+        "oauth": oauth,
+    }
+    if context.json_output:
+        print_json(combined, context.stdout)
+    else:
+        suffix = " OAuth started" if oauth is not None else " OAuth not started"
+        print(
+            f"obsidian oauth bootstrap: {text_field(provider, 'name')} "
+            f"with {len(profiles)} profiles;{suffix}",
+            file=context.stdout,
+        )
+    return 0
+
+
+def _ensure_bootstrap_provider(
+    command: LibrarianBootstrapObsidianOAuthCommand,
+    client: CliBackendApiClient,
+) -> JSONObject:
+    providers = json_list(client.get("/settings/connections"))
+    existing = _find_payload_by_reference(providers, command.provider_name)
+    if existing is not None:
+        return existing
+    provider_command = LibrarianProviderCreateCommand(
+        name=command.provider_name,
+        provider_type="OPENAI_CODEX",
+        auth_type="OAUTH",
+        enabled=command.enabled,
+        config=command.config,
+        api_key_env=None,
+    )
+    created = client.post(
+        "/settings/connections", provider_create_body(provider_command)
+    )
+    if isinstance(created, dict):
+        return created
+    return {}
+
+
+def _ensure_bootstrap_profiles(
+    command: LibrarianBootstrapObsidianOAuthCommand,
+    client: CliBackendApiClient,
+) -> list[JSONObject]:
+    existing_profiles = json_list(client.get("/librarians/profiles"))
+    profiles: list[JSONObject] = []
+    for profile_default in _BOOTSTRAP_PROFILES:
+        existing = _find_payload_by_reference(existing_profiles, profile_default.name)
+        if existing is not None:
+            profiles.append(existing)
+            continue
+        create_command = _bootstrap_profile_command(profile_default, command.model)
+        created = client.post(
+            "/librarians/profiles", profile_create_body(create_command)
+        )
+        if isinstance(created, dict):
+            profiles.append(created)
+    return profiles
+
+
+def _bootstrap_profile_command(
+    profile_default: _BootstrapProfileDefault,
+    model: str,
+) -> LibrarianProfileCreateCommand:
+    return LibrarianProfileCreateCommand(
+        name=profile_default.name,
+        role=profile_default.role,
+        specialties=list(profile_default.specialties),
+        provider_id=None,
+        model=model,
+        delegate_limit=profile_default.delegate_limit,
+        role_prompt=profile_default.role_prompt,
+        role_prompt_file=None,
+        routing_priority=profile_default.routing_priority,
+        enabled=True,
+    )
+
+
+def _find_payload_by_reference(
+    rows: list[JSONObject],
+    reference: str,
+) -> JSONObject | None:
+    for row in rows:
+        if text_field(row, "id") == reference or text_field(row, "name") == reference:
+            return row
+    return None
 
 
 def handle_librarian_profiles_list(

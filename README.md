@@ -87,6 +87,27 @@ uv run alexandria-hermes obsidian install-local \
 
 Then open Obsidian, enable Community plugins, enable **Alexandria Librarian**, and run the command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, transcript preference, optional provider/profile ids, and explicit OAuth-delegate flag to the local backend.
 
+## Canonical memory, skills, and prompts
+
+Reusable artifacts live as Obsidian notes:
+
+```bash
+uv run alexandria-hermes obsidian capture "Browser Verification Skill" \
+  --body-file ./skill.md \
+  --type skill \
+  --project alexandria-hermes
+
+uv run alexandria-hermes obsidian capture "Release Review Prompt" \
+  --body-file ./prompt.md \
+  --type prompt \
+  --prompt-kind template
+
+uv run alexandria-hermes obsidian search "bounded waits" --type skill
+uv run alexandria-hermes obsidian search "release notes" --type prompt
+```
+
+Memory Compact lifecycle APIs already write Markdown under `SERVICE_MEMORY_COMPACT_NOTE_DIR`; run `obsidian reindex` to rebuild SQLite search/cache rows from the vault after manual edits or cache deletion.
+
 ## Graph edges, related notes, and workflows
 
 Reindex now rebuilds an `obsidian_edges` cache from relation frontmatter and body wikilinks. Obsidian Markdown remains canonical; deleting SQLite and running reindex rebuilds the cache.

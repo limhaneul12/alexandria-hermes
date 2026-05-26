@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import platform
 import shlex
+import sys
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -158,10 +158,10 @@ def _serve_shell_command(service: ServiceDefinition) -> str:
 
 def _service_file_path(service_home: str | None) -> Path | None:
     home = Path(service_home).expanduser().resolve() if service_home else Path.home()
-    system = platform.system()
-    if system == "Darwin":
+    system = sys.platform
+    if system == "darwin":
         return home / "Library" / "LaunchAgents" / "com.alexandria-hermes.backend.plist"
-    if system == "Linux":
+    if system.startswith("linux"):
         return (
             home / ".config" / "systemd" / "user" / "alexandria-hermes-backend.service"
         )

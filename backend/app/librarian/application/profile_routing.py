@@ -89,7 +89,10 @@ class LibrarianProfileRouter:
         self,
         command: HermesLibrarianAskCommand,
     ) -> LibrarianRoutingDecision:
-        profile = await self.agent_repo.get(command.librarian_profile_id or "")
+        profile_ref = command.librarian_profile_id or ""
+        profile = await self.agent_repo.get(profile_ref)
+        if profile is None:
+            profile = await self._profile_by_name(profile_ref)
         if profile is None:
             raise LibrarianResourceNotFoundError(
                 f"Librarian profile not found: {command.librarian_profile_id}"
@@ -101,9 +104,16 @@ class LibrarianProfileRouter:
             matched_specialties=matched,
             quality_review_added=profile_role(profile)
             is LibrarianProfileRole.QUALITY_REVIEWER,
-            reason=f"Requested librarian profile {profile.id}",
+            reason=f"Requested librarian profile {profile_ref}",
             max_librarian_agents=max_agents,
         )
+
+    async def _profile_by_name(self, profile_name: str) -> AgentProfile | None:
+        profiles = await self.agent_repo.list_all()
+        for profile in profiles:
+            if profile.name == profile_name:
+                return profile
+        return None
 
 
 def matched_specialties_for_profile(

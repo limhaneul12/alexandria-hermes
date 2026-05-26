@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
+from app.obsidian.application.obsidian_authoritative_read import (
+    authoritative_note_from_path,
+)
+from app.obsidian.application.obsidian_frontmatter_redaction import (
+    redacted_frontmatter,
+)
 from app.obsidian.application.obsidian_graph_relations import (
     add_or_update_alexandria_links_section,
 )
+from app.obsidian.application.obsidian_graph_writeback import graph_link_save_payload
 from app.obsidian.application.obsidian_note_indexer import note_index_from_path
 from app.obsidian.application.obsidian_note_templates import (
     conversation_id,
@@ -203,7 +211,12 @@ class ObsidianService:
             indexed = await self._repository.get_by_id(note_id)
         if indexed is None:
             raise ObsidianNotFoundError(f"Obsidian note not found: {note_id}")
-        return self._read_authoritative_note(indexed.relative_path, indexed=indexed)
+        return authoritative_note_from_path(
+            vault_path=self._vault_path,
+            relative_path=indexed.relative_path,
+            alexandria_root=self._alexandria_root,
+            indexed=indexed,
+        )
 
     async def read_note_by_path(self, relative_path: str) -> ObsidianNote:
         """Read one managed note by vault-relative path.
@@ -221,7 +234,12 @@ class ObsidianService:
             indexed = await self._repository.get_by_path(safe_path)
         if indexed is None:
             raise ObsidianNotFoundError(f"Obsidian note not found: {safe_path}")
-        return self._read_authoritative_note(safe_path, indexed=indexed)
+        return authoritative_note_from_path(
+            vault_path=self._vault_path,
+            relative_path=safe_path,
+            alexandria_root=self._alexandria_root,
+            indexed=indexed,
+        )
 
     async def save_note(self, payload: ObsidianSaveNote) -> ObsidianNote:
         """Create or replace one Alexandria-managed Markdown note.
@@ -238,6 +256,10 @@ class ObsidianService:
         redaction = redact_secret_text(payload.body)
         if redaction.blocked:
             raise ObsidianValidationError("high-risk secret content cannot be saved")
+        frontmatter_payload, frontmatter_warnings = redacted_frontmatter(
+            payload.frontmatter
+        )
+        payload = replace(payload, frontmatter=frontmatter_payload)
         relative_path = payload.relative_path or default_note_path(
             root=self._alexandria_root,
             note_type=payload.alexandria_type,
@@ -265,7 +287,7 @@ class ObsidianService:
             payload,
             note_id=note_id,
             title=title,
-            redaction_warnings=redaction.warnings,
+            redaction_warnings=[*redaction.warnings, *frontmatter_warnings],
         )
         body = add_or_update_alexandria_links_section(
             redaction.redacted_content, frontmatter
@@ -285,6 +307,26 @@ class ObsidianService:
             )
         note = await self._repository.upsert_note(index_payload)
         return note
+
+    async def apply_librarian_graph_links(
+        self,
+        *,
+        active_note_path: str,
+        response: JSONObject,
+    ) -> ObsidianNote:
+        """Apply approved librarian source refs to an active note and reindex it.
+
+        Args:
+            active_note_path: Vault-relative path of the note approved for mutation.
+            response: Librarian answer payload containing source refs.
+
+        Returns:
+            Updated active note loaded from the rebuilt index.
+        """
+        note = await self.read_note_by_path(active_note_path)
+        return await self.save_note(
+            graph_link_save_payload(note=note, response=response)
+        )
 
     def _note_id_from_existing_file(self, path: Path) -> str | None:
         if not path.exists():
@@ -396,43 +438,6 @@ class ObsidianService:
 
     def _root_path(self) -> Path:
         return resolve_note_path(self._vault_path, self._alexandria_root)
-
-    def _read_authoritative_note(
-        self,
-        relative_path: str,
-        *,
-        indexed: ObsidianNote,
-    ) -> ObsidianNote:
-        absolute = resolve_note_path(self._vault_path, relative_path)
-        if not absolute.exists():
-            raise ObsidianNotFoundError(f"Obsidian note not found: {relative_path}")
-        payload = note_index_from_path(
-            absolute,
-            relative_path,
-            alexandria_root=self._alexandria_root,
-        )
-        if payload is None:
-            raise ObsidianValidationError(
-                f"Obsidian note is missing Alexandria frontmatter: {relative_path}"
-            )
-        return ObsidianNote(
-            note_id=payload.note_id,
-            relative_path=payload.relative_path,
-            alexandria_type=payload.alexandria_type,
-            title=payload.title,
-            status=payload.status,
-            tags=payload.tags,
-            project=payload.project,
-            source=payload.source,
-            content_hash=payload.content_hash,
-            frontmatter=payload.frontmatter,
-            body=payload.body,
-            index_status=indexed.index_status,
-            error_message=indexed.error_message,
-            size_bytes=payload.size_bytes,
-            modified_at=payload.modified_at,
-            indexed_at=indexed.indexed_at,
-        )
 
 
 def _delegate_status(payload: ObsidianLibrarianAsk) -> str:

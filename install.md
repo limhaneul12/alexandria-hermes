@@ -57,14 +57,34 @@ uv run alexandria-hermes setup \
 
 ```bash
 brew install --cask obsidian
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-VAULT="$HOME/Desktop/Alexandria"
-mkdir -p "$VAULT/.obsidian/plugins"
-ln -s "$REPO_ROOT/integrations/obsidian/alexandria-librarian" \
-  "$VAULT/.obsidian/plugins/alexandria-librarian"
+cd backend
+uv run alexandria-hermes obsidian install-local \
+  --vault-path "$HOME/Desktop/Alexandria" \
+  --plugin-install-mode copy
 ```
 
 Enable **Alexandria Librarian** in Obsidian Community plugins. Keep the backend running before using the pane.
+
+## Capture memory, skill, and prompt artifacts
+
+Use Obsidian Markdown as the canonical library surface:
+
+```bash
+cd backend
+uv run alexandria-hermes obsidian capture "Browser Verification Skill" \
+  --body-file ./skill.md \
+  --type skill \
+  --project alexandria-hermes
+
+uv run alexandria-hermes obsidian capture "Release Review Prompt" \
+  --body-file ./prompt.md \
+  --type prompt \
+  --prompt-kind template
+
+uv run alexandria-hermes obsidian reindex
+```
+
+`obsidian capture` is limited to `memory_compact`, `skill`, and `prompt` so imports remain migration-safe. SQLite is rebuilt from Markdown; it is not the canonical artifact store.
 
 ## Docker Compose
 
@@ -81,4 +101,4 @@ cd backend
 uv run alexandria-hermes hermes onboard
 ```
 
-Skill/prompt library persistence is no longer SQLite CRUD. Keep reusable assets as Markdown/Obsidian notes until the Obsidian-backed library flow is implemented.
+Skill/prompt library persistence is no longer SQLite CRUD. Keep reusable assets as Markdown/Obsidian notes with `obsidian capture` or `obsidian save`; search them with `obsidian search` after reindex.

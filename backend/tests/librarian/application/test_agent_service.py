@@ -139,6 +139,30 @@ class CapturingProviderRepository(ILibrarianProviderRepository):
         """Delete is unused by these service tests."""
 
 
+class NameAliasProviderRepository(CapturingProviderRepository):
+    """Provider fake that requires list fallback for name aliases."""
+
+    async def get(self, provider_id: str) -> LibrarianProvider | None:
+        """Return no direct id match while recording the lookup."""
+        self.requested_provider_ids.append(provider_id)
+        return None
+
+    async def list_all(self) -> list[LibrarianProvider]:
+        """Return one provider whose name matches the user-facing alias."""
+        return [
+            LibrarianProvider(
+                id="provider-1",
+                name="codex-oauth",
+                provider_type=ProviderType.OPENAI_CODEX,
+                auth_type=AuthType.OAUTH,
+                enabled=True,
+                config={},
+                created_at=datetime(2026, 5, 12, 10, 0, tzinfo=UTC),
+                updated_at=datetime(2026, 5, 12, 10, 0, tzinfo=UTC),
+            )
+        ]
+
+
 class CapturingSecretRepository(IProviderSecretRepository):
     """Secret fake that records provider credential checks."""
 
@@ -250,6 +274,37 @@ def test_update_agent_checks_provider_execution_when_provider_is_assigned() -> N
             "preferred_librarian_provider": "provider-1"
         }
         assert provider_repo.requested_provider_ids == ["provider-1"]
+        assert secret_repo.resolved_keys == [
+            ProviderSecretKey.OAUTH_REFRESH_TOKEN.value,
+            ProviderSecretKey.OAUTH_ACCESS_TOKEN.value,
+            ProviderSecretKey.OAUTH_EXPIRES_AT.value,
+        ]
+
+    anyio.run(scenario)
+
+
+def test_update_agent_accepts_executable_provider_name_alias() -> None:
+    """Concrete preferred providers may be supplied by user-facing provider name."""
+
+    async def scenario() -> None:
+        agent_repo = CapturingAgentRepository()
+        provider_repo = NameAliasProviderRepository()
+        secret_repo = CapturingSecretRepository()
+        service = _service(
+            agent_repo=agent_repo,
+            provider_repo=provider_repo,
+            secret_repo=secret_repo,
+        )
+
+        await service.update_agent(
+            "agent-1",
+            {"preferred_librarian_provider": "codex-oauth"},
+        )
+
+        assert agent_repo.updated_values == {
+            "preferred_librarian_provider": "codex-oauth"
+        }
+        assert provider_repo.requested_provider_ids == ["codex-oauth"]
         assert secret_repo.resolved_keys == [
             ProviderSecretKey.OAUTH_REFRESH_TOKEN.value,
             ProviderSecretKey.OAUTH_ACCESS_TOKEN.value,

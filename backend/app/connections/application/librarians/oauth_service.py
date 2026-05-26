@@ -212,6 +212,8 @@ class LibrarianOAuthService:
     async def _load_codex_oauth_provider(self, provider_id: str) -> LibrarianProvider:
         row = await self.provider_repo.get(provider_id)
         if row is None:
+            row = await self._provider_by_name(provider_id)
+        if row is None:
             raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
 
         try:
@@ -233,6 +235,13 @@ class LibrarianOAuthService:
                 f"Provider type {provider_type.value} does not support OAuth lifecycle"
             )
         return row
+
+    async def _provider_by_name(self, provider_name: str) -> LibrarianProvider | None:
+        providers = await self.provider_repo.list_all()
+        for provider in providers:
+            if provider.name == provider_name:
+                return provider
+        return None
 
     async def _store_device_authorization(
         self,

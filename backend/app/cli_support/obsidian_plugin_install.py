@@ -78,8 +78,17 @@ def install_local_obsidian_plugin(
 
 
 def _plugin_source_path() -> Path:
-    repo_root = Path(__file__).resolve().parents[3]
-    return repo_root / "integrations" / "obsidian" / PLUGIN_ID
+    file_root = Path(__file__).resolve().parents[3]
+    cwd = Path.cwd().resolve()
+    candidates = [
+        file_root / "integrations" / "obsidian" / PLUGIN_ID,
+        cwd / "integrations" / "obsidian" / PLUGIN_ID,
+        cwd.parent / "integrations" / "obsidian" / PLUGIN_ID,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def _replace_with_symlink(target: Path, source: Path) -> None:

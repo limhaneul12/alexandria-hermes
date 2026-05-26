@@ -231,7 +231,9 @@ class ObsidianLibrarianLangGraphExecutor:
             note = await self._create_answer_note(workflow, response, "skill")
             completed_actions.append(f"create_skill_draft:{note.relative_path}")
         if "add_graph_links" in approved:
-            completed_actions.append("add_graph_links:pending-plugin-apply")
+            note = await self._apply_graph_links(workflow, response)
+            response["graph_links_path"] = note.relative_path
+            completed_actions.append(f"add_graph_links:{note.relative_path}")
         delegate_payload: JSONObject | None = None
         if "ask_oauth_librarian" in approved:
             delegate_payload = await self._ask_gpt_oauth_librarian(workflow, response)
@@ -304,6 +306,19 @@ class ObsidianLibrarianLangGraphExecutor:
                     }
                 ],
             )
+        )
+
+    async def _apply_graph_links(
+        self,
+        workflow: ObsidianLibrarianWorkflow,
+        response: JSONObject,
+    ) -> ObsidianNote:
+        active_note_path = workflow.active_note_path
+        if active_note_path is None:
+            raise ObsidianValidationError("active note is required for graph links")
+        return await self._obsidian_service.apply_librarian_graph_links(
+            active_note_path=active_note_path,
+            response=response,
         )
 
     async def _ask_gpt_oauth_librarian(

@@ -646,6 +646,9 @@ async def alexandria_save_note(
     path: str | None = None,
     project: str | None = None,
     tags: list[str] | None = None,
+    status: str = "active",
+    source: str = "mcp",
+    frontmatter: JSONObject | None = None,
 ) -> JSONValue:
     """Save one Alexandria-managed Obsidian Markdown note.
 
@@ -658,6 +661,9 @@ async def alexandria_save_note(
         path: Optional vault-relative path.
         project: Optional project.
         tags: Optional tags.
+        status: Frontmatter lifecycle status.
+        source: Frontmatter source marker.
+        frontmatter: Optional extra frontmatter object.
 
     Returns:
         Backend saved note response.
@@ -667,6 +673,9 @@ async def alexandria_save_note(
         "body": body,
         "alexandria_type": alexandria_type,
         "tags": _items_or_empty(tags),
+        "status": status,
+        "source": source,
+        "frontmatter": {} if frontmatter is None else dict(frontmatter),
     }
     if note_id is not None:
         payload["id"] = note_id

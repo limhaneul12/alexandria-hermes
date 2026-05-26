@@ -223,6 +223,27 @@ def test_start_oauth_returns_user_instructions_and_stores_device_code_without_le
     assert "refresh-token-secret" not in response.text
 
 
+def test_start_oauth_accepts_provider_name_alias() -> None:
+    """POST oauth/start should resolve a provider by user-facing name."""
+    service, secret_repo, oauth_client = _oauth_service()
+
+    with (
+        override_library_provider("librarian_oauth_service", service),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.post("/settings/connections/codex-oauth/oauth/start")
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["provider_id"] == PROVIDER_ID
+    assert oauth_client.start_calls == [PROVIDER_ID]
+    assert (
+        secret_repo.secrets[(PROVIDER_ID, ProviderSecretKey.OAUTH_DEVICE_CODE.value)]
+        == "device-secret-value"
+    )
+    assert "device-secret-value" not in response.text
+
+
 def test_poll_oauth_success_stores_tokens_and_redacts_response() -> None:
     """POST oauth/poll should persist token material while returning only status."""
     service, secret_repo, oauth_client = _oauth_service()

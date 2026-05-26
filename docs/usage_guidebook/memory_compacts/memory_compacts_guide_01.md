@@ -55,3 +55,14 @@ SERVICE_OBSIDIAN_VAULT_PATH/Alexandria/Memory Compacts/
 ```
 
 Override the folder with `SERVICE_MEMORY_COMPACT_NOTE_DIR` when the vault needs a different layout. Each note includes YAML frontmatter with `alexandria_type: memory_compact`, stable `id`, lifecycle `status`, coverage timestamps, and source refs. SQLite should not be treated as the canonical store for Memory Compact content.
+
+After manual vault edits or SQLite cache recreation, rebuild search rows with:
+
+```bash
+alexandria-hermes obsidian reindex
+```
+
+For migration-only imports that do not need the Memory Compact lifecycle API,
+`alexandria-hermes obsidian capture --type memory_compact` can create an
+Alexandria-managed Markdown note with artifact frontmatter. Use the lifecycle
+API/CLI for normal current/superseded compact management.

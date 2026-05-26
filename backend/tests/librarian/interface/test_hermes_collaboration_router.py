@@ -417,6 +417,67 @@ def test_ask_librarian_delegates_when_provider_is_available() -> None:
     }
 
 
+def test_ask_librarian_accepts_provider_and_profile_name_aliases() -> None:
+    """POST /librarians/ask should resolve user-facing provider/profile names."""
+    profile = _profile(profile_id="00000000-0000-4000-8000-000000000611")
+    profile = AgentProfile(
+        id=profile.id,
+        name="research-critic",
+        provider=profile.provider,
+        description=profile.description,
+        capabilities=profile.capabilities,
+        preferred_librarian_provider=None,
+        preferred_librarian_model=profile.preferred_librarian_model,
+        max_librarian_agents=profile.max_librarian_agents,
+        librarian_role_prompt=profile.librarian_role_prompt,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+        librarian_role=profile.librarian_role,
+        librarian_specialties=profile.librarian_specialties,
+        librarian_routing_priority=profile.librarian_routing_priority,
+    )
+    service = _service([_provider()], [profile], _oauth_execution_secrets())
+
+    with (
+        override_library_provider("hermes_collaboration_service", service),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.post(
+            "/librarians/ask",
+            json={
+                "prompt": "Need graph relation review before writing notes",
+                "delegate_to_librarian": True,
+                "provider_id": "codex-oauth",
+                "librarian_profile_id": "research-critic",
+            },
+        )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["status"] == "COMPLETED"
+    assert {
+        "provider_id": body["provider_id"],
+        "librarian_profile_id": body["librarian_profile_id"],
+        "selected_profiles": body["selected_profiles"],
+        "routing_reason": body["routing_reason"],
+    } == {
+        "provider_id": "00000000-0000-4000-8000-000000000701",
+        "librarian_profile_id": profile.id,
+        "selected_profiles": [profile.id],
+        "routing_reason": "Requested librarian profile research-critic",
+    }
+    assert body["delegates"] == [
+        {
+            "profile_id": profile.id,
+            "provider_id": "00000000-0000-4000-8000-000000000701",
+            "status": "COMPLETED",
+            "delegate_type": "LIBRARY_SEARCH",
+            "summary": "Default search librarian checked reusable library/search routes.",
+            "matched_specialties": [],
+        }
+    ]
+
+
 def test_ask_librarian_saves_daily_memory_compact_from_delegate_action() -> None:
     """POST /librarians/ask should persist delegate-approved compact actions."""
     profile = _profile()

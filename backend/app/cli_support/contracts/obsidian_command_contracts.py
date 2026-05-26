@@ -45,6 +45,28 @@ class ObsidianSaveCommand:
     note_id: str | None
     path: str | None
     project: str | None
+    status: str
+    source: str
+    frontmatter_json: str | None
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianCaptureCommand:
+    """Parameters for migration-safe canonical artifact capture."""
+
+    title: str
+    body_file: str
+    alexandria_type: AlexandriaNoteType
+    note_id: str | None
+    path: str | None
+    project: str | None
+    status: str
+    source: str
+    frontmatter_json: str | None
+    covered_from: str | None
+    covered_to: str | None
+    prompt_kind: str | None
     tags: list[str] = field(default_factory=list)
 
 

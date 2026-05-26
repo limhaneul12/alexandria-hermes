@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
@@ -238,6 +239,8 @@ class AgentService:
             return
         provider = await self.provider_repo.get(provider_id)
         if provider is None:
+            provider = await self._provider_by_name(provider_id)
+        if provider is None:
             raise LibrarianResourceNotFoundError(f"Provider not found: {provider_id}")
         executable = await provider_can_execute(
             provider,
@@ -248,3 +251,10 @@ class AgentService:
             raise LibrarianProviderUnsupportedError(
                 f"Provider is not authorized for librarian execution: {provider_id}"
             )
+
+    async def _provider_by_name(self, provider_name: str) -> LibrarianProvider | None:
+        providers = await self.provider_repo.list_all()
+        for provider in providers:
+            if provider.name == provider_name:
+                return provider
+        return None

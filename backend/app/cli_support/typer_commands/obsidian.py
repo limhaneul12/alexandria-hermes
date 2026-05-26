@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 from app.cli_support.contracts.obsidian_command_contracts import (
     ObsidianAskCommand,
+    ObsidianCaptureCommand,
     ObsidianReadCommand,
     ObsidianRelatedCommand,
     ObsidianSaveCommand,
@@ -12,6 +13,7 @@ from app.cli_support.contracts.obsidian_command_contracts import (
 )
 from app.cli_support.handlers.obsidian import (
     handle_obsidian_ask,
+    handle_obsidian_capture,
     handle_obsidian_init,
     handle_obsidian_read,
     handle_obsidian_reindex,
@@ -173,6 +175,9 @@ def obsidian_save(
     note_id: str | None = typer.Option(None, "--id"),
     path: str | None = typer.Option(None, "--path"),
     project: str | None = typer.Option(None, "--project"),
+    status: str = typer.Option("active", "--status"),
+    source: str = typer.Option("cli", "--source"),
+    frontmatter_json: str | None = typer.Option(None, "--frontmatter-json"),
     tag: list[str] | None = typer.Option(None, "--tag"),
 ) -> None:
     """Save one note from a Markdown body file.
@@ -185,6 +190,9 @@ def obsidian_save(
         note_id: Optional stable note id.
         path: Optional vault-relative path.
         project: Optional project metadata.
+        status: Frontmatter lifecycle status.
+        source: Frontmatter source marker.
+        frontmatter_json: Extra JSON object merged into frontmatter.
         tag: Optional tag metadata.
     """
     run_client(
@@ -196,9 +204,68 @@ def obsidian_save(
             note_id=note_id,
             path=path,
             project=project,
+            status=status,
+            source=source,
+            frontmatter_json=frontmatter_json,
             tags=list(tag or []),
         ),
         handle_obsidian_save,
+    )
+
+
+@obsidian_app.command("capture")
+def obsidian_capture(
+    ctx: typer.Context,
+    title: str,
+    body_file: str = typer.Option(..., "--body-file"),
+    alexandria_type: AlexandriaNoteType = typer.Option(..., "--type"),
+    note_id: str | None = typer.Option(None, "--id"),
+    path: str | None = typer.Option(None, "--path"),
+    project: str | None = typer.Option(None, "--project"),
+    status: str = typer.Option("draft", "--status"),
+    source: str = typer.Option("import", "--source"),
+    frontmatter_json: str | None = typer.Option(None, "--frontmatter-json"),
+    covered_from: str | None = typer.Option(None, "--covered-from"),
+    covered_to: str | None = typer.Option(None, "--covered-to"),
+    prompt_kind: str | None = typer.Option(None, "--prompt-kind"),
+    tag: list[str] | None = typer.Option(None, "--tag"),
+) -> None:
+    """Capture a canonical memory compact, skill draft, or prompt note.
+
+    Args:
+        ctx: Typer invocation context.
+        title: Artifact title.
+        body_file: Markdown body file path.
+        alexandria_type: Artifact note type; memory_compact, skill, or prompt.
+        note_id: Optional stable note id.
+        path: Optional vault-relative path.
+        project: Optional project metadata.
+        status: Frontmatter lifecycle status.
+        source: Frontmatter source marker.
+        frontmatter_json: Extra JSON object merged into frontmatter.
+        covered_from: Optional compact coverage start timestamp.
+        covered_to: Optional compact coverage end timestamp.
+        prompt_kind: Optional prompt kind; defaults to template for prompts.
+        tag: Optional extra tags.
+    """
+    run_client(
+        ctx,
+        ObsidianCaptureCommand(
+            title=title,
+            body_file=body_file,
+            alexandria_type=alexandria_type,
+            note_id=note_id,
+            path=path,
+            project=project,
+            status=status,
+            source=source,
+            frontmatter_json=frontmatter_json,
+            covered_from=covered_from,
+            covered_to=covered_to,
+            prompt_kind=prompt_kind,
+            tags=list(tag or []),
+        ),
+        handle_obsidian_capture,
     )
 
 

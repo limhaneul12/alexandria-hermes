@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 from app.cli_support.contracts.librarian_command_contracts import (
     LibrarianAskCommand,
+    LibrarianBootstrapObsidianOAuthCommand,
     LibrarianBriefPreviewCommand,
     LibrarianJobStatusCommand,
     LibrarianOAuthCommand,
@@ -18,6 +19,7 @@ from app.cli_support.contracts.librarian_command_contracts import (
 )
 from app.cli_support.handlers.collaboration import (
     handle_librarian_ask,
+    handle_librarian_bootstrap_obsidian_oauth,
     handle_librarian_brief_preview,
     handle_librarian_job_status,
     handle_librarian_oauth_poll,
@@ -237,6 +239,32 @@ def librarian_oauth_refresh(ctx: typer.Context, provider_id: str) -> None:
         ctx,
         LibrarianOAuthCommand(provider_id=provider_id),
         handle_librarian_oauth_refresh,
+    )
+
+
+@librarian_app.command("bootstrap-obsidian-oauth")
+def librarian_bootstrap_obsidian_oauth(
+    ctx: typer.Context,
+    provider_name: str = typer.Option("codex-oauth", "--provider-name"),
+    model: str = typer.Option("gpt-5.5", "--model"),
+    enabled: bool = typer.Option(True, "--enabled/--disabled"),
+    start_oauth: bool = typer.Option(False, "--start-oauth/--no-start-oauth"),
+) -> None:
+    """Create or verify the default Obsidian GPT OAuth librarian setup.
+
+    Args:
+        ctx: Typer callback context and command-line option values.
+    """
+    run_client(
+        ctx,
+        LibrarianBootstrapObsidianOAuthCommand(
+            provider_name=provider_name,
+            model=model,
+            enabled=enabled,
+            start_oauth=start_oauth,
+            config=_codex_oauth_config(),
+        ),
+        handle_librarian_bootstrap_obsidian_oauth,
     )
 
 

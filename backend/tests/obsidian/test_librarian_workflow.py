@@ -24,6 +24,7 @@ from app.obsidian.application.obsidian_librarian_langgraph_support import (
 from app.obsidian.application.obsidian_librarian_workflow_service import (
     ObsidianLibrarianWorkflowService,
 )
+from app.obsidian.application.obsidian_graph_service import ObsidianGraphService
 from app.obsidian.application.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
@@ -33,6 +34,7 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianLibrarianWorkflowStatus,
+    ObsidianRelationType,
 )
 from app.obsidian.infrastructure.models import (
     obsidian_index_models as _obsidian_index_models,
@@ -206,6 +208,75 @@ def test_librarian_workflow_pauses_then_resumes_approved_writes(
     assert completed_actions[1].startswith("create_context_note:")
     assert transcript_path is not None
     assert source_found is True
+
+
+def test_librarian_workflow_applies_approved_graph_links_to_active_note(
+    tmp_path: Path,
+) -> None:
+    """Approving graph links should mutate the active note and rebuild edge cache."""
+
+    async def scenario() -> tuple[list[str], str, list[tuple[str, str, str]]]:
+        database, session, obsidian, workflow_service = await _services(tmp_path)
+        graph = ObsidianGraphService(
+            repository=SqlAlchemyObsidianIndexRepository(session=session),
+            obsidian_service=obsidian,
+        )
+        try:
+            source = await obsidian.save_note(
+                ObsidianSaveNote(
+                    title="Storage Source",
+                    body="# Storage Source\n\nCanonical storage source.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_storage_source",
+                    project="alexandria-hermes",
+                )
+            )
+            active = await obsidian.save_note(
+                ObsidianSaveNote(
+                    title="Active Work Note",
+                    body="# Active Work Note\n\nNeeds linked evidence.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_active_work_note",
+                    project="alexandria-hermes",
+                )
+            )
+            workflow = await workflow_service.start_workflow(
+                ObsidianLibrarianAsk(
+                    query="canonical storage source",
+                    active_note_path=active.relative_path,
+                    project="alexandria-hermes",
+                )
+            )
+            resumed = await workflow_service.resume_workflow(
+                ObsidianLibrarianWorkflowResume(
+                    thread_id=workflow.thread_id,
+                    approved_actions=["add_graph_links"],
+                )
+            )
+            updated = await obsidian.read_note_by_path(active.relative_path)
+            related = await graph.related_notes_by_path(active.relative_path)
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            list(resumed.state["completed_actions"]),
+            updated.body,
+            [
+                (item.note.note_id, item.relation.value, item.direction)
+                for item in related
+                if item.note.note_id == source.note_id
+            ],
+        )
+
+    completed_actions, body, related = anyio.run(scenario)
+
+    assert completed_actions == [
+        "add_graph_links:Alexandria/Contexts/Project Context/Active Work Note.md"
+    ]
+    assert "[[Alexandria/Contexts/Project Context/Storage Source]] — cites" in body
+    assert related == [
+        ("ctx_storage_source", ObsidianRelationType.CITES.value, "outgoing")
+    ]
 
 
 def test_librarian_workflow_runs_gpt_oauth_delegate_when_approved(

@@ -1,7 +1,7 @@
 .PHONY: install-local format_check type_checking guardrails test ci
 
 install-local:
-	uv sync --no-editable
+	uv sync --no-editable --reinstall-package alexandria-hermes
 
 format_check:
 	uv run --no-editable ruff format --check .

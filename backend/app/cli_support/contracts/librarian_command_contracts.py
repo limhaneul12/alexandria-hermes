@@ -78,6 +78,17 @@ class LibrarianProviderConnectCodexOAuthCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class LibrarianBootstrapObsidianOAuthCommand:
+    """Parameters for bootstrapping Obsidian GPT OAuth librarian defaults."""
+
+    provider_name: str
+    model: str
+    start_oauth: bool
+    enabled: bool
+    config: dict[str, str | int | bool]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class LibrarianProfileCreateCommand:
     """Parameters for creating a librarian profile from the CLI."""
 

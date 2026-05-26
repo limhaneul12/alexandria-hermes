@@ -1216,6 +1216,138 @@ def test_cli_connects_codex_oauth_after_creating_provider_without_token_leak() -
     assert loads_json(printed)["oauth"]["user_code"] == "USER-CODE"
 
 
+def test_cli_bootstraps_obsidian_oauth_provider_and_profiles() -> None:
+    """Librarian bootstrap should create missing defaults without starting OAuth by default."""
+    calls: list[RecordedCall] = []
+
+    def fake_transport(
+        method: str,
+        url: str,
+        body: bytes | None,
+        headers: HttpHeaders,
+        timeout: float,
+    ) -> tuple[int, bytes]:
+        calls.append((method, url, body, headers, timeout))
+        if method == "GET" and url.endswith("/settings/connections"):
+            return 200, dumps_json([])
+        if method == "POST" and url.endswith("/settings/connections"):
+            return 200, dumps_json({"id": "provider-1", "name": "codex-oauth"})
+        if method == "GET" and url.endswith("/librarians/profiles"):
+            return 200, dumps_json([])
+        if method == "POST" and url.endswith("/librarians/profiles"):
+            request = loads_json(body or b"{}")
+            return 200, dumps_json(
+                {"id": f"profile-{request['name']}", "name": request["name"]}
+            )
+        return 404, dumps_json({"detail": "unexpected test route"})
+
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "librarian",
+            "bootstrap-obsidian-oauth",
+            "--provider-name",
+            "codex-oauth",
+        ],
+        transport=fake_transport,
+        stdout=stdout,
+    )
+
+    printed = loads_json(stdout.getvalue())
+    profile_bodies = [
+        loads_json(body or b"{}")
+        for method, url, body, *_ in calls
+        if method == "POST" and url.endswith("/librarians/profiles")
+    ]
+    assert exit_code == 0
+    assert [(method, url) for method, url, *_ in calls] == [
+        ("GET", "http://localhost:8000/settings/connections"),
+        ("POST", "http://localhost:8000/settings/connections"),
+        ("GET", "http://localhost:8000/librarians/profiles"),
+        ("POST", "http://localhost:8000/librarians/profiles"),
+        ("POST", "http://localhost:8000/librarians/profiles"),
+        ("POST", "http://localhost:8000/librarians/profiles"),
+    ]
+    assert printed["provider"]["name"] == "codex-oauth"
+    assert printed["oauth"] is None
+    assert [profile["name"] for profile in printed["profiles"]] == [
+        "research-critic",
+        "obsidian-librarian",
+        "graph-curator",
+    ]
+    assert [body["preferred_librarian_provider"] for body in profile_bodies] == [
+        None,
+        None,
+        None,
+    ]
+
+
+def test_cli_bootstrap_obsidian_oauth_can_start_redacted_oauth() -> None:
+    """Librarian bootstrap --start-oauth should call OAuth start by provider alias."""
+    calls: list[RecordedCall] = []
+
+    def fake_transport(
+        method: str,
+        url: str,
+        body: bytes | None,
+        headers: HttpHeaders,
+        timeout: float,
+    ) -> tuple[int, bytes]:
+        calls.append((method, url, body, headers, timeout))
+        if method == "GET" and url.endswith("/settings/connections"):
+            return 200, dumps_json([{"id": "provider-1", "name": "codex-oauth"}])
+        if method == "GET" and url.endswith("/librarians/profiles"):
+            return 200, dumps_json(
+                [
+                    {"id": "profile-research-critic", "name": "research-critic"},
+                    {"id": "profile-obsidian", "name": "obsidian-librarian"},
+                    {"id": "profile-graph", "name": "graph-curator"},
+                ]
+            )
+        if method == "POST" and url.endswith(
+            "/settings/connections/codex-oauth/oauth/start"
+        ):
+            return 200, dumps_json(
+                {
+                    "provider_id": "provider-1",
+                    "status": "pending",
+                    "user_code": "USER-CODE",
+                    "oauth_access_token": "secret-token",
+                }
+            )
+        return 404, dumps_json({"detail": "unexpected test route"})
+
+    stdout = io.StringIO()
+
+    exit_code = run(
+        [
+            "--json",
+            "librarian",
+            "bootstrap-obsidian-oauth",
+            "--provider-name",
+            "codex-oauth",
+            "--start-oauth",
+        ],
+        transport=fake_transport,
+        stdout=stdout,
+    )
+
+    printed = stdout.getvalue()
+    assert exit_code == 0
+    assert [(method, url) for method, url, *_ in calls] == [
+        ("GET", "http://localhost:8000/settings/connections"),
+        ("GET", "http://localhost:8000/librarians/profiles"),
+        (
+            "POST",
+            "http://localhost:8000/settings/connections/codex-oauth/oauth/start",
+        ),
+    ]
+    assert loads_json(printed)["oauth"]["user_code"] == "USER-CODE"
+    assert "secret-token" not in printed
+
+
 def test_cli_creates_openai_provider_from_env_without_printing_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

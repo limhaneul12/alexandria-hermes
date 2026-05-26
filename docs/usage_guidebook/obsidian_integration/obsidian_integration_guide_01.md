@@ -179,6 +179,25 @@ uv run alexandria-hermes obsidian save "Prompt Draft" \
   --tag prompt
 ```
 
+Capture reusable artifacts with migration-safe defaults:
+
+```bash
+uv run alexandria-hermes obsidian capture "Browser Verification Skill" \
+  --body-file ./skill.md \
+  --type skill \
+  --project alexandria-hermes \
+  --tag browser
+
+uv run alexandria-hermes obsidian capture "Release Review Prompt" \
+  --body-file ./prompt.md \
+  --type prompt \
+  --prompt-kind template
+```
+
+`obsidian capture` only accepts `memory_compact`, `skill`, and `prompt`. It
+adds artifact tags/frontmatter, writes Markdown as the canonical source, and
+updates the SQLite index/cache through the same `/obsidian/notes` path.
+
 Read graph-related notes after reindex:
 
 ```bash
@@ -238,6 +257,15 @@ Use `copy` for normal installs so plugin settings/data stay in the vault copy in
 
 Then enable **Alexandria Librarian** from Obsidian Community plugins and run command palette action `Ask Alexandria Librarian`. The pane sends the active note path, selected text, question, project, and transcript preference to the local backend.
 
+The side pane now behaves like a small local chat/workflow console:
+
+- session-local conversation history stays inside the pane;
+- workflow badges show LangGraph status, delegate status, and transcript saves;
+- approval actions render as cards before backend writes or GPT OAuth delegation;
+- GPT OAuth librarian output is split into its own panel when the backend appends
+  a `## GPT OAuth Librarian` section;
+- answer material can be saved as context notes, skill drafts, or prompt
+  templates without storing OAuth secrets in the vault.
 
 ## 8. Graph relation contract
 
@@ -263,7 +291,7 @@ promotes_to: []
 <!-- ALEXANDRIA-LINKS:END -->
 ```
 
-SQLite stores this as a rebuildable `obsidian_edges` cache. Related notes are available via CLI, MCP, and HTTP. The Obsidian side pane can show related notes and can write source wikilinks into the active note after user action.
+SQLite stores this as a rebuildable `obsidian_edges` cache. Related notes are available via CLI, MCP, and HTTP. The Obsidian side pane can show related notes and can write source wikilinks into the active note after user action. LangGraph workflow approval for `add_graph_links` now mutates the active Markdown note server-side, updates the managed Alexandria links section, and reindexes the edge cache before the workflow completes.
 
 ## 9. Resumable librarian workflow
 
@@ -285,7 +313,8 @@ The Obsidian librarian endpoint returns:
 - Markdown answer;
 - source references with Obsidian wikilinks;
 - optional transcript saved under `Librarian/Chats/` or `Alexandria/Librarian/Chats/`, depending on root mode;
-- action previews for follow-up note creation.
+- action previews for follow-up note creation;
+- delegate status for the optional GPT OAuth librarian lane.
 
 The local answer remains deterministic and source-grounded. Approved GPT/OAuth delegation can now append a `## GPT OAuth Librarian` section when a connected provider/profile returns delegate guidance, without changing the Obsidian note contract.
 

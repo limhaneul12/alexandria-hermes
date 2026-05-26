@@ -8,6 +8,8 @@
 
 .alexandria-card,
 .alexandria-answer,
+.alexandria-delegate,
+.alexandria-history,
 .alexandria-sources {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
@@ -58,6 +60,54 @@
 .alexandria-badge {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+}
+
+.alexandria-pill {
+  background: var(--background-modifier-border);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: var(--font-ui-smaller);
+  margin: 2px 4px 2px 0;
+  padding: 2px 8px;
+}
+
+.alexandria-pill-success {
+  background: var(--background-modifier-success, var(--background-modifier-border));
+  color: var(--text-normal);
+}
+
+.alexandria-pill-warning {
+  background: var(--background-modifier-warning, var(--background-modifier-border));
+  color: var(--text-normal);
+}
+
+.alexandria-pill-muted {
+  color: var(--text-muted);
+}
+
+.alexandria-history-row,
+.alexandria-action-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  margin: 8px 0;
+  padding: 8px;
+}
+
+.alexandria-history-button {
+  display: block;
+  margin-bottom: 6px;
+  text-align: left;
+  width: 100%;
+}
+
+.alexandria-delegate-body {
+  border-left: 3px solid var(--interactive-accent);
+  margin-top: 8px;
+  padding-left: 10px;
+}
+
+.alexandria-workflow-badges {
+  margin-bottom: 8px;
 }
 
 .alexandria-workflow-form {

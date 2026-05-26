@@ -83,12 +83,12 @@ def build_execution_plans(
     Returns:
         list[LibrarianExecutionPlan]: Candidate delegate plans.
     """
-    provider_by_id = {provider.id: provider for provider in executable_providers}
+    provider_by_reference = _provider_reference_lookup(executable_providers)
     plans: list[LibrarianExecutionPlan] = []
     for profile in routing.selected_profiles:
         resolution = _profile_resolution(command, profile, routing.max_librarian_agents)
         provider = _plan_provider(
-            resolution.provider_id, provider_by_id, executable_providers
+            resolution.provider_id, provider_by_reference, executable_providers
         )
         plans.append(
             LibrarianExecutionPlan(
@@ -100,7 +100,7 @@ def build_execution_plans(
         )
     if plans:
         return plans
-    return [_request_default_plan(command, provider_by_id, executable_providers)]
+    return [_request_default_plan(command, provider_by_reference, executable_providers)]
 
 
 async def execute_delegates(
@@ -258,10 +258,14 @@ def execution_profile_id(plan: LibrarianExecutionPlan | None) -> str | None:
 
 def _request_default_plan(
     command: HermesLibrarianAskCommand,
-    provider_by_id: dict[str, LibrarianProvider],
+    provider_by_reference: dict[str, LibrarianProvider],
     executable_providers: list[LibrarianProvider],
 ) -> LibrarianExecutionPlan:
-    provider = _plan_provider(command.provider_id, provider_by_id, executable_providers)
+    provider = _plan_provider(
+        command.provider_id,
+        provider_by_reference,
+        executable_providers,
+    )
     if provider is None and not command.provider_id and executable_providers:
         provider = executable_providers[0]
     resolution = LibrarianProfileResolution(
@@ -304,14 +308,24 @@ def _profile_resolution(
 
 def _plan_provider(
     provider_id: str | None,
-    provider_by_id: dict[str, LibrarianProvider],
+    provider_by_reference: dict[str, LibrarianProvider],
     executable_providers: list[LibrarianProvider],
 ) -> LibrarianProvider | None:
     if provider_id is not None:
-        return provider_by_id.get(provider_id)
+        return provider_by_reference.get(provider_id)
     if executable_providers:
         return executable_providers[0]
     return None
+
+
+def _provider_reference_lookup(
+    providers: list[LibrarianProvider],
+) -> dict[str, LibrarianProvider]:
+    lookup: dict[str, LibrarianProvider] = {}
+    for provider in providers:
+        lookup[provider.id] = provider
+        lookup[provider.name] = provider
+    return lookup
 
 
 def _delegate_result(plan: LibrarianExecutionPlan) -> LibrarianDelegateResult:

@@ -547,10 +547,23 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
         path: str | None = None,
         project: str | None = None,
         tags: list[str] | None = None,
+        status: str = "active",
+        source: str = "mcp",
+        frontmatter: dict[str, JSONValue] | None = None,
     ) -> JSONValue:
         """Save one Alexandria-managed Obsidian Markdown note."""
         return await backend_tool_gateway.alexandria_save_note(
-            api_client, title, body, alexandria_type, note_id, path, project, tags
+            api_client,
+            title,
+            body,
+            alexandria_type,
+            note_id,
+            path,
+            project,
+            tags,
+            status,
+            source,
+            frontmatter,
         )
 
     @server.tool(name="alexandria_ask_obsidian_librarian")
