@@ -14,6 +14,8 @@ const VIEW_TYPE_ALEXANDRIA_LIBRARIAN = "alexandria-librarian-view";
 const DEFAULT_SETTINGS = {
   apiUrl: "http://127.0.0.1:8000",
   operatorApiKey: "",
+  backendVaultPath: "",
+  backendAlexandriaRoot: ".",
   defaultProject: "alexandria-hermes",
   autoSaveTranscripts: false,
   preferredProviderId: "",
@@ -1103,6 +1105,75 @@ class AlexandriaLibrarianSettingTab extends PluginSettingTab {
           })
       );
 
+    containerEl.createEl("h3", { text: "Backend Obsidian vault" });
+    containerEl.createEl("p", {
+      cls: "alexandria-muted",
+      text:
+        "Configure where the local Alexandria backend writes notes. Use current vault when this Obsidian vault itself should be the canonical Alexandria storage.",
+    });
+
+    new Setting(containerEl)
+      .setName("Backend vault path")
+      .setDesc(
+        "Absolute filesystem path to the Obsidian vault used by backend /obsidian note writes."
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder(this.currentVaultPath() || "/Users/me/Desktop/Alexandria")
+          .setValue(this.plugin.settings.backendVaultPath || "")
+          .onChange(async (value) => {
+            this.plugin.settings.backendVaultPath = value.trim();
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Alexandria root in vault")
+      .setDesc(
+        "Use '.' when this vault root is already the Alexandria vault; use 'Alexandria' to keep notes under an Alexandria/ folder."
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.backendAlexandriaRoot)
+          .setValue(
+            this.plugin.settings.backendAlexandriaRoot ||
+              DEFAULT_SETTINGS.backendAlexandriaRoot
+          )
+          .onChange(async (value) => {
+            this.plugin.settings.backendAlexandriaRoot =
+              value.trim() || DEFAULT_SETTINGS.backendAlexandriaRoot;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Apply backend vault")
+      .setDesc(
+        "Persists the path in the backend, initializes folders, and reindexes notes. Requires the operator key above."
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Use current vault")
+          .onClick(async () => {
+            await this.useCurrentVault();
+          })
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Check backend")
+          .onClick(async () => {
+            await this.checkBackendVault();
+          })
+      )
+      .addButton((button) =>
+        button
+          .setButtonText("Apply to backend")
+          .setCta()
+          .onClick(async () => {
+            await this.applyBackendVault();
+          })
+      );
+
     new Setting(containerEl)
       .setName("Default project")
       .setDesc("Project metadata sent with librarian asks and created notes.")
@@ -1226,5 +1297,110 @@ class AlexandriaLibrarianSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+  }
+
+  currentVaultPath() {
+    const adapter = this.app.vault.adapter;
+    return adapter && typeof adapter.basePath === "string" ? adapter.basePath : "";
+  }
+
+  backendVaultPath() {
+    return (this.plugin.settings.backendVaultPath || this.currentVaultPath()).trim();
+  }
+
+  backendAlexandriaRoot() {
+    return (
+      this.plugin.settings.backendAlexandriaRoot ||
+      DEFAULT_SETTINGS.backendAlexandriaRoot
+    ).trim() || DEFAULT_SETTINGS.backendAlexandriaRoot;
+  }
+
+  async useCurrentVault() {
+    const vaultPath = this.currentVaultPath();
+    if (!vaultPath) {
+      new Notice("Alexandria: current vault path is unavailable on this device.");
+      return;
+    }
+    this.plugin.settings.backendVaultPath = vaultPath;
+    this.plugin.settings.backendAlexandriaRoot = ".";
+    await this.plugin.saveSettings();
+    new Notice("Alexandria: current Obsidian vault selected.");
+    this.display();
+  }
+
+  async checkBackendVault() {
+    try {
+      const status = await this.requestJson("GET", "/obsidian/status");
+      new Notice(
+        `Alexandria backend vault: ${status.vault_path || "unknown"} · root ${
+          status.alexandria_root || "unknown"
+        }`
+      );
+    } catch (error) {
+      this.showError(error);
+    }
+  }
+
+  async applyBackendVault() {
+    const vaultPath = this.backendVaultPath();
+    if (!vaultPath) {
+      new Notice("Alexandria: set a backend vault path first.");
+      return;
+    }
+    try {
+      const status = await this.requestJson("PUT", "/obsidian/settings/vault", {
+        vault_path: vaultPath,
+        alexandria_root: this.backendAlexandriaRoot(),
+        initialize: true,
+        reindex: true,
+      });
+      new Notice(
+        `Alexandria backend vault applied: ${status.vault_path || vaultPath}`
+      );
+    } catch (error) {
+      this.showError(error);
+    }
+  }
+
+  async requestJson(method, path, payload) {
+    const url = `${this.plugin.settings.apiUrl.replace(/\/$/u, "")}${path}`;
+    const headers = {};
+    if (payload !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (this.plugin.settings.operatorApiKey) {
+      headers["X-Alexandria-Operator-Key"] = this.plugin.settings.operatorApiKey;
+    }
+    const response = await requestUrl({
+      url,
+      method,
+      headers,
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+    });
+    if (response.status < 200 || response.status >= 300) {
+      const detail = this.errorDetail(response);
+      throw new Error(
+        `Alexandria request failed (${response.status})${
+          detail ? `: ${detail}` : ""
+        }`
+      );
+    }
+    return response.json;
+  }
+
+  errorDetail(response) {
+    const payload = response.json || {};
+    if (typeof payload.detail === "string") {
+      return payload.detail;
+    }
+    if (typeof payload.message === "string") {
+      return payload.message;
+    }
+    return "";
+  }
+
+  showError(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    new Notice(`Alexandria Librarian: ${message}`);
   }
 }

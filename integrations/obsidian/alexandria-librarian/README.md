@@ -34,6 +34,21 @@ Minimal Obsidian community-plugin bridge for the local Alexandria-Hermes backend
 - Can add managed Alexandria source wikilinks to the current note.
 - Can create context, skill draft, or prompt template notes through `POST /obsidian/notes`.
 - Can resume approved LangGraph action cards, including GPT/OAuth librarian delegation, without storing OAuth tokens.
+- Can configure the backend Obsidian vault destination from plugin settings through `PUT /obsidian/settings/vault`.
+
+## Backend vault destination
+
+If the backend is saving notes into the generated `backend/data/obsidian-vault`
+instead of your real Obsidian vault:
+
+1. Open **Alexandria Librarian** plugin settings.
+2. Set **Operator API key**.
+3. Under **Backend Obsidian vault**, click **Use current vault**.
+4. Keep **Alexandria root in vault** as `.` when the current vault root is already
+   the Alexandria vault, or set it to `Alexandria` to save under an
+   `Alexandria/` folder.
+5. Click **Apply to backend**. The backend persists the path, initializes folders,
+   and reindexes without requiring a restart.
 
 ## GPT OAuth from Obsidian
 

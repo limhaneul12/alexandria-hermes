@@ -85,6 +85,11 @@ class AppConfig(BaseSettings):
     obsidian_vault_path: str = Field(default="./data/obsidian-vault", min_length=1)
     # Folder inside the Obsidian vault managed by Alexandria-Hermes.
     alexandria_obsidian_root: str = Field(default="Alexandria", min_length=1)
+    # Local JSON override written by the Obsidian plugin when the active vault changes.
+    obsidian_vault_config_path: str = Field(
+        default="./data/obsidian-vault-config.json",
+        min_length=1,
+    )
     # Folder inside the Obsidian vault for Memory Compact notes.
     memory_compact_note_dir: str = Field(
         default="Alexandria/Memory Compacts", min_length=1

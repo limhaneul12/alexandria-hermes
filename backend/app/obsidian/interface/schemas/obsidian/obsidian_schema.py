@@ -22,10 +22,13 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     ObsidianLibrarianWorkflowStatus,
     ObsidianRelationType,
 )
+from app.obsidian.interface.schemas.obsidian.obsidian_librarian_type_aliases import (
+    preferred_note_type_input,
+)
 from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from app.shared.types.extra_types import JSONObject, JSONValue
-from pydantic import Field
+from pydantic import Field, field_validator
 
 
 class ObsidianStatusResponse(StrictSchemaModel):
@@ -283,6 +286,27 @@ class ObsidianLibrarianAskRequest(StrictSchemaModel):
     delegate_to_librarian: bool = False
     provider_id: str | None = None
     profile_id: str | None = None
+
+    @field_validator("preferred_alexandria_types", mode="before")
+    @classmethod
+    def normalize_preferred_alexandria_types(cls, value: JSONValue) -> JSONValue:
+        """Normalize agent-facing note type aliases before enum validation.
+
+        MCP callers provide this field as free strings. The Obsidian shelf named
+        "Indexes" stores notes as Alexandria context notes, so accepting
+        "index" avoids a brittle 422 for otherwise valid librarian requests.
+
+        Args:
+            value: Raw Pydantic input value before enum validation.
+
+        Returns:
+            Normalized value for downstream enum validation.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return value
+        return [preferred_note_type_input(item) for item in value]
 
     def to_command(self) -> ObsidianLibrarianAsk:
         """Convert request into application command.

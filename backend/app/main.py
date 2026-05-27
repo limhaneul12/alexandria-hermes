@@ -28,6 +28,9 @@ from app.memory.interface.routers.memory_compact_router import (
     router as memory_compact_router,
 )
 from app.obsidian.interface.routers.obsidian_router import router as obsidian_router
+from app.obsidian.interface.routers.obsidian_settings_router import (
+    router as obsidian_settings_router,
+)
 from app.platform.config.app_config import AppConfig
 from app.platform.health_router import install_health_routes
 from app.platform.lifecycle.state import LifecycleState
@@ -147,6 +150,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(context_router)
     app.include_router(memory_compact_router)
     app.include_router(obsidian_router)
+    app.include_router(obsidian_settings_router)
     app.include_router(agent_router)
     app.include_router(librarian_router)
     app.include_router(librarian_oauth_router)

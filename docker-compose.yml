@@ -19,6 +19,9 @@ services:
       SERVICE_RAG_EMBEDDING_MODEL: ${SERVICE_RAG_EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
       SERVICE_RAG_EMBEDDING_DIMENSIONS: ${SERVICE_RAG_EMBEDDING_DIMENSIONS:-384}
       SERVICE_RAG_EMBEDDING_CACHE_DIR: ${SERVICE_RAG_EMBEDDING_CACHE_DIR:-/app/data/fastembed-cache}
+      SERVICE_OBSIDIAN_VAULT_PATH: ${SERVICE_OBSIDIAN_VAULT_PATH:-/app/obsidian-vault}
+      SERVICE_ALEXANDRIA_OBSIDIAN_ROOT: ${SERVICE_ALEXANDRIA_OBSIDIAN_ROOT:-.}
+      SERVICE_MEMORY_COMPACT_NOTE_DIR: ${SERVICE_MEMORY_COMPACT_NOTE_DIR:-Memory Compacts}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -29,4 +32,5 @@ services:
       - ./backend/migrations:/app/migrations:ro
       - ./backend/tests:/app/tests:ro
       - ./backend/data:/app/data
+      - ${ALEXANDRIA_HOST_OBSIDIAN_VAULT_PATH:-${HOME}/Desktop/Alexandria}:${SERVICE_OBSIDIAN_VAULT_PATH:-/app/obsidian-vault}
     restart: unless-stopped

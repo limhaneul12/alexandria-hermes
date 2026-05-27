@@ -41,6 +41,21 @@ def test_librarian_settings_rejects_missing_operator_key() -> None:
     assert response.json() == {"detail": "Operator API key required"}
 
 
+def test_obsidian_vault_settings_rejects_missing_operator_key() -> None:
+    """Obsidian runtime vault settings should be operator protected."""
+    with (
+        enforce_operator_api_key_dependency(),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.put(
+            "/obsidian/settings/vault",
+            json={"vault_path": "/tmp/alexandria-test-vault", "alexandria_root": "."},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Operator API key required"}
+
+
 def test_operator_api_key_accepts_configured_header() -> None:
     """Operator guard should accept the configured header value."""
 

@@ -35,6 +35,10 @@ from app.obsidian.infrastructure.repositories.obsidian_fts import (
     delete_obsidian_fts_statement,
     ensure_obsidian_chunk_fts_table,
 )
+from app.obsidian.infrastructure.repositories.obsidian_index_row_cleanup import (
+    discard_obsidian_note_index,
+    get_obsidian_file_by_path,
+)
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.extra_types import JSONObject
 from app.shared.types.types_convert_utils import aware_utc_datetime
@@ -63,7 +67,14 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         """
         await self.ensure_search_tables()
         now = datetime.now(UTC)
+        path_model = await get_obsidian_file_by_path(
+            self._session, payload.relative_path
+        )
         model = await self._session.get(ObsidianFileORM, payload.note_id)
+        if path_model is not None and path_model.note_id != payload.note_id:
+            await discard_obsidian_note_index(self._session, path_model.note_id)
+            await self._session.delete(path_model)
+            await self._session.flush()
         if model is None:
             model = ObsidianFileORM(note_id=payload.note_id)
             self._session.add(model)
@@ -133,12 +144,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         Returns:
             Note entity when found.
         """
-        row = await self._session.execute(
-            select(ObsidianFileORM).where(
-                ObsidianFileORM.relative_path == relative_path
-            )
-        )
-        model = row.scalar_one_or_none()
+        model = await get_obsidian_file_by_path(self._session, relative_path)
         return None if model is None else _note_from_model(model)
 
     async def search(self, query: ObsidianSearchQuery) -> list[ObsidianSearchHit]:

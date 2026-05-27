@@ -7,6 +7,9 @@ from app.obsidian.application.obsidian_librarian_workflow_service import (
     ObsidianLibrarianWorkflowService,
 )
 from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.infrastructure.obsidian_vault_config_store import (
+    ObsidianVaultConfigStore,
+)
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
@@ -27,11 +30,17 @@ class ObsidianContainer(containers.DeclarativeContainer):
     index_repo = providers.Factory(
         SqlAlchemyObsidianIndexRepository, session=db_session
     )
+    vault_config_store = providers.Singleton(
+        ObsidianVaultConfigStore,
+        default_vault_path=app_config.provided.obsidian_vault_path,
+        default_alexandria_root=app_config.provided.alexandria_obsidian_root,
+        config_path=app_config.provided.obsidian_vault_config_path,
+    )
     obsidian_service = providers.Factory(
         ObsidianService,
         repository=index_repo,
-        vault_path=app_config.provided.obsidian_vault_path,
-        alexandria_root=app_config.provided.alexandria_obsidian_root,
+        vault_config_store=vault_config_store,
+        delegate_service=librarian_delegate_service,
     )
     graph_service = providers.Factory(
         ObsidianGraphService,

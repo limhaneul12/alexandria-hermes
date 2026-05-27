@@ -6,6 +6,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import anyio
+from app.librarian.domain.contracts.hermes_collaboration_contracts import (
+    HermesLibrarianAskCommand,
+)
+from app.librarian.domain.event_enum.collaboration_enums import (
+    AcquisitionDecision,
+    LibrarianDelegateKind,
+    LibrarianDelegateStatus,
+    LibrarianDelegationStatus,
+)
+from app.librarian.domain.types.hermes_collaboration_payload_types import (
+    HermesLibrarianAskPayload,
+)
 from app.memory.application.memory_compact_service import MemoryCompactService
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
 from app.memory.domain.repositories.memory_compact_repository import (
@@ -20,16 +32,21 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
     ObsidianSaveNote,
     ObsidianSearchQuery,
+    ObsidianVaultSettingsUpdate,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 from app.obsidian.infrastructure.models import (
     obsidian_index_models as _obsidian_index_models,
 )
+from app.obsidian.infrastructure.obsidian_vault_config_store import (
+    ObsidianVaultConfigStore,
+)
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
-from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions import ObsidianNotFoundError, ObsidianValidationError
 from app.shared.infrastructure.database import Database
+from app.shared.serialization.orjson_codec import loads_json
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
@@ -51,6 +68,48 @@ async def _service(tmp_path: Path) -> tuple[Database, AsyncSession, ObsidianServ
         alexandria_root="Alexandria",
     )
     return database, session, service
+
+
+class _RecordingDelegateService:
+    """Test double that behaves like a selected provider-backed librarian."""
+
+    def __init__(self) -> None:
+        self.command: HermesLibrarianAskCommand | None = None
+
+    async def ask_librarian(
+        self,
+        command: HermesLibrarianAskCommand,
+    ) -> HermesLibrarianAskPayload:
+        self.command = command
+        return HermesLibrarianAskPayload(
+            job_id="librarian-job-test",
+            status=LibrarianDelegationStatus.COMPLETED,
+            decision=AcquisitionDecision.DELEGATE_TO_LIBRARIAN,
+            librarian_available=True,
+            self_acquisition_allowed=True,
+            recommendation="delegate complete",
+            provider_id="auto-provider",
+            candidate_id=None,
+            librarian_profile_id="auto-profile",
+            librarian_model=None,
+            librarian_role_prompt=None,
+            max_librarian_agents=1,
+            route_preview=["Specialized librarian provider: auto-provider"],
+            selected_profiles=["auto-profile"],
+            matched_specialties=["obsidian"],
+            quality_review_added=False,
+            routing_reason="test route",
+            delegates=[
+                {
+                    "profile_id": "auto-profile",
+                    "provider_id": "auto-provider",
+                    "status": LibrarianDelegateStatus.COMPLETED,
+                    "delegate_type": LibrarianDelegateKind.LIBRARY_SEARCH,
+                    "summary": "provider-backed compact guidance",
+                    "matched_specialties": ["obsidian"],
+                }
+            ],
+        )
 
 
 def test_obsidian_init_creates_frontmatter_start_note(tmp_path: Path) -> None:
@@ -116,6 +175,67 @@ def test_obsidian_reindex_searches_frontmatter_notes(tmp_path: Path) -> None:
     anyio.run(scenario)
 
 
+def test_obsidian_reindex_handles_note_id_change_for_same_path(
+    tmp_path: Path,
+) -> None:
+    """Reindex should replace stale path rows when frontmatter id changes."""
+
+    async def scenario() -> tuple[int, int, str, bool]:
+        database, session, service = await _service(tmp_path)
+        try:
+            notes_dir = tmp_path / "vault" / "Alexandria" / "Contexts" / "Decisions"
+            notes_dir.mkdir(parents=True)
+            note_path = notes_dir / "Storage.md"
+            note_path.write_text(
+                "---\n"
+                "alexandria_type: context\n"
+                "id: ctx_storage_old\n"
+                "title: Obsidian Storage\n"
+                "tags:\n"
+                "  - obsidian\n"
+                "status: active\n"
+                "source: human\n"
+                "project: alexandria-hermes\n"
+                "---\n\n"
+                "# Obsidian Storage\n\nOriginal id.\n",
+                encoding="utf-8",
+            )
+            first = await service.reindex()
+            note_path.write_text(
+                "---\n"
+                "alexandria_type: context\n"
+                "id: ctx_storage_new\n"
+                "title: Obsidian Storage\n"
+                "tags:\n"
+                "  - obsidian\n"
+                "status: active\n"
+                "source: human\n"
+                "project: alexandria-hermes\n"
+                "---\n\n"
+                "# Obsidian Storage\n\nRenamed id.\n",
+                encoding="utf-8",
+            )
+            second = await service.reindex()
+            renamed = await service.read_note("ctx_storage_new")
+            try:
+                await service.read_note("ctx_storage_old")
+            except ObsidianNotFoundError:
+                old_id_missing = True
+            else:
+                old_id_missing = False
+        finally:
+            await session.close()
+            await database.shutdown()
+        return first.files_indexed, second.files_indexed, renamed.body, old_id_missing
+
+    first_indexed, second_indexed, body, old_id_missing = anyio.run(scenario)
+
+    assert first_indexed == 1
+    assert second_indexed == 1
+    assert "Renamed id." in body
+    assert old_id_missing is True
+
+
 def test_obsidian_save_note_writes_markdown_and_reindexes(tmp_path: Path) -> None:
     """Saving a note should write canonical Markdown and make it searchable."""
 
@@ -150,6 +270,71 @@ def test_obsidian_save_note_writes_markdown_and_reindexes(tmp_path: Path) -> Non
         assert hits[0].note.note_id == "skill_web_research"
 
     anyio.run(scenario)
+
+
+def test_obsidian_vault_settings_update_redirects_future_writes(
+    tmp_path: Path,
+) -> None:
+    """Runtime vault settings should persist and move future note writes."""
+
+    async def scenario() -> tuple[str, str, bool, bool, str | None]:
+        database = Database(
+            database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
+        )
+        await database.initialize()
+        session = database.session()
+        config_path = tmp_path / "vault-config.json"
+        target_vault = tmp_path / "Desktop" / "Alexandria"
+        store = ObsidianVaultConfigStore(
+            default_vault_path=str(tmp_path / "generated-vault"),
+            default_alexandria_root="Alexandria",
+            config_path=str(config_path),
+        )
+        service = ObsidianService(
+            repository=SqlAlchemyObsidianIndexRepository(session=session),
+            vault_config_store=store,
+        )
+        try:
+            status = await service.configure_vault_settings(
+                ObsidianVaultSettingsUpdate(
+                    vault_path=str(target_vault),
+                    alexandria_root=".",
+                    initialize=True,
+                    reindex=True,
+                )
+            )
+            saved = await service.save_note(
+                ObsidianSaveNote(
+                    title="Configured Vault Note",
+                    body="# Configured Vault Note\n\nSaved from plugin settings.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_configured_vault_note",
+                )
+            )
+            persisted = loads_json(config_path.read_bytes())
+            persisted_path = (
+                persisted["vault_path"] if isinstance(persisted, dict) else None
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            status.vault_path,
+            status.alexandria_root,
+            (target_vault / "START_HERE.md").exists(),
+            (target_vault / saved.relative_path).exists(),
+            persisted_path if isinstance(persisted_path, str) else None,
+        )
+
+    status_path, alexandria_root, start_exists, note_exists, persisted_path = anyio.run(
+        scenario
+    )
+
+    assert status_path == str((tmp_path / "Desktop" / "Alexandria").resolve())
+    assert alexandria_root == "."
+    assert start_exists is True
+    assert note_exists is True
+    assert persisted_path == status_path
 
 
 def test_obsidian_roundtrips_memory_skill_prompt_after_sqlite_rebuild(
@@ -394,6 +579,66 @@ def test_obsidian_save_note_redacts_secret_like_frontmatter_values(
         assert "potential secret-like content was redacted" in note_text
 
     anyio.run(scenario)
+
+
+def test_obsidian_librarian_ask_delegates_with_auto_provider(
+    tmp_path: Path,
+) -> None:
+    """Delegate requests should use the configured delegate service without caller ids."""
+
+    async def scenario() -> tuple[str, str | None, str | None, bool, str | None]:
+        database = Database(
+            database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
+        )
+        await database.initialize()
+        session = database.session()
+        delegate = _RecordingDelegateService()
+        service = ObsidianService(
+            repository=SqlAlchemyObsidianIndexRepository(session=session),
+            vault_path=str(tmp_path / "vault"),
+            alexandria_root="Alexandria",
+            delegate_service=delegate,
+        )
+        try:
+            note = await service.save_note(
+                ObsidianSaveNote(
+                    title="Delegate Source",
+                    body="# Delegate Source\n\nObsidian delegate source marker.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_delegate_source",
+                    project="alexandria-hermes",
+                )
+            )
+            response = await service.ask_librarian(
+                ObsidianLibrarianAsk(
+                    query="Obsidian delegate source marker",
+                    active_note_path=note.relative_path,
+                    project="alexandria-hermes",
+                    delegate_to_librarian=True,
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            str(response["delegate_status"]),
+            response["provider_id"]
+            if isinstance(response["provider_id"], str)
+            else None,
+            response["profile_id"] if isinstance(response["profile_id"], str) else None,
+            "provider-backed compact guidance" in str(response["answer_markdown"]),
+            None if delegate.command is None else delegate.command.provider_id,
+        )
+
+    status, provider_id, profile_id, summary_added, requested_provider = anyio.run(
+        scenario
+    )
+
+    assert status == "COMPLETED"
+    assert provider_id == "auto-provider"
+    assert profile_id == "auto-profile"
+    assert summary_added is True
+    assert requested_provider is None
 
 
 def test_obsidian_librarian_ask_uses_active_note_as_source(tmp_path: Path) -> None:

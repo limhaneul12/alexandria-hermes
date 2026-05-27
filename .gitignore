@@ -263,7 +263,10 @@ docs/*
 # Local Alexandria-Hermes runtime data: SQLite DBs, embedding/vector caches, and
 # downloaded model cache files are machine-local state and must not be committed.
 backend/data/
+.comx-agent/
 .playwright-mcp/
+# Local Obsidian plugin settings may include the operator API key.
+integrations/obsidian/alexandria-librarian/data.json
 # Playwright demo recordings (generated locally)
 docs/assets/demo/recordings/
 backend/.smoke/

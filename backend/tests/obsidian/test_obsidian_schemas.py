@@ -30,3 +30,16 @@ def test_obsidian_request_schemas_restore_enum_contracts() -> None:
         AlexandriaNoteType.CONTEXT,
         AlexandriaNoteType.SKILL,
     ]
+
+
+def test_obsidian_librarian_request_accepts_agent_type_aliases() -> None:
+    """Agent-facing librarian calls should accept common shelf/type aliases."""
+    ask = ObsidianLibrarianAskRequest(
+        query="compact the index",
+        preferred_alexandria_types=["index", "memory"],
+    )
+
+    assert ask.to_command().preferred_alexandria_types == [
+        AlexandriaNoteType.CONTEXT,
+        AlexandriaNoteType.MEMORY_COMPACT,
+    ]

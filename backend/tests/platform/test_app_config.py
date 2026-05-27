@@ -25,6 +25,7 @@ def test_app_config_uses_hermes_codex_oauth_defaults_when_env_is_absent(
         "client_id": "app_EMoamEEZ73f0CkXaXp7hrann",
         "device_expires_in_seconds": 900,
         "min_poll_interval_seconds": 3,
+        "obsidian_vault_config_path": "./data/obsidian-vault-config.json",
         "langgraph_checkpoint_path": "./data/obsidian_librarian_langgraph.sqlite",
     }
     actual = {
@@ -32,6 +33,7 @@ def test_app_config_uses_hermes_codex_oauth_defaults_when_env_is_absent(
         "client_id": config.codex_oauth_client_id,
         "device_expires_in_seconds": config.codex_oauth_device_expires_in_seconds,
         "min_poll_interval_seconds": config.codex_oauth_min_poll_interval_seconds,
+        "obsidian_vault_config_path": config.obsidian_vault_config_path,
         "langgraph_checkpoint_path": (
             config.obsidian_librarian_langgraph_checkpoint_path
         ),

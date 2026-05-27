@@ -63,6 +63,11 @@ OVERSIZED_MODULE_ALLOWLIST = {
         "Context service coordinates lint/save/search/archive lifecycle; extract recall "
         "and archive operations before adding memory features."
     ),
+    "obsidian/application/obsidian_service.py": (
+        "Obsidian service currently coordinates vault IO, indexing, graph writeback, "
+        "and librarian note writes; split librarian and vault-settings operations "
+        "before adding another Obsidian workflow."
+    ),
 }
 
 

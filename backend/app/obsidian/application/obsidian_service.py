@@ -15,6 +15,10 @@ from app.obsidian.application.obsidian_graph_relations import (
     add_or_update_alexandria_links_section,
 )
 from app.obsidian.application.obsidian_graph_writeback import graph_link_save_payload
+from app.obsidian.application.obsidian_librarian_delegation import (
+    ObsidianLibrarianDelegateService,
+    apply_provider_delegate,
+)
 from app.obsidian.application.obsidian_note_indexer import note_index_from_path
 from app.obsidian.application.obsidian_note_templates import (
     conversation_id,
@@ -30,6 +34,7 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
     ObsidianSaveNote,
     ObsidianSearchQuery,
+    ObsidianVaultSettingsUpdate,
 )
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianNote,
@@ -49,8 +54,11 @@ from app.obsidian.infrastructure.markdown.frontmatter import (
 from app.obsidian.infrastructure.markdown.paths import (
     NOTE_SUFFIX,
     resolve_note_path,
-    resolve_vault_path,
     safe_relative_path,
+)
+from app.obsidian.infrastructure.obsidian_vault_config_store import (
+    ObsidianVaultConfig,
+    ObsidianVaultConfigStore,
 )
 from app.shared.exceptions import ObsidianNotFoundError, ObsidianValidationError
 from app.shared.infrastructure.identifiers import new_uuid
@@ -65,8 +73,10 @@ class ObsidianService:
         self,
         *,
         repository: IObsidianIndexRepository,
-        vault_path: str,
+        vault_path: str | None = None,
         alexandria_root: str = "Alexandria",
+        vault_config_store: ObsidianVaultConfigStore | None = None,
+        delegate_service: ObsidianLibrarianDelegateService | None = None,
     ) -> None:
         """Initialize service dependencies.
 
@@ -74,10 +84,28 @@ class ObsidianService:
             repository: Rebuildable SQLite index repository.
             vault_path: Obsidian vault root.
             alexandria_root: Managed folder inside the vault.
+            vault_config_store: Optional runtime vault override store.
+            delegate_service: Optional provider-backed librarian delegate service.
         """
         self._repository = repository
-        self._vault_path = resolve_vault_path(vault_path)
-        self._alexandria_root = str(safe_relative_path(alexandria_root))
+        self._delegate_service = delegate_service
+        if vault_config_store is None:
+            if vault_path is None:
+                raise ObsidianValidationError("vault_path is required")
+            vault_config_store = ObsidianVaultConfigStore(
+                default_vault_path=vault_path,
+                default_alexandria_root=alexandria_root,
+                config_path=None,
+            )
+        self._vault_config_store = vault_config_store
+
+    @property
+    def _vault_path(self) -> Path:
+        return self._vault_config_store.current().vault_path
+
+    @property
+    def _alexandria_root(self) -> str:
+        return self._vault_config_store.current().alexandria_root
 
     async def status(self) -> ObsidianVaultStatus:
         """Return local Obsidian vault/index status.
@@ -96,6 +124,31 @@ class ObsidianService:
             stale_notes=stale,
             error_notes=errors,
         )
+
+    async def configure_vault_settings(
+        self,
+        payload: ObsidianVaultSettingsUpdate,
+    ) -> ObsidianVaultStatus:
+        """Change the runtime Obsidian vault destination.
+
+        Args:
+            payload: Vault settings update request.
+
+        Returns:
+            Current vault/index status after applying the settings.
+        """
+        config = self._vault_config_store.normalized(
+            vault_path=payload.vault_path,
+            alexandria_root=payload.alexandria_root,
+        )
+        if payload.initialize:
+            self._ensure_vault_layout(config)
+        self._vault_config_store.save(config)
+        if payload.initialize:
+            await self.initialize_vault()
+        if payload.reindex:
+            await self.reindex()
+        return await self.status()
 
     async def initialize_vault(self) -> ObsidianNote:
         """Create the managed Obsidian folder layout and START_HERE note.
@@ -382,9 +435,14 @@ class ObsidianService:
             "provider_id": payload.provider_id,
             "profile_id": payload.profile_id,
         }
+        await apply_provider_delegate(
+            payload=payload,
+            response=response,
+            delegate_service=self._delegate_service,
+        )
         if payload.save_transcript:
             transcript = await self._save_librarian_chat(
-                payload, answer, hits, response
+                payload, str(response["answer_markdown"]), hits, response
             )
             response["transcript_path"] = transcript.relative_path
         return response
@@ -438,6 +496,13 @@ class ObsidianService:
 
     def _root_path(self) -> Path:
         return resolve_note_path(self._vault_path, self._alexandria_root)
+
+    def _ensure_vault_layout(self, config: ObsidianVaultConfig) -> None:
+        for folder in default_folders(config.alexandria_root):
+            resolve_note_path(config.vault_path, folder).mkdir(
+                parents=True,
+                exist_ok=True,
+            )
 
 
 def _delegate_status(payload: ObsidianLibrarianAsk) -> str:

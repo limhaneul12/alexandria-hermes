@@ -87,6 +87,16 @@ class ObsidianSaveNote:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultSettingsUpdate:
+    """Payload for changing the runtime Obsidian vault destination."""
+
+    vault_path: str
+    alexandria_root: str = "."
+    initialize: bool = True
+    reindex: bool = True
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianLibrarianAsk:
     """Obsidian-side librarian ask payload."""
 
