@@ -3,23 +3,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import cast
 
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianNoteIndex,
     ObsidianSearchQuery,
 )
 from app.obsidian.domain.entities.obsidian_note import (
-    ObsidianEdge,
     ObsidianNote,
     ObsidianRelatedNote,
     ObsidianSearchHit,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import (
-    AlexandriaNoteType,
-    ObsidianEdgeSourceKind,
     ObsidianIndexStatus,
-    ObsidianRelationType,
 )
 from app.obsidian.domain.repositories.obsidian_repository import (
     IObsidianIndexRepository,
@@ -29,18 +24,26 @@ from app.obsidian.infrastructure.models.obsidian_index_models import (
     ObsidianEdgeORM,
     ObsidianFileORM,
 )
+from app.obsidian.infrastructure.repositories.obsidian_chunk_embeddings import (
+    existing_chunk_embeddings,
+)
 from app.obsidian.infrastructure.repositories.obsidian_fts import (
     OBSIDIAN_CHUNK_FTS_TABLE,
     build_obsidian_fts_query,
     delete_obsidian_fts_statement,
     ensure_obsidian_chunk_fts_table,
 )
+from app.obsidian.infrastructure.repositories.obsidian_index_mapping import (
+    add_related_result,
+    matches_tags,
+    note_from_model,
+    obsidian_excerpt,
+)
 from app.obsidian.infrastructure.repositories.obsidian_index_row_cleanup import (
     discard_obsidian_note_index,
     get_obsidian_file_by_path,
 )
 from app.shared.infrastructure.identifiers import new_uuid
-from app.shared.types.extra_types import JSONObject
 from app.shared.types.types_convert_utils import aware_utc_datetime
 from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,7 +99,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         await self._replace_chunks(payload, now=now)
         await self._replace_edges(payload, now=now)
         await self._session.flush()
-        return _note_from_model(model)
+        return note_from_model(model)
 
     async def mark_missing_stale(self, relative_paths: set[str]) -> int:
         """Mark missing indexed notes as stale.
@@ -133,7 +136,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             Note entity when found.
         """
         model = await self._session.get(ObsidianFileORM, note_id)
-        return None if model is None else _note_from_model(model)
+        return None if model is None else note_from_model(model)
 
     async def get_by_path(self, relative_path: str) -> ObsidianNote | None:
         """Read one indexed note by vault-relative path.
@@ -145,7 +148,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             Note entity when found.
         """
         model = await get_obsidian_file_by_path(self._session, relative_path)
-        return None if model is None else _note_from_model(model)
+        return None if model is None else note_from_model(model)
 
     async def search(self, query: ObsidianSearchQuery) -> list[ObsidianSearchHit]:
         """Search notes using FTS and indexed metadata filters.
@@ -173,7 +176,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             if note is None:
                 continue
             chunk = await self._session.get(ObsidianChunkORM, str(chunk_id))
-            excerpt = _excerpt(chunk.text if chunk is not None else note.body)
+            excerpt = obsidian_excerpt(chunk.text if chunk is not None else note.body)
             hits.append(
                 ObsidianSearchHit(
                     note=note,
@@ -216,7 +219,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             .where(ObsidianEdgeORM.source_note_id == note_id)
         )
         for edge, note_model in outgoing.all():
-            _add_related_result(results, edge, note_model, direction="outgoing")
+            add_related_result(results, edge, note_model, direction="outgoing")
         incoming = await self._session.execute(
             select(ObsidianEdgeORM, ObsidianFileORM)
             .join(
@@ -231,7 +234,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             )
         )
         for edge, note_model in incoming.all():
-            _add_related_result(results, edge, note_model, direction="incoming")
+            add_related_result(results, edge, note_model, direction="incoming")
         ranked = sorted(results.values(), key=lambda item: item.score, reverse=True)
         return ranked[:limit]
 
@@ -259,6 +262,10 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         *,
         now: datetime,
     ) -> None:
+        existing_embeddings = await existing_chunk_embeddings(
+            session=self._session,
+            note_id=payload.note_id,
+        )
         await self._session.execute(
             delete(ObsidianChunkORM).where(ObsidianChunkORM.note_id == payload.note_id)
         )
@@ -270,6 +277,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         fts_rows: list[dict[str, str]] = []
         for chunk in payload.chunks:
             chunk_id = new_uuid()
+            embedding = existing_embeddings.get((chunk.chunk_index, chunk.content_hash))
             chunk_models.append(
                 ObsidianChunkORM(
                     id=chunk_id,
@@ -279,6 +287,11 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
                     text=chunk.text,
                     token_count=chunk.token_count,
                     content_hash=chunk.content_hash,
+                    embedding=None if embedding is None else embedding.embedding,
+                    embedding_model=None if embedding is None else embedding.model,
+                    embedding_dimensions=None
+                    if embedding is None
+                    else embedding.dimensions,
                     created_at=now,
                 )
             )
@@ -352,98 +365,10 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         rows = await self._session.execute(statement)
         return [
             ObsidianSearchHit(
-                note=_note_from_model(model),
-                excerpt=_excerpt(model.body),
+                note=note_from_model(model),
+                excerpt=obsidian_excerpt(model.body),
                 score=0.0,
             )
             for model in rows.scalars().all()
-            if _matches_tags(model.tags, query.tags)
+            if matches_tags(model.tags, query.tags)
         ]
-
-
-def _note_from_model(model: ObsidianFileORM) -> ObsidianNote:
-    return ObsidianNote(
-        note_id=model.note_id,
-        relative_path=model.relative_path,
-        alexandria_type=AlexandriaNoteType(model.alexandria_type),
-        title=model.title,
-        status=model.status,
-        tags=list(model.tags),
-        project=model.project,
-        source=model.source,
-        content_hash=model.content_hash,
-        frontmatter=cast(JSONObject, model.frontmatter_json),
-        body=model.body,
-        index_status=ObsidianIndexStatus(model.index_status),
-        error_message=model.error_message,
-        size_bytes=model.size_bytes,
-        modified_at=model.modified_at,
-        indexed_at=model.indexed_at,
-    )
-
-
-def _edge_from_model(model: ObsidianEdgeORM) -> ObsidianEdge:
-    return ObsidianEdge(
-        edge_id=model.edge_id,
-        source_note_id=model.source_note_id,
-        source_path=model.source_path,
-        target_note_id=model.target_note_id,
-        target_path=model.target_path,
-        relation=ObsidianRelationType(model.relation),
-        confidence=model.confidence,
-        source_kind=ObsidianEdgeSourceKind(model.source_kind),
-        created_at=model.created_at,
-        indexed_at=model.indexed_at,
-    )
-
-
-def _add_related_result(
-    results: dict[str, ObsidianRelatedNote],
-    edge: ObsidianEdgeORM,
-    note_model: ObsidianFileORM,
-    *,
-    direction: str,
-) -> None:
-    note = _note_from_model(note_model)
-    if note.note_id == edge.source_note_id and direction == "outgoing":
-        return
-    edge_entity = _edge_from_model(edge)
-    score = _relation_weight(edge_entity.relation) + edge_entity.confidence
-    result = ObsidianRelatedNote(
-        note=note,
-        relation=edge_entity.relation,
-        source_kind=edge_entity.source_kind,
-        direction=direction,
-        score=score,
-        edge_id=edge_entity.edge_id,
-    )
-    current = results.get(note.note_id)
-    if current is None or result.score > current.score:
-        results[note.note_id] = result
-
-
-def _relation_weight(relation: ObsidianRelationType) -> float:
-    return {
-        ObsidianRelationType.DERIVED_FROM: 1.0,
-        ObsidianRelationType.CITES: 0.9,
-        ObsidianRelationType.SUPERSEDES: 0.8,
-        ObsidianRelationType.PROMOTES_TO: 0.8,
-        ObsidianRelationType.RELATED: 0.6,
-        ObsidianRelationType.WIKILINK: 0.5,
-        ObsidianRelationType.BLOCKS: 0.4,
-        ObsidianRelationType.RESOLVES: 0.4,
-    }[relation]
-
-
-def _matches_tags(tags: list[str], required: list[str]) -> bool:
-    if not required:
-        return True
-    tag_set = set(tags)
-    return all(tag in tag_set for tag in required)
-
-
-def _excerpt(text: str, limit: int = 240) -> str:
-    normalized = " ".join(text.split())
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[: limit - 1]}…"

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Boolean,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -67,7 +68,18 @@ class ObsidianChunkORM(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_obsidian_chunks_embedding_model_dimensions",
+            "embedding_model",
+            "embedding_dimensions",
+        ),
+    )
 
 
 class ObsidianEdgeORM(Base):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from app.memory.application.context_lint import (
@@ -31,6 +32,7 @@ from app.memory.domain.event_enum.context_enums import (
     RagStrategy,
 )
 from app.memory.domain.repositories.context_repository import IContextRepository
+from app.memory.domain.repositories.context_search_source import IContextSearchSource
 from app.retrieval.application.context_pack import build_context_pack
 from app.retrieval.application.context_ranking import merge_hybrid_matches
 from app.retrieval.application.embedding_provider import (
@@ -54,6 +56,7 @@ class ContextService:
         repository: IContextRepository,
         embedding_provider: EmbeddingProvider | None = None,
         vector_retrieval_enabled: bool = False,
+        extra_search_sources: Sequence[IContextSearchSource] | None = None,
     ) -> None:
         """Initialize service dependencies.
 
@@ -61,6 +64,7 @@ class ContextService:
             repository: Context persistence port.
             embedding_provider: Optional local embedding provider.
             vector_retrieval_enabled: Whether vector indexing and query paths are wired.
+            extra_search_sources: Optional additional Context RAG sources.
 
         Returns:
             None.
@@ -68,6 +72,7 @@ class ContextService:
         self._repository = repository
         self._embedding_provider = embedding_provider
         self._vector_retrieval_enabled = vector_retrieval_enabled
+        self._search_sources = [repository, *(extra_search_sources or ())]
 
     def lint(
         self,
@@ -366,7 +371,7 @@ class ContextService:
                 "using FTS_ONLY."
             )
         if effective is RagStrategy.FTS_ONLY:
-            matches = await self._repository.search_fts(
+            matches = await self._search_fts_sources(
                 query=query,
                 limit=limit,
                 project=project,
@@ -378,7 +383,7 @@ class ContextService:
                 session_id=session_id,
             )
         elif effective is RagStrategy.VECTOR_ONLY:
-            matches = await self._search_vector(
+            matches = await self._search_vector_sources(
                 query=query,
                 limit=limit,
                 project=project,
@@ -390,7 +395,7 @@ class ContextService:
                 session_id=session_id,
             )
         else:
-            fts_matches = await self._repository.search_fts(
+            fts_matches = await self._search_fts_sources(
                 query=query,
                 limit=limit,
                 project=project,
@@ -401,7 +406,7 @@ class ContextService:
                 user_id=user_id,
                 session_id=session_id,
             )
-            vector_matches = await self._search_vector(
+            vector_matches = await self._search_vector_sources(
                 query=query,
                 limit=limit,
                 project=project,
@@ -459,49 +464,62 @@ class ContextService:
                 warnings=warnings,
             )
 
-        chunks = await self._repository.chunks_missing_embeddings(
-            model_name=provider.model_name,
-            dimensions=provider.dimensions,
-            limit=limit,
-            force=force,
-        )
-        embeddings = await _embed_documents(
-            provider,
-            [chunk.content for chunk in chunks],
-        )
-        if len(embeddings) != len(chunks):
-            raise MemoryContextValidationError(
-                "Embedding provider returned an unexpected vector count"
+        scanned = 0
+        updated = 0
+        for source in self._search_sources:
+            remaining = limit - scanned
+            if remaining < 1:
+                break
+            chunks = await source.chunks_missing_embeddings(
+                model_name=provider.model_name,
+                dimensions=provider.dimensions,
+                limit=remaining,
+                force=force,
             )
-
-        updates: list[ContextChunkEmbeddingUpdate] = []
-        for chunk, embedding in zip(chunks, embeddings, strict=True):
-            if len(embedding) != provider.dimensions:
-                raise MemoryContextValidationError(
-                    "Embedding provider returned an unexpected dimension"
-                )
-            try:
-                serialized = vector_to_sqlite_json(embedding)
-            except ValueError as exc:
-                raise MemoryContextValidationError(str(exc)) from exc
-            updates.append(
-                ContextChunkEmbeddingUpdate(
-                    chunk_id=chunk.id,
-                    embedding=serialized,
-                    embedding_model=provider.model_name,
-                    embedding_dimensions=provider.dimensions,
-                )
+            scanned += len(chunks)
+            updates = await _embedding_updates(
+                provider=provider,
+                chunks=chunks,
             )
-        updated = await self._repository.update_chunk_embeddings(updates)
+            updated += await source.update_chunk_embeddings(updates)
         result = ContextReindexResult(
-            scanned=len(chunks),
+            scanned=scanned,
             updated=updated,
-            skipped=len(chunks) - updated,
+            skipped=scanned - updated,
             warnings=warnings,
         )
         return result
 
-    async def _search_vector(
+    async def _search_fts_sources(
+        self,
+        *,
+        query: str,
+        limit: int,
+        project: str | None,
+        kind: ContextKind | None,
+        include_scopes: list[ContextScope] | None,
+        workspace_id: str | None,
+        agent_id: str | None,
+        user_id: str | None,
+        session_id: str | None,
+    ) -> list[ContextSearchMatch]:
+        matches: list[ContextSearchMatch] = []
+        for source in self._search_sources:
+            source_matches = await source.search_fts(
+                query=query,
+                limit=limit,
+                project=project,
+                kind=kind,
+                include_scopes=include_scopes,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            matches.extend(source_matches)
+        return _rank_matches(matches, limit)
+
+    async def _search_vector_sources(
         self,
         *,
         query: str,
@@ -522,20 +540,23 @@ class ContextService:
             raise MemoryContextValidationError(
                 "Embedding provider returned an unexpected dimension"
             )
-        matches = await self._repository.search_vector(
-            query_embedding=query_embedding,
-            model_name=provider.model_name,
-            dimensions=provider.dimensions,
-            limit=limit,
-            project=project,
-            kind=kind,
-            include_scopes=include_scopes,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-        )
-        return matches
+        matches: list[ContextSearchMatch] = []
+        for source in self._search_sources:
+            source_matches = await source.search_vector(
+                query_embedding=query_embedding,
+                model_name=provider.model_name,
+                dimensions=provider.dimensions,
+                limit=limit,
+                project=project,
+                kind=kind,
+                include_scopes=include_scopes,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            matches.extend(source_matches)
+        return _rank_matches(matches, limit)
 
 
 async def _embed_documents(
@@ -547,3 +568,47 @@ async def _embed_documents(
 
 async def _embed_query(provider: EmbeddingProvider, text: str) -> list[float]:
     return await asyncify(provider.embed_query, abandon_on_cancel=True)(text)
+
+
+async def _embedding_updates(
+    *,
+    provider: EmbeddingProvider,
+    chunks: list[ContextChunkRecord],
+) -> list[ContextChunkEmbeddingUpdate]:
+    if not chunks:
+        return []
+    embeddings = await _embed_documents(
+        provider,
+        [chunk.content for chunk in chunks],
+    )
+    if len(embeddings) != len(chunks):
+        raise MemoryContextValidationError(
+            "Embedding provider returned an unexpected vector count"
+        )
+
+    updates: list[ContextChunkEmbeddingUpdate] = []
+    for chunk, embedding in zip(chunks, embeddings, strict=True):
+        if len(embedding) != provider.dimensions:
+            raise MemoryContextValidationError(
+                "Embedding provider returned an unexpected dimension"
+            )
+        try:
+            serialized = vector_to_sqlite_json(embedding)
+        except ValueError as exc:
+            raise MemoryContextValidationError(str(exc)) from exc
+        updates.append(
+            ContextChunkEmbeddingUpdate(
+                chunk_id=chunk.id,
+                embedding=serialized,
+                embedding_model=provider.model_name,
+                embedding_dimensions=provider.dimensions,
+            )
+        )
+    return updates
+
+
+def _rank_matches(
+    matches: list[ContextSearchMatch],
+    limit: int,
+) -> list[ContextSearchMatch]:
+    return sorted(matches, key=lambda match: match.score, reverse=True)[:limit]

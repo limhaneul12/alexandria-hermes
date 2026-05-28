@@ -7,6 +7,9 @@ from app.memory.application.memory_compact_service import MemoryCompactService
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
+from app.memory.infrastructure.repositories.contexts.obsidian_search_source import (
+    SqlAlchemyObsidianContextSearchSource,
+)
 from app.memory.infrastructure.repositories.memory_compact_repository import (
     ObsidianMemoryCompactRepository,
 )
@@ -30,6 +33,10 @@ class MemoryContainer(containers.DeclarativeContainer):
         cache_dir=app_config.provided.rag_embedding_cache_dir,
     )
     context_repo = providers.Factory(SqlAlchemyContextRepository, session=db_session)
+    obsidian_context_search_source = providers.Factory(
+        SqlAlchemyObsidianContextSearchSource,
+        session=db_session,
+    )
     memory_compact_repo = providers.Factory(
         ObsidianMemoryCompactRepository,
         vault_path=app_config.provided.obsidian_vault_path,
@@ -40,6 +47,7 @@ class MemoryContainer(containers.DeclarativeContainer):
         repository=context_repo,
         embedding_provider=embedding_provider,
         vector_retrieval_enabled=app_config.provided.rag_vector_enabled,
+        extra_search_sources=providers.List(obsidian_context_search_source),
     )
     memory_compact_service = providers.Factory(
         MemoryCompactService,

@@ -16,9 +16,10 @@ from app.memory.domain.entities.context_read_models import (
     ContextSearchMatch,
 )
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from app.memory.domain.repositories.context_search_source import IContextSearchSource
 
 
-class IContextRepository(ABC):
+class IContextRepository(IContextSearchSource, ABC):
     """Persistence contract for Context Vault operations."""
 
     @abstractmethod

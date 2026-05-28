@@ -56,6 +56,12 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
                 "PRAGMA table_info(obsidian_files)"
             ).fetchall()
         }
+        obsidian_chunk_columns = {
+            row[1]: row[2]
+            for row in connection.execute(
+                "PRAGMA table_info(obsidian_chunks)"
+            ).fetchall()
+        }
         obsidian_fts_definition = connection.execute(
             "SELECT sql FROM sqlite_master WHERE name = 'obsidian_chunk_fts'"
         ).fetchone()[0]
@@ -91,6 +97,9 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
     assert "chunk_id UNINDEXED" in context_fts_definition
     assert obsidian_columns["note_id"] == "VARCHAR(255)"
     assert obsidian_columns["relative_path"] == "VARCHAR(1024)"
+    assert obsidian_chunk_columns["embedding"] == "TEXT"
+    assert obsidian_chunk_columns["embedding_model"] == "VARCHAR(255)"
+    assert obsidian_chunk_columns["embedding_dimensions"] == "INTEGER"
     assert "note_id UNINDEXED" in obsidian_fts_definition
     assert {
         "categories",
