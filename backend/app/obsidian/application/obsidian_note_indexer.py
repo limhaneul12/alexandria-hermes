@@ -13,6 +13,9 @@ from app.obsidian.application.obsidian_note_templates import (
 )
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianNoteIndex
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
+from app.obsidian.domain.obsidian_note_type_aliases import (
+    normalized_alexandria_note_type,
+)
 from app.obsidian.infrastructure.markdown.frontmatter import (
     frontmatter_json,
     frontmatter_list,
@@ -39,14 +42,14 @@ def note_index_from_path(
     """
     text = path.read_text(encoding="utf-8")
     document = parse_markdown_document(text)
-    note_type_value = frontmatter_text(document.frontmatter, "alexandria_type")
+    note_type = _note_type_from_frontmatter(document.frontmatter)
     note_id = frontmatter_text(document.frontmatter, "id")
-    if not note_type_value or not note_id:
+    if note_type is None or not note_id:
         return None
-    note_type = AlexandriaNoteType(note_type_value)
     stat = path.stat()
     body = document.body.rstrip("\n")
     frontmatter = frontmatter_json(document.frontmatter)
+    frontmatter["alexandria_type"] = note_type.value
     return ObsidianNoteIndex(
         note_id=note_id,
         relative_path=relative_path,
@@ -70,3 +73,19 @@ def note_index_from_path(
             body=body,
         ),
     )
+
+
+def _note_type_from_frontmatter(
+    frontmatter: dict[str, str | list[str] | None],
+) -> AlexandriaNoteType | None:
+    explicit_value = frontmatter_text(frontmatter, "alexandria_type")
+    if explicit_value:
+        note_type = normalized_alexandria_note_type(explicit_value)
+        if note_type is None:
+            raise ValueError(f"invalid alexandria_type: {explicit_value}")
+        return note_type
+    for key in ("type", "item_type"):
+        note_type = normalized_alexandria_note_type(frontmatter_text(frontmatter, key))
+        if note_type is not None:
+            return note_type
+    return None

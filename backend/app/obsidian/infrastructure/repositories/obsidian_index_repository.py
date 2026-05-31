@@ -164,6 +164,7 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             query.query,
             limit=query.limit,
             alexandria_type=query.alexandria_type,
+            excluded_alexandria_types=query.excluded_alexandria_types,
             project=query.project,
             tags=query.tags,
         )
@@ -356,6 +357,12 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         if query.alexandria_type is not None:
             statement = statement.where(
                 ObsidianFileORM.alexandria_type == query.alexandria_type.value
+            )
+        if query.excluded_alexandria_types:
+            statement = statement.where(
+                ObsidianFileORM.alexandria_type.not_in(
+                    [note_type.value for note_type in query.excluded_alexandria_types]
+                )
             )
         if query.project is not None:
             statement = statement.where(ObsidianFileORM.project == query.project)

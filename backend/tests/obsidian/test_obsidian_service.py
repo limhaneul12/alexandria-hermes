@@ -712,6 +712,159 @@ def test_obsidian_librarian_ask_respects_max_source_refs(tmp_path: Path) -> None
     anyio.run(scenario)
 
 
+def test_obsidian_reindex_accepts_legacy_project_context_type(
+    tmp_path: Path,
+) -> None:
+    """Legacy project-context notes should remain searchable Alexandria sources."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            note_path = (
+                tmp_path
+                / "vault"
+                / "Alexandria"
+                / "Contexts"
+                / "Project Context"
+                / "Legacy Project Context.md"
+            )
+            note_path.parent.mkdir(parents=True, exist_ok=True)
+            note_path.write_text(
+                "\n".join(
+                    [
+                        "---",
+                        "id: ctx_legacy_project_context",
+                        "title: Legacy Project Context",
+                        "type: project-context",
+                        "project: omx-agent-adapter",
+                        "tags:",
+                        "  - command-catalog",
+                        "---",
+                        "",
+                        "# Legacy Project Context",
+                        "",
+                        "command catalog consolidation durable source",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = await service.reindex()
+            response = await service.search(
+                ObsidianSearchQuery(
+                    query="command catalog consolidation",
+                    project="omx-agent-adapter",
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        assert result.errors == []
+        assert [hit.note.note_id for hit in response] == ["ctx_legacy_project_context"]
+        assert response[0].note.alexandria_type is AlexandriaNoteType.CONTEXT
+        assert response[0].note.frontmatter["alexandria_type"] == "context"
+
+    anyio.run(scenario)
+
+
+def test_obsidian_librarian_ask_recovers_multi_topic_sources_without_chat_echo(
+    tmp_path: Path,
+) -> None:
+    """Long recall questions should retrieve source notes, not prior failed chats."""
+
+    async def scenario() -> list[dict[str, object]]:
+        database, session, service = await _service(tmp_path)
+        try:
+            legacy_path = (
+                tmp_path
+                / "vault"
+                / "Alexandria"
+                / "Contexts"
+                / "Project Context"
+                / "Command Catalog Consolidation.md"
+            )
+            legacy_path.parent.mkdir(parents=True, exist_ok=True)
+            legacy_path.write_text(
+                "\n".join(
+                    [
+                        "---",
+                        "id: ctx_command_catalog_consolidation",
+                        "title: Command Catalog Consolidation",
+                        "type: project-context",
+                        "project: omx-agent-adapter",
+                        "tags:",
+                        "  - command-catalog",
+                        "---",
+                        "",
+                        "# Command Catalog Consolidation",
+                        "",
+                        "command catalog consolidation keeps eight lifecycle commands.",
+                        "adapter-ops is a maintenance namespace, not public catalog.",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Company Run Macro",
+                    body=(
+                        "# Company Run Macro\n\n"
+                        "company-run macro orchestration uses Alexandria MCP usage "
+                        "for memory recall and librarian queries."
+                    ),
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_company_run_macro",
+                    project="omx-agent-adapter",
+                )
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Failed Librarian Chat",
+                    body=(
+                        "# Librarian Chat\n\n"
+                        "Recover prior intent for omx-agent-adapter command catalog "
+                        "consolidation, company-run macro orchestration, prompt/ "
+                        "structure, adapter-ops exclusion, and Alexandria MCP usage "
+                        "points. Return only concrete prior decisions and artifact "
+                        "locations.\n\nNo related Alexandria note found."
+                    ),
+                    alexandria_type=AlexandriaNoteType.LIBRARIAN_CHAT,
+                    note_id="librarian_chat_failed_echo",
+                    project="omx-agent-adapter",
+                )
+            )
+            await service.reindex()
+            response = await service.ask_librarian(
+                ObsidianLibrarianAsk(
+                    query=(
+                        "Recover prior intent for omx-agent-adapter command catalog "
+                        "consolidation, company-run macro orchestration, prompt/ "
+                        "structure, adapter-ops exclusion, and Alexandria MCP usage "
+                        "points. Return only concrete prior decisions and artifact "
+                        "locations."
+                    ),
+                    project="omx-agent-adapter",
+                    max_source_refs=5,
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        source_refs = response["source_refs"]
+        assert isinstance(source_refs, list)
+        return source_refs
+
+    refs = anyio.run(scenario)
+
+    assert [ref["id"] for ref in refs] == [
+        "ctx_command_catalog_consolidation",
+        "ctx_company_run_macro",
+    ]
+    assert all(ref["alexandria_type"] == "context" for ref in refs)
+
+
 def test_obsidian_librarian_ask_can_save_transcript(tmp_path: Path) -> None:
     """The Obsidian librarian adapter should return sources and save transcript notes."""
 

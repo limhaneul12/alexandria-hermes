@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
+from app.obsidian.domain.obsidian_note_type_aliases import alexandria_note_type_input
 from app.shared.types.extra_types import JSONValue
 
 
@@ -15,15 +15,4 @@ def preferred_note_type_input(value: JSONValue) -> JSONValue:
     Returns:
         Normalized note type value for downstream enum validation.
     """
-    if not isinstance(value, str):
-        return value
-    normalized = value.strip().casefold().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "index": AlexandriaNoteType.CONTEXT.value,
-        "indexes": AlexandriaNoteType.CONTEXT.value,
-        "indices": AlexandriaNoteType.CONTEXT.value,
-        "memory": AlexandriaNoteType.MEMORY_COMPACT.value,
-        "memory_compact": AlexandriaNoteType.MEMORY_COMPACT.value,
-        "memory_compacts": AlexandriaNoteType.MEMORY_COMPACT.value,
-    }
-    return aliases.get(normalized, normalized)
+    return alexandria_note_type_input(value)

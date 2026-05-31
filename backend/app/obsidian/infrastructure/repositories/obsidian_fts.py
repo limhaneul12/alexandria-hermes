@@ -102,6 +102,7 @@ def build_obsidian_fts_query(
     *,
     limit: int,
     alexandria_type: AlexandriaNoteType | None = None,
+    excluded_alexandria_types: list[AlexandriaNoteType] | None = None,
     project: str | None = None,
     tags: list[str] | None = None,
 ) -> ObsidianFtsQuery | None:
@@ -111,6 +112,7 @@ def build_obsidian_fts_query(
         query: User query text.
         limit: Maximum result count.
         alexandria_type: Optional note type filter.
+        excluded_alexandria_types: Optional note types to omit.
         project: Optional project filter.
         tags: Optional required tags.
 
@@ -132,6 +134,15 @@ def build_obsidian_fts_query(
             fts_table.c.alexandria_type == bindparam("alexandria_type")
         )
         parameters["alexandria_type"] = alexandria_type.value
+    if excluded_alexandria_types:
+        statement = statement.where(
+            fts_table.c.alexandria_type.not_in(
+                bindparam("excluded_alexandria_types", expanding=True)
+            )
+        )
+        parameters["excluded_alexandria_types"] = [
+            note_type.value for note_type in excluded_alexandria_types
+        ]
     if project is not None:
         statement = statement.where(fts_table.c.project == bindparam("project"))
         parameters["project"] = project

@@ -66,6 +66,7 @@ class ObsidianSearchQuery:
     query: str
     limit: int = 10
     alexandria_type: AlexandriaNoteType | None = None
+    excluded_alexandria_types: list[AlexandriaNoteType] = field(default_factory=list)
     project: str | None = None
     tags: list[str] = field(default_factory=list)
 

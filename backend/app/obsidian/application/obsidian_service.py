@@ -19,6 +19,13 @@ from app.obsidian.application.obsidian_librarian_delegation import (
     ObsidianLibrarianDelegateService,
     apply_provider_delegate,
 )
+from app.obsidian.application.obsidian_librarian_retrieval import (
+    librarian_excluded_types,
+    librarian_query_text,
+    librarian_query_variants,
+    librarian_search_limit,
+    librarian_type_filters,
+)
 from app.obsidian.application.obsidian_note_indexer import note_index_from_path
 from app.obsidian.application.obsidian_note_templates import (
     conversation_id,
@@ -402,22 +409,7 @@ class ObsidianService:
         """
         if not payload.query.strip():
             raise ObsidianValidationError("query is required")
-        preferred = (
-            payload.preferred_alexandria_types[0]
-            if payload.preferred_alexandria_types
-            else None
-        )
-        search_query = ObsidianSearchQuery(
-            query="\n".join(
-                part
-                for part in [payload.query, payload.selection]
-                if part is not None and part.strip()
-            ),
-            limit=payload.max_source_refs,
-            alexandria_type=preferred,
-            project=payload.project,
-        )
-        hits = await self.search(search_query)
+        hits = await self._librarian_source_hits(payload)
         active_note = await self._active_note_or_none(payload.active_note_path)
         answer = librarian_answer(payload, hits, active_note)
         source_refs = source_refs_for_librarian(hits, active_note)
@@ -494,6 +486,30 @@ class ObsidianService:
             )
         )
 
+    async def _librarian_source_hits(
+        self, payload: ObsidianLibrarianAsk
+    ) -> list[ObsidianSearchHit]:
+        query_text = librarian_query_text(payload)
+        search_limit = librarian_search_limit(payload.max_source_refs)
+        preferred_types = librarian_type_filters(payload.preferred_alexandria_types)
+        excluded_types = librarian_excluded_types(preferred_types)
+        hits_by_note_id: dict[str, ObsidianSearchHit] = {}
+        for query_variant in librarian_query_variants(query_text):
+            search_queries = _librarian_search_queries(
+                query=query_variant,
+                limit=search_limit,
+                project=payload.project,
+                preferred_types=preferred_types,
+                excluded_types=excluded_types,
+            )
+            for search_query in search_queries:
+                hits = await self.search(search_query)
+                for hit in hits:
+                    hits_by_note_id.setdefault(hit.note.note_id, hit)
+                    if len(hits_by_note_id) >= payload.max_source_refs:
+                        return list(hits_by_note_id.values())
+        return list(hits_by_note_id.values())
+
     def _root_path(self) -> Path:
         return resolve_note_path(self._vault_path, self._alexandria_root)
 
@@ -511,3 +527,31 @@ def _delegate_status(payload: ObsidianLibrarianAsk) -> str:
     if payload.provider_id or payload.profile_id:
         return "requested_local_fallback"
     return "requested_no_provider_local_fallback"
+
+
+def _librarian_search_queries(
+    *,
+    query: str,
+    limit: int,
+    project: str | None,
+    preferred_types: tuple[AlexandriaNoteType, ...],
+    excluded_types: tuple[AlexandriaNoteType, ...],
+) -> tuple[ObsidianSearchQuery, ...]:
+    if preferred_types:
+        return tuple(
+            ObsidianSearchQuery(
+                query=query,
+                limit=limit,
+                alexandria_type=note_type,
+                project=project,
+            )
+            for note_type in preferred_types
+        )
+    return (
+        ObsidianSearchQuery(
+            query=query,
+            limit=limit,
+            excluded_alexandria_types=list(excluded_types),
+            project=project,
+        ),
+    )
