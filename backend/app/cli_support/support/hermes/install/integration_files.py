@@ -191,7 +191,7 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
     """
     prompts = {
         "use-alexandria-library.md": (
-            "# Use Alexandria-Hermes Library\n\n"
+            "# Use Alexandria-Hermes Recall\n\n"
             "Treat Alexandria-Hermes as Hermes's durable long-term memory and "
             "librarian collaboration layer, not as a replacement for current "
             "context or local Hermes memory. Use local-first, "
@@ -247,7 +247,7 @@ def hermes_prompt_files() -> list[HermesInstallFile]:
                 "author: Hermes Agent\n"
                 "license: MIT\n"
                 "---\n\n"
-                "# Alexandria-Hermes Library\n\n"
+                "# Alexandria-Hermes Recall\n\n"
                 "Use local-first, Alexandria-when-needed. Treat "
                 "Alexandria-Hermes as Hermes's durable long-term "
                 "memory and librarian collaboration layer, not as a replacement for the "
@@ -452,7 +452,7 @@ SQLite-backed skill/prompt CRUD has been removed. When a capability, workflow, o
 2. Use Alexandria memory recall only for durable project context, decisions, handoffs, or research notes that can guide the work.
 3. If neither local assets nor recalled memory are enough, proceed to self-acquisition or ask the librarian when policy allows it.
 
-Do not call removed SQLite library tools such as get/search skill, get/search prompt, record usage, or submit skill candidate.
+Do not call removed SQLite CRUD tools such as get/search skill, get/search prompt, record usage, or submit skill candidate.
 
 ## Context write policy
 

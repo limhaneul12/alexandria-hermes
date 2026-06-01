@@ -77,7 +77,7 @@ Enable **Alexandria Librarian** in Obsidian Community plugins. Keep the backend 
 
 ## Capture memory, skill, and prompt artifacts
 
-Use Obsidian Markdown as the canonical library surface:
+Use Obsidian Markdown as the canonical recall surface:
 
 ```bash
 cd backend

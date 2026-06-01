@@ -1,4 +1,4 @@
-# Library Assets Guide 01 — Markdown/Obsidian first
+# Recall Assets Guide 01 — Markdown/Obsidian first
 
 ## 목적
 

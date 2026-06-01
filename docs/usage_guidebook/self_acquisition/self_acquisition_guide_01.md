@@ -70,5 +70,5 @@ mcp_alexandria_alexandria_start_skill_acquisition / mcp_alexandria_alexandria_co
 - job id: <job-id>
 - resume context id: <context-id>
 - evidence URLs: <url 목록>
-- UI 확인 위치: Library → candidate detail
+- 확인 위치: Obsidian Markdown note 또는 skill-acquisition job detail
 ```

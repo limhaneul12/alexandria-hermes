@@ -174,4 +174,4 @@ curl http://127.0.0.1:8000/health/live
 
 ## Direction
 
-Use Obsidian/Markdown as the human-facing library surface. Alexandria-Hermes should provide the agent-facing protocol: recall durable memory, prepare compacts as Obsidian notes, ask or route librarian work, and preserve skill-acquisition job results without reintroducing a web UI, SQLite CRUD library, or object-storage import surface.
+Use Obsidian/Markdown as the human-facing recall surface. Alexandria-Hermes should provide the agent-facing protocol: recall durable memory, prepare compacts as Obsidian notes, ask or route librarian work, and preserve skill-acquisition job results without reintroducing a web UI, SQLite CRUD library, or object-storage import surface.
