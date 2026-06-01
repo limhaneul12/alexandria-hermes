@@ -15,6 +15,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   backend:
     name: Backend quality gate
@@ -38,7 +41,7 @@ jobs:
 
       - name: Sync backend dependencies
         working-directory: backend
-        run: uv sync --group dev
+        run: uv sync --group dev --reinstall-package alexandria-hermes
 
       - name: Run backend CI
         working-directory: backend
