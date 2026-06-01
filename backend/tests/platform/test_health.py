@@ -54,3 +54,18 @@ def test_health_live_ready_heartbeat() -> None:
         assert heartbeat_payload["heartbeat"]["app"] == "ok"
         assert heartbeat_payload["heartbeat"]["redis"] == "disabled"
         assert heartbeat_payload["heartbeat"]["database"] == "ok"
+
+
+def test_health_openapi_documents_response_schemas() -> None:
+    """Health routes should expose their stable payload contracts in OpenAPI."""
+    schemas = app.openapi()["paths"]
+
+    assert schemas["/health/live"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["$ref"].endswith("/LiveHealthPayload")
+    assert schemas["/health/ready"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["$ref"].endswith("/ReadyHealthPayload")
+    assert schemas["/health/heartbeat"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["$ref"].endswith("/HeartbeatHealthPayload")

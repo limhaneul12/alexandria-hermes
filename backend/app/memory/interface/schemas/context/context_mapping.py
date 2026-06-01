@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from app.memory.application.context_lint import ContextLintResult
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,
@@ -15,7 +14,6 @@ from app.memory.domain.entities.context_read_models import (
 from app.memory.domain.types.context_payload_types import (
     ContextAccessEventPayload,
     ContextChunkPayload,
-    ContextLintPayload,
     ContextPackPayload,
     ContextPayload,
     ContextReindexPayload,
@@ -109,30 +107,6 @@ def access_event_payload(
         "actor_type": event.actor_type,
         "access_method": event.access_method,
         "source_surface": event.source_surface,
-    }
-    return payload
-
-
-def lint_payload(result: ContextLintResult) -> ContextLintPayload:
-    """Return an API payload for a Context Harness lint result.
-
-    Args:
-        result: Context Harness lint result.
-
-    Returns:
-        Typed response payload for the context lint API boundary.
-    """
-    payload: ContextLintPayload = {
-        "ok": result.ok,
-        "status": result.status,
-        "score": result.score,
-        "errors": result.errors,
-        "warnings": result.warnings,
-        "suggestions": result.suggestions,
-        "redacted_content": result.redacted_content,
-        "redaction_report": result.redaction_report,
-        "save_suggestion": result.save_suggestion,
-        "normalized": result.normalized,
     }
     return payload
 

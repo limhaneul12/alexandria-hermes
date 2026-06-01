@@ -6,7 +6,9 @@ from collections.abc import Awaitable, Callable
 
 from app.platform.lifecycle.state import LifecycleState
 from app.platform.schemas.health_schema import (
+    HeartbeatHealthPayload,
     LiveHealthPayload,
+    ReadyHealthPayload,
     heartbeat_payload_from_snapshot,
     ready_payload_from_snapshot,
 )
@@ -36,7 +38,7 @@ def install_health_routes(
         None.
     """
 
-    @app.get("/health/live")
+    @app.get("/health/live", response_model=LiveHealthPayload)
     def get_health_live() -> Response:
         """Return process liveness health response.
 
@@ -52,7 +54,7 @@ def install_health_routes(
             status_code=status.HTTP_200_OK,
         )
 
-    @app.get("/health/ready")
+    @app.get("/health/ready", response_model=ReadyHealthPayload)
     async def get_health_ready() -> Response:
         """Return readiness status for receiving new traffic.
 
@@ -71,7 +73,7 @@ def install_health_routes(
             status_code=status_code_from_ready(snapshot.ready),
         )
 
-    @app.get("/health/heartbeat")
+    @app.get("/health/heartbeat", response_model=HeartbeatHealthPayload)
     async def get_health_heartbeat() -> Response:
         """Return detailed heartbeat status.
 

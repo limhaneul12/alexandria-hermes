@@ -15,7 +15,7 @@ Terminal 1:
 ```bash
 cd backend
 uv sync
-uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook
+uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook --run-migrations
 uv run alexandria-hermes serve \
   --env-file "$HOME/.hermes/alexandria-hermes/.env" \
   --host 127.0.0.1 \
@@ -47,11 +47,21 @@ uv run alexandria-hermes setup \
   --mode backend-daemon \
   --apply \
   --write-guidebook \
+  --run-migrations \
   --obsidian-vault-path "$HOME/Desktop/Alexandria" \
   --alexandria-obsidian-root "."
 ```
 
 `--alexandria-obsidian-root "."` means Alexandria-managed notes live at the vault root, so setup does not create `Alexandria/Alexandria`.
+
+Then start the backend with the generated env file:
+
+```bash
+uv run alexandria-hermes serve \
+  --env-file "$HOME/.hermes/alexandria-hermes/.env" \
+  --host 127.0.0.1 \
+  --port 8000
+```
 
 ## Install Obsidian and the side-pane plugin
 

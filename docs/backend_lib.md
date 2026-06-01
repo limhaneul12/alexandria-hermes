@@ -1,61 +1,66 @@
-# Alexandria-Hermes Backend Library Surface
+# Alexandria-Hermes Backend Recall Surface
 
-This document replaces the original backend MVP prompt. The active product is a local-first, agent-facing library and Context Vault for Hermes/Alexandria recall. It is not a human CMS or a generic archive platform.
+This document replaces the original backend MVP prompt. The active product is a local-first, agent-facing recall and librarian collaboration service for Hermes/Alexandria. It is not a human CMS, generic archive platform, or SQLite-backed skill/prompt library.
 
 ## Current product boundary
 
-Alexandria-Hermes keeps the write path agent-native:
+Alexandria-Hermes keeps durable knowledge agent-native and Markdown-first:
 
 ```text
-Hermes/agent/MCP/API capture
-→ durable library/context storage
-→ search/recall/RAG Context Pack
-→ optional librarian collaboration
-→ human curation after save
+Hermes/agent/MCP/CLI request
+→ Obsidian Markdown capture or backend operational state
+→ reindex/search/RAG Context Pack
+→ optional librarian collaboration or skill-acquisition job
+→ human curation in Obsidian after save
 ```
 
-Humans operate the library as curators. The supported human-facing UI shape is browse, search, inspect, archive, delete, and lightweight cleanup. Human pre-save review queues and direct CMS-style authoring screens are intentionally outside the core UI.
+Obsidian Markdown is the human-facing source of truth for reusable memory, skills, and prompts. SQLite stores rebuildable indexes/caches plus operational state such as provider profiles, OAuth state, memory compacts, and workflow checkpoints.
 
-## Core library objects
+## Active backend objects
 
-Active public library/context material is organized around:
+Active public material is organized around:
 
-- `SKILL`: reusable capability or procedure saved by agent/self-acquisition flows.
-- `PROMPT`: reusable instruction artifact saved by agent-facing prompt submission flows.
-- `CONTEXT` / `MEMORY COMPACT`: durable decisions, handoffs, compact summaries, and project context stored in Context Vault.
-- `HARNESS`: read-only execution evidence/context kind for completed agent work when captured through agent/MCP paths.
+- `memory_compact`: durable summaries and project memory exposed through Memory Compact APIs and MCP tools.
+- `context` / `context_pack`: recall-oriented Context Vault records and RAG packets; public manual context-write/review routes stay removed.
+- `obsidian note`: Markdown-backed memory, skill, and prompt artifacts captured, indexed, searched, read, related, and saved through Obsidian surfaces.
+- `librarian profile/provider`: backend-owned routing and credential surfaces for optional delegated librarian work.
+- `skill_acquisition_job`: durable operational job for acquiring or drafting a skill artifact from a prompt.
+- `obsidian_librarian_workflow`: resumable LangGraph approval workflow checkpoint for Obsidian librarian actions.
 
-Historical item kinds and import/provider surfaces that were removed from core should stay documented in migration notes or pruning contracts, not in live onboarding/API docs.
+Historical SQLite library item kinds such as generic `SKILL`, `PROMPT`, and `HARNESS` item rows were removed from live backend APIs. Keep those names only in migration files, pruning contracts, compatibility notes, or Markdown artifact labels where they describe user-facing content rather than a live SQLite CRUD surface.
 
 ## Active backend surfaces
 
-### Library and Context Vault
+### Obsidian Markdown and Context recall
 
-- list/search/get/update/archive/delete library items for curation;
-- submit agent-authored skills and prompts through agent-facing routes/tools;
-- capture, recall, search, archive, and inspect contexts;
-- prepare and browse memory compacts;
-- record usage events for retrieval quality and future recommendations.
+- capture, save, read, search, reindex, and relate Obsidian notes;
+- capture Markdown skill/prompt/memory artifacts through `obsidian capture` and Obsidian plugin flows;
+- search/retrieve Context Vault records and build RAG Context Packs;
+- prepare and browse Memory Compacts;
+- run resumable Obsidian librarian workflows with explicit approval/cancel semantics.
 
 ### Librarian collaboration
 
-The librarian is optional collaboration, not the default recall path. Multiple librarian profiles/providers are supported so an operator can route different requests to different helper agents or models. Provider credentials remain backend-side; browser/client surfaces must not expose raw secrets.
+The librarian is optional collaboration, not the default recall path. Multiple librarian profiles/providers are supported so an operator can route requests to different helper agents or models. Provider credentials remain backend-side; browser/client surfaces must not expose raw secrets.
 
 ### MCP and CLI
 
-The MCP server and CLI call the same backend contracts. MCP is the primary agent-facing integration path. CLI commands are useful for local operation, smoke tests, and setup, but they must not reintroduce removed human approval queues or stale CMS-shaped create/review screens.
+The MCP server and CLI call the same backend contracts. MCP is the primary agent-facing integration path. CLI commands are useful for local operation, smoke tests, setup, and Obsidian/Memory operations, but they must not reintroduce removed human approval queues or stale CMS-shaped create/review screens.
 
 ## Removed or non-core surfaces
 
 The following are not active core product surfaces:
 
+- Next.js/frontend runtime;
+- SQLite library item CRUD and category/folder management;
+- SQLite-backed skill/prompt/harness CRUD;
 - Capture Review pre-save screen;
 - human approval queue for agent-submitted candidates;
-- generic object-storage import bridge;
-- legacy dedicated library item CRUD families that duplicate current item/context surfaces;
-- direct human authoring pages for skills/prompts/context.
+- generic object-storage/MinIO import bridge;
+- direct human authoring pages for skills/prompts/context;
+- public Context Vault lint/manual-save routes.
 
-If one of these capabilities becomes necessary again, design it as a plugin/importer or agent-owned capture path with a dedicated contract and migration story instead of reusing historical draft text.
+If one of these capabilities becomes necessary again, design it as a dedicated Obsidian/importer/agent-owned capture path with its own contract and migration story instead of reusing historical draft text.
 
 ## Verification guidance
 
@@ -63,6 +68,6 @@ When pruning or restoring a backend surface:
 
 1. Add or update a negative contract test first.
 2. Confirm the test fails for the stale surface.
-3. Remove route/schema/service/frontend/docs exposure.
+3. Remove route/schema/service/docs exposure.
 4. Run focused contracts, then the GitHub Actions parity pre-push hook.
 5. Leave historical references only in migration files, pruning contracts, or dated implementation notes where they explain compatibility.

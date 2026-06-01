@@ -9,7 +9,7 @@
 ```bash
 cd backend
 uv sync
-uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook
+uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook --run-migrations
 uv run alexandria-hermes serve \
   --env-file "$HOME/.hermes/alexandria-hermes/.env" \
   --host 127.0.0.1 \
@@ -41,23 +41,31 @@ uv run alexandria-hermes setup \
   --mode backend-daemon \
   --apply \
   --write-guidebook \
+  --run-migrations \
   --obsidian-vault-path "$HOME/Desktop/Alexandria" \
   --alexandria-obsidian-root "."
 ```
 
 `--alexandria-obsidian-root "."`는 vault 자체를 Alexandria 작업공간으로 쓰겠다는 뜻입니다. 그래서 `Alexandria/Alexandria` 중첩 폴더가 생기지 않습니다.
 
-실제 로컬 smoke test는 `/Users/imhaneul/Desktop/Alexandria` + root `.`로 진행했습니다. reindex는 Markdown 5개를 보고 Alexandria frontmatter가 있는 4개를 색인했고, Obsidian 기본 환영 노트 1개는 건너뛰었습니다.
+그 다음 생성된 env 파일로 backend를 실행합니다.
+
+```bash
+uv run alexandria-hermes serve \
+  --env-file "$HOME/.hermes/alexandria-hermes/.env" \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
 
 ## Obsidian 설치와 사서 side pane 연결
 
 ```bash
 brew install --cask obsidian
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-VAULT="$HOME/Desktop/Alexandria"
-mkdir -p "$VAULT/.obsidian/plugins"
-ln -s "$REPO_ROOT/integrations/obsidian/alexandria-librarian" \
-  "$VAULT/.obsidian/plugins/alexandria-librarian"
+cd backend
+uv run alexandria-hermes obsidian install-local \
+  --vault-path "$HOME/Desktop/Alexandria" \
+  --plugin-install-mode copy
 ```
 
 Obsidian에서 Community plugins를 켜고 **Alexandria Librarian**을 활성화하세요. pane을 쓰기 전 backend는 켜져 있어야 합니다.

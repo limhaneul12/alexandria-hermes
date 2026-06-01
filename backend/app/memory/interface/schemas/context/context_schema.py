@@ -14,62 +14,10 @@ from app.memory.domain.event_enum.context_enums import (
     RagHealthState,
     RagStrategy,
 )
-from app.memory.domain.types.context_payload_types import (
-    ContextLintNormalizedPayload,
-)
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from app.shared.types.extra_types import JSONObject
-from pydantic import ConfigDict, Field, field_validator
-
-
-class ContextLintRequest(StrictSchemaModel):
-    """Payload for linting context content before persistence."""
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "kind": "HANDOFF",
-                    "title": "Sprint handoff",
-                    "summary": "Current implementation state.",
-                    "content": "# Sprint handoff\n\n## Summary\n...",
-                    "project": "alexandria-hermes",
-                    "source_agent": "Hermes",
-                    "tags": ["handoff"],
-                }
-            ]
-        }
-    )
-
-    kind: ContextKind
-    title: str = Field(min_length=1)
-    content: str = Field(min_length=1)
-    summary: str | None = None
-    project: str | None = None
-    scope: ContextScope = ContextScope.PROJECT
-    workspace_id: str | None = None
-    agent_id: str | None = None
-    user_id: str | None = None
-    session_id: str | None = None
-    visibility: ContextScope = ContextScope.PROJECT
-    source_agent: str = "Hermes"
-    tags: list[str] = Field(default_factory=list)
-
-
-class ContextLintResponse(StrictSchemaModel):
-    """Machine-readable lint result."""
-
-    ok: bool
-    status: ContextStorageStatus
-    score: int
-    errors: list[str]
-    warnings: list[str]
-    suggestions: list[str]
-    redacted_content: str
-    redaction_report: list[str]
-    save_suggestion: JSONObject
-    normalized: ContextLintNormalizedPayload
+from pydantic import Field, field_validator
 
 
 class ContextResponse(StrictSchemaModel):

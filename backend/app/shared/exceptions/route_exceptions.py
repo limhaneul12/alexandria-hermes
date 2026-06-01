@@ -13,12 +13,6 @@ from app.shared.exceptions.librarian_exceptions import (
     LibrarianResourceNotFoundError,
     LibrarianValidationError,
 )
-from app.shared.exceptions.library_exceptions import (
-    LibraryCategoryCycleError,
-    LibraryProviderUnsupportedError,
-    LibraryResourceNotFoundError,
-    LibraryValidationError,
-)
 from app.shared.exceptions.memory_compact_exceptions import (
     MemoryCompactNotFoundError,
     MemoryCompactValidationError,
@@ -33,14 +27,6 @@ from app.shared.exceptions.obsidian_exceptions import (
 )
 from fastapi import status
 
-LIBRARY_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
-    BoundaryValidationError: status.HTTP_400_BAD_REQUEST,
-    LibraryCategoryCycleError: status.HTTP_409_CONFLICT,
-    LibraryProviderUnsupportedError: status.HTTP_400_BAD_REQUEST,
-    LibraryResourceNotFoundError: status.HTTP_404_NOT_FOUND,
-    LibraryValidationError: status.HTTP_400_BAD_REQUEST,
-}
-
 CONNECTIONS_PROVIDER_TEST_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     ConnectionsResourceNotFoundError: (
         status.HTTP_404_NOT_FOUND,
@@ -52,10 +38,6 @@ MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     BoundaryValidationError: status.HTTP_400_BAD_REQUEST,
     MemoryCompactNotFoundError: status.HTTP_404_NOT_FOUND,
     MemoryCompactValidationError: status.HTTP_400_BAD_REQUEST,
-}
-
-ARCHIVE_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
-    **LIBRARY_ROUTE_EXCEPTION_MAPPING,
 }
 
 CONNECTIONS_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
@@ -81,8 +63,4 @@ LIBRARIAN_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     LibrarianProviderUnsupportedError: status.HTTP_400_BAD_REQUEST,
     LibrarianResourceNotFoundError: status.HTTP_404_NOT_FOUND,
     LibrarianValidationError: status.HTTP_400_BAD_REQUEST,
-}
-
-RETRIEVAL_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
-    **LIBRARY_ROUTE_EXCEPTION_MAPPING,
 }

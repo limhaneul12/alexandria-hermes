@@ -17,7 +17,7 @@ from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
 from app.shared.types.types_convert_utils import now_utc
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 router = APIRouter(
     prefix="/librarians/profiles",
@@ -71,7 +71,7 @@ def _create_payload(request: AgentCreateRequest) -> AgentCreatePayload:
     "",
     response_model=AgentResponse,
     status_code=status.HTTP_201_CREATED,
-    description="Library API operation.",
+    description="Librarian profile operation.",
     summary="Create agent",
 )
 @router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
@@ -98,7 +98,7 @@ async def create_agent(
 @router.get(
     "",
     response_model=AgentResponseList,
-    description="Library API operation.",
+    description="Librarian profile operation.",
     status_code=status.HTTP_200_OK,
     summary="List agents",
 )
@@ -125,7 +125,7 @@ async def list_agents(
 @router.get(
     "/{agent_id}",
     response_model=AgentResponse,
-    description="Library API operation.",
+    description="Librarian profile operation.",
     status_code=status.HTTP_200_OK,
     summary="Get agent",
 )
@@ -147,17 +147,13 @@ async def get_agent(
         AgentResponse: Value produced by get_agent.
     """
     model = await service.get_agent(agent_id)
-    if model is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
-        )
     return _to_response(model)
 
 
 @router.patch(
     "/{agent_id}",
     response_model=AgentResponse,
-    description="Library API operation.",
+    description="Librarian profile operation.",
     status_code=status.HTTP_200_OK,
     summary="Patch agent",
 )
@@ -187,7 +183,7 @@ async def patch_agent(
 @router.delete(
     "/{agent_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    description="Library API operation.",
+    description="Librarian profile operation.",
     summary="Delete agent",
 )
 @router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)

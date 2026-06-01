@@ -1,4 +1,4 @@
-"""Skill artifact payload contracts."""
+"""Skill-acquisition artifact payload contracts."""
 
 from __future__ import annotations
 

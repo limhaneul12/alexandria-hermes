@@ -32,7 +32,7 @@ router = APIRouter(
     "",
     response_model=LibrarianProviderResponse,
     status_code=status.HTTP_201_CREATED,
-    description="Library API operation.",
+    description="Librarian provider operation.",
     summary="Create librarian provider",
 )
 @router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
@@ -68,7 +68,7 @@ async def create_librarian_provider(
 @router.get(
     "",
     response_model=LibrarianProviderResponseList,
-    description="Library API operation.",
+    description="Librarian provider operation.",
     status_code=status.HTTP_200_OK,
     summary="List librarian providers",
 )
@@ -95,7 +95,7 @@ async def list_librarian_providers(
 @router.get(
     "/{provider_id}",
     response_model=LibrarianProviderResponse,
-    description="Library API operation.",
+    description="Librarian provider operation.",
     status_code=status.HTTP_200_OK,
     summary="Get librarian provider",
 )
@@ -124,7 +124,7 @@ async def get_librarian_provider(
 @router.patch(
     "/{provider_id}",
     response_model=LibrarianProviderResponse,
-    description="Library API operation.",
+    description="Librarian provider operation.",
     status_code=status.HTTP_200_OK,
     summary="Patch librarian provider",
 )
@@ -164,7 +164,7 @@ async def patch_librarian_provider(
 @router.delete(
     "/{provider_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    description="Library API operation.",
+    description="Librarian provider operation.",
     summary="Delete librarian provider",
 )
 @router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
@@ -187,7 +187,7 @@ async def delete_librarian_provider(
 @router.post(
     "/{provider_id}/test",
     response_model=LibrarianProviderTestResponse,
-    description="Library API operation.",
+    description="Librarian provider operation.",
     status_code=status.HTTP_200_OK,
     summary="Test librarian provider",
 )

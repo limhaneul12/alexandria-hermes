@@ -375,6 +375,10 @@ def test_library_item_listing_sqlite_search_surface_is_removed() -> None:
 
 def test_library_interface_router_folders_are_only_for_multi_module_concepts() -> None:
     routers_root = LIBRARY_INTERFACE / "routers"
+    if not routers_root.exists():
+        assert not (APP_ROOT / "library").exists()
+        return
+
     offenders = sorted(
         path.name
         for path in routers_root.iterdir()
@@ -570,3 +574,15 @@ def test_backend_app_modules_stay_under_line_budget_or_are_justified() -> None:
 
     assert oversized == []
     assert stale_or_invalid_allowlist == []
+
+
+def test_backend_app_has_no_removed_library_package_imports() -> None:
+    """The removed SQLite library package should not remain an app dependency."""
+    offenders = sorted(
+        str(path.relative_to(APP_ROOT))
+        for path in _python_files(APP_ROOT)
+        if any(module.startswith("app.library") for module in _module_imports(path))
+    )
+
+    assert offenders == []
+    assert not (APP_ROOT / "library").exists()

@@ -11,19 +11,13 @@ from dependency_injector import providers
 
 _PROVIDER_CONTAINER_BY_NAME: Final[dict[str, str]] = {
     "agent_service": "librarian",
-    "category_service": "library",
     "context_service": "memory",
     "hermes_collaboration_service": "librarian",
-    "item_search_service": "library",
-    "item_service": "library",
     "memory_compact_service": "memory",
     "obsidian_service": "obsidian",
     "librarian_oauth_service": "connections",
     "skill_acquisition_service": "librarian",
     "librarian_service": "connections",
-    "prompt_service": "library",
-    "skill_service": "library",
-    "usage_service": "library",
 }
 
 
@@ -34,9 +28,7 @@ def override_library_provider(provider_name: str, value: object) -> Iterator[Non
     if container_name is None:
         raise ValueError(f"unsupported provider override: {provider_name}")
     root_container = app.state.container
-    if container_name == "archive":
-        provider = root_container.archive.providers[provider_name]
-    elif container_name == "connections":
+    if container_name == "connections":
         provider = root_container.connections.providers[provider_name]
     elif container_name == "librarian":
         provider = root_container.librarian.providers[provider_name]
@@ -44,7 +36,5 @@ def override_library_provider(provider_name: str, value: object) -> Iterator[Non
         provider = root_container.memory.providers[provider_name]
     elif container_name == "obsidian":
         provider = root_container.obsidian.providers[provider_name]
-    else:
-        provider = root_container.library.providers[provider_name]
     with provider.override(providers.Object(value)):
         yield

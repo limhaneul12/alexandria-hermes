@@ -86,17 +86,17 @@ hermes mcp add alexandria \
 
 그 뒤 Hermes CLI/Gateway/Discord 세션을 재시작한다.
 
-## Frontend build가 `.next` scandir 오류로 실패
+## 제거된 frontend 명령이 아직 실행됨
 
 ### 증상
 
 ```text
-정적 검사나 테스트가 실패한다.
+.next scandir, npm, 또는 frontend workflow 관련 정적 검사/테스트가 실패한다.
 ```
 
 ### 조치
 
-현재 런타임은 backend/CLI/MCP만 남아 있으므로 backend 검증을 다시 실행한다.
+현재 런타임은 backend/CLI/MCP만 남아 있다. stale script나 CI step에서 frontend 명령을 제거하고 backend 검증을 실행한다.
 
 ```bash
 cd backend

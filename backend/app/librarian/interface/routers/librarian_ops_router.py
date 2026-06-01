@@ -151,7 +151,7 @@ async def route_preview(
 @router.post(
     "/ask",
     response_model=AskLibrarianResponse,
-    description="Library API operation.",
+    description="Librarian skill-acquisition operation.",
     status_code=status.HTTP_200_OK,
     summary="Ask librarian",
 )
@@ -184,7 +184,7 @@ async def ask_librarian(
 @router.get(
     "/jobs/{job_id}",
     response_model=LibrarianJobStatusResponse,
-    description="Library API operation.",
+    description="Librarian skill-acquisition operation.",
     status_code=status.HTTP_200_OK,
     summary="Librarian job status",
 )

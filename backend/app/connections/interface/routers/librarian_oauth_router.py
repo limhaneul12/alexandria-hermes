@@ -25,7 +25,7 @@ router = APIRouter(
     "/{provider_id}/oauth/start",
     response_model=LibrarianOAuthStartResponse,
     status_code=status.HTTP_200_OK,
-    description="Library API operation.",
+    description="Librarian OAuth operation.",
     summary="Start librarian OAuth device flow",
 )
 @router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
@@ -54,7 +54,7 @@ async def start_librarian_provider_oauth(
     "/{provider_id}/oauth/poll",
     response_model=LibrarianOAuthStatusResponse,
     status_code=status.HTTP_200_OK,
-    description="Library API operation.",
+    description="Librarian OAuth operation.",
     summary="Poll librarian OAuth device flow",
 )
 @router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
@@ -83,7 +83,7 @@ async def poll_librarian_provider_oauth(
     "/{provider_id}/oauth/refresh",
     response_model=LibrarianOAuthStatusResponse,
     status_code=status.HTTP_200_OK,
-    description="Library API operation.",
+    description="Librarian OAuth operation.",
     summary="Refresh librarian OAuth token when needed",
 )
 @router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)
@@ -112,7 +112,7 @@ async def refresh_librarian_provider_oauth(
     "/{provider_id}/oauth/status",
     response_model=LibrarianOAuthStatusResponse,
     status_code=status.HTTP_200_OK,
-    description="Library API operation.",
+    description="Librarian OAuth operation.",
     summary="Read librarian OAuth status",
 )
 @router_exception_status(CONNECTIONS_ROUTE_EXCEPTION_MAPPING)

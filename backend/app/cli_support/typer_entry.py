@@ -13,7 +13,7 @@ from app.cli_support.contracts.runtime_contracts import (
     CliRuntime,
     CommandContext,
 )
-from app.cli_support.handlers.library import handle_health
+from app.cli_support.handlers.health import handle_health
 from app.cli_support.typer_commands.librarian_commands.collaboration import (
     librarian_app,
 )

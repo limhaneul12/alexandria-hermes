@@ -8,9 +8,13 @@ from datetime import datetime
 from app.librarian.domain.event_enum.collaboration_enums import (
     SkillAcquisitionJobStatus,
 )
-from app.library.domain.event_enum.item_enums import ItemStatus
-from app.library.domain.event_enum.skill_enums import RiskLevel
-from app.library.domain.types.skill_payload_types import SkillSchemaPayload
+from app.librarian.domain.event_enum.skill_acquisition_enums import (
+    ItemStatus,
+    RiskLevel,
+)
+from app.librarian.domain.types.skill_acquisition_payload_types import (
+    SkillSchemaPayload,
+)
 
 
 def _empty_skill_schema() -> SkillSchemaPayload:

@@ -228,6 +228,20 @@ def test_create_agent_persists_profile_without_provider_assignment_api() -> None
     }
 
 
+def test_get_agent_returns_404_when_profile_is_missing() -> None:
+    """GET /librarians/profiles/{id} should map missing profiles through domain errors."""
+    with (
+        override_library_provider("agent_service", _override_agent_service()),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.get(
+            "/librarians/profiles/00000000-0000-4000-8000-000000000999"
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Agent not found"
+
+
 def test_patch_agent_updates_librarian_profile_assignment() -> None:
     """PATCH /librarians/profiles/{id} should update librarian profile settings."""
     with (

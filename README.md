@@ -11,14 +11,25 @@ Alexandria-Hermes = FastAPI + CLI + MCP protocol
 Librarian = optional Obsidian-aware collaborator/chat pane
 ```
 
-## What remains
+## Current scope
+
+Alexandria-Hermes now focuses on a narrow, backend-only recall surface:
 
 - FastAPI backend on `127.0.0.1:8000`
 - CLI entrypoint: `alexandria-hermes`
-- MCP tools for Context Vault, Memory Compact, librarian collaboration, and skill-acquisition jobs
-- SQLite-backed operational storage for provider/librarian jobs and Context RAG indexes
+- MCP tools for Context Vault recall, RAG Context Packs, Memory Compact lookup, librarian collaboration, Obsidian note search/read/save, and skill-acquisition jobs
+- SQLite-backed operational storage for provider profiles, OAuth state, librarian jobs, workflow checkpoints, and rebuildable Obsidian/Context search indexes
 - Obsidian-backed Markdown notes under `SERVICE_OBSIDIAN_VAULT_PATH`
 - Optional local Obsidian plugin at `integrations/obsidian/alexandria-librarian/`
+
+Removed surfaces stay removed by contract tests:
+
+- Next.js/frontend runtime and frontend CI
+- SQLite library item CRUD, category/folder management, and `app/library` package code
+- SQLite-backed skill/prompt/harness CRUD
+- MinIO/object-storage archive/import/provider/health surfaces
+- public Context Vault lint/manual-save routes
+- stale skill/prompt/context authoring CLI commands
 
 ## Quick start: generated Obsidian vault
 
@@ -89,7 +100,7 @@ Then open Obsidian, enable Community plugins, enable **Alexandria Librarian**, a
 
 ## Canonical memory, skills, and prompts
 
-Reusable artifacts live as Obsidian notes:
+Reusable artifacts live as Obsidian notes, not SQLite library rows. The backend may keep operational job metadata, but the human-editable source of truth is Markdown in the vault:
 
 ```bash
 uv run alexandria-hermes obsidian capture "Browser Verification Skill" \
@@ -106,7 +117,7 @@ uv run alexandria-hermes obsidian search "bounded waits" --type skill
 uv run alexandria-hermes obsidian search "release notes" --type prompt
 ```
 
-Memory Compact lifecycle APIs already write Markdown under `SERVICE_MEMORY_COMPACT_NOTE_DIR`; run `obsidian reindex` to rebuild SQLite search/cache rows from the vault after manual edits or cache deletion.
+Memory Compact lifecycle APIs already write Markdown under `SERVICE_MEMORY_COMPACT_NOTE_DIR`; run `obsidian reindex` to rebuild SQLite search/cache rows from the vault after manual edits or cache deletion. If SQLite is deleted, Markdown can rebuild indexes/caches; provider profiles, OAuth state, and job/workflow operational state should be backed up separately when needed.
 
 ## Graph edges, related notes, and workflows
 
@@ -125,11 +136,14 @@ GET  /obsidian/notes/{note_id}/related
 POST /obsidian/librarian/workflows
 GET  /obsidian/librarian/workflows/{thread_id}
 POST /obsidian/librarian/workflows/{thread_id}/resume
+POST /obsidian/librarian/workflows/{thread_id}/cancel
 ```
 
 The workflow runtime now uses the real `langgraph` package with `StateGraph`, `interrupt(...)`, `Command(resume=...)`, and a SQLite LangGraph checkpoint file. Default checkpoint path: `SERVICE_OBSIDIAN_LIBRARIAN_LANGGRAPH_CHECKPOINT_PATH=./data/obsidian_librarian_langgraph.sqlite`. Approving `ask_oauth_librarian` routes to the backend GPT/OAuth librarian provider/profile when connected; missing providers/profiles degrade to guidance-only without writing OAuth secrets into Obsidian.
 
 ## Local development
+
+Backend development uses `uv` and the backend Makefile:
 
 ```bash
 cd backend
@@ -137,6 +151,13 @@ uv sync
 uv run ruff check .
 uv run pyrefly check
 uv run pytest -q
+```
+
+The GitHub Actions parity gate is:
+
+```bash
+cd backend
+make ci
 ```
 
 Run the backend with Docker Compose:
@@ -153,4 +174,4 @@ curl http://127.0.0.1:8000/health/live
 
 ## Direction
 
-Use Obsidian/Markdown as the human-facing library surface. Alexandria-Hermes should provide the agent-facing protocol: recall durable memory, prepare compacts as Obsidian notes, ask or route librarian work, and preserve skill-acquisition job results without reintroducing a web UI.
+Use Obsidian/Markdown as the human-facing library surface. Alexandria-Hermes should provide the agent-facing protocol: recall durable memory, prepare compacts as Obsidian notes, ask or route librarian work, and preserve skill-acquisition job results without reintroducing a web UI, SQLite CRUD library, or object-storage import surface.

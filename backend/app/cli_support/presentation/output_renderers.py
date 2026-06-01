@@ -124,76 +124,6 @@ def print_json_or_summary(
     print(f"{label}{suffix}", file=context.stdout)
 
 
-def print_item_table(
-    payload: JSONValue,
-    stdout: TextIO,
-    empty_message: str = "No skills found.",
-) -> None:
-    """Print library item rows.
-
-    Args:
-        payload: Backend list response payload.
-        stdout: Destination stream.
-        empty_message: Message printed when no rows are present.
-    """
-    rows = json_list(payload)
-    if len(rows) == 0:
-        print(empty_message, file=stdout)
-        return
-    print("ID\tTYPE\tTITLE", file=stdout)
-    for item in rows:
-        item_id = text_field(item, "id")
-        item_type = text_field(item, "item_type")
-        title = text_field(item, "title")
-        print(f"{item_id}\t{item_type}\t{title}", file=stdout)
-
-
-def print_prompt_table(
-    payload: JSONValue,
-    stdout: TextIO,
-    empty_message: str = "No prompts found.",
-) -> None:
-    """Print prompt item rows.
-
-    Args:
-        payload: Backend list response payload.
-        stdout: Destination stream.
-        empty_message: Message printed when no rows are present.
-    """
-    rows = json_list(payload)
-    if len(rows) == 0:
-        print(empty_message, file=stdout)
-        return
-    print("ID\tTYPE\tKIND\tTITLE", file=stdout)
-    for item in rows:
-        item_id = text_field(item, "id")
-        item_type = text_field(item, "item_type")
-        kind = detail_text(item, "prompt_kind")
-        title = text_field(item, "title")
-        print(f"{item_id}\t{item_type}\t{kind}\t{title}", file=stdout)
-
-
-def detail_text(payload: JSONValue, key: str) -> str:
-    """Read a string field from a nested details payload.
-
-    Args:
-        payload: Backend response payload.
-        key: Details field name to read.
-
-    Returns:
-        String value, or an empty string when absent.
-    """
-    if not isinstance(payload, dict):
-        return ""
-    details = payload.get("details")
-    if not isinstance(details, dict):
-        return ""
-    value = details.get(key)
-    if isinstance(value, str):
-        return value
-    return ""
-
-
 def list_field(payload: JSONValue, key: str) -> list[str]:
     """Read a string list field from a dynamic response payload.
 
@@ -210,51 +140,6 @@ def list_field(payload: JSONValue, key: str) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str)]
-
-
-def print_folder_table(payload: JSONValue, stdout: TextIO, tree: bool) -> None:
-    """Print folder rows or a tree view.
-
-    Args:
-        payload: Backend folder response payload.
-        stdout: Destination stream.
-        tree: Whether rows should be rendered hierarchically.
-    """
-    rows = json_list(payload)
-    if len(rows) == 0:
-        print("No folders found.", file=stdout)
-        return
-    print("ID\tPARENT\tNAME", file=stdout)
-    if tree:
-        for item in rows:
-            print_folder_tree_row(item, stdout, depth=0)
-    else:
-        for item in rows:
-            folder_id = text_field(item, "id")
-            parent_id = display_parent_id(item)
-            name = text_field(item, "name")
-            print(f"{folder_id}\t{parent_id}\t{name}", file=stdout)
-
-
-def print_folder_tree_row(item: JSONObject, stdout: TextIO, depth: int) -> None:
-    """Print one folder tree row and its children.
-
-    Args:
-        item: Folder JSON object from the backend.
-        stdout: Destination stream.
-        depth: Tree depth used for indentation.
-    """
-    folder_id = text_field(item, "id")
-    parent_id = display_parent_id(item)
-    name = text_field(item, "name")
-    indent = "  " * depth
-    print(f"{folder_id}\t{parent_id}\t{indent}{name}", file=stdout)
-    children = item.get("children")
-    if not isinstance(children, list):
-        return
-    for child in children:
-        if isinstance(child, dict):
-            print_folder_tree_row(child, stdout, depth + 1)
 
 
 def json_list(payload: JSONValue) -> list[JSONObject]:
@@ -295,17 +180,3 @@ def text_field(payload: JSONValue, key: str) -> str:
     if isinstance(value, int | float | bool):
         return str(value)
     return ""
-
-
-def display_parent_id(payload: JSONValue) -> str:
-    """Render an optional folder parent id.
-
-    Args:
-        payload: Backend folder payload.
-
-    Returns:
-        Parent id or '-' when the folder has no parent.
-    """
-    parent_id = text_field(payload, "parent_id")
-    rendered_parent = "-" if parent_id == "" else parent_id
-    return rendered_parent

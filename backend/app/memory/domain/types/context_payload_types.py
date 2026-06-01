@@ -110,21 +110,6 @@ class ContextAccessEventPayload(TypedDict, closed=True):
     source_surface: str | None
 
 
-class ContextLintPayload(TypedDict, closed=True):
-    """API payload for one Context Harness lint result."""
-
-    ok: bool
-    status: ContextStorageStatus
-    score: int
-    errors: list[str]
-    warnings: list[str]
-    suggestions: list[str]
-    redacted_content: str
-    redaction_report: list[str]
-    save_suggestion: SaveSuggestionPayload
-    normalized: ContextLintNormalizedPayload
-
-
 class ContextSearchMatchPayload(TypedDict, closed=True):
     """API payload for one retrieved context match."""
 

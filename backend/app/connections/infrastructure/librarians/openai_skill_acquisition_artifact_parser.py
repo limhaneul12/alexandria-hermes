@@ -7,8 +7,10 @@ import re
 from app.librarian.domain.contracts.skill_acquisition_contracts import (
     SkillAcquisitionArtifact,
 )
-from app.library.domain.event_enum.item_enums import ItemStatus
-from app.library.domain.event_enum.skill_enums import RiskLevel
+from app.librarian.domain.event_enum.skill_acquisition_enums import (
+    ItemStatus,
+    RiskLevel,
+)
 from app.shared.exceptions.librarian_exceptions import (
     LibrarianSkillAcquisitionArtifactError,
 )

@@ -158,16 +158,19 @@ class AgentService:
         """
         return await self.repository.list_all()
 
-    async def get_agent(self, agent_id: str) -> AgentProfile | None:
+    async def get_agent(self, agent_id: str) -> AgentProfile:
         """Read one agent profile.
 
         Args:
             agent_id: Target agent identifier.
 
         Returns:
-            AgentProfile | None: Matching agent profile, or ``None`` when absent.
+            AgentProfile: Matching agent profile.
         """
-        return await self.repository.get(agent_id)
+        profile = await self.repository.get(agent_id)
+        if profile is None:
+            raise LibrarianResourceNotFoundError("Agent not found")
+        return profile
 
     async def create_agent(self, payload: AgentCreatePayload) -> AgentProfile:
         """Create one agent profile from an interface payload.

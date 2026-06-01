@@ -29,13 +29,6 @@ from .librarian_exceptions import (
     LibrarianSkillAcquisitionProviderError,
     LibrarianValidationError,
 )
-from .library_exceptions import (
-    LibraryCategoryCycleError,
-    LibraryDomainError,
-    LibraryProviderUnsupportedError,
-    LibraryResourceNotFoundError,
-    LibraryValidationError,
-)
 from .memory_compact_exceptions import (
     MemoryCompactDomainError,
     MemoryCompactNotFoundError,
@@ -52,27 +45,21 @@ from .obsidian_exceptions import (
     ObsidianValidationError,
 )
 from .route_exceptions import (
-    ARCHIVE_ROUTE_EXCEPTION_MAPPING,
     CONNECTIONS_PROVIDER_TEST_EXCEPTION_MAPPING,
     CONNECTIONS_ROUTE_EXCEPTION_MAPPING,
     CONTEXT_ROUTE_EXCEPTION_MAPPING,
     LIBRARIAN_ROUTE_EXCEPTION_MAPPING,
-    LIBRARY_ROUTE_EXCEPTION_MAPPING,
     MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING,
     OBSIDIAN_ROUTE_EXCEPTION_MAPPING,
-    RETRIEVAL_ROUTE_EXCEPTION_MAPPING,
 )
 
 __all__ = [
-    "ARCHIVE_ROUTE_EXCEPTION_MAPPING",
     "CONNECTIONS_PROVIDER_TEST_EXCEPTION_MAPPING",
     "CONNECTIONS_ROUTE_EXCEPTION_MAPPING",
     "CONTEXT_ROUTE_EXCEPTION_MAPPING",
     "LIBRARIAN_ROUTE_EXCEPTION_MAPPING",
-    "LIBRARY_ROUTE_EXCEPTION_MAPPING",
     "MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING",
     "OBSIDIAN_ROUTE_EXCEPTION_MAPPING",
-    "RETRIEVAL_ROUTE_EXCEPTION_MAPPING",
     "BoundaryValidationError",
     "ConnectionsDomainError",
     "ConnectionsProviderUnsupportedError",
@@ -84,11 +71,6 @@ __all__ = [
     "LibrarianSkillAcquisitionExecutionError",
     "LibrarianSkillAcquisitionProviderError",
     "LibrarianValidationError",
-    "LibraryCategoryCycleError",
-    "LibraryDomainError",
-    "LibraryProviderUnsupportedError",
-    "LibraryResourceNotFoundError",
-    "LibraryValidationError",
     "MemoryCompactDomainError",
     "MemoryCompactNotFoundError",
     "MemoryCompactValidationError",

@@ -1,4 +1,4 @@
-"""Skill artifact status enum used by librarian acquisition contracts."""
+"""Skill-acquisition artifact enum definitions."""
 
 from __future__ import annotations
 
@@ -14,3 +14,11 @@ class ItemStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
     DEPRECATED = "DEPRECATED"
     SUPERSEDED = "SUPERSEDED"
+
+
+class RiskLevel(StrEnum):
+    """Skill risk level classification."""
+
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"

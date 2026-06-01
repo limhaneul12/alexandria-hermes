@@ -17,16 +17,19 @@ class HealthPayloadModel(BaseModel):
         extra="forbid",
         frozen=True,
         strict=True,
+    )
+
+
+class LiveHealthPayload(HealthPayloadModel):
+    """Response payload for process liveness."""
+
+    model_config = ConfigDict(
         json_schema_extra={
             "examples": [
                 {"status": "ok"},
             ],
         },
     )
-
-
-class LiveHealthPayload(HealthPayloadModel):
-    """Response payload for process liveness."""
 
     status: StrictStr
 

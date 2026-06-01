@@ -9,7 +9,7 @@ Terminal 1:
 ```bash
 cd backend
 uv sync
-uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook
+uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook --run-migrations
 uv run alexandria-hermes serve \
   --env-file "$HOME/.hermes/alexandria-hermes/.env" \
   --host 127.0.0.1 \
@@ -35,21 +35,30 @@ uv run alexandria-hermes setup \
   --mode backend-daemon \
   --apply \
   --write-guidebook \
+  --run-migrations \
   --obsidian-vault-path "$HOME/Desktop/Alexandria" \
   --alexandria-obsidian-root "."
 ```
 
 Use root `.` when the vault itself is the Alexandria workspace; this avoids `Alexandria/Alexandria` nesting.
 
+Then start the backend with the generated env file:
+
+```bash
+uv run alexandria-hermes serve \
+  --env-file "$HOME/.hermes/alexandria-hermes/.env" \
+  --host 127.0.0.1 \
+  --port 8000
+```
+
 ## Obsidian side pane
 
 ```bash
 brew install --cask obsidian
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-VAULT="$HOME/Desktop/Alexandria"
-mkdir -p "$VAULT/.obsidian/plugins"
-ln -s "$REPO_ROOT/integrations/obsidian/alexandria-librarian" \
-  "$VAULT/.obsidian/plugins/alexandria-librarian"
+cd backend
+uv run alexandria-hermes obsidian install-local \
+  --vault-path "$HOME/Desktop/Alexandria" \
+  --plugin-install-mode copy
 ```
 
 Enable **Alexandria Librarian** in Obsidian Community plugins while the backend is running.

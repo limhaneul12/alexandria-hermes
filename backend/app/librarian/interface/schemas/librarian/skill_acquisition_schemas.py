@@ -11,9 +11,13 @@ from app.librarian.domain.entities.skill_acquisition_job import SkillAcquisition
 from app.librarian.domain.event_enum.collaboration_enums import (
     SkillAcquisitionJobStatus,
 )
-from app.library.domain.event_enum.item_enums import ItemStatus
-from app.library.domain.event_enum.skill_enums import RiskLevel
-from app.library.domain.types.skill_payload_types import SkillSchemaPayload
+from app.librarian.domain.event_enum.skill_acquisition_enums import (
+    ItemStatus,
+    RiskLevel,
+)
+from app.librarian.domain.types.skill_acquisition_payload_types import (
+    SkillSchemaPayload,
+)
 from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from app.shared.types.extra_types import JSONValue
