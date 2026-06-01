@@ -43,18 +43,8 @@ jobs:
         working-directory: backend
         run: uv sync --group dev --reinstall-package alexandria-hermes
 
-      - name: Run backend CI
+      - name: Run backend static checks
         working-directory: backend
-        shell: bash
         run: |
-          set -o pipefail
-          make ci 2>&1 | tee backend-ci.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            tail -n 120 backend-ci.log > backend-ci-tail.log
-            {
-              echo "Backend CI failed. Last 120 log lines:"
-              sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g' backend-ci-tail.log
-            } | awk 'BEGIN { printf "::error title=Backend CI failure::" } { printf "%s%%0A", $0 } END { printf "\n" }'
-            exit "$status"
-          fi
+          make format_check
+          make type_checking
