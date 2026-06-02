@@ -12,6 +12,7 @@ from app.memory.domain.entities.context_read_models import (
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextScope,
+    RagHealthState,
 )
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
 from app.memory.infrastructure.repositories.contexts.obsidian_context_mapping import (
@@ -37,7 +38,7 @@ from app.retrieval.application.vector_serialization import (
 from app.retrieval.infrastructure.sqlite_vec_connection import (
     load_sqlite_vec_for_session,
 )
-from sqlalchemy import bindparam, func, or_, select
+from sqlalchemy import bindparam, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -133,6 +134,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
         query_embedding: list[float],
         model_name: str,
         dimensions: int,
+        fingerprint_key: str,
         limit: int,
         project: str | None = None,
         kind: ContextKind | None = None,
@@ -148,6 +150,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
             query_embedding: Query embedding vector.
             model_name: Embedding model that produced the query vector.
             dimensions: Expected embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
             limit: Maximum returned matches.
             project: Optional project filter.
             kind: Optional Context RAG kind filter.
@@ -186,6 +189,8 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
                 ObsidianChunkORM.embedding.is_not(None),
                 ObsidianChunkORM.embedding_model == bindparam("model_name"),
                 ObsidianChunkORM.embedding_dimensions == bindparam("dimensions"),
+                ObsidianChunkORM.embedding_fingerprint_key
+                == bindparam("fingerprint_key"),
                 ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value,
             )
             .order_by(distance.asc())
@@ -195,6 +200,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
             "query_embedding": vector_to_sqlite_json(query_embedding),
             "model_name": model_name,
             "dimensions": dimensions,
+            "fingerprint_key": fingerprint_key,
             "limit": _candidate_limit(limit),
         }
         if project is not None:
@@ -239,6 +245,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
         *,
         model_name: str,
         dimensions: int,
+        fingerprint_key: str,
         limit: int,
         force: bool = False,
     ) -> list[ContextChunkRecord]:
@@ -247,6 +254,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
         Args:
             model_name: Current embedding model name.
             dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
             limit: Maximum chunks to scan.
             force: Whether to rebuild existing embeddings even if metadata matches.
 
@@ -258,7 +266,6 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
             .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
             .where(ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value)
             .where(func.length(func.trim(ObsidianChunkORM.text)) > 0)
-            .order_by(ObsidianChunkORM.created_at.asc())
             .limit(limit)
         )
         if not force:
@@ -267,13 +274,72 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
                     ObsidianChunkORM.embedding.is_(None),
                     ObsidianChunkORM.embedding_model != model_name,
                     ObsidianChunkORM.embedding_dimensions != dimensions,
+                    ObsidianChunkORM.embedding_fingerprint_key.is_(None),
+                    ObsidianChunkORM.embedding_fingerprint_key != fingerprint_key,
                 )
             )
+        statement = statement.order_by(
+            case(
+                (
+                    (
+                        ObsidianChunkORM.embedding.is_not(None)
+                        & (ObsidianChunkORM.embedding_model == model_name)
+                        & (ObsidianChunkORM.embedding_dimensions == dimensions)
+                        & (
+                            ObsidianChunkORM.embedding_fingerprint_key
+                            == fingerprint_key
+                        )
+                    ),
+                    1,
+                ),
+                else_=0,
+            ).asc(),
+            ObsidianChunkORM.embedding_indexed_at.asc().nulls_first(),
+            ObsidianChunkORM.created_at.asc(),
+        )
         rows = await self._session.execute(statement)
         chunks = [
             chunk_record_from_obsidian_row(chunk) for chunk in rows.scalars().all()
         ]
         return chunks
+
+    async def embedding_index_status(
+        self,
+        *,
+        model_name: str,
+        dimensions: int,
+        fingerprint_key: str,
+    ) -> RagHealthState:
+        """Return whether indexed Obsidian chunks match the current fingerprint.
+
+        Args:
+            model_name: Current embedding model name.
+            dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
+
+        Returns:
+            HEALTHY when chunks match, otherwise REINDEX_REQUIRED.
+        """
+        statement = (
+            select(ObsidianChunkORM.id)
+            .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
+            .where(ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value)
+            .where(func.length(func.trim(ObsidianChunkORM.text)) > 0)
+            .where(
+                or_(
+                    ObsidianChunkORM.embedding.is_(None),
+                    ObsidianChunkORM.embedding_model != model_name,
+                    ObsidianChunkORM.embedding_dimensions != dimensions,
+                    ObsidianChunkORM.embedding_fingerprint_key.is_(None),
+                    ObsidianChunkORM.embedding_fingerprint_key != fingerprint_key,
+                )
+            )
+            .limit(1)
+        )
+        stale_chunk_id = await self._session.scalar(statement)
+        if stale_chunk_id is None:
+            return RagHealthState.HEALTHY
+        return RagHealthState.REINDEX_REQUIRED
 
     async def update_chunk_embeddings(
         self,
@@ -298,6 +364,13 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
             chunk.embedding = update.embedding
             chunk.embedding_model = update.embedding_model
             chunk.embedding_dimensions = update.embedding_dimensions
+            chunk.embedding_provider = update.embedding_provider
+            chunk.embedding_provider_version = update.embedding_provider_version
+            chunk.embedding_pooling_mode = update.embedding_pooling_mode
+            chunk.embedding_normalize = update.embedding_normalize
+            chunk.embedding_fingerprint_key = update.embedding_fingerprint_key
+            chunk.embedding_fingerprint_json = update.embedding_fingerprint
+            chunk.embedding_indexed_at = update.embedding_indexed_at
             updated += 1
         await self._session.flush()
         return updated

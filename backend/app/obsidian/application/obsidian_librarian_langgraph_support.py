@@ -275,45 +275,6 @@ LangGraph
 """
 
 
-def _delegate_prompt(
-    workflow: ObsidianLibrarianWorkflow,
-    response: JSONObject,
-) -> str:
-    """Render the prompt sent to the approved GPT/OAuth librarian delegate."""
-    return "\n\n".join(
-        [
-            "Review this Obsidian-grounded librarian answer.",
-            f"Question: {workflow.query}",
-            f"Active note: {workflow.active_note_path or 'none'}",
-            "Return concise GPT OAuth librarian guidance with risks, missing sources, and graph/memory follow-up actions.",
-            str(response.get("answer_markdown") or ""),
-        ]
-    )
-
-
-def _delegate_brief(
-    workflow: ObsidianLibrarianWorkflow,
-    response: JSONObject,
-) -> str:
-    """Render a structured delegate brief for provider-backed librarian calls."""
-    source_paths = [
-        str(ref.get("path"))
-        for ref in source_refs_from_json(response.get("source_refs"))
-        if isinstance(ref.get("path"), str)
-    ]
-    return "\n".join(
-        [
-            "# Obsidian Librarian Delegate Brief",
-            f"- query: {workflow.query}",
-            f"- project: {workflow.project or 'default'}",
-            f"- active_note_path: {workflow.active_note_path or 'none'}",
-            f"- source_paths: {', '.join(source_paths) if source_paths else 'none'}",
-            "",
-            str(response.get("answer_markdown") or ""),
-        ]
-    )
-
-
 def _source_refs(response: JSONObject) -> tuple[SourceRef, ...]:
     """Convert Obsidian source refs into Hermes librarian source refs."""
     refs: list[SourceRef] = []

@@ -9,6 +9,7 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianEdgeSourceKind,
     ObsidianIndexStatus,
+    ObsidianLibrarianJobStatus,
     ObsidianLibrarianWorkflowStatus,
     ObsidianRelationType,
 )
@@ -128,3 +129,92 @@ class ObsidianVaultStatus:
     indexed_notes: int
     stale_notes: int
     error_notes: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultInventoryItem:
+    """One managed Markdown note discovered by vault inventory."""
+
+    note_id: str
+    relative_path: str
+    alexandria_type: AlexandriaNoteType
+    title: str
+    status: str
+    tags: list[str]
+    project: str | None
+    size_bytes: int
+    modified_at: datetime
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMoveCandidate:
+    """One planned vault move after safety validation."""
+
+    source_path: str
+    destination_path: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMoveSkip:
+    """One skipped vault move with the safety reason."""
+
+    source_path: str
+    destination_path: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMovePlan:
+    """Dry-run move plan for a librarian vault operation."""
+
+    status: str
+    hard_delete_performed: bool
+    moves: list[ObsidianVaultMoveCandidate]
+    skipped: list[ObsidianVaultMoveSkip]
+    ambiguous: list[ObsidianVaultMoveSkip]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMoveApplied:
+    """One move that was safely applied."""
+
+    source_path: str
+    destination_path: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMoveVerification:
+    """Verification summary after applying a vault move plan."""
+
+    source_root_loose_notes_remaining: int
+    reindex_status: str
+    verification_hits: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMoveReport:
+    """Final report for a safe librarian vault move operation."""
+
+    status: str
+    hard_delete_performed: bool
+    moved: list[ObsidianVaultMoveApplied]
+    skipped: list[ObsidianVaultMoveSkip]
+    ambiguous: list[ObsidianVaultMoveSkip]
+    verification: ObsidianVaultMoveVerification
+    report_markdown_path: str
+    report_json_path: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianLibrarianJob:
+    """Typed status snapshot for one librarian execution job."""
+
+    job_id: str
+    status: ObsidianLibrarianJobStatus
+    operation: str
+    report: ObsidianVaultMoveReport | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime

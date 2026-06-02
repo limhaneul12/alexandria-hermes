@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime
 
 from app.memory.application.context_lint import (
@@ -21,6 +22,7 @@ from app.memory.domain.entities.context_read_models import (
     ContextRecord,
     ContextReindexResult,
     ContextSearchMatch,
+    ContextSoftRebuildResult,
     RagDependencyHealth,
 )
 from app.memory.domain.event_enum.context_enums import (
@@ -312,6 +314,41 @@ class ContextService:
         )
         return health
 
+    async def rag_health_with_index_status(self) -> RagDependencyHealth:
+        """Return RAG health including persisted embedding fingerprint status.
+
+        Returns:
+            Health state that marks vector recall REINDEX_REQUIRED on mismatch.
+        """
+        health = self.rag_health()
+        provider = self._embedding_provider
+        if (
+            provider is None
+            or not self._vector_retrieval_enabled
+            or health.vector is not RagHealthState.HEALTHY
+            or health.embedding is not RagHealthState.HEALTHY
+        ):
+            return health
+
+        index_status = await self._embedding_index_status(provider)
+        if index_status is not RagHealthState.REINDEX_REQUIRED:
+            return health
+
+        warnings = [
+            *health.warnings,
+            (
+                "Embedding index status is REINDEX_REQUIRED; vector recall "
+                "is disabled across configured sources until all source "
+                "fingerprints match; run retrieval reindex before vector recall."
+            ),
+        ]
+        return replace(
+            health,
+            embedding=RagHealthState.REINDEX_REQUIRED,
+            default_strategy=RagStrategy.FTS_ONLY,
+            warnings=warnings,
+        )
+
     async def search(
         self,
         query: str,
@@ -352,7 +389,7 @@ class ContextService:
                 enum_value(scope, ContextScope, "include_scopes")
                 for scope in include_scopes
             ]
-        health = self.rag_health()
+        health = await self.rag_health_with_index_status()
         effective = strategy
         warnings = list(health.warnings)
         if (
@@ -449,10 +486,12 @@ class ContextService:
         if limit < 1:
             raise MemoryContextValidationError("limit must be at least 1")
         provider = self._embedding_provider
+        fingerprint = None if provider is None else provider.fingerprint()
         health = self.rag_health()
         warnings = list(health.warnings)
         if (
             provider is None
+            or fingerprint is None
             or health.vector is not RagHealthState.HEALTHY
             or health.embedding is not RagHealthState.HEALTHY
         ):
@@ -464,28 +503,88 @@ class ContextService:
                 warnings=warnings,
             )
 
-        scanned = 0
-        updated = 0
-        for source in self._search_sources:
-            remaining = limit - scanned
-            if remaining < 1:
-                break
-            chunks = await source.chunks_missing_embeddings(
-                model_name=provider.model_name,
-                dimensions=provider.dimensions,
-                limit=remaining,
-                force=force,
-            )
-            scanned += len(chunks)
-            updates = await _embedding_updates(
+        processed_by_source: dict[int, set[str]] = {}
+        fingerprint_key = fingerprint.key()
+        scanned, updated = await _reindex_embedding_sources(
+            sources=self._search_sources,
+            provider=provider,
+            fingerprint_key=fingerprint_key,
+            limit=limit,
+            force=False,
+            processed_by_source=processed_by_source,
+        )
+        if force and scanned < limit:
+            forced_scanned, forced_updated = await _reindex_embedding_sources(
+                sources=self._search_sources,
                 provider=provider,
-                chunks=chunks,
+                fingerprint_key=fingerprint_key,
+                limit=limit - scanned,
+                force=True,
+                processed_by_source=processed_by_source,
             )
-            updated += await source.update_chunk_embeddings(updates)
+            scanned += forced_scanned
+            updated += forced_updated
         result = ContextReindexResult(
             scanned=scanned,
             updated=updated,
             skipped=scanned - updated,
+            warnings=warnings,
+        )
+        return result
+
+    async def soft_rebuild_embeddings(
+        self,
+        limit: int = 100,
+        *,
+        verification_query: str | None = None,
+        project: str | None = None,
+    ) -> ContextSoftRebuildResult:
+        """Rebuild embeddings without deleting source context/note/memory rows.
+
+        Args:
+            limit: Maximum chunks to rebuild in this batch.
+            verification_query: Optional query to run after the rebuild.
+            project: Optional project filter for the verification query.
+
+        Returns:
+            Operator-facing soft rebuild report.
+        """
+        before = await self.rag_health_with_index_status()
+        reindex = await self.reindex_embeddings(limit=limit, force=True)
+        after = await self.rag_health_with_index_status()
+        verification_context_ids: list[str] = []
+        verification_warnings: list[str] = []
+        if verification_query is not None and verification_query.strip():
+            verification = await self.search(
+                query=verification_query,
+                strategy=RagStrategy.HYBRID,
+                limit=min(limit, 10),
+                project=project,
+            )
+            verification_context_ids = list(
+                dict.fromkeys(match.context.id for match in verification.matches)
+            )
+            verification_warnings = verification.warnings
+        warnings = list(reindex.warnings)
+        if after.embedding is RagHealthState.REINDEX_REQUIRED:
+            warnings.append(
+                "Soft rebuild batch incomplete; rerun with a higher limit or repeat "
+                "until after.embedding is HEALTHY."
+            )
+        result = ContextSoftRebuildResult(
+            mode="soft_embedding_vector_rebuild",
+            source_preservation=(
+                "Source contexts, Obsidian notes, and memory records are preserved; "
+                "only chunk embedding metadata/vector fields are rewritten."
+            ),
+            hard_delete_performed=False,
+            before=before,
+            reindex=reindex,
+            after=after,
+            verification_query=verification_query,
+            verification_matches=len(verification_context_ids),
+            verification_context_ids=verification_context_ids,
+            verification_warnings=verification_warnings,
             warnings=warnings,
         )
         return result
@@ -535,6 +634,7 @@ class ContextService:
         provider = self._embedding_provider
         if provider is None:
             return []
+        fingerprint = provider.fingerprint()
         query_embedding = await _embed_query(provider, query)
         if len(query_embedding) != provider.dimensions:
             raise MemoryContextValidationError(
@@ -546,6 +646,7 @@ class ContextService:
                 query_embedding=query_embedding,
                 model_name=provider.model_name,
                 dimensions=provider.dimensions,
+                fingerprint_key=fingerprint.key(),
                 limit=limit,
                 project=project,
                 kind=kind,
@@ -557,6 +658,56 @@ class ContextService:
             )
             matches.extend(source_matches)
         return _rank_matches(matches, limit)
+
+    async def _embedding_index_status(
+        self,
+        provider: EmbeddingProvider,
+    ) -> RagHealthState:
+        fingerprint = provider.fingerprint()
+        for source in self._search_sources:
+            source_status = await source.embedding_index_status(
+                model_name=provider.model_name,
+                dimensions=provider.dimensions,
+                fingerprint_key=fingerprint.key(),
+            )
+            if source_status is RagHealthState.REINDEX_REQUIRED:
+                return source_status
+        return RagHealthState.HEALTHY
+
+
+async def _reindex_embedding_sources(
+    *,
+    sources: list[IContextSearchSource],
+    provider: EmbeddingProvider,
+    fingerprint_key: str,
+    limit: int,
+    force: bool,
+    processed_by_source: dict[int, set[str]],
+) -> tuple[int, int]:
+    scanned = 0
+    updated = 0
+    for source_index, source in enumerate(sources):
+        remaining = limit - scanned
+        if remaining < 1:
+            break
+        processed_ids = processed_by_source.setdefault(source_index, set())
+        chunks = await source.chunks_missing_embeddings(
+            model_name=provider.model_name,
+            dimensions=provider.dimensions,
+            fingerprint_key=fingerprint_key,
+            limit=remaining + len(processed_ids),
+            force=force,
+        )
+        selected = [chunk for chunk in chunks if chunk.id not in processed_ids][
+            :remaining
+        ]
+        if not selected:
+            continue
+        processed_ids.update(chunk.id for chunk in selected)
+        scanned += len(selected)
+        updates = await _embedding_updates(provider=provider, chunks=selected)
+        updated += await source.update_chunk_embeddings(updates)
+    return scanned, updated
 
 
 async def _embed_documents(
@@ -587,6 +738,8 @@ async def _embedding_updates(
         )
 
     updates: list[ContextChunkEmbeddingUpdate] = []
+    fingerprint = provider.fingerprint()
+    indexed_at = now_utc()
     for chunk, embedding in zip(chunks, embeddings, strict=True):
         if len(embedding) != provider.dimensions:
             raise MemoryContextValidationError(
@@ -602,6 +755,15 @@ async def _embedding_updates(
                 embedding=serialized,
                 embedding_model=provider.model_name,
                 embedding_dimensions=provider.dimensions,
+                embedding_provider=fingerprint.provider,
+                embedding_provider_version=fingerprint.provider_version,
+                embedding_pooling_mode=fingerprint.pooling_mode,
+                embedding_normalize=fingerprint.normalize,
+                embedding_fingerprint_key=fingerprint.key(),
+                embedding_fingerprint=fingerprint.snapshot_payload(
+                    indexed_at=indexed_at
+                ),
+                embedding_indexed_at=indexed_at,
             )
         )
     return updates

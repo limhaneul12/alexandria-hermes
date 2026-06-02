@@ -53,3 +53,12 @@ class ObsidianLibrarianWorkflowStatus(StrEnum):
     WAITING_FOR_APPROVAL = "waiting_for_approval"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+
+
+class ObsidianLibrarianJobStatus(StrEnum):
+    """Status values for asynchronous Obsidian librarian execution jobs."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"

@@ -16,8 +16,6 @@ from app.obsidian.application.obsidian_librarian_langgraph_support import (
     _append_delegate_summary as append_delegate_summary,
     _approved_actions as approved_actions,
     _ask_from_state as ask_from_state,
-    _delegate_brief as delegate_brief,
-    _delegate_prompt as delegate_prompt,
     _delegate_status as delegate_status,
     _delegate_unavailable_payload as delegate_unavailable_payload,
     _initial_graph_state as initial_graph_state,
@@ -35,6 +33,10 @@ from app.obsidian.application.obsidian_librarian_langgraph_support import (
 )
 from app.obsidian.application.obsidian_librarian_state_access import (
     state_string_list,
+)
+from app.obsidian.application.obsidian_librarian_workflow_prompts import (
+    delegate_brief,
+    delegate_prompt,
 )
 from app.obsidian.application.obsidian_note_templates import conversation_id
 from app.obsidian.application.obsidian_service import ObsidianService

@@ -4,9 +4,68 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from datetime import datetime
+from json import dumps
+
+from app.shared.types.extra_types import JSONObject
 
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_EMBEDDING_DIMENSIONS = 384
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddingFingerprint:
+    """Stable identity for one embedding generation strategy."""
+
+    provider: str
+    model: str
+    provider_version: str
+    pooling_mode: str
+    normalize: bool
+    dimensions: int
+
+    def identity_payload(self) -> JSONObject:
+        """Return the timestamp-free identity payload.
+
+        Returns:
+            JSON-compatible embedding identity metadata.
+        """
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "provider_version": self.provider_version,
+            "pooling_mode": self.pooling_mode,
+            "normalize": self.normalize,
+            "dimensions": self.dimensions,
+        }
+
+    def key(self) -> str:
+        """Return a deterministic key for equality comparisons.
+
+        Returns:
+            Stable JSON key excluding generated/index timestamps.
+        """
+        return dumps(
+            self.identity_payload(),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    def snapshot_payload(self, *, indexed_at: datetime) -> JSONObject:
+        """Return persisted fingerprint metadata for one generated embedding.
+
+        Args:
+            indexed_at: Timestamp when the embedding was generated and stored.
+
+        Returns:
+            JSON-compatible fingerprint snapshot.
+        """
+        payload = self.identity_payload()
+        timestamp = indexed_at.isoformat()
+        payload["generated_at"] = timestamp
+        payload["indexed_at"] = timestamp
+        return payload
 
 
 class EmbeddingProvider(ABC):
@@ -38,6 +97,48 @@ class EmbeddingProvider(ABC):
         Returns:
             Embedding vector size.
         """
+
+    @property
+    def provider_version(self) -> str:
+        """Return embedding implementation version.
+
+        Returns:
+            Provider library or test implementation version.
+        """
+        return "unknown"
+
+    @property
+    def pooling_mode(self) -> str:
+        """Return document/query pooling mode.
+
+        Returns:
+            Stable pooling identifier.
+        """
+        return "default"
+
+    @property
+    def normalize(self) -> bool:
+        """Return whether embeddings are normalized before storage.
+
+        Returns:
+            True when the provider stores normalized vectors.
+        """
+        return True
+
+    def fingerprint(self) -> EmbeddingFingerprint:
+        """Return the current embedding generation fingerprint.
+
+        Returns:
+            Stable fingerprint for mismatch detection.
+        """
+        return EmbeddingFingerprint(
+            provider=self.provider_name,
+            model=self.model_name,
+            provider_version=self.provider_version,
+            pooling_mode=self.pooling_mode,
+            normalize=self.normalize,
+            dimensions=self.dimensions,
+        )
 
     @abstractmethod
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:

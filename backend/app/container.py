@@ -107,6 +107,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
     obsidian = providers.Container(
         ObsidianContainer,
         db_session=db_session,
+        database=database,
         app_config=app_config,
         librarian_delegate_service=librarian.hermes_collaboration_service,
     )

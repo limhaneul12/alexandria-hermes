@@ -28,6 +28,7 @@ def build_context_vector_query(
     query_embedding: str,
     model_name: str,
     dimensions: int,
+    fingerprint_key: str,
     limit: int,
     project: str | None = None,
     kind: ContextKind | None = None,
@@ -43,6 +44,7 @@ def build_context_vector_query(
         query_embedding: JSON-compatible embedding vector text for sqlite-vec.
         model_name: Embedding model that produced the query vector.
         dimensions: Expected embedding dimensions.
+        fingerprint_key: Current embedding generation fingerprint key.
         limit: Maximum returned matches.
         project: Optional project filter.
         kind: Optional context kind filter.
@@ -66,6 +68,7 @@ def build_context_vector_query(
         "query_embedding": query_embedding,
         "model_name": model_name,
         "dimensions": dimensions,
+        "fingerprint_key": fingerprint_key,
         "limit": limit,
     }
 
@@ -80,6 +83,7 @@ def build_context_vector_query(
             ContextChunkORM.embedding.is_not(None),
             ContextChunkORM.embedding_model == bindparam("model_name"),
             ContextChunkORM.embedding_dimensions == bindparam("dimensions"),
+            ContextChunkORM.embedding_fingerprint_key == bindparam("fingerprint_key"),
             ContextORM.is_archived.is_(False),
         )
     )

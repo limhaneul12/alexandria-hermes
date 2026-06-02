@@ -44,6 +44,15 @@ class ContextReindexCommand:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ContextSoftRebuildCommand:
+    """Parameters for soft rebuilding context embeddings."""
+
+    limit: int
+    verification_query: str | None
+    project: str | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MemoryCompactListCommand:
     """Parameters for listing durable Memory Compact artifacts."""
 

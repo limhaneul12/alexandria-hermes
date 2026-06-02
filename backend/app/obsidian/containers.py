@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from app.obsidian.application.obsidian_graph_service import ObsidianGraphService
+from app.obsidian.application.obsidian_librarian_job_service import (
+    ObsidianLibrarianJobService,
+)
 from app.obsidian.application.obsidian_librarian_workflow_service import (
     ObsidianLibrarianWorkflowService,
 )
@@ -17,6 +20,7 @@ from app.obsidian.infrastructure.repositories.obsidian_workflow_repository impor
     SqlAlchemyObsidianWorkflowRepository,
 )
 from app.platform.config.app_config import AppConfig
+from app.shared.infrastructure.database import Database
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +29,7 @@ class ObsidianContainer(containers.DeclarativeContainer):
     """Container for Obsidian vault and index services."""
 
     db_session = providers.Dependency(instance_of=AsyncSession)
+    database = providers.Dependency(instance_of=Database)
     app_config = providers.Dependency(instance_of=AppConfig)
     librarian_delegate_service = providers.Dependency(default=None)
     index_repo = providers.Factory(
@@ -46,6 +51,12 @@ class ObsidianContainer(containers.DeclarativeContainer):
         ObsidianGraphService,
         repository=index_repo,
         obsidian_service=obsidian_service,
+    )
+    job_service = providers.Singleton(
+        ObsidianLibrarianJobService,
+        database=database,
+        vault_config_store=vault_config_store,
+        delegate_service=librarian_delegate_service,
     )
     workflow_repo = providers.Factory(
         SqlAlchemyObsidianWorkflowRepository, session=db_session

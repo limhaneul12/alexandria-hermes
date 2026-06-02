@@ -93,5 +93,6 @@ class RagHealthState(StrEnum):
     """Health states for retriever dependencies."""
 
     HEALTHY = "HEALTHY"
+    REINDEX_REQUIRED = "REINDEX_REQUIRED"
     DEGRADED = "DEGRADED"
     DISABLED = "DISABLED"

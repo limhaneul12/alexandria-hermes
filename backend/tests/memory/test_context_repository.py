@@ -24,13 +24,13 @@ from app.memory.infrastructure.models.context_models import ContextChunkORM, Con
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
-from tests.memory.context_seed import seed_context
 from app.retrieval.application.embedding_provider import EmbeddingProvider
 from app.shared.exceptions import (
     MemoryContextNotFoundError,
 )
 from app.shared.infrastructure.database import Database
-from sqlalchemy import select
+from sqlalchemy import func, select
+from tests.memory.context_seed import seed_context
 
 
 def _handoff_content(extra: str = "") -> str:
@@ -97,6 +97,14 @@ class MeanPoolingUpgradeEmbeddingProvider(EmbeddingProvider):
     def dimensions(self) -> int:
         return 3
 
+    @property
+    def provider_version(self) -> str:
+        return "pooling-upgrade-v2"
+
+    @property
+    def pooling_mode(self) -> str:
+        return "mean-v2"
+
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         return [[0.0, 1.0, 0.0] for _ in texts]
 
@@ -117,7 +125,7 @@ class BlockingEmbeddingProvider(EmbeddingProvider):
 
     @property
     def provider_name(self) -> str:
-        return "BLOCKING_TEST"
+        return "KEYWORD_TEST"
 
     @property
     def model_name(self) -> str:
@@ -658,8 +666,10 @@ semantic-target was stored without an embedding.
     anyio.run(scenario)
 
 
-def test_context_reindex_can_force_rebuild_for_pooling_changes(tmp_path: Path) -> None:
-    """Force reindex should rebuild vectors even when model name and dimensions match."""
+def test_context_reindex_detects_fingerprint_mismatch_without_force(
+    tmp_path: Path,
+) -> None:
+    """Fingerprint mismatch should rebuild even when model and dimensions match."""
 
     async def scenario() -> None:
         async with (
@@ -692,19 +702,156 @@ semantic-target was embedded before the pooling change.
                 embedding_provider=MeanPoolingUpgradeEmbeddingProvider(),
                 vector_retrieval_enabled=True,
             )
-            unchanged = await upgraded_service.reindex_embeddings(limit=10)
-            assert unchanged.scanned == 0
-            assert unchanged.updated == 0
-
-            rebuilt = await upgraded_service.reindex_embeddings(limit=10, force=True)
+            health = await upgraded_service.rag_health_with_index_status()
+            pack = await upgraded_service.search(
+                query="semantic-target",
+                strategy=RagStrategy.HYBRID,
+                limit=1,
+            )
+            rebuilt = await upgraded_service.reindex_embeddings(limit=10)
+            healthy = await upgraded_service.rag_health_with_index_status()
             await session.refresh(before_chunk)
 
+        assert health.embedding is RagHealthState.REINDEX_REQUIRED
+        assert health.default_strategy is RagStrategy.FTS_ONLY
+        assert health.fingerprint is not None
+        assert health.fingerprint["pooling_mode"] == "mean-v2"
+        assert any("REINDEX_REQUIRED" in warning for warning in health.warnings)
+        assert pack.effective_strategy is RagStrategy.FTS_ONLY
+        assert any("REINDEX_REQUIRED" in warning for warning in pack.warnings)
         assert rebuilt.scanned >= 1
         assert rebuilt.updated >= 1
         assert rebuilt.skipped == 0
+        assert healthy.embedding is RagHealthState.HEALTHY
         assert before_chunk.embedding == "[0,1,0]"
+        assert before_chunk.embedding_pooling_mode == "mean-v2"
+        assert before_chunk.embedding_fingerprint_key is not None
+        assert before_chunk.embedding_indexed_at is not None
 
     anyio.run(scenario)
+
+
+def test_context_soft_rebuild_preserves_sources_and_returns_verification(
+    tmp_path: Path,
+) -> None:
+    """Soft rebuild should update vectors without deleting source context rows."""
+
+    async def scenario() -> tuple[str, str, int, int, bool, int, list[str], bool, str]:
+        async with (
+            _temporary_database(tmp_path / "rag-soft-rebuild.db") as database,
+            database.session() as session,
+        ):
+            repository = SqlAlchemyContextRepository(session=session)
+            saved = await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="Soft rebuild target",
+                summary="Existing vectors should soft rebuild.",
+                content="""# Soft rebuild target
+
+## Summary
+semantic-target survives the soft rebuild.
+""",
+                embedding_provider=KeywordEmbeddingProvider(),
+            )
+            await session.commit()
+
+            before_count = await session.scalar(select(func.count(ContextORM.id)))
+            service = ContextService(
+                repository=repository,
+                embedding_provider=MeanPoolingUpgradeEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            report = await service.soft_rebuild_embeddings(
+                limit=10,
+                verification_query="semantic-target",
+            )
+            after_count = await session.scalar(select(func.count(ContextORM.id)))
+
+        return (
+            report.before.embedding.value,
+            report.after.embedding.value,
+            int(before_count or 0),
+            int(after_count or 0),
+            report.hard_delete_performed,
+            report.verification_matches,
+            report.verification_context_ids,
+            "preserved" in report.source_preservation,
+            saved.id,
+        )
+
+    (
+        before_embedding,
+        after_embedding,
+        before_count,
+        after_count,
+        hard_delete_performed,
+        verification_matches,
+        verification_context_ids,
+        preservation_message,
+        saved_id,
+    ) = anyio.run(scenario)
+
+    assert before_embedding == RagHealthState.REINDEX_REQUIRED.value
+    assert after_embedding == RagHealthState.HEALTHY.value
+    assert before_count == after_count == 1
+    assert hard_delete_performed is False
+    assert verification_matches >= 1
+    assert set(verification_context_ids) == {saved_id}
+    assert preservation_message is True
+
+
+def test_context_soft_rebuild_small_batches_make_forward_progress(
+    tmp_path: Path,
+) -> None:
+    """Repeated soft rebuild batches should not rebuild the same first chunk forever."""
+
+    async def scenario() -> tuple[list[int], list[str], int]:
+        async with (
+            _temporary_database(tmp_path / "rag-soft-rebuild-batches.db") as database,
+            database.session() as session,
+        ):
+            repository = SqlAlchemyContextRepository(session=session)
+            for index in range(3):
+                await seed_context(
+                    session,
+                    kind=ContextKind.RESEARCH,
+                    title=f"Soft rebuild batch target {index}",
+                    summary="Existing vectors should soft rebuild in batches.",
+                    content=f"""# Soft rebuild batch target {index}
+
+## Summary
+semantic-target batch {index} survives the soft rebuild.
+""",
+                    embedding_provider=KeywordEmbeddingProvider(),
+                )
+            await session.commit()
+
+            service = ContextService(
+                repository=repository,
+                embedding_provider=MeanPoolingUpgradeEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            total_chunks = await session.scalar(select(func.count(ContextChunkORM.id)))
+            updated_counts: list[int] = []
+            statuses: list[str] = []
+            for _ in range(int(total_chunks or 0)):
+                report = await service.soft_rebuild_embeddings(limit=1)
+                updated_counts.append(report.reindex.updated)
+                statuses.append(report.after.embedding.value)
+            refreshed_count = await session.scalar(
+                select(func.count(ContextChunkORM.id)).where(
+                    ContextChunkORM.embedding_pooling_mode == "mean-v2"
+                )
+            )
+
+        return updated_counts, statuses, int(refreshed_count or 0)
+
+    updated_counts, statuses, refreshed_count = anyio.run(scenario)
+
+    assert all(count == 1 for count in updated_counts)
+    assert statuses[-1] == RagHealthState.HEALTHY.value
+    assert refreshed_count == len(updated_counts)
 
 
 def test_context_list_filters_tags_by_exact_membership(tmp_path: Path) -> None:

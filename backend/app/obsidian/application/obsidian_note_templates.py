@@ -173,29 +173,44 @@ def librarian_answer(
     hits: list[ObsidianSearchHit],
     active_note: ObsidianNote | None,
 ) -> str:
-    lines = ["# Alexandria Librarian", "", "## Answer"]
+    lines = [
+        "# Alexandria Librarian Context Packet",
+        "",
+        "아래 컨텍스트를 사용해 LLM librarian이 사용자 질문에 답해야 합니다.",
+        "",
+        "## User Question",
+        payload.query,
+    ]
     if active_note is not None:
-        lines.append(
-            f"현재 노트 `[[{active_note.relative_path.removesuffix('.md')}]]`를 기준으로 확인했습니다."
-        )
-    if payload.selection:
-        lines.append("선택 영역도 질문 context로 포함했습니다.")
-    if not hits:
         lines.extend(
             [
-                "관련 Alexandria note를 찾지 못했습니다.",
-                "필요하면 이 내용을 Context 또는 Skill draft로 저장한 뒤 reindex하세요.",
+                "",
+                "## Active Note",
+                f"- path: `{active_note.relative_path}`",
+                f"- title: {active_note.title}",
+                "",
+                _bounded_context(active_note.body),
             ]
         )
-    else:
-        lines.append("관련 note를 찾았습니다. 우선 아래 source를 확인하세요.")
-        lines.append("")
-        lines.append("## Sources")
+    if payload.selection:
+        lines.extend(["", "## User Selection", _bounded_context(payload.selection)])
+    lines.append("")
+    lines.append("## Retrieved Sources")
+    if hits:
         lines.extend(
             f"- [[{hit.note.relative_path.removesuffix('.md')}]] — {hit.excerpt}"
             for hit in hits
         )
+    else:
+        lines.append("- none")
     return "\n".join(lines)
+
+
+def _bounded_context(text: str, limit: int = 4_000) -> str:
+    stripped = text.strip()
+    if len(stripped) <= limit:
+        return stripped
+    return f"{stripped[:limit]}\n…[context truncated]"
 
 
 def source_ref(note: ObsidianNote) -> JSONObject:

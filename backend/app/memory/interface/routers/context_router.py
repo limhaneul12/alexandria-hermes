@@ -9,9 +9,6 @@ from app.memory.interface.schemas.context.context_mapping import (
     access_event_payload,
     chunk_payload,
     context_payload,
-    health_payload,
-    pack_payload,
-    reindex_payload,
 )
 from app.memory.interface.schemas.context.context_schema import (
     ContextAccessEventRequest,
@@ -19,11 +16,7 @@ from app.memory.interface.schemas.context.context_schema import (
     ContextAccessEventResponseList,
     ContextChunkResponseList,
     ContextListResponse,
-    ContextPackResponse,
-    ContextReindexResponse,
     ContextResponse,
-    ContextSearchRequest,
-    RagStatusResponse,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import CONTEXT_ROUTE_EXCEPTION_MAPPING
@@ -109,103 +102,6 @@ async def list_contexts(
     response = ContextListResponse.model_validate(
         {"items": [context_payload(item) for item in items], "total": total}
     )
-    return response
-
-
-@router.post(
-    "/retrieval/search",
-    response_model=ContextPackResponse,
-    status_code=status.HTTP_200_OK,
-    description="Search Context Vault and return a Context Pack.",
-    summary="Search contexts",
-)
-@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def search_contexts(
-    request: ContextSearchRequest,
-    service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-) -> ContextPackResponse:
-    """Search contexts for RAG.
-
-    Args:
-        request: Context search request.
-        service: Context application service.
-
-    Returns:
-        Context Pack response.
-    """
-    pack = await service.search(
-        query=request.query,
-        strategy=request.strategy,
-        limit=request.limit,
-        project=request.project,
-        kind=request.kind,
-        include_scopes=request.include_scopes,
-        workspace_id=request.workspace_id,
-        agent_id=request.agent_id,
-        user_id=request.user_id,
-        session_id=request.session_id,
-    )
-    response = ContextPackResponse.model_validate(pack_payload(pack))
-    return response
-
-
-@router.get(
-    "/rag/status",
-    response_model=RagStatusResponse,
-    status_code=status.HTTP_200_OK,
-    description="Return Context RAG dependency health.",
-    summary="Get context RAG status",
-)
-@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def rag_status(
-    service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-) -> RagStatusResponse:
-    """Return RAG dependency status.
-
-    Args:
-        service: Context application service.
-
-    Returns:
-        RAG health response.
-    """
-    response = RagStatusResponse.model_validate(health_payload(service.rag_health()))
-    return response
-
-
-@router.post(
-    "/retrieval/reindex",
-    response_model=ContextReindexResponse,
-    status_code=status.HTTP_200_OK,
-    description="Backfill embeddings for existing Context Vault chunks.",
-    summary="Reindex context embeddings",
-)
-@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def reindex_context_embeddings(
-    limit: int = Query(default=100, ge=1, le=1000),
-    force: bool = Query(default=False),
-    service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-) -> ContextReindexResponse:
-    """Backfill embeddings for stored contexts.
-
-    Args:
-        limit: Maximum chunks to reindex in this batch.
-        force: Whether to rebuild existing embeddings even if model metadata matches.
-        service: Context application service.
-
-    Returns:
-        Reindex result response.
-    """
-    result = await service.reindex_embeddings(limit=limit, force=force)
-    response = ContextReindexResponse.model_validate(reindex_payload(result))
     return response
 
 

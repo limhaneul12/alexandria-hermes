@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
-from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
+from app.obsidian.interface.schemas.obsidian.obsidian_librarian_workflow_schema import (
     ObsidianLibrarianAskRequest,
+)
+from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
     ObsidianSaveNoteRequest,
     ObsidianSearchRequest,
 )

@@ -23,9 +23,15 @@ from app.librarian.interface.routers.librarian_brief_router import (
 from app.librarian.interface.routers.librarian_ops_router import (
     router as librarian_ops_router,
 )
+from app.memory.interface.routers.context_retrieval_router import (
+    router as context_retrieval_router,
+)
 from app.memory.interface.routers.context_router import router as context_router
 from app.memory.interface.routers.memory_compact_router import (
     router as memory_compact_router,
+)
+from app.obsidian.interface.routers.obsidian_librarian_execution_router import (
+    router as obsidian_librarian_execution_router,
 )
 from app.obsidian.interface.routers.obsidian_router import router as obsidian_router
 from app.obsidian.interface.routers.obsidian_settings_router import (
@@ -148,8 +154,10 @@ def create_app(app_config: AppConfig) -> FastAPI:
     )
 
     app.include_router(context_router)
+    app.include_router(context_retrieval_router)
     app.include_router(memory_compact_router)
     app.include_router(obsidian_router)
+    app.include_router(obsidian_librarian_execution_router)
     app.include_router(obsidian_settings_router)
     app.include_router(agent_router)
     app.include_router(librarian_router)

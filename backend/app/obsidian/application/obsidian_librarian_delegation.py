@@ -16,6 +16,8 @@ from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 from app.shared.exceptions import LibrarianResourceNotFoundError
 from app.shared.types.extra_types import JSONObject, JSONValue
 
+DELEGATE_SELECTION_MAX_CHARS = 4_000
+
 
 class ObsidianLibrarianDelegateService(ABC):
     """Provider-backed librarian delegate boundary used by Obsidian asks."""
@@ -97,10 +99,12 @@ def _delegate_prompt(
 ) -> str:
     return "\n\n".join(
         [
-            "Review this Obsidian-grounded librarian answer.",
+            "Answer the user's question using the Obsidian context packet below.",
             f"Question: {payload.query}",
             f"Active note: {payload.active_note_path or 'none'}",
-            "Return concise GPT OAuth librarian guidance with risks, missing sources, and graph/memory follow-up actions.",
+            _selection_line(payload.selection),
+            "If retrieved sources are empty, do not claim that no related notes exist; explain what context was used and what verification is still needed.",
+            "Return the final answer, risks, missing sources, and graph/memory follow-up actions.",
             str(response.get("answer_markdown") or ""),
         ]
     )
@@ -117,11 +121,18 @@ def _delegate_brief(
     ]
     return "\n".join(
         [
-            "# Obsidian Librarian Delegate Brief",
+            "# Obsidian Librarian Answer Brief",
+            "",
+            "Use this packet to answer the user's question. Do not review a prewritten answer.",
+            "If retrieved sources are empty, treat that as insufficient retrieval evidence, not proof that no related notes exist.",
+            "",
             f"- query: {payload.query}",
             f"- project: {payload.project or 'default'}",
             f"- active_note_path: {payload.active_note_path or 'none'}",
+            f"- selection_status: {_selection_status(payload.selection)}",
             f"- source_paths: {', '.join(source_paths) if source_paths else 'none'}",
+            "",
+            _selection_block(payload.selection),
             "",
             str(response.get("answer_markdown") or ""),
         ]
@@ -234,3 +245,26 @@ def _string_value(value: JSONValue) -> str:
 
 def _optional_string_value(value: JSONValue | None) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _selection_status(selection: str | None) -> str:
+    return "ingested" if selection is not None and selection.strip() else "none"
+
+
+def _selection_line(selection: str | None) -> str:
+    if selection is None or not selection.strip():
+        return "Selection: none"
+    return f"Selection provided:\n{_selection_excerpt(selection)}"
+
+
+def _selection_block(selection: str | None) -> str:
+    if selection is None or not selection.strip():
+        return "## Selection\nnone"
+    return f"## Selection\n{_selection_excerpt(selection)}"
+
+
+def _selection_excerpt(selection: str) -> str:
+    normalized = selection.strip()
+    if len(normalized) <= DELEGATE_SELECTION_MAX_CHARS:
+        return normalized
+    return f"{normalized[:DELEGATE_SELECTION_MAX_CHARS]}\n…[selection truncated]"

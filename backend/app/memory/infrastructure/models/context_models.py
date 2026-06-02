@@ -142,6 +142,23 @@ class ContextChunkORM(Base):
     embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    embedding_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embedding_provider_version: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    embedding_pooling_mode: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    embedding_normalize: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    embedding_fingerprint_key: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True, index=True
+    )
+    embedding_fingerprint_json: Mapped[dict[str, JSONValue] | None] = mapped_column(
+        "embedding_fingerprint", JSON, nullable=True
+    )
+    embedding_indexed_at: Mapped[datetime | None] = mapped_column(
+        UTCDateTime(), nullable=True
+    )
     chunk_metadata: Mapped[dict[str, JSONValue]] = mapped_column(
         "metadata", JSON, nullable=False, default=dict
     )

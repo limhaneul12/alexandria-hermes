@@ -10,6 +10,7 @@ from app.cli_support.contracts.memory_command_contracts import (
     ContextMemoryMapCommand,
     ContextRecallCommand,
     ContextReindexCommand,
+    ContextSoftRebuildCommand,
 )
 from app.cli_support.contracts.request_mappers import (
     context_search_payload,
@@ -226,6 +227,34 @@ def handle_context_reindex(
     """
     query = f"limit={command.limit}&force={str(command.force).lower()}"
     payload = client.post(f"/memory/contexts/retrieval/reindex?{query}", {})
+    print_context_payload(payload, context)
+    return 0
+
+
+def handle_context_soft_rebuild(
+    command: ContextSoftRebuildCommand,
+    context: CommandContext,
+    client: CliBackendApiClient,
+) -> int:
+    """Run the context soft-rebuild CLI command.
+
+    Args:
+        command: Typed CLI command contract for the operation.
+        context: CLI runtime context with output settings.
+        client: Backend API client used for HTTP requests.
+
+    Returns:
+        Process-style exit code.
+    """
+    query_parts = [f"limit={command.limit}"]
+    if command.verification_query is not None:
+        query_parts.append(
+            f"verification_query={quote_path(command.verification_query)}"
+        )
+    if command.project is not None:
+        query_parts.append(f"project={quote_path(command.project)}")
+    query = "&".join(query_parts)
+    payload = client.post(f"/memory/contexts/retrieval/soft-rebuild?{query}", {})
     print_context_payload(payload, context)
     return 0
 

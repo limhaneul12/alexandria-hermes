@@ -98,6 +98,39 @@ class ObsidianVaultSettingsUpdate:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultInventoryRequest:
+    """Request to inventory managed notes under one vault scope."""
+
+    scope_path: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMoveRequest:
+    """One safe vault move requested by a librarian workflow."""
+
+    source_path: str
+    destination_path: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMovePlanRequest:
+    """Dry-run safe move planning request."""
+
+    moves: list[ObsidianVaultMoveRequest]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultMoveApplyRequest:
+    """Safe move application request."""
+
+    moves: list[ObsidianVaultMoveRequest]
+    report_path: str | None = None
+    reindex: bool = True
+    verification_query: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianLibrarianAsk:
     """Obsidian-side librarian ask payload."""
 

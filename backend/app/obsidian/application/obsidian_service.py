@@ -41,12 +41,23 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
     ObsidianSaveNote,
     ObsidianSearchQuery,
+    ObsidianVaultInventoryRequest,
+    ObsidianVaultMoveApplyRequest,
+    ObsidianVaultMovePlanRequest,
+    ObsidianVaultMoveRequest,
     ObsidianVaultSettingsUpdate,
 )
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianNote,
     ObsidianReindexResult,
     ObsidianSearchHit,
+    ObsidianVaultInventoryItem,
+    ObsidianVaultMoveApplied,
+    ObsidianVaultMoveCandidate,
+    ObsidianVaultMovePlan,
+    ObsidianVaultMoveReport,
+    ObsidianVaultMoveSkip,
+    ObsidianVaultMoveVerification,
     ObsidianVaultStatus,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
@@ -69,8 +80,12 @@ from app.obsidian.infrastructure.obsidian_vault_config_store import (
 )
 from app.shared.exceptions import ObsidianNotFoundError, ObsidianValidationError
 from app.shared.infrastructure.identifiers import new_uuid
+from app.shared.serialization.orjson_codec import dumps_pretty_json
 from app.shared.types.extra_types import JSONObject
 from app.shared.utils.secret_redaction import redact_secret_text
+
+SELECTION_CONTEXT_MAX_CHARS = 4_000
+NOTE_SUFFIX_GLOB = f"*{NOTE_SUFFIX}"
 
 
 class ObsidianService:
@@ -235,6 +250,180 @@ class ObsidianService:
             files_skipped=files_skipped,
             stale_marked=stale_marked,
             errors=errors,
+        )
+
+    async def inventory_vault(
+        self,
+        request: ObsidianVaultInventoryRequest,
+    ) -> list[ObsidianVaultInventoryItem]:
+        """Inventory managed Markdown notes under a vault-relative scope.
+
+        Args:
+            request: Inventory request with optional scope path.
+
+        Returns:
+            Managed note inventory items sorted by path.
+        """
+        scope = self._scope_path(request.scope_path)
+        if not scope.exists():
+            return []
+        note_paths = (
+            [scope] if scope.is_file() else sorted(scope.rglob(NOTE_SUFFIX_GLOB))
+        )
+        items: list[ObsidianVaultInventoryItem] = []
+        for path in note_paths:
+            if not path.is_file() or path.suffix != NOTE_SUFFIX:
+                continue
+            relative_path = str(path.relative_to(self._vault_path))
+            payload = note_index_from_path(
+                path,
+                relative_path,
+                alexandria_root=self._alexandria_root,
+            )
+            if payload is None:
+                continue
+            items.append(
+                ObsidianVaultInventoryItem(
+                    note_id=payload.note_id,
+                    relative_path=payload.relative_path,
+                    alexandria_type=payload.alexandria_type,
+                    title=payload.title,
+                    status=payload.status,
+                    tags=payload.tags,
+                    project=payload.project,
+                    size_bytes=payload.size_bytes,
+                    modified_at=payload.modified_at,
+                )
+            )
+        return items
+
+    async def search_vault_paths(
+        self,
+        *,
+        query: str,
+        scope_path: str | None = None,
+    ) -> list[ObsidianVaultInventoryItem]:
+        """Search inventoried paths and note metadata without relying on FTS.
+
+        Args:
+            query: Keyword/path fragment to find.
+            scope_path: Optional vault-relative scope.
+
+        Returns:
+            Matching inventory items.
+        """
+        needle = query.casefold().strip()
+        if not needle:
+            raise ObsidianValidationError("query is required")
+        items = await self.inventory_vault(
+            ObsidianVaultInventoryRequest(scope_path=scope_path)
+        )
+        return [item for item in items if _inventory_item_matches(item, needle)]
+
+    async def plan_vault_moves(
+        self,
+        request: ObsidianVaultMovePlanRequest,
+    ) -> ObsidianVaultMovePlan:
+        """Build a dry-run move plan without mutating the vault.
+
+        Args:
+            request: Requested safe moves.
+
+        Returns:
+            Safety-validated move plan.
+        """
+        moves: list[ObsidianVaultMoveCandidate] = []
+        skipped: list[ObsidianVaultMoveSkip] = []
+        for move in request.moves:
+            issue = self._move_safety_issue(move)
+            if issue is not None:
+                skipped.append(issue)
+                continue
+            moves.append(
+                ObsidianVaultMoveCandidate(
+                    source_path=move.source_path,
+                    destination_path=move.destination_path,
+                    reason=move.reason,
+                )
+            )
+        status = "ready" if moves and not skipped else "blocked" if skipped else "empty"
+        return ObsidianVaultMovePlan(
+            status=status,
+            hard_delete_performed=False,
+            moves=moves,
+            skipped=skipped,
+            ambiguous=[],
+        )
+
+    async def apply_vault_moves(
+        self,
+        request: ObsidianVaultMoveApplyRequest,
+    ) -> ObsidianVaultMoveReport:
+        """Safely apply a move plan, reindex, verify, and write reports.
+
+        Args:
+            request: Move application request.
+
+        Returns:
+            Markdown/JSON report metadata.
+        """
+        plan = await self.plan_vault_moves(
+            ObsidianVaultMovePlanRequest(moves=request.moves)
+        )
+        report_paths = self._vault_move_report_paths(request)
+        self._ensure_vault_move_report_available(report_paths)
+        moved: list[ObsidianVaultMoveApplied] = []
+        skipped = list(plan.skipped)
+        applicable_moves = self._applicable_vault_moves(plan.moves, skipped)
+        source_roots: set[Path] = set()
+        for move in applicable_moves:
+            source = resolve_note_path(self._vault_path, move.source_path)
+            destination = resolve_note_path(self._vault_path, move.destination_path)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            source_roots.add(source.parent)
+            source.replace(destination)
+            moved.append(
+                ObsidianVaultMoveApplied(
+                    source_path=move.source_path,
+                    destination_path=move.destination_path,
+                    reason=move.reason,
+                )
+            )
+        reindex_status = "skipped"
+        verification_hits = 0
+        if request.reindex:
+            result = await self.reindex()
+            reindex_status = "succeeded" if not result.errors else "failed"
+            if request.verification_query is not None:
+                hits = await self.search(
+                    ObsidianSearchQuery(query=request.verification_query, limit=10),
+                    refresh=False,
+                )
+                verification_hits = len(hits)
+        verification = ObsidianVaultMoveVerification(
+            source_root_loose_notes_remaining=_loose_note_count(source_roots),
+            reindex_status=reindex_status,
+            verification_hits=verification_hits,
+        )
+        status = (
+            "succeeded" if moved and not skipped else "partial" if moved else "failed"
+        )
+        report_markdown_path, report_json_path = self._write_vault_move_report(
+            report_paths=report_paths,
+            status=status,
+            moved=moved,
+            skipped=skipped,
+            verification=verification,
+        )
+        return ObsidianVaultMoveReport(
+            status=status,
+            hard_delete_performed=False,
+            moved=moved,
+            skipped=skipped,
+            ambiguous=list(plan.ambiguous),
+            verification=verification,
+            report_markdown_path=report_markdown_path,
+            report_json_path=report_json_path,
         )
 
     async def search(
@@ -409,13 +598,22 @@ class ObsidianService:
         """
         if not payload.query.strip():
             raise ObsidianValidationError("query is required")
+        active_note = await self._active_note(payload.active_note_path)
+        selection_excerpt = _selection_excerpt(payload.selection)
         hits = await self._librarian_source_hits(payload)
-        active_note = await self._active_note_or_none(payload.active_note_path)
         answer = librarian_answer(payload, hits, active_note)
         source_refs = source_refs_for_librarian(hits, active_note)
+        input_context = _librarian_input_context(
+            payload=payload,
+            active_note=active_note,
+            selection_excerpt=selection_excerpt,
+            source_refs=source_refs,
+        )
         response: JSONObject = {
             "answer_markdown": answer,
             "source_refs": source_refs,
+            "input_context": input_context,
+            "context_status": str(input_context["status"]),
             "action_preview": [
                 "save_chat",
                 "create_context_note",
@@ -439,15 +637,15 @@ class ObsidianService:
             response["transcript_path"] = transcript.relative_path
         return response
 
-    async def _active_note_or_none(
-        self, relative_path: str | None
-    ) -> ObsidianNote | None:
+    async def _active_note(self, relative_path: str | None) -> ObsidianNote | None:
         if not relative_path:
             return None
         try:
             return await self.read_note_by_path(relative_path)
-        except ObsidianNotFoundError:
-            return None
+        except ObsidianNotFoundError as exc:
+            raise ObsidianValidationError(
+                f"active_note_read_failed: {relative_path}"
+            ) from exc
 
     async def _save_librarian_chat(
         self,
@@ -513,6 +711,115 @@ class ObsidianService:
     def _root_path(self) -> Path:
         return resolve_note_path(self._vault_path, self._alexandria_root)
 
+    def _scope_path(self, scope_path: str | None) -> Path:
+        scope = self._alexandria_root if scope_path is None else scope_path
+        return resolve_note_path(self._vault_path, scope)
+
+    def _move_safety_issue(
+        self,
+        move: ObsidianVaultMoveRequest,
+    ) -> ObsidianVaultMoveSkip | None:
+        source = resolve_note_path(self._vault_path, move.source_path)
+        destination = resolve_note_path(self._vault_path, move.destination_path)
+        reason = move.reason.strip()
+        if not reason:
+            return _move_skip(move, "reason_required")
+        if source == destination:
+            return _move_skip(move, "source_equals_destination")
+        if source.suffix != NOTE_SUFFIX or destination.suffix != NOTE_SUFFIX:
+            return _move_skip(move, "only_markdown_notes_can_be_moved")
+        if not source.exists():
+            return _move_skip(move, "source_missing")
+        if not source.is_file():
+            return _move_skip(move, "source_not_file")
+        if destination.exists():
+            return _move_skip(move, "destination_exists")
+        return None
+
+    def _applicable_vault_moves(
+        self,
+        moves: list[ObsidianVaultMoveCandidate],
+        skipped: list[ObsidianVaultMoveSkip],
+    ) -> list[ObsidianVaultMoveCandidate]:
+        applicable: list[ObsidianVaultMoveCandidate] = []
+        seen_sources: set[str] = set()
+        seen_destinations: set[str] = set()
+        for move in moves:
+            request = ObsidianVaultMoveRequest(
+                source_path=move.source_path,
+                destination_path=move.destination_path,
+                reason=move.reason,
+            )
+            if move.source_path in seen_sources:
+                skipped.append(_move_skip(request, "duplicate_source"))
+                continue
+            if move.destination_path in seen_destinations:
+                skipped.append(_move_skip(request, "duplicate_destination"))
+                continue
+            issue = self._move_safety_issue(request)
+            if issue is not None:
+                skipped.append(issue)
+                continue
+            seen_sources.add(move.source_path)
+            seen_destinations.add(move.destination_path)
+            applicable.append(move)
+        return applicable
+
+    def _vault_move_report_paths(
+        self,
+        request: ObsidianVaultMoveApplyRequest,
+    ) -> tuple[str, str, Path, Path]:
+        base_path = request.report_path or (
+            f"{self._alexandria_root}/Librarian/Reports/vault-move-{conversation_id()}"
+        )
+        report_stem = base_path.removesuffix(".md").removesuffix(".json")
+        markdown_relative = f"{report_stem}.md"
+        json_relative = f"{report_stem}.json"
+        markdown_path = resolve_note_path(self._vault_path, markdown_relative)
+        json_path = resolve_note_path(self._vault_path, json_relative)
+        return markdown_relative, json_relative, markdown_path, json_path
+
+    def _ensure_vault_move_report_available(
+        self,
+        report_paths: tuple[str, str, Path, Path],
+    ) -> None:
+        _, _, markdown_path, json_path = report_paths
+        if markdown_path.exists() or json_path.exists():
+            raise ObsidianValidationError("vault move report destination exists")
+
+    def _write_vault_move_report(
+        self,
+        *,
+        report_paths: tuple[str, str, Path, Path],
+        status: str,
+        moved: list[ObsidianVaultMoveApplied],
+        skipped: list[ObsidianVaultMoveSkip],
+        verification: ObsidianVaultMoveVerification,
+    ) -> tuple[str, str]:
+        markdown_relative, json_relative, markdown_path, json_path = report_paths
+        self._ensure_vault_move_report_available(report_paths)
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(
+            _vault_move_report_markdown(
+                status=status,
+                moved=moved,
+                skipped=skipped,
+                verification=verification,
+            ),
+            encoding="utf-8",
+        )
+        json_path.write_bytes(
+            dumps_pretty_json(
+                _vault_move_report_json(
+                    status=status,
+                    moved=moved,
+                    skipped=skipped,
+                    verification=verification,
+                )
+            )
+        )
+        return markdown_relative, json_relative
+
     def _ensure_vault_layout(self, config: ObsidianVaultConfig) -> None:
         for folder in default_folders(config.alexandria_root):
             resolve_note_path(config.vault_path, folder).mkdir(
@@ -527,6 +834,117 @@ def _delegate_status(payload: ObsidianLibrarianAsk) -> str:
     if payload.provider_id or payload.profile_id:
         return "requested_local_fallback"
     return "requested_no_provider_local_fallback"
+
+
+def _inventory_item_matches(
+    item: ObsidianVaultInventoryItem,
+    needle: str,
+) -> bool:
+    haystack = "\n".join(
+        [
+            item.note_id,
+            item.relative_path,
+            item.title,
+            item.alexandria_type.value,
+            item.status,
+            item.project or "",
+            " ".join(item.tags),
+        ]
+    ).casefold()
+    return needle in haystack
+
+
+def _move_skip(
+    move: ObsidianVaultMoveRequest,
+    reason: str,
+) -> ObsidianVaultMoveSkip:
+    return ObsidianVaultMoveSkip(
+        source_path=move.source_path,
+        destination_path=move.destination_path,
+        reason=reason,
+    )
+
+
+def _loose_note_count(paths: set[Path]) -> int:
+    return sum(
+        1
+        for path in paths
+        if path.exists()
+        for child in path.iterdir()
+        if child.is_file() and child.suffix == NOTE_SUFFIX
+    )
+
+
+def _vault_move_report_json(
+    *,
+    status: str,
+    moved: list[ObsidianVaultMoveApplied],
+    skipped: list[ObsidianVaultMoveSkip],
+    verification: ObsidianVaultMoveVerification,
+) -> JSONObject:
+    return {
+        "status": status,
+        "hard_delete_performed": False,
+        "moved": [
+            {
+                "from": item.source_path,
+                "to": item.destination_path,
+                "reason": item.reason,
+            }
+            for item in moved
+        ],
+        "skipped": [
+            {
+                "from": item.source_path,
+                "to": item.destination_path,
+                "reason": item.reason,
+            }
+            for item in skipped
+        ],
+        "ambiguous": [],
+        "verification": {
+            "source_root_loose_notes_remaining": (
+                verification.source_root_loose_notes_remaining
+            ),
+            "reindex_status": verification.reindex_status,
+            "verification_hits": verification.verification_hits,
+        },
+    }
+
+
+def _vault_move_report_markdown(
+    *,
+    status: str,
+    moved: list[ObsidianVaultMoveApplied],
+    skipped: list[ObsidianVaultMoveSkip],
+    verification: ObsidianVaultMoveVerification,
+) -> str:
+    moved_lines = [
+        f"- `{item.source_path}` -> `{item.destination_path}` — {item.reason}"
+        for item in moved
+    ] or ["- none"]
+    skipped_lines = [
+        f"- `{item.source_path}` -> `{item.destination_path}` — {item.reason}"
+        for item in skipped
+    ] or ["- none"]
+    return "\n".join(
+        [
+            "# Librarian Vault Move Report",
+            "",
+            f"- status: `{status}`",
+            "- hard_delete_performed: `false`",
+            f"- reindex_status: `{verification.reindex_status}`",
+            f"- verification_hits: `{verification.verification_hits}`",
+            f"- source_root_loose_notes_remaining: `{verification.source_root_loose_notes_remaining}`",
+            "",
+            "## Moved",
+            *moved_lines,
+            "",
+            "## Skipped",
+            *skipped_lines,
+            "",
+        ]
+    )
 
 
 def _librarian_search_queries(
@@ -555,3 +973,42 @@ def _librarian_search_queries(
             project=project,
         ),
     )
+
+
+def _selection_excerpt(selection: str | None) -> str | None:
+    if selection is None:
+        return None
+    normalized = selection.strip()
+    if not normalized:
+        raise ObsidianValidationError("selection_ingestion_failed: selection is blank")
+    if len(normalized) <= SELECTION_CONTEXT_MAX_CHARS:
+        return normalized
+    return f"{normalized[:SELECTION_CONTEXT_MAX_CHARS]}\n…[selection truncated]"
+
+
+def _librarian_input_context(
+    *,
+    payload: ObsidianLibrarianAsk,
+    active_note: ObsidianNote | None,
+    selection_excerpt: str | None,
+    source_refs: list[JSONObject],
+) -> JSONObject:
+    active_note_status = "not_requested" if payload.active_note_path is None else "read"
+    selection_status = "not_requested" if selection_excerpt is None else "ingested"
+    warnings: list[str] = []
+    if not source_refs:
+        warnings.append(
+            "source_miss_is_not_no_related_notes_without_inventory_verification"
+        )
+    status = "ready"
+    if not source_refs and active_note is None and selection_excerpt is None:
+        status = "insufficient_inventory"
+    return {
+        "status": status,
+        "active_note_path": payload.active_note_path,
+        "active_note_status": active_note_status,
+        "selection_status": selection_status,
+        "selection_excerpt": selection_excerpt,
+        "source_ref_count": len(source_refs),
+        "warnings": warnings,
+    }

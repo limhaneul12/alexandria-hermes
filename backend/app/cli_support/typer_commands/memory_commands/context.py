@@ -9,6 +9,7 @@ from app.cli_support.contracts.memory_command_contracts import (
     ContextMemoryMapCommand,
     ContextRecallCommand,
     ContextReindexCommand,
+    ContextSoftRebuildCommand,
 )
 from app.cli_support.handlers.context import (
     handle_context_chunks,
@@ -19,6 +20,7 @@ from app.cli_support.handlers.context import (
     handle_context_memory_map,
     handle_context_recall,
     handle_context_reindex,
+    handle_context_soft_rebuild,
 )
 from app.cli_support.typer_commands.typer_runtime import (
     run_client,
@@ -274,6 +276,35 @@ def context_reindex(
         ctx,
         ContextReindexCommand(limit=limit, force=force),
         handle_context_reindex,
+    )
+
+
+@context_app.command("soft-rebuild")
+def context_soft_rebuild(
+    ctx: typer.Context,
+    limit: int = typer.Option(100, "--limit", min=1, max=1000),
+    verification_query: str | None = typer.Option(None, "--verification-query"),
+    project: str | None = typer.Option(None, "--project"),
+) -> None:
+    """Soft rebuild embeddings/vectors while preserving source memory rows.
+
+    Args:
+        ctx: Typer context.
+        limit: Maximum chunks to rebuild in this batch.
+        verification_query: Optional query to run after rebuild.
+        project: Optional verification project filter.
+
+    Returns:
+        None.
+    """
+    run_client(
+        ctx,
+        ContextSoftRebuildCommand(
+            limit=limit,
+            verification_query=verification_query,
+            project=project,
+        ),
+        handle_context_soft_rebuild,
     )
 
 

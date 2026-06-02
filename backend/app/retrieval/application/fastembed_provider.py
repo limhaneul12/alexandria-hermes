@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
 from app.retrieval.application.embedding_provider import (
@@ -65,6 +66,29 @@ class FastEmbedEmbeddingProvider(EmbeddingProvider):
         """
         dimensions = self._dimensions
         return dimensions
+
+    @property
+    def provider_version(self) -> str:
+        """Return installed FastEmbed package version.
+
+        Returns:
+            Installed FastEmbed version or unknown when unavailable.
+        """
+        try:
+            provider_version = version("fastembed")
+        except PackageNotFoundError:
+            provider_version = "unknown"
+        return provider_version
+
+    @property
+    def pooling_mode(self) -> str:
+        """Return the FastEmbed pooling mode tracked by this wrapper.
+
+        Returns:
+            Stable pooling identifier for mismatch detection.
+        """
+        pooling_mode = "fastembed-default"
+        return pooling_mode
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         """Embed document chunks with FastEmbed.

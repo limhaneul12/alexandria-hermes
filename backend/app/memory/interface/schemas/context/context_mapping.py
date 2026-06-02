@@ -9,6 +9,7 @@ from app.memory.domain.entities.context_read_models import (
     ContextRecord,
     ContextReindexResult,
     ContextSearchMatch,
+    ContextSoftRebuildResult,
     RagDependencyHealth,
 )
 from app.memory.domain.types.context_payload_types import (
@@ -18,6 +19,7 @@ from app.memory.domain.types.context_payload_types import (
     ContextPayload,
     ContextReindexPayload,
     ContextSearchMatchPayload,
+    ContextSoftRebuildPayload,
     RagHealthPayload,
 )
 
@@ -168,6 +170,7 @@ def health_payload(health: RagDependencyHealth) -> RagHealthPayload:
         "default_strategy": health.default_strategy,
         "model_name": health.model_name,
         "dimensions": health.dimensions,
+        "fingerprint": health.fingerprint,
         "warnings": health.warnings,
     }
     return payload
@@ -188,4 +191,31 @@ def reindex_payload(result: ContextReindexResult) -> ContextReindexPayload:
         skipped=result.skipped,
         warnings=result.warnings,
     )
+    return payload
+
+
+def soft_rebuild_payload(
+    result: ContextSoftRebuildResult,
+) -> ContextSoftRebuildPayload:
+    """Return an API payload for soft embedding rebuild results.
+
+    Args:
+        result: Soft rebuild read model.
+
+    Returns:
+        Typed response payload for soft rebuild results.
+    """
+    payload: ContextSoftRebuildPayload = {
+        "mode": result.mode,
+        "source_preservation": result.source_preservation,
+        "hard_delete_performed": result.hard_delete_performed,
+        "before": health_payload(result.before),
+        "reindex": reindex_payload(result.reindex),
+        "after": health_payload(result.after),
+        "verification_query": result.verification_query,
+        "verification_matches": result.verification_matches,
+        "verification_context_ids": result.verification_context_ids,
+        "verification_warnings": result.verification_warnings,
+        "warnings": result.warnings,
+    }
     return payload

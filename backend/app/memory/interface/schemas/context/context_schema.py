@@ -171,6 +171,7 @@ class RagStatusResponse(StrictSchemaModel):
     default_strategy: RagStrategy
     model_name: str
     dimensions: int
+    fingerprint: JSONObject | None
     warnings: list[str]
 
 
@@ -180,4 +181,20 @@ class ContextReindexResponse(StrictSchemaModel):
     scanned: int
     updated: int
     skipped: int
+    warnings: list[str]
+
+
+class ContextSoftRebuildResponse(StrictSchemaModel):
+    """Context embedding/vector soft rebuild response."""
+
+    mode: str
+    source_preservation: str
+    hard_delete_performed: bool
+    before: RagStatusResponse
+    reindex: ContextReindexResponse
+    after: RagStatusResponse
+    verification_query: str | None
+    verification_matches: int
+    verification_context_ids: list[str]
+    verification_warnings: list[str]
     warnings: list[str]

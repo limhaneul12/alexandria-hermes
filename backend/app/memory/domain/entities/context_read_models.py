@@ -18,6 +18,7 @@ from app.memory.domain.event_enum.context_enums import (
     RagStrategy,
 )
 from app.memory.domain.types.context_payload_types import ContextMetadataPayload
+from app.shared.types.extra_types import JSONObject
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +106,7 @@ class RagDependencyHealth:
     default_strategy: RagStrategy
     model_name: str
     dimensions: int
+    fingerprint: JSONObject | None
     warnings: list[str]
 
 
@@ -115,6 +117,23 @@ class ContextReindexResult:
     scanned: int
     updated: int
     skipped: int
+    warnings: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class ContextSoftRebuildResult:
+    """Operator-facing result for a soft embedding/vector rebuild."""
+
+    mode: str
+    source_preservation: str
+    hard_delete_performed: bool
+    before: RagDependencyHealth
+    reindex: ContextReindexResult
+    after: RagDependencyHealth
+    verification_query: str | None
+    verification_matches: int
+    verification_context_ids: list[str]
+    verification_warnings: list[str]
     warnings: list[str]
 
 

@@ -139,6 +139,9 @@ async def seed_context(
         if embedding_provider is not None
         else [None for _ in markdown_chunks]
     )
+    fingerprint = (
+        None if embedding_provider is None else embedding_provider.fingerprint()
+    )
     chunk_rows: list[ContextChunkORM] = []
     for chunk, embedding in zip(markdown_chunks, embeddings, strict=True):
         chunk_row = ContextChunkORM(
@@ -155,6 +158,21 @@ async def seed_context(
             embedding_dimensions=None
             if embedding is None or embedding_provider is None
             else embedding_provider.dimensions,
+            embedding_provider=None if fingerprint is None else fingerprint.provider,
+            embedding_provider_version=None
+            if fingerprint is None
+            else fingerprint.provider_version,
+            embedding_pooling_mode=None
+            if fingerprint is None
+            else fingerprint.pooling_mode,
+            embedding_normalize=None if fingerprint is None else fingerprint.normalize,
+            embedding_fingerprint_key=None
+            if fingerprint is None
+            else fingerprint.key(),
+            embedding_fingerprint_json=None
+            if fingerprint is None
+            else fingerprint.snapshot_payload(indexed_at=now),
+            embedding_indexed_at=None if fingerprint is None else now,
             chunk_metadata=chunk.metadata,
             created_at=now,
         )

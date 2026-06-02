@@ -6,8 +6,8 @@ import sqlite3
 from pathlib import Path
 
 import anyio
-
-from app.shared.infrastructure.database import Database
+from app.shared.infrastructure.database import SQLITE_BUSY_TIMEOUT_MS, Database
+from sqlalchemy import text
 
 
 def _table_names(database_path: Path) -> set[str]:
@@ -59,5 +59,29 @@ def test_database_initialize_can_create_schema_for_isolated_repository_tests(
         assert "memory_compact_source_refs" not in table_names
         assert "library_items" not in table_names
         assert "item_search_fts" not in table_names
+
+    anyio.run(scenario)
+
+
+def test_sqlite_connections_use_wal_and_extended_busy_timeout(
+    tmp_path: Path,
+) -> None:
+    """SQLite runtime connections should tolerate local read/write contention."""
+
+    async def scenario() -> None:
+        database_path = tmp_path / "contention.db"
+        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
+        await database.initialize()
+        try:
+            async with database.session_factory()() as session:
+                timeout = await session.scalar(text("PRAGMA busy_timeout"))
+                journal_mode = await session.scalar(text("PRAGMA journal_mode"))
+                synchronous = await session.scalar(text("PRAGMA synchronous"))
+
+            assert timeout == SQLITE_BUSY_TIMEOUT_MS
+            assert journal_mode == "wal"
+            assert synchronous == 1
+        finally:
+            await database.shutdown()
 
     anyio.run(scenario)

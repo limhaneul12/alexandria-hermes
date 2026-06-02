@@ -9,6 +9,7 @@ from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
 )
+from app.shared.types.extra_types import JSONObject
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -19,6 +20,13 @@ class ContextChunkEmbeddingUpdate:
     embedding: str
     embedding_model: str
     embedding_dimensions: int
+    embedding_provider: str
+    embedding_provider_version: str
+    embedding_pooling_mode: str
+    embedding_normalize: bool
+    embedding_fingerprint_key: str
+    embedding_fingerprint: JSONObject
+    embedding_indexed_at: datetime
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

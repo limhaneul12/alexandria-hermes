@@ -15,7 +15,11 @@ from app.memory.domain.entities.context_read_models import (
     ContextRecord,
     ContextSearchMatch,
 )
-from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from app.memory.domain.event_enum.context_enums import (
+    ContextKind,
+    ContextScope,
+    RagHealthState,
+)
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
 
 
@@ -174,6 +178,7 @@ class IContextRepository(IContextSearchSource, ABC):
         query_embedding: list[float],
         model_name: str,
         dimensions: int,
+        fingerprint_key: str,
         limit: int,
         project: str | None = None,
         kind: ContextKind | None = None,
@@ -189,6 +194,7 @@ class IContextRepository(IContextSearchSource, ABC):
             query_embedding: Query embedding vector.
             model_name: Embedding model that produced the query vector.
             dimensions: Expected embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
             limit: Maximum returned matches.
             project: Optional project filter.
             kind: Optional context kind filter.
@@ -208,6 +214,7 @@ class IContextRepository(IContextSearchSource, ABC):
         *,
         model_name: str,
         dimensions: int,
+        fingerprint_key: str,
         limit: int,
         force: bool = False,
     ) -> list[ContextChunkRecord]:
@@ -216,11 +223,31 @@ class IContextRepository(IContextSearchSource, ABC):
         Args:
             model_name: Current embedding model name.
             dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
             limit: Maximum chunks to scan.
             force: Whether to rebuild existing embeddings even if model metadata matches.
 
         Returns:
             Chunks missing current embedding metadata or selected for forced rebuild.
+        """
+
+    @abstractmethod
+    async def embedding_index_status(
+        self,
+        *,
+        model_name: str,
+        dimensions: int,
+        fingerprint_key: str,
+    ) -> RagHealthState:
+        """Return whether stored embeddings match the current fingerprint.
+
+        Args:
+            model_name: Current embedding model name.
+            dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
+
+        Returns:
+            HEALTHY when current embeddings are usable; REINDEX_REQUIRED otherwise.
         """
 
     @abstractmethod

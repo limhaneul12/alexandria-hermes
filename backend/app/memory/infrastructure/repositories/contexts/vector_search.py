@@ -29,6 +29,7 @@ async def search_context_vectors(
     query_embedding: list[float],
     model_name: str,
     dimensions: int,
+    fingerprint_key: str,
     limit: int,
     project: str | None = None,
     kind: ContextKind | None = None,
@@ -45,6 +46,7 @@ async def search_context_vectors(
         query_embedding: Query embedding vector.
         model_name: Embedding model that produced the query vector.
         dimensions: Expected embedding dimensions.
+        fingerprint_key: Current embedding generation fingerprint key.
         limit: Maximum returned matches.
         project: Optional project filter.
         kind: Optional context kind filter.
@@ -62,6 +64,7 @@ async def search_context_vectors(
         query_embedding=vector_to_sqlite_json(query_embedding),
         model_name=model_name,
         dimensions=dimensions,
+        fingerprint_key=fingerprint_key,
         limit=limit,
         project=project,
         kind=kind,

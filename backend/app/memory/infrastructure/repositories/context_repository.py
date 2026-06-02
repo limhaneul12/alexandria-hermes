@@ -14,7 +14,11 @@ from app.memory.domain.entities.context_read_models import (
     ContextRecord,
     ContextSearchMatch,
 )
-from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from app.memory.domain.event_enum.context_enums import (
+    ContextKind,
+    ContextScope,
+    RagHealthState,
+)
 from app.memory.domain.repositories.context_repository import IContextRepository
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
 from app.memory.infrastructure.repositories.contexts.access_events import (
@@ -24,6 +28,7 @@ from app.memory.infrastructure.repositories.contexts.access_events import (
 from app.memory.infrastructure.repositories.contexts.deletion import delete_context_rows
 from app.memory.infrastructure.repositories.contexts.embedding_reindex import (
     chunks_missing_embeddings,
+    embedding_index_status,
     update_chunk_embeddings,
 )
 from app.memory.infrastructure.repositories.contexts.filters import (
@@ -273,6 +278,7 @@ class SqlAlchemyContextRepository(IContextRepository):
         query_embedding: list[float],
         model_name: str,
         dimensions: int,
+        fingerprint_key: str,
         limit: int,
         project: str | None = None,
         kind: ContextKind | None = None,
@@ -288,6 +294,7 @@ class SqlAlchemyContextRepository(IContextRepository):
             query_embedding: Query embedding vector.
             model_name: Embedding model that produced the query vector.
             dimensions: Expected embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
             limit: Maximum returned matches.
             project: Optional project filter.
             kind: Optional context kind filter.
@@ -305,6 +312,7 @@ class SqlAlchemyContextRepository(IContextRepository):
             query_embedding=query_embedding,
             model_name=model_name,
             dimensions=dimensions,
+            fingerprint_key=fingerprint_key,
             limit=limit,
             project=project,
             kind=kind,
@@ -321,6 +329,7 @@ class SqlAlchemyContextRepository(IContextRepository):
         *,
         model_name: str,
         dimensions: int,
+        fingerprint_key: str,
         limit: int,
         force: bool = False,
     ) -> list[ContextChunkRecord]:
@@ -329,6 +338,7 @@ class SqlAlchemyContextRepository(IContextRepository):
         Args:
             model_name: Current embedding model name.
             dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
             limit: Maximum chunks to scan.
             force: Whether to rebuild existing embeddings even if model metadata matches.
 
@@ -339,10 +349,36 @@ class SqlAlchemyContextRepository(IContextRepository):
             session=self._session,
             model_name=model_name,
             dimensions=dimensions,
+            fingerprint_key=fingerprint_key,
             limit=limit,
             force=force,
         )
         return chunks
+
+    async def embedding_index_status(
+        self,
+        *,
+        model_name: str,
+        dimensions: int,
+        fingerprint_key: str,
+    ) -> RagHealthState:
+        """Return whether context chunk embeddings match the current fingerprint.
+
+        Args:
+            model_name: Current embedding model name.
+            dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
+
+        Returns:
+            HEALTHY when chunks match, otherwise REINDEX_REQUIRED.
+        """
+        status = await embedding_index_status(
+            session=self._session,
+            model_name=model_name,
+            dimensions=dimensions,
+            fingerprint_key=fingerprint_key,
+        )
+        return status
 
     async def update_chunk_embeddings(
         self,

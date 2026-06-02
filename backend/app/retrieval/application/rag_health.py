@@ -62,6 +62,11 @@ def build_rag_dependency_health(
             if embedding_provider is not None
             else DEFAULT_EMBEDDING_DIMENSIONS
         ),
+        fingerprint=(
+            embedding_provider.fingerprint().identity_payload()
+            if embedding_provider is not None
+            else None
+        ),
         warnings=warnings,
     )
     return health

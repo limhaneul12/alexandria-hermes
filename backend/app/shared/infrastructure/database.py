@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from urllib.parse import urlparse
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -25,6 +25,9 @@ _current_request_sessions: ContextVar[dict[int, AsyncSession] | None] = ContextV
 
 class Base(DeclarativeBase):
     """SQLAlchemy declarative base used by backend ORM models."""
+
+
+SQLITE_BUSY_TIMEOUT_MS = 30_000
 
 
 class Database:
@@ -45,11 +48,22 @@ class Database:
         """
         self._database_url = database_url
         self._create_schema = create_schema
-        self.engine: AsyncEngine = create_async_engine(
-            database_url,
-            echo=False,
-            future=True,
-        )
+        self._sqlite_path = self._extract_sqlite_path()
+        if self._sqlite_path is None:
+            self.engine: AsyncEngine = create_async_engine(
+                database_url,
+                echo=False,
+                future=True,
+            )
+        else:
+            self.engine = create_async_engine(
+                database_url,
+                echo=False,
+                future=True,
+                connect_args={"timeout": SQLITE_BUSY_TIMEOUT_MS / 1000},
+            )
+        if self._sqlite_path is not None:
+            self._install_sqlite_connection_pragmas()
         self._session_factory = async_sessionmaker(
             self.engine,
             expire_on_commit=False,
@@ -63,9 +77,8 @@ class Database:
         owns application schema migrations; direct metadata creation is only
         available through the explicit test-only opt-in.
         """
-        database_path = self._extract_sqlite_path()
-        if database_path is not None:
-            Path(database_path).parent.mkdir(parents=True, exist_ok=True)
+        if self._sqlite_path is not None:
+            Path(self._sqlite_path).parent.mkdir(parents=True, exist_ok=True)
 
         async with self.engine.begin() as connection:
             if not self._create_schema:
@@ -73,6 +86,19 @@ class Database:
                 return
 
             await connection.run_sync(Base.metadata.create_all)
+
+    def _install_sqlite_connection_pragmas(self) -> None:
+        """Apply SQLite connection settings that prevent transient lock failures."""
+
+        @event.listens_for(self.engine.sync_engine, "connect")
+        def set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+            finally:
+                cursor.close()
 
     async def shutdown(self) -> None:
         """Release SQLAlchemy resources."""

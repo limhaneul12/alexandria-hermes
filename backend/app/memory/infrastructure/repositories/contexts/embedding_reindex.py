@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from app.memory.domain.contracts.context_contracts import ContextChunkEmbeddingUpdate
 from app.memory.domain.entities.context_read_models import ContextChunkRecord
+from app.memory.domain.event_enum.context_enums import RagHealthState
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
 from app.memory.infrastructure.repositories.contexts.mapping import map_chunk_row
-from sqlalchemy import or_, select
+from sqlalchemy import case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -15,6 +16,7 @@ async def chunks_missing_embeddings(
     session: AsyncSession,
     model_name: str,
     dimensions: int,
+    fingerprint_key: str,
     limit: int,
     force: bool = False,
 ) -> list[ContextChunkRecord]:
@@ -24,6 +26,7 @@ async def chunks_missing_embeddings(
         session: Active async database session.
         model_name: Current embedding model name.
         dimensions: Current embedding dimensions.
+        fingerprint_key: Current embedding generation fingerprint key.
         limit: Maximum chunks to scan.
         force: Whether to rebuild all active chunk embeddings even if model metadata matches.
 
@@ -34,7 +37,6 @@ async def chunks_missing_embeddings(
         select(ContextChunkORM)
         .join(ContextORM, ContextORM.id == ContextChunkORM.context_id)
         .where(ContextORM.is_archived.is_(False))
-        .order_by(ContextChunkORM.created_at.asc())
         .limit(limit)
     )
     if not force:
@@ -43,8 +45,26 @@ async def chunks_missing_embeddings(
                 ContextChunkORM.embedding.is_(None),
                 ContextChunkORM.embedding_model != model_name,
                 ContextChunkORM.embedding_dimensions != dimensions,
+                ContextChunkORM.embedding_fingerprint_key.is_(None),
+                ContextChunkORM.embedding_fingerprint_key != fingerprint_key,
             )
         )
+    statement = statement.order_by(
+        case(
+            (
+                (
+                    ContextChunkORM.embedding.is_not(None)
+                    & (ContextChunkORM.embedding_model == model_name)
+                    & (ContextChunkORM.embedding_dimensions == dimensions)
+                    & (ContextChunkORM.embedding_fingerprint_key == fingerprint_key)
+                ),
+                1,
+            ),
+            else_=0,
+        ).asc(),
+        ContextChunkORM.embedding_indexed_at.asc().nulls_first(),
+        ContextChunkORM.created_at.asc(),
+    )
     rows = await session.execute(statement)
     chunks = [map_chunk_row(row) for row in rows.scalars().all()]
     return chunks
@@ -72,6 +92,52 @@ async def update_chunk_embeddings(
         chunk.embedding = update.embedding
         chunk.embedding_model = update.embedding_model
         chunk.embedding_dimensions = update.embedding_dimensions
+        chunk.embedding_provider = update.embedding_provider
+        chunk.embedding_provider_version = update.embedding_provider_version
+        chunk.embedding_pooling_mode = update.embedding_pooling_mode
+        chunk.embedding_normalize = update.embedding_normalize
+        chunk.embedding_fingerprint_key = update.embedding_fingerprint_key
+        chunk.embedding_fingerprint_json = update.embedding_fingerprint
+        chunk.embedding_indexed_at = update.embedding_indexed_at
         updated += 1
     await session.flush()
     return updated
+
+
+async def embedding_index_status(
+    *,
+    session: AsyncSession,
+    model_name: str,
+    dimensions: int,
+    fingerprint_key: str,
+) -> RagHealthState:
+    """Return whether active context chunks match the current embedding fingerprint.
+
+    Args:
+        session: Active async database session.
+        model_name: Current embedding model name.
+        dimensions: Current embedding dimensions.
+        fingerprint_key: Current embedding generation fingerprint key.
+
+    Returns:
+        HEALTHY when no active chunk needs embeddings; REINDEX_REQUIRED otherwise.
+    """
+    statement = (
+        select(ContextChunkORM.id)
+        .join(ContextORM, ContextORM.id == ContextChunkORM.context_id)
+        .where(ContextORM.is_archived.is_(False))
+        .where(
+            or_(
+                ContextChunkORM.embedding.is_(None),
+                ContextChunkORM.embedding_model != model_name,
+                ContextChunkORM.embedding_dimensions != dimensions,
+                ContextChunkORM.embedding_fingerprint_key.is_(None),
+                ContextChunkORM.embedding_fingerprint_key != fingerprint_key,
+            )
+        )
+        .limit(1)
+    )
+    stale_chunk_id = await session.scalar(statement)
+    if stale_chunk_id is None:
+        return RagHealthState.HEALTHY
+    return RagHealthState.REINDEX_REQUIRED

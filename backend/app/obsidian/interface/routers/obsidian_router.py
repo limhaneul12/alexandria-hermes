@@ -11,11 +11,13 @@ from app.obsidian.application.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianWorkflowResume,
 )
-from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
+from app.obsidian.interface.schemas.obsidian.obsidian_librarian_workflow_schema import (
     ObsidianLibrarianAskRequest,
     ObsidianLibrarianAskResponse,
     ObsidianLibrarianWorkflowResponse,
     ObsidianLibrarianWorkflowResumeRequest,
+)
+from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
     ObsidianNoteResponse,
     ObsidianReindexResponse,
     ObsidianRelatedNoteResponse,

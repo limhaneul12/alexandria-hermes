@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from app.obsidian.infrastructure.models.obsidian_index_models import ObsidianChunkORM
+from app.shared.types.extra_types import JSONObject
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +18,13 @@ class ExistingChunkEmbedding:
     embedding: str
     model: str
     dimensions: int
+    provider: str | None
+    provider_version: str | None
+    pooling_mode: str | None
+    normalize: bool | None
+    fingerprint_key: str | None
+    fingerprint: JSONObject | None
+    indexed_at: datetime | None
 
 
 async def existing_chunk_embeddings(
@@ -47,5 +56,12 @@ async def existing_chunk_embeddings(
             embedding=chunk.embedding,
             model=chunk.embedding_model,
             dimensions=chunk.embedding_dimensions,
+            provider=chunk.embedding_provider,
+            provider_version=chunk.embedding_provider_version,
+            pooling_mode=chunk.embedding_pooling_mode,
+            normalize=chunk.embedding_normalize,
+            fingerprint_key=chunk.embedding_fingerprint_key,
+            fingerprint=chunk.embedding_fingerprint_json,
+            indexed_at=chunk.embedding_indexed_at,
         )
     return embeddings

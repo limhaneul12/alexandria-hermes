@@ -18,6 +18,7 @@ from app.librarian.domain.event_enum.collaboration_enums import (
 from app.librarian.domain.types.hermes_collaboration_payload_types import (
     HermesLibrarianAskPayload,
 )
+from app.main import app
 from app.memory.application.memory_compact_service import MemoryCompactService
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
 from app.memory.domain.repositories.memory_compact_repository import (
@@ -27,17 +28,31 @@ from app.memory.domain.repositories.memory_compact_repository import (
 from app.memory.infrastructure.repositories.memory_compact_repository import (
     ObsidianMemoryCompactRepository,
 )
+from app.obsidian.application.obsidian_librarian_job_service import (
+    ObsidianLibrarianJobService,
+)
 from app.obsidian.application.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
+    ObsidianChunkIndex,
     ObsidianLibrarianAsk,
+    ObsidianNoteIndex,
     ObsidianSaveNote,
     ObsidianSearchQuery,
+    ObsidianVaultInventoryRequest,
+    ObsidianVaultMoveApplyRequest,
+    ObsidianVaultMovePlanRequest,
+    ObsidianVaultMoveRequest,
     ObsidianVaultSettingsUpdate,
 )
-from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
+from app.obsidian.domain.event_enum.obsidian_enums import (
+    AlexandriaNoteType,
+    ObsidianIndexStatus,
+    ObsidianLibrarianJobStatus,
+)
 from app.obsidian.infrastructure.models import (
     obsidian_index_models as _obsidian_index_models,
 )
+from app.obsidian.infrastructure.models.obsidian_index_models import ObsidianFileORM
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
 )
@@ -47,6 +62,9 @@ from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
 from app.shared.exceptions import ObsidianNotFoundError, ObsidianValidationError
 from app.shared.infrastructure.database import Database
 from app.shared.serialization.orjson_codec import loads_json
+from dependency_injector import providers
+from fastapi.testclient import TestClient
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
@@ -234,6 +252,84 @@ def test_obsidian_reindex_handles_note_id_change_for_same_path(
     assert second_indexed == 1
     assert "Renamed id." in body
     assert old_id_missing is True
+
+
+def test_obsidian_reindex_reads_existing_embeddings_before_file_row_flush(
+    tmp_path: Path,
+) -> None:
+    """Replacing chunks should not autoflush dirty file metadata before reads."""
+
+    def payload(*, title: str, content_hash: str) -> ObsidianNoteIndex:
+        return ObsidianNoteIndex(
+            note_id="autoflush-note",
+            relative_path="Alexandria/Notes/Autoflush.md",
+            alexandria_type=AlexandriaNoteType.CONTEXT,
+            title=title,
+            status="active",
+            tags=["sqlite"],
+            project="alexandria-hermes",
+            source="test",
+            content_hash=content_hash,
+            frontmatter={"id": "autoflush-note", "title": title},
+            body=f"# {title}\n\nBody",
+            size_bytes=42,
+            modified_at=datetime.now(UTC),
+            chunks=[
+                ObsidianChunkIndex(
+                    chunk_index=0,
+                    heading_path=None,
+                    text=f"{title} body",
+                    content_hash=content_hash,
+                    token_count=2,
+                )
+            ],
+        )
+
+    async def scenario() -> list[str]:
+        database = Database(
+            database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
+        )
+        await database.initialize()
+        session = database.session()
+        statements: list[str] = []
+
+        def record_statement(
+            _connection, _cursor, statement, _parameters, *_args
+        ) -> None:
+            normalized = " ".join(str(statement).lower().split())
+            if normalized.startswith("select obsidian_chunks"):
+                statements.append("select_chunks")
+            if normalized.startswith("update obsidian_files"):
+                statements.append("update_file")
+
+        event.listen(
+            database.engine.sync_engine, "before_cursor_execute", record_statement
+        )
+        try:
+            repository = SqlAlchemyObsidianIndexRepository(session=session)
+            await repository.upsert_note(
+                payload(title="Initial", content_hash="hash-a")
+            )
+            await session.commit()
+            statements.clear()
+
+            await repository.upsert_note(
+                payload(title="Updated", content_hash="hash-b")
+            )
+            await session.commit()
+            return statements
+        finally:
+            event.remove(
+                database.engine.sync_engine, "before_cursor_execute", record_statement
+            )
+            await session.close()
+            await database.shutdown()
+
+    statements = anyio.run(scenario)
+
+    assert "select_chunks" in statements
+    assert "update_file" in statements
+    assert statements.index("select_chunks") < statements.index("update_file")
 
 
 def test_obsidian_save_note_writes_markdown_and_reindexes(tmp_path: Path) -> None:
@@ -641,6 +737,84 @@ def test_obsidian_librarian_ask_delegates_with_auto_provider(
     assert requested_provider is None
 
 
+def test_obsidian_librarian_ask_fails_when_active_note_path_cannot_be_read(
+    tmp_path: Path,
+) -> None:
+    """Caller-supplied active_note_path should fail clearly when unreadable."""
+
+    async def scenario() -> str:
+        database, session, service = await _service(tmp_path)
+        try:
+            try:
+                await service.ask_librarian(
+                    ObsidianLibrarianAsk(
+                        query="Use the active inventory note.",
+                        active_note_path="Alexandria/Contexts/Missing.md",
+                    )
+                )
+            except ObsidianValidationError as exc:
+                return str(exc)
+            return ""
+        finally:
+            await session.close()
+            await database.shutdown()
+
+    message = anyio.run(scenario)
+
+    assert message == "active_note_read_failed: Alexandria/Contexts/Missing.md"
+
+
+def test_obsidian_librarian_ask_includes_selection_in_delegate_brief(
+    tmp_path: Path,
+) -> None:
+    """Selection should remain explicit context for provider-backed delegation."""
+
+    async def scenario() -> tuple[str, str, str]:
+        database = Database(
+            database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
+        )
+        await database.initialize()
+        session = database.session()
+        delegate = _RecordingDelegateService()
+        service = ObsidianService(
+            repository=SqlAlchemyObsidianIndexRepository(session=session),
+            vault_path=str(tmp_path / "vault"),
+            alexandria_root="Alexandria",
+            delegate_service=delegate,
+        )
+        selection = (
+            "Inventory update:\n"
+            "- Contexts/Project Context/Loose A.md -> project/Loose A.md"
+        )
+        try:
+            response = await service.ask_librarian(
+                ObsidianLibrarianAsk(
+                    query="Plan the inventory move.",
+                    selection=selection,
+                    project="alexandria-hermes",
+                    delegate_to_librarian=True,
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        assert delegate.command is not None
+        return (
+            str(response["input_context"]),
+            delegate.command.prompt,
+            delegate.command.librarian_brief or "",
+        )
+
+    context, prompt, brief = anyio.run(scenario)
+
+    assert "selection_status': 'ingested'" in context
+    assert "Answer the user's question" in prompt
+    assert "Inventory update" in prompt
+    assert "Inventory update" in brief
+    assert "Do not review a prewritten answer" in brief
+    assert "selection_status: ingested" in brief
+
+
 def test_obsidian_librarian_ask_uses_active_note_as_source(tmp_path: Path) -> None:
     """Active note context should be returned as a source even for broad questions."""
 
@@ -680,6 +854,44 @@ def test_obsidian_librarian_ask_uses_active_note_as_source(tmp_path: Path) -> No
     anyio.run(scenario)
 
 
+def test_obsidian_librarian_source_miss_is_not_reported_as_no_related_notes(
+    tmp_path: Path,
+) -> None:
+    """Search misses should report insufficient inventory, not true absence."""
+
+    async def scenario() -> tuple[str, str, list[str]]:
+        database, session, service = await _service(tmp_path)
+        try:
+            response = await service.ask_librarian(
+                ObsidianLibrarianAsk(
+                    query="nonexistent dogfood inventory marker",
+                    project="alexandria-hermes",
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        context = response["input_context"]
+        assert isinstance(context, dict)
+        warnings = context.get("warnings")
+        assert isinstance(warnings, list)
+        return (
+            str(response["context_status"]),
+            str(response["answer_markdown"]),
+            [str(item) for item in warnings],
+        )
+
+    status, answer, warnings = anyio.run(scenario)
+
+    assert status == "insufficient_inventory"
+    assert "관련 note 없음" not in answer
+    assert "Alexandria Librarian Context Packet" in answer
+    assert "## Retrieved Sources\n- none" in answer
+    assert warnings == [
+        "source_miss_is_not_no_related_notes_without_inventory_verification"
+    ]
+
+
 def test_obsidian_librarian_ask_respects_max_source_refs(tmp_path: Path) -> None:
     """Whole-vault librarian asks should be able to retrieve more than the old tiny UI limit."""
 
@@ -710,6 +922,343 @@ def test_obsidian_librarian_ask_respects_max_source_refs(tmp_path: Path) -> None
         assert len(response["source_refs"]) == 4
 
     anyio.run(scenario)
+
+
+def test_obsidian_librarian_vault_inventory_and_path_search(
+    tmp_path: Path,
+) -> None:
+    """Vault operation inventory should read managed notes without FTS dependency."""
+
+    async def scenario() -> tuple[list[str], list[str]]:
+        database, session, service = await _service(tmp_path)
+        try:
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Loose Project Context",
+                    body="# Loose Project Context\n\nInventory marker.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_loose_project_context",
+                    relative_path=(
+                        "Alexandria/Contexts/Project Context/Loose Project Context.md"
+                    ),
+                    project="alexandria-hermes",
+                )
+            )
+            inventory = await service.inventory_vault(
+                ObsidianVaultInventoryRequest(
+                    scope_path="Alexandria/Contexts/Project Context"
+                )
+            )
+            matches = await service.search_vault_paths(
+                query="Loose Project",
+                scope_path="Alexandria/Contexts/Project Context",
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            [item.relative_path for item in inventory],
+            [item.note_id for item in matches],
+        )
+
+    paths, matches = anyio.run(scenario)
+
+    assert paths == ["Alexandria/Contexts/Project Context/Loose Project Context.md"]
+    assert matches == ["ctx_loose_project_context"]
+
+
+def test_obsidian_librarian_vault_move_plan_blocks_overwrite(
+    tmp_path: Path,
+) -> None:
+    """Dry-run move planning should reject overwrites before mutation."""
+
+    async def scenario() -> tuple[str, str, bool]:
+        database, session, service = await _service(tmp_path)
+        try:
+            source = await service.save_note(
+                ObsidianSaveNote(
+                    title="Move Source",
+                    body="# Move Source\n\nSource body.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_move_source",
+                    relative_path="Alexandria/Contexts/Project Context/Move Source.md",
+                )
+            )
+            destination = await service.save_note(
+                ObsidianSaveNote(
+                    title="Move Destination",
+                    body="# Move Destination\n\nDestination body.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_move_destination",
+                    relative_path=(
+                        "Alexandria/Contexts/Project Context/organized/Move Source.md"
+                    ),
+                )
+            )
+            plan = await service.plan_vault_moves(
+                ObsidianVaultMovePlanRequest(
+                    moves=[
+                        ObsidianVaultMoveRequest(
+                            source_path=source.relative_path,
+                            destination_path=destination.relative_path,
+                            reason="organize loose note",
+                        )
+                    ]
+                )
+            )
+            source_exists = (tmp_path / "vault" / source.relative_path).exists()
+        finally:
+            await session.close()
+            await database.shutdown()
+        return plan.status, plan.skipped[0].reason, source_exists
+
+    status, skip_reason, source_exists = anyio.run(scenario)
+
+    assert status == "blocked"
+    assert skip_reason == "destination_exists"
+    assert source_exists is True
+
+
+def test_obsidian_librarian_vault_apply_moves_writes_reports_and_reindexes(
+    tmp_path: Path,
+) -> None:
+    """Applying moves should preserve notes, write reports, and rebuild the index."""
+
+    async def scenario() -> tuple[str, str, str, bool, bool, bool, int]:
+        database, session, service = await _service(tmp_path)
+        try:
+            source = await service.save_note(
+                ObsidianSaveNote(
+                    title="Apply Source",
+                    body="# Apply Source\n\nverification move marker.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_apply_source",
+                    relative_path="Alexandria/Contexts/Project Context/Apply Source.md",
+                    project="alexandria-hermes",
+                )
+            )
+            report = await service.apply_vault_moves(
+                ObsidianVaultMoveApplyRequest(
+                    moves=[
+                        ObsidianVaultMoveRequest(
+                            source_path=source.relative_path,
+                            destination_path=(
+                                "Alexandria/Contexts/Project Context/organized/"
+                                "Apply Source.md"
+                            ),
+                            reason="organize loose note",
+                        )
+                    ],
+                    report_path="Alexandria/Librarian/Reports/apply-source-report",
+                    verification_query="verification move marker",
+                )
+            )
+            moved_note = await service.read_note_by_path(
+                report.moved[0].destination_path
+            )
+            report_json = loads_json(
+                (tmp_path / "vault" / report.report_json_path).read_bytes()
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        assert isinstance(report_json, dict)
+        return (
+            report.status,
+            moved_note.note_id,
+            report.verification.reindex_status,
+            report.hard_delete_performed,
+            (tmp_path / "vault" / source.relative_path).exists(),
+            (tmp_path / "vault" / report.report_markdown_path).exists(),
+            int(report_json["verification"]["verification_hits"]),
+        )
+
+    (
+        status,
+        note_id,
+        reindex_status,
+        hard_delete_performed,
+        source_exists,
+        markdown_report_exists,
+        verification_hits,
+    ) = anyio.run(scenario)
+
+    assert status == "succeeded"
+    assert note_id == "ctx_apply_source"
+    assert reindex_status == "succeeded"
+    assert hard_delete_performed is False
+    assert source_exists is False
+    assert markdown_report_exists is True
+    assert verification_hits == 1
+
+
+def test_obsidian_librarian_vault_apply_preflights_report_before_moves(
+    tmp_path: Path,
+) -> None:
+    """Report destination conflicts should fail before any vault mutation."""
+
+    async def scenario() -> tuple[bool, bool]:
+        database, session, service = await _service(tmp_path)
+        try:
+            source = await service.save_note(
+                ObsidianSaveNote(
+                    title="Preflight Source",
+                    body="# Preflight Source\n\nmust stay put.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_preflight_source",
+                    relative_path=(
+                        "Alexandria/Contexts/Project Context/Preflight Source.md"
+                    ),
+                )
+            )
+            report_path = (
+                tmp_path
+                / "vault"
+                / "Alexandria"
+                / "Librarian"
+                / "Reports"
+                / "preflight-report.md"
+            )
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text("existing report", encoding="utf-8")
+
+            try:
+                await service.apply_vault_moves(
+                    ObsidianVaultMoveApplyRequest(
+                        moves=[
+                            ObsidianVaultMoveRequest(
+                                source_path=source.relative_path,
+                                destination_path=(
+                                    "Alexandria/Contexts/Project Context/organized/"
+                                    "Preflight Source.md"
+                                ),
+                                reason="organize loose note",
+                            )
+                        ],
+                        report_path="Alexandria/Librarian/Reports/preflight-report",
+                    )
+                )
+            except ObsidianValidationError as exc:
+                assert str(exc) == "vault move report destination exists"
+            else:
+                raise AssertionError("report preflight conflict did not fail")
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        return (
+            (tmp_path / "vault" / source.relative_path).exists(),
+            (
+                tmp_path
+                / "vault"
+                / "Alexandria/Contexts/Project Context/organized/Preflight Source.md"
+            ).exists(),
+        )
+
+    source_exists, destination_exists = anyio.run(scenario)
+
+    assert source_exists is True
+    assert destination_exists is False
+
+
+def test_obsidian_librarian_job_routes_run_vault_move_and_expose_report(
+    tmp_path: Path,
+) -> None:
+    """Job API should own a fresh session and commit background reindex writes."""
+
+    destination_path = (
+        "Alexandria/Contexts/Project Context/organized/Async Job Source.md"
+    )
+
+    async def prepare() -> tuple[Database, ObsidianLibrarianJobService, str]:
+        database = Database(
+            database_url=_database_url(tmp_path / "obsidian-job-api.db"),
+            create_schema=True,
+        )
+        await database.initialize()
+        config_store = ObsidianVaultConfigStore(
+            default_vault_path=str(tmp_path / "vault"),
+            default_alexandria_root="Alexandria",
+            config_path=None,
+        )
+        async with database.session_factory()() as session:
+            service = ObsidianService(
+                repository=SqlAlchemyObsidianIndexRepository(session=session),
+                vault_config_store=config_store,
+            )
+            source = await service.save_note(
+                ObsidianSaveNote(
+                    title="Async Job Source",
+                    body="# Async Job Source\n\nasync job marker.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_async_job_source",
+                    relative_path=(
+                        "Alexandria/Contexts/Project Context/Async Job Source.md"
+                    ),
+                    project="alexandria-hermes",
+                )
+            )
+            await session.commit()
+        job_service = ObsidianLibrarianJobService(
+            database=database,
+            vault_config_store=config_store,
+        )
+        return database, job_service, source.relative_path
+
+    async def destination_committed(database: Database) -> bool:
+        async with database.session_factory()() as session:
+            note = await session.scalar(
+                select(ObsidianFileORM).where(
+                    ObsidianFileORM.relative_path == destination_path
+                )
+            )
+        return (
+            note is not None and note.index_status == ObsidianIndexStatus.INDEXED.value
+        )
+
+    database, job_service, source_path = anyio.run(prepare)
+    try:
+        with (
+            app.state.container.obsidian.providers["job_service"].override(
+                providers.Object(job_service)
+            ),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            start_response = client.post(
+                "/obsidian/librarian/jobs",
+                json={
+                    "moves": [
+                        {
+                            "source_path": source_path,
+                            "destination_path": destination_path,
+                            "reason": "organize loose note",
+                        }
+                    ],
+                    "report_path": (
+                        "Alexandria/Librarian/Reports/async-job-source-report"
+                    ),
+                    "verification_query": "async job marker",
+                },
+            )
+            job_id = start_response.json()["job_id"]
+            status_response = client.get(f"/obsidian/librarian/jobs/{job_id}")
+            report_response = client.get(f"/obsidian/librarian/jobs/{job_id}/report")
+        committed = anyio.run(destination_committed, database)
+    finally:
+        anyio.run(database.shutdown)
+
+    assert start_response.status_code == 202
+    assert start_response.json()["status"] == ObsidianLibrarianJobStatus.PENDING.value
+    assert status_response.status_code == 200
+    assert (
+        status_response.json()["status"] == ObsidianLibrarianJobStatus.SUCCEEDED.value
+    )
+    assert status_response.json()["result_available"] is True
+    assert report_response.status_code == 200
+    assert report_response.json()["status"] == "succeeded"
+    assert report_response.json()["verification"]["verification_hits"] == 1
+    assert (tmp_path / "vault" / destination_path).exists()
+    assert committed is True
 
 
 def test_obsidian_reindex_accepts_legacy_project_context_type(

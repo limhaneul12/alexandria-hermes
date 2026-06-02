@@ -263,10 +263,11 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         *,
         now: datetime,
     ) -> None:
-        existing_embeddings = await existing_chunk_embeddings(
-            session=self._session,
-            note_id=payload.note_id,
-        )
+        with self._session.no_autoflush:
+            existing_embeddings = await existing_chunk_embeddings(
+                session=self._session,
+                note_id=payload.note_id,
+            )
         await self._session.execute(
             delete(ObsidianChunkORM).where(ObsidianChunkORM.note_id == payload.note_id)
         )
@@ -293,6 +294,27 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
                     embedding_dimensions=None
                     if embedding is None
                     else embedding.dimensions,
+                    embedding_provider=None
+                    if embedding is None
+                    else embedding.provider,
+                    embedding_provider_version=None
+                    if embedding is None
+                    else embedding.provider_version,
+                    embedding_pooling_mode=None
+                    if embedding is None
+                    else embedding.pooling_mode,
+                    embedding_normalize=None
+                    if embedding is None
+                    else embedding.normalize,
+                    embedding_fingerprint_key=None
+                    if embedding is None
+                    else embedding.fingerprint_key,
+                    embedding_fingerprint_json=None
+                    if embedding is None
+                    else embedding.fingerprint,
+                    embedding_indexed_at=None
+                    if embedding is None
+                    else embedding.indexed_at,
                     created_at=now,
                 )
             )
