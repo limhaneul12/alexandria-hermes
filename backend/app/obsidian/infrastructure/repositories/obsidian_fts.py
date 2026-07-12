@@ -45,6 +45,12 @@ OBSIDIAN_CHUNK_FTS_TABLE = table(
     column("relative_path"),
 )
 
+OBSIDIAN_FILES_TABLE = table(
+    "obsidian_files",
+    column("note_id"),
+    column("index_status"),
+)
+
 type ObsidianFtsRow = tuple[str, str, float]
 type ObsidianFtsStatement = Select[ObsidianFtsRow]
 type ObsidianFtsParameter = str | int | list[str]
@@ -128,7 +134,15 @@ def build_obsidian_fts_query(
     statement = select(fts_table.c.chunk_id, fts_table.c.note_id, rank).where(
         fts_match_target.op("MATCH")(bindparam("query"))
     )
-    parameters: dict[str, ObsidianFtsParameter] = {"query": normalized, "limit": limit}
+    statement = statement.join(
+        OBSIDIAN_FILES_TABLE,
+        fts_table.c.note_id == OBSIDIAN_FILES_TABLE.c.note_id,
+    ).where(OBSIDIAN_FILES_TABLE.c.index_status == bindparam("indexed_status"))
+    parameters: dict[str, ObsidianFtsParameter] = {
+        "query": normalized,
+        "limit": limit,
+        "indexed_status": "indexed",
+    }
     if alexandria_type is not None:
         statement = statement.where(
             fts_table.c.alexandria_type == bindparam("alexandria_type")

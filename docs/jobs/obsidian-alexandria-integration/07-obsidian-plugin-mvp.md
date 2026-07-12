@@ -91,5 +91,5 @@ Plugin은 `path`가 vault 안에 있는지 검증하고, Obsidian API로 note를
 - command palette에서 side pane을 열 수 있다.
 - 현재 note와 selection을 backend로 보낼 수 있다.
 - 답변과 source link를 렌더링한다.
-- `Save chat`이 `Alexandria/Librarian/Chats` note를 만든다.
+- `Save chat`이 `Alexandria/_Ops/Librarian/Chats` note를 만든다.
 - backend unavailable 상태를 사용자에게 명확히 보여준다.

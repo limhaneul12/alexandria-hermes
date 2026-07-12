@@ -148,6 +148,19 @@ def test_obsidian_init_creates_frontmatter_start_note(tmp_path: Path) -> None:
         assert status.indexed_notes == 1
         assert "alexandria_type: context" in note_text
         assert "id: alexandria_start_here" in note_text
+        assert not (tmp_path / "vault" / "Alexandria" / "Librarian").exists()
+        assert (
+            tmp_path / "vault" / "Alexandria" / "_Ops" / "Librarian" / "Chats"
+        ).exists()
+        assert (
+            tmp_path / "vault" / "Alexandria" / "_Ops" / "Librarian" / "Reports"
+        ).exists()
+        assert (tmp_path / "vault" / "Alexandria" / "_Inbox" / "Captures").exists()
+        assert (tmp_path / "vault" / "Alexandria" / "_Inbox" / "To Promote").exists()
+        assert (tmp_path / "vault" / "Alexandria" / "Contexts" / "Projects").exists()
+        assert not (
+            tmp_path / "vault" / "Alexandria" / "Contexts" / "Project Context"
+        ).exists()
 
     anyio.run(scenario)
 
@@ -191,6 +204,94 @@ def test_obsidian_reindex_searches_frontmatter_notes(tmp_path: Path) -> None:
         ]
 
     anyio.run(scenario)
+
+
+def test_obsidian_search_excludes_stale_notes_after_reindex(tmp_path: Path) -> None:
+    """Search should not surface paths that were marked stale by a later scan."""
+
+    async def scenario() -> list[str]:
+        database, session, service = await _service(tmp_path)
+        try:
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Temporary Librarian Chat",
+                    body="# Temporary Librarian Chat\n\nstale search marker",
+                    alexandria_type=AlexandriaNoteType.LIBRARIAN_CHAT,
+                    note_id="librarian_chat_temporary_stale",
+                )
+            )
+            stale_path = (
+                tmp_path
+                / "vault"
+                / "Alexandria"
+                / "_Ops"
+                / "Librarian"
+                / "Chats"
+                / "Temporary Librarian Chat.md"
+            )
+            stale_path.unlink()
+            await service.reindex()
+            hits = await service.search(
+                ObsidianSearchQuery(
+                    query="stale search marker",
+                    alexandria_type=AlexandriaNoteType.LIBRARIAN_CHAT,
+                ),
+                refresh=False,
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        return [hit.note.relative_path for hit in hits]
+
+    assert anyio.run(scenario) == []
+
+
+def test_obsidian_search_filters_stale_notes_before_fts_limit(
+    tmp_path: Path,
+) -> None:
+    """Stale FTS rows should not crowd indexed notes out of limited searches."""
+
+    async def scenario() -> list[str]:
+        database, session, service = await _service(tmp_path)
+        try:
+            for index in range(3):
+                await service.save_note(
+                    ObsidianSaveNote(
+                        title=f"Temporary stale chat {index}",
+                        body=(
+                            f"# Temporary stale chat {index}\n\n"
+                            "crowdouttoken crowdouttoken crowdouttoken"
+                        ),
+                        alexandria_type=AlexandriaNoteType.LIBRARIAN_CHAT,
+                        note_id=f"librarian_chat_stale_crowdout_{index}",
+                    )
+                )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Durable context kept",
+                    body="# Durable context kept\n\ncrowdouttoken",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_durable_crowdout",
+                )
+            )
+            stale_chat_dir = (
+                tmp_path / "vault" / "Alexandria" / "_Ops" / "Librarian" / "Chats"
+            )
+            for stale_path in stale_chat_dir.glob("Temporary stale chat*.md"):
+                stale_path.unlink()
+            await service.reindex()
+            hits = await service.search(
+                ObsidianSearchQuery(query="crowdouttoken", limit=1),
+                refresh=False,
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        return [hit.note.note_id for hit in hits]
+
+    assert anyio.run(scenario) == ["ctx_durable_crowdout"]
 
 
 def test_obsidian_reindex_handles_note_id_change_for_same_path(
@@ -783,8 +884,7 @@ def test_obsidian_librarian_ask_includes_selection_in_delegate_brief(
             delegate_service=delegate,
         )
         selection = (
-            "Inventory update:\n"
-            "- Contexts/Project Context/Loose A.md -> project/Loose A.md"
+            "Inventory update:\n- Contexts/Projects/Loose A.md -> project/Loose A.md"
         )
         try:
             response = await service.ask_librarian(
@@ -847,7 +947,7 @@ def test_obsidian_librarian_ask_uses_active_note_as_source(tmp_path: Path) -> No
                 "alexandria_type": "context",
                 "path": note.relative_path,
                 "title": "Active Context",
-                "wikilink": "[[Alexandria/Contexts/Project Context/Active Context]]",
+                "wikilink": "[[Alexandria/Contexts/Projects/Active Context]]",
             }
         ]
 
@@ -939,19 +1039,17 @@ def test_obsidian_librarian_vault_inventory_and_path_search(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_loose_project_context",
                     relative_path=(
-                        "Alexandria/Contexts/Project Context/Loose Project Context.md"
+                        "Alexandria/Contexts/Projects/Loose Project Context.md"
                     ),
                     project="alexandria-hermes",
                 )
             )
             inventory = await service.inventory_vault(
-                ObsidianVaultInventoryRequest(
-                    scope_path="Alexandria/Contexts/Project Context"
-                )
+                ObsidianVaultInventoryRequest(scope_path="Alexandria/Contexts/Projects")
             )
             matches = await service.search_vault_paths(
                 query="Loose Project",
-                scope_path="Alexandria/Contexts/Project Context",
+                scope_path="Alexandria/Contexts/Projects",
             )
         finally:
             await session.close()
@@ -963,7 +1061,7 @@ def test_obsidian_librarian_vault_inventory_and_path_search(
 
     paths, matches = anyio.run(scenario)
 
-    assert paths == ["Alexandria/Contexts/Project Context/Loose Project Context.md"]
+    assert paths == ["Alexandria/Contexts/Projects/Loose Project Context.md"]
     assert matches == ["ctx_loose_project_context"]
 
 
@@ -981,7 +1079,7 @@ def test_obsidian_librarian_vault_move_plan_blocks_overwrite(
                     body="# Move Source\n\nSource body.",
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_move_source",
-                    relative_path="Alexandria/Contexts/Project Context/Move Source.md",
+                    relative_path="Alexandria/Contexts/Projects/Move Source.md",
                 )
             )
             destination = await service.save_note(
@@ -991,7 +1089,7 @@ def test_obsidian_librarian_vault_move_plan_blocks_overwrite(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_move_destination",
                     relative_path=(
-                        "Alexandria/Contexts/Project Context/organized/Move Source.md"
+                        "Alexandria/Contexts/Projects/organized/Move Source.md"
                     ),
                 )
             )
@@ -1033,7 +1131,7 @@ def test_obsidian_librarian_vault_apply_moves_writes_reports_and_reindexes(
                     body="# Apply Source\n\nverification move marker.",
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_apply_source",
-                    relative_path="Alexandria/Contexts/Project Context/Apply Source.md",
+                    relative_path="Alexandria/Contexts/Projects/Apply Source.md",
                     project="alexandria-hermes",
                 )
             )
@@ -1043,13 +1141,12 @@ def test_obsidian_librarian_vault_apply_moves_writes_reports_and_reindexes(
                         ObsidianVaultMoveRequest(
                             source_path=source.relative_path,
                             destination_path=(
-                                "Alexandria/Contexts/Project Context/organized/"
-                                "Apply Source.md"
+                                "Alexandria/Contexts/Projects/organized/Apply Source.md"
                             ),
                             reason="organize loose note",
                         )
                     ],
-                    report_path="Alexandria/Librarian/Reports/apply-source-report",
+                    report_path="Alexandria/_Ops/Librarian/Reports/apply-source-report",
                     verification_query="verification move marker",
                 )
             )
@@ -1106,15 +1203,14 @@ def test_obsidian_librarian_vault_apply_preflights_report_before_moves(
                     body="# Preflight Source\n\nmust stay put.",
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_preflight_source",
-                    relative_path=(
-                        "Alexandria/Contexts/Project Context/Preflight Source.md"
-                    ),
+                    relative_path=("Alexandria/Contexts/Projects/Preflight Source.md"),
                 )
             )
             report_path = (
                 tmp_path
                 / "vault"
                 / "Alexandria"
+                / "_Ops"
                 / "Librarian"
                 / "Reports"
                 / "preflight-report.md"
@@ -1129,13 +1225,13 @@ def test_obsidian_librarian_vault_apply_preflights_report_before_moves(
                             ObsidianVaultMoveRequest(
                                 source_path=source.relative_path,
                                 destination_path=(
-                                    "Alexandria/Contexts/Project Context/organized/"
+                                    "Alexandria/Contexts/Projects/organized/"
                                     "Preflight Source.md"
                                 ),
                                 reason="organize loose note",
                             )
                         ],
-                        report_path="Alexandria/Librarian/Reports/preflight-report",
+                        report_path="Alexandria/_Ops/Librarian/Reports/preflight-report",
                     )
                 )
             except ObsidianValidationError as exc:
@@ -1151,7 +1247,7 @@ def test_obsidian_librarian_vault_apply_preflights_report_before_moves(
             (
                 tmp_path
                 / "vault"
-                / "Alexandria/Contexts/Project Context/organized/Preflight Source.md"
+                / "Alexandria/Contexts/Projects/organized/Preflight Source.md"
             ).exists(),
         )
 
@@ -1166,9 +1262,7 @@ def test_obsidian_librarian_job_routes_run_vault_move_and_expose_report(
 ) -> None:
     """Job API should own a fresh session and commit background reindex writes."""
 
-    destination_path = (
-        "Alexandria/Contexts/Project Context/organized/Async Job Source.md"
-    )
+    destination_path = "Alexandria/Contexts/Projects/organized/Async Job Source.md"
 
     async def prepare() -> tuple[Database, ObsidianLibrarianJobService, str]:
         database = Database(
@@ -1192,9 +1286,7 @@ def test_obsidian_librarian_job_routes_run_vault_move_and_expose_report(
                     body="# Async Job Source\n\nasync job marker.",
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_async_job_source",
-                    relative_path=(
-                        "Alexandria/Contexts/Project Context/Async Job Source.md"
-                    ),
+                    relative_path=("Alexandria/Contexts/Projects/Async Job Source.md"),
                     project="alexandria-hermes",
                 )
             )
@@ -1235,7 +1327,7 @@ def test_obsidian_librarian_job_routes_run_vault_move_and_expose_report(
                         }
                     ],
                     "report_path": (
-                        "Alexandria/Librarian/Reports/async-job-source-report"
+                        "Alexandria/_Ops/Librarian/Reports/async-job-source-report"
                     ),
                     "verification_query": "async job marker",
                 },
@@ -1443,14 +1535,14 @@ def test_obsidian_librarian_ask_can_save_transcript(tmp_path: Path) -> None:
 
         transcript_path = response["transcript_path"]
         assert isinstance(transcript_path, str)
-        assert transcript_path.startswith("Alexandria/Librarian/Chats/")
+        assert transcript_path.startswith("Alexandria/_Ops/Librarian/Chats/")
         assert response["source_refs"] == [
             {
                 "id": "ctx_obsidian_storage",
                 "alexandria_type": "context",
-                "path": "Alexandria/Contexts/Project Context/Obsidian Storage Decision.md",
+                "path": "Alexandria/Contexts/Projects/Obsidian Storage Decision.md",
                 "title": "Obsidian Storage Decision",
-                "wikilink": "[[Alexandria/Contexts/Project Context/Obsidian Storage Decision]]",
+                "wikilink": "[[Alexandria/Contexts/Projects/Obsidian Storage Decision]]",
             }
         ]
 

@@ -108,9 +108,11 @@ Alexandria/
   Memory Compacts/
   Skills/
   Prompts/
-  Librarian/
-    Briefs/
-    Chats/
+  _Ops/
+    Librarian/
+      Briefs/
+      Chats/
+      Reports/
   Jobs/
 ```
 
@@ -122,9 +124,11 @@ Contexts/
 Memory Compacts/
 Skills/
 Prompts/
-Librarian/
-  Briefs/
-  Chats/
+_Ops/
+  Librarian/
+    Briefs/
+    Chats/
+    Reports/
 Jobs/
 ```
 
@@ -321,7 +325,8 @@ The Obsidian librarian endpoint returns:
 
 - Markdown answer;
 - source references with Obsidian wikilinks;
-- optional transcript saved under `Librarian/Chats/` or `Alexandria/Librarian/Chats/`, depending on root mode;
+- optional transcript saved under `_Ops/Librarian/Chats/` or
+  `Alexandria/_Ops/Librarian/Chats/`, depending on root mode;
 - action previews for follow-up note creation;
 - delegate status for the optional GPT OAuth librarian lane.
 
@@ -339,7 +344,7 @@ SERVICE_ALEXANDRIA_OBSIDIAN_ROOT=.
 Observed result:
 
 - `START_HERE.md` and `Jobs/Alexandria Obsidian Smoke Test.md` were created.
-- Reindex saw 7 Markdown files, indexed 6 Alexandria notes, skipped 1 Obsidian welcome note without Alexandria frontmatter.
+- A generated smoke fixture may index only a handful of notes, while the current `/Users/imhaneul/Desktop/Alexandria` vault is larger. Recent local verification saw 95 files, indexed 79 Alexandria notes, and skipped 16 non-Alexandria files.
 - Search found indexed Alexandria notes.
 - `obsidian related --path START_HERE.md --limit 5` returned an empty related set, which is valid when no graph edges target or originate from that note yet.
 - Delegated librarian ask returned `delegate_status=requested_local_fallback`, `provider_id=codex-oauth`, and `profile_id=research-critic` without saving a transcript.

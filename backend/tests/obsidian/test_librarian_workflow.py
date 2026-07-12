@@ -271,9 +271,9 @@ def test_librarian_workflow_applies_approved_graph_links_to_active_note(
     completed_actions, body, related = anyio.run(scenario)
 
     assert completed_actions == [
-        "add_graph_links:Alexandria/Contexts/Project Context/Active Work Note.md"
+        "add_graph_links:Alexandria/Contexts/Projects/Active Work Note.md"
     ]
-    assert "[[Alexandria/Contexts/Project Context/Storage Source]] — cites" in body
+    assert "[[Alexandria/Contexts/Projects/Storage Source]] — cites" in body
     assert related == [
         ("ctx_storage_source", ObsidianRelationType.CITES.value, "outgoing")
     ]

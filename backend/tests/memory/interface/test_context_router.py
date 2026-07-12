@@ -219,15 +219,7 @@ def test_context_api_hard_deletes_context_rows_chunks_access_events_and_search_i
             override_library_provider("context_service", service),
             TestClient(app, raise_server_exceptions=False) as client,
         ):
-            access_response = client.post(
-                f"/memory/contexts/{context_id}/access-events",
-                json={
-                    "actor_name": "Alexandria UI",
-                    "actor_type": "UI",
-                    "access_method": "DETAIL_VIEW",
-                    "source_surface": "context-detail",
-                },
-            )
+            access_response = client.post(f"/memory/contexts/{context_id}/access")
             before_search_response = client.post(
                 "/memory/contexts/retrieval/search",
                 json={"query": "API saves recalls", "strategy": "HYBRID"},
@@ -245,7 +237,7 @@ def test_context_api_hard_deletes_context_rows_chunks_access_events_and_search_i
     finally:
         anyio.run(_close_context_service, database, session_context, session)
 
-    assert access_response.status_code == 201
+    assert access_response.status_code == 200
     assert before_search_response.status_code == 200
     assert context_id in before_search_response.json()["context_pack"]
     assert delete_response.status_code == 204
@@ -314,14 +306,8 @@ def test_context_api_lists_searches_accesses_and_archives_seeded_context(
     assert context_id in search_response.json()["context_pack"]
     assert access_response.status_code == 200
     assert access_response.json()["access_count"] == 1
-    assert access_event_response.status_code == 201
-    assert access_event_response.json()["actor_type"] == "UI"
-    assert access_event_response.json()["access_method"] == "DETAIL_VIEW"
-    assert access_events_response.status_code == 200
-    assert len(access_events_response.json()) == 2
-    assert {event["source_surface"] for event in access_events_response.json()} == {
-        "context-detail"
-    }
+    assert access_event_response.status_code == 404
+    assert access_events_response.status_code == 404
     assert archive_response.status_code == 200
     assert archive_response.json()["is_archived"] is True
     assert rag_response.status_code == 200
@@ -387,3 +373,41 @@ def test_context_api_write_routes_are_not_exposed() -> None:
 
     assert capture_response.status_code in {404, 405}
     assert compact_response.status_code in {404, 405}
+
+
+def test_context_access_event_detail_routes_are_not_exposed(
+    tmp_path: Path,
+) -> None:
+    """Detailed context access-event routes should stay internal-only."""
+
+    database, session_context, session, service = anyio.run(
+        _open_context_service, tmp_path / "context-access-events-pruned.db"
+    )
+    try:
+        context_id = anyio.run(_seed_api_context, session)
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            access_response = client.post(f"/memory/contexts/{context_id}/access")
+            post_event_response = client.post(
+                f"/memory/contexts/{context_id}/access-events",
+                json={
+                    "actor_name": "Alexandria UI",
+                    "actor_type": "UI",
+                    "access_method": "DETAIL_VIEW",
+                    "source_surface": "context-detail",
+                },
+            )
+            get_events_response = client.get(
+                f"/memory/contexts/{context_id}/access-events"
+            )
+            counts = anyio.run(_context_persistence_counts, session, context_id)
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert access_response.status_code == 200
+    assert access_response.json()["access_count"] == 1
+    assert post_event_response.status_code == 404
+    assert get_events_response.status_code == 404
+    assert counts["access_events"] == 1

@@ -1,5 +1,7 @@
 # Alexandria-Hermes install
 
+> Maintenance status: this Japanese page is currently an unmaintained placeholder. Use `../en/install.md` or `../ko/install.md` for the maintained install flow until a real translation is added.
+
 The frontend runtime has been removed. Install the backend/CLI/MCP service and connect it to an Obsidian Markdown vault.
 
 ## Generated vault

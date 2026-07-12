@@ -6,14 +6,10 @@ from app.container import ApplicationContainer
 from app.memory.application.context_service import ContextService
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.interface.schemas.context.context_mapping import (
-    access_event_payload,
     chunk_payload,
     context_payload,
 )
 from app.memory.interface.schemas.context.context_schema import (
-    ContextAccessEventRequest,
-    ContextAccessEventResponse,
-    ContextAccessEventResponseList,
     ContextChunkResponseList,
     ContextListResponse,
     ContextResponse,
@@ -132,79 +128,6 @@ async def context_chunks(
     chunks = await service.chunks(context_id)
     response = ContextChunkResponseList.model_validate(
         [chunk_payload(chunk) for chunk in chunks]
-    )
-    return response
-
-
-@router.post(
-    "/{context_id}/access-events",
-    response_model=ContextAccessEventResponse,
-    status_code=status.HTTP_201_CREATED,
-    description="Record a detailed Context Vault access event.",
-    summary="Record context access event",
-)
-@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def record_context_access_event(
-    context_id: str,
-    request: ContextAccessEventRequest,
-    service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-) -> ContextAccessEventResponse:
-    """Record one detailed access event and return it.
-
-    Args:
-        context_id: Context identifier.
-        request: Access-event details.
-        service: Context application service.
-
-    Returns:
-        Created context access event response.
-    """
-    await service.access(
-        context_id,
-        actor_name=request.actor_name,
-        actor_type=request.actor_type,
-        access_method=request.access_method,
-        source_surface=request.source_surface,
-    )
-    events = await service.access_events(context_id, limit=1)
-    response = ContextAccessEventResponse.model_validate(
-        access_event_payload(events[0])
-    )
-    return response
-
-
-@router.get(
-    "/{context_id}/access-events",
-    response_model=ContextAccessEventResponseList,
-    status_code=status.HTTP_200_OK,
-    description="List recent Context Vault access events.",
-    summary="List context access events",
-)
-@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
-@inject
-async def list_context_access_events(
-    context_id: str,
-    limit: int = Query(default=5, ge=1, le=5),
-    service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-) -> ContextAccessEventResponseList:
-    """List recent access events for one context.
-
-    Args:
-        context_id: Context identifier.
-        limit: Maximum returned events.
-        service: Context application service.
-
-    Returns:
-        Recent context access event responses.
-    """
-    events = await service.access_events(context_id, limit=limit)
-    response = ContextAccessEventResponseList.model_validate(
-        [access_event_payload(event) for event in events]
     )
     return response
 

@@ -86,7 +86,7 @@ def test_reindex_builds_edges_and_related_notes_from_markdown(tmp_path: Path) ->
 
     related, current_path = anyio.run(scenario)
 
-    assert current_path == "Alexandria/Contexts/Project Context/Graph Current.md"
+    assert current_path == "Alexandria/Contexts/Projects/Graph Current.md"
     assert related[0] == ("alexandria_start_here", "cites", "outgoing")
 
 

@@ -123,7 +123,7 @@ Prompt body 기본형:
 ask in Obsidian
   -> answer shown in side pane
   -> user clicks Save Chat or policy auto-save allows transcript
-  -> Librarian/Chats/<conversation>.md 생성/append
+  -> _Ops/Librarian/Chats/<conversation>.md 생성/append
   -> reindex note
 ```
 

@@ -56,6 +56,32 @@ def test_obsidian_vault_settings_rejects_missing_operator_key() -> None:
     assert response.json() == {"detail": "Operator API key required"}
 
 
+def test_obsidian_librarian_maintenance_routes_reject_missing_operator_key() -> None:
+    """Vault maintenance and in-process job routes should be operator protected."""
+    payload = {"moves": [], "report_path": "_Ops/Librarian/Reports/noop"}
+    with (
+        enforce_operator_api_key_dependency(),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        responses = [
+            client.post("/obsidian/librarian/vault/inventory", json={}),
+            client.post(
+                "/obsidian/librarian/vault/path-search", json={"query": "context"}
+            ),
+            client.post("/obsidian/librarian/vault/move-plan", json=payload),
+            client.post("/obsidian/librarian/vault/apply-moves", json=payload),
+            client.post("/obsidian/librarian/jobs", json=payload),
+            client.get("/obsidian/librarian/jobs/job-test"),
+            client.get("/obsidian/librarian/jobs/job-test/report"),
+        ]
+
+    assert [response.status_code for response in responses] == [401] * len(responses)
+    assert all(
+        response.json() == {"detail": "Operator API key required"}
+        for response in responses
+    )
+
+
 def test_operator_api_key_accepts_configured_header() -> None:
     """Operator guard should accept the configured header value."""
 

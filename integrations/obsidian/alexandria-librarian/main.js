@@ -111,33 +111,35 @@ class AlexandriaLibrarianView extends ItemView {
 
     container.createEl("h2", { text: "Alexandria Librarian" });
     container.createEl("p", {
-      cls: "alexandria-muted",
-      text:
-        "Default mode scans the whole indexed Alexandria vault, then cites the strongest notes.",
-    });
-
-    const activeInfo = container.createDiv({ cls: "alexandria-card" });
-    activeInfo.createEl("strong", { text: "Current context" });
-    activeInfo.createEl("div", {
-      text: this.activePath() || "No active Markdown note",
-    });
-    activeInfo.createEl("p", {
-      cls: "alexandria-muted",
-      text:
-        "Whole-vault mode does not depend on the active note. Switch scope only when you want note/selection context included.",
+      cls: "alexandria-muted alexandria-hero-copy",
+      text: "Ask the indexed Alexandria vault. Advanced controls stay tucked away until needed.",
     });
 
     const askCard = container.createDiv({ cls: "alexandria-ask-card" });
-    askCard.createEl("h3", { text: "Ask the whole vault" });
+    askCard.createEl("h3", { text: "Ask vault" });
     const queryInput = askCard.createEl("textarea", {
       cls: "alexandria-query",
       attr: {
-        rows: "6",
+        rows: "5",
         placeholder: "Ask across memory, skills, prompts, plans, and notes...",
       },
     });
 
-    const scopeGrid = askCard.createDiv({ cls: "alexandria-control-grid" });
+    const quickActions = askCard.createDiv({ cls: "alexandria-controls" });
+    const askButton = quickActions.createEl("button", {
+      text: "Ask vault",
+      cls: "mod-cta",
+    });
+
+    const advanced = askCard.createEl("details", { cls: "alexandria-advanced" });
+    advanced.createEl("summary", { text: "Advanced options" });
+    const activePath = this.activePath();
+    advanced.createEl("p", {
+      cls: "alexandria-muted alexandria-compact-note",
+      text: activePath ? `Current note: ${activePath}` : "Whole-vault mode; no active note required.",
+    });
+
+    const scopeGrid = advanced.createDiv({ cls: "alexandria-control-grid" });
     const scopeLabel = scopeGrid.createEl("label", { cls: "alexandria-field" });
     scopeLabel.createSpan({ text: "Scope" });
     const scopeSelect = scopeLabel.createEl("select");
@@ -178,10 +180,10 @@ class AlexandriaLibrarianView extends ItemView {
       await this.plugin.saveSettings();
     });
 
-    const scopeHint = askCard.createDiv({ cls: "alexandria-muted" });
+    const scopeHint = advanced.createDiv({ cls: "alexandria-muted" });
     this.renderScopeHint(scopeHint, scopeSelect.value);
 
-    const controls = askCard.createDiv({ cls: "alexandria-controls" });
+    const controls = advanced.createDiv({ cls: "alexandria-controls" });
     const saveLabel = controls.createEl("label", { cls: "alexandria-checkbox" });
     const saveInput = saveLabel.createEl("input", { type: "checkbox" });
     saveInput.checked = this.plugin.settings.autoSaveTranscripts;
@@ -209,10 +211,10 @@ class AlexandriaLibrarianView extends ItemView {
     });
     profileInput.value = this.plugin.settings.preferredProfileId || "research-critic";
 
-    const askButton = controls.createEl("button", {
-      text: "Ask vault",
-      cls: "mod-cta",
-    });
+    const utilityActions = advanced.createDiv({ cls: "alexandria-actions" });
+    this.actionButton(utilityActions, "Refresh related", () => this.refreshRelated());
+    this.actionButton(utilityActions, "Check OAuth", () => this.checkOAuthStatus());
+
     askButton.addEventListener("click", async () => {
       await this.ask(queryInput.value, {
         saveTranscript: saveInput.checked,
@@ -226,33 +228,27 @@ class AlexandriaLibrarianView extends ItemView {
       });
     });
 
-    const utilityActions = askCard.createDiv({ cls: "alexandria-actions" });
-    this.actionButton(utilityActions, "Refresh related", () => this.refreshRelated());
-    this.actionButton(utilityActions, "Check OAuth", () => this.checkOAuthStatus());
-
     this.statusEl = container.createDiv({ cls: "alexandria-status" });
     this.answerContainer = container.createDiv({ cls: "alexandria-answer" });
     this.delegateContainer = container.createDiv({ cls: "alexandria-delegate" });
     this.sourceContainer = container.createDiv({ cls: "alexandria-sources" });
     this.workflowContainer = container.createDiv({ cls: "alexandria-workflow" });
     this.graphActionContainer = container.createDiv({ cls: "alexandria-graph-actions" });
-
-    const actions = container.createDiv({ cls: "alexandria-actions" });
-    this.actionButton(actions, "Append to current note", () => this.appendAnswer());
-    this.actionButton(actions, "Link sources to current note", () => this.appendGraphLinks());
-    this.actionButton(actions, "Create context note", () => this.createNote("context"));
-    this.actionButton(actions, "Create skill draft", () => this.createNote("skill"));
-    this.actionButton(actions, "Create prompt template", () => this.createNote("prompt"));
+    this.postAnswerActions = container.createDiv({
+      cls: "alexandria-actions alexandria-post-actions",
+    });
 
     this.relatedContainer = container.createDiv({ cls: "alexandria-related" });
-    if (this.plugin.settings.showRelatedNotes) {
+    if (this.plugin.settings.showRelatedNotes && this.activePath()) {
       this.refreshRelated();
     }
 
     this.historyContainer = container.createDiv({ cls: "alexandria-history" });
     this.renderHistory();
 
-    this.oauthContainer = container.createDiv({ cls: "alexandria-oauth" });
+    const oauthDetails = container.createEl("details", { cls: "alexandria-advanced" });
+    oauthDetails.createEl("summary", { text: "OAuth connection" });
+    this.oauthContainer = oauthDetails.createDiv({ cls: "alexandria-oauth" });
     this.renderOAuthPanel();
   }
 
@@ -306,6 +302,21 @@ class AlexandriaLibrarianView extends ItemView {
     });
   }
 
+  renderPostAnswerActions() {
+    if (!this.postAnswerActions) {
+      return;
+    }
+    this.postAnswerActions.empty();
+    if (!this.lastResponse?.answer_markdown) {
+      return;
+    }
+    this.actionButton(this.postAnswerActions, "Append to current note", () => this.appendAnswer());
+    this.actionButton(this.postAnswerActions, "Link sources", () => this.appendGraphLinks());
+    this.actionButton(this.postAnswerActions, "Create context note", () => this.createNote("context"));
+    this.actionButton(this.postAnswerActions, "Create skill draft", () => this.createNote("skill"));
+    this.actionButton(this.postAnswerActions, "Create prompt", () => this.createNote("prompt"));
+  }
+
   recordHistory(query, response, workflow) {
     const entryId =
       workflow?.thread_id ||
@@ -335,14 +346,10 @@ class AlexandriaLibrarianView extends ItemView {
       return;
     }
     this.historyContainer.empty();
-    this.historyContainer.createEl("h3", { text: "Conversation history" });
     if (this.history.length === 0) {
-      this.historyContainer.createEl("p", {
-        cls: "alexandria-muted",
-        text: "No local chat history yet. History stays in this pane only.",
-      });
       return;
     }
+    this.historyContainer.createEl("h3", { text: "Conversation history" });
     for (const entry of this.history) {
       const row = this.historyContainer.createDiv({ cls: "alexandria-history-row" });
       const button = row.createEl("button", {
@@ -690,6 +697,7 @@ class AlexandriaLibrarianView extends ItemView {
       this.activePath() || "",
       this
     );
+    this.renderPostAnswerActions();
 
     this.sourceContainer.empty();
     this.sourceContainer.createEl("h3", { text: "Sources" });
@@ -721,8 +729,12 @@ class AlexandriaLibrarianView extends ItemView {
       return;
     }
     this.delegateContainer.empty();
-    this.delegateContainer.createEl("h3", { text: "GPT OAuth Librarian" });
     const status = response.delegate_status || "local_only";
+    const delegateMarkdown = this.delegateMarkdown(response.answer_markdown || "");
+    if (status === "local_only" && !delegateMarkdown) {
+      return;
+    }
+    this.delegateContainer.createEl("h3", { text: "GPT OAuth Librarian" });
     this.badge(this.delegateContainer, status);
     if (response.provider_id || response.profile_id) {
       this.delegateContainer.createEl("p", {
@@ -732,14 +744,10 @@ class AlexandriaLibrarianView extends ItemView {
         }`,
       });
     }
-    const delegateMarkdown = this.delegateMarkdown(response.answer_markdown || "");
     if (!delegateMarkdown) {
       this.delegateContainer.createEl("p", {
         cls: "alexandria-muted",
-        text:
-          status === "local_only"
-            ? "No GPT OAuth delegate result yet."
-            : "Delegate status is available, but no delegate summary was returned.",
+        text: "Delegate status is available, but no delegate summary was returned.",
       });
       return;
     }
@@ -767,15 +775,10 @@ class AlexandriaLibrarianView extends ItemView {
       return;
     }
     this.workflowContainer.empty();
-    this.workflowContainer.createEl("h3", { text: "Workflow status" });
     if (!workflow) {
-      this.workflowContainer.createEl("p", {
-        cls: "alexandria-muted",
-        text: `Direct ask · ${response.conversation_id || "local"}`,
-      });
-      this.badge(this.workflowContainer, response.delegate_status || "local_only");
       return;
     }
+    this.workflowContainer.createEl("h3", { text: "Workflow status" });
     const header = this.workflowContainer.createDiv({
       cls: "alexandria-workflow-badges",
     });
@@ -805,28 +808,25 @@ class AlexandriaLibrarianView extends ItemView {
       return;
     }
     this.graphActionContainer.empty();
-    this.graphActionContainer.createEl("h3", { text: "Proposed graph actions" });
     const actions = Array.isArray(response.action_preview) ? response.action_preview : [];
-    if (response.delegate_status) {
+    if (workflow?.status === "waiting_for_approval") {
+      this.graphActionContainer.createEl("h3", { text: "Proposed graph actions" });
+      this.renderWorkflowApproval(workflow);
+      return;
+    }
+    if (actions.length === 0) {
+      return;
+    }
+    this.graphActionContainer.createEl("h3", { text: "Proposed graph actions" });
+    if (response.delegate_status && response.delegate_status !== "local_only") {
       this.graphActionContainer.createEl("p", {
         cls: "alexandria-muted",
         text: `Delegate: ${response.delegate_status}`,
       });
     }
-    if (workflow?.status === "waiting_for_approval") {
-      this.renderWorkflowApproval(workflow);
-      return;
-    }
     const list = this.graphActionContainer.createEl("ul");
     for (const action of actions) {
       list.createEl("li", { text: action });
-    }
-    if (this.workflowContainer) {
-      this.workflowContainer.empty();
-      this.workflowContainer.createEl("p", {
-        cls: "alexandria-muted",
-        text: `Conversation: ${response.conversation_id || "local"}`,
-      });
     }
   }
 
@@ -1109,7 +1109,7 @@ class AlexandriaLibrarianSettingTab extends PluginSettingTab {
     containerEl.createEl("p", {
       cls: "alexandria-muted",
       text:
-        "Configure where the local Alexandria backend writes notes. Use current vault when this Obsidian vault itself should be the canonical Alexandria storage.",
+        "Use this Obsidian vault as the canonical Alexandria storage. The bundled Docker Compose setup mounts the same host path into the backend container, so the current vault path can be used directly.",
     });
 
     new Setting(containerEl)

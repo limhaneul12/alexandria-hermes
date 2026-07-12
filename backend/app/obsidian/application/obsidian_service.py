@@ -28,6 +28,7 @@ from app.obsidian.application.obsidian_librarian_retrieval import (
 )
 from app.obsidian.application.obsidian_note_indexer import note_index_from_path
 from app.obsidian.application.obsidian_note_templates import (
+    LIBRARIAN_OPERATIONS_FOLDER,
     conversation_id,
     default_folders,
     default_note_path,
@@ -663,7 +664,8 @@ class ObsidianService:
                 alexandria_type=AlexandriaNoteType.LIBRARIAN_CHAT,
                 note_id=conversation_id,
                 relative_path=(
-                    f"{self._alexandria_root}/Librarian/Chats/{conversation_id}.md"
+                    f"{self._alexandria_root}/{LIBRARIAN_OPERATIONS_FOLDER}/"
+                    f"Chats/{conversation_id}.md"
                 ),
                 tags=["librarian", "obsidian-chat"],
                 project=payload.project,
@@ -770,7 +772,8 @@ class ObsidianService:
         request: ObsidianVaultMoveApplyRequest,
     ) -> tuple[str, str, Path, Path]:
         base_path = request.report_path or (
-            f"{self._alexandria_root}/Librarian/Reports/vault-move-{conversation_id()}"
+            f"{self._alexandria_root}/{LIBRARIAN_OPERATIONS_FOLDER}/Reports/"
+            f"vault-move-{conversation_id()}"
         )
         report_stem = base_path.removesuffix(".md").removesuffix(".json")
         markdown_relative = f"{report_stem}.md"

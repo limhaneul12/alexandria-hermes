@@ -44,7 +44,7 @@ source_refs:
     relation: cites
 derived_from:
   - id: librarian_chat_20260526_example
-    path: Librarian/Chats/librarian_chat_20260526_example.md
+    path: _Ops/Librarian/Chats/librarian_chat_20260526_example.md
 related:
   - id: skill_web_research
     path: Skills/Active/Web Research.md
@@ -80,7 +80,7 @@ promotes_to: []
 - [[Skills/Active/Web Research]] — related
 
 ### Derived From
-- [[Librarian/Chats/librarian_chat_20260526_example]]
+- [[_Ops/Librarian/Chats/librarian_chat_20260526_example]]
 ```
 
 ## 자동 생성 규칙

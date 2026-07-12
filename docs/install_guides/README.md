@@ -18,4 +18,4 @@ Alexandria-Hermes now supports backend/CLI/MCP setup only. The old web frontend 
 
 Use root `.` when the vault itself is the Alexandria workspace. Otherwise Alexandria creates/manages an `Alexandria/` folder inside the vault.
 
-See the language-specific install pages for the same backend-only flow.
+Active install guides are maintained in English and Korean. The Japanese and Chinese pages are currently unmaintained placeholders until real translations are added.

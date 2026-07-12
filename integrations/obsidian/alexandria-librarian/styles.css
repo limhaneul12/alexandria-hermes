@@ -19,11 +19,42 @@
   padding: 10px;
 }
 
+.alexandria-answer:empty,
+.alexandria-delegate:empty,
+.alexandria-history:empty,
+.alexandria-related:empty,
+.alexandria-graph-actions:empty,
+.alexandria-workflow:empty,
+.alexandria-sources:empty,
+.alexandria-status:empty,
+.alexandria-actions:empty {
+  display: none;
+}
+
 .alexandria-query {
   box-sizing: border-box;
   margin: 8px 0 12px;
-  min-height: 120px;
+  min-height: 110px;
   width: 100%;
+}
+
+.alexandria-advanced {
+  margin-top: 8px;
+}
+
+.alexandria-advanced > summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+}
+
+.alexandria-advanced[open] > summary {
+  margin-bottom: 8px;
+}
+
+.alexandria-compact-note,
+.alexandria-hero-copy {
+  margin-bottom: 8px;
 }
 
 .alexandria-controls,

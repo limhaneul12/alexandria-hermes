@@ -21,6 +21,8 @@ from app.obsidian.infrastructure.markdown.paths import safe_filename
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.extra_types import JSONObject
 
+LIBRARIAN_OPERATIONS_FOLDER = "_Ops/Librarian"
+
 
 def frontmatter_for_save(
     payload: ObsidianSaveNote,
@@ -116,12 +118,12 @@ def default_note_path(
     title: str,
 ) -> str:
     folder = {
-        AlexandriaNoteType.CONTEXT: "Contexts/Project Context",
+        AlexandriaNoteType.CONTEXT: "Contexts/Projects",
         AlexandriaNoteType.MEMORY_COMPACT: "Memory Compacts",
         AlexandriaNoteType.SKILL: "Skills/Drafts",
         AlexandriaNoteType.PROMPT: "Prompts/Task Prompts",
-        AlexandriaNoteType.LIBRARIAN_BRIEF: "Librarian/Briefs",
-        AlexandriaNoteType.LIBRARIAN_CHAT: "Librarian/Chats",
+        AlexandriaNoteType.LIBRARIAN_BRIEF: f"{LIBRARIAN_OPERATIONS_FOLDER}/Briefs",
+        AlexandriaNoteType.LIBRARIAN_CHAT: f"{LIBRARIAN_OPERATIONS_FOLDER}/Chats",
         AlexandriaNoteType.JOB_PLAN: "Jobs",
     }[note_type]
     return f"{root}/{folder}/{safe_filename(title)}"
@@ -131,10 +133,13 @@ def default_folders(root: str) -> tuple[str, ...]:
     return (
         root,
         f"{root}/Memory Compacts",
+        f"{root}/_Inbox/Captures",
+        f"{root}/_Inbox/To Promote",
+        f"{root}/_Inbox/Unsorted",
         f"{root}/Contexts/Decisions",
         f"{root}/Contexts/Handoffs",
         f"{root}/Contexts/Bug Root Causes",
-        f"{root}/Contexts/Project Context",
+        f"{root}/Contexts/Projects",
         f"{root}/Contexts/Research",
         f"{root}/Contexts/Plans",
         f"{root}/Skills/Active",
@@ -144,10 +149,11 @@ def default_folders(root: str) -> tuple[str, ...]:
         f"{root}/Prompts/Agent Roles",
         f"{root}/Prompts/Task Prompts",
         f"{root}/Prompts/Eval Prompts",
-        f"{root}/Librarian/Briefs",
-        f"{root}/Librarian/Chats",
-        f"{root}/Librarian/Research Results",
-        f"{root}/Librarian/Skill Acquisition",
+        f"{root}/{LIBRARIAN_OPERATIONS_FOLDER}/Briefs",
+        f"{root}/{LIBRARIAN_OPERATIONS_FOLDER}/Chats",
+        f"{root}/{LIBRARIAN_OPERATIONS_FOLDER}/Reports",
+        f"{root}/{LIBRARIAN_OPERATIONS_FOLDER}/Research Results",
+        f"{root}/{LIBRARIAN_OPERATIONS_FOLDER}/Skill Acquisition",
         f"{root}/Indexes",
         f"{root}/Archive",
         f"{root}/Jobs",

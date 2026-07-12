@@ -176,6 +176,8 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             note = await self.get_by_id(str(note_id))
             if note is None:
                 continue
+            if note.index_status != ObsidianIndexStatus.INDEXED:
+                continue
             chunk = await self._session.get(ObsidianChunkORM, str(chunk_id))
             excerpt = obsidian_excerpt(chunk.text if chunk is not None else note.body)
             hits.append(

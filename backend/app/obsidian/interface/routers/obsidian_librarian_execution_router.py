@@ -18,12 +18,17 @@ from app.obsidian.interface.schemas.obsidian.obsidian_librarian_execution_schema
     ObsidianVaultMoveReportResponse,
     ObsidianVaultPathSearchRequest,
 )
+from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import OBSIDIAN_ROUTE_EXCEPTION_MAPPING
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, BackgroundTasks, Depends, status
 
-router = APIRouter(prefix="/obsidian", tags=["obsidian"])
+router = APIRouter(
+    prefix="/obsidian",
+    tags=["obsidian"],
+    dependencies=[Depends(require_operator_api_key)],
+)
 
 
 @router.post(
