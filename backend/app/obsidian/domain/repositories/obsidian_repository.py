@@ -46,6 +46,14 @@ class IObsidianIndexRepository(ABC):
         """
 
     @abstractmethod
+    async def resolve_edge_targets(self) -> int:
+        """Resolve edge target ids from indexed target paths.
+
+        Returns:
+            Number of edge rows updated with a target note id.
+        """
+
+    @abstractmethod
     async def get_by_id(self, note_id: str) -> ObsidianNote | None:
         """Read one indexed note by stable id.
 

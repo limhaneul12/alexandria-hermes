@@ -126,6 +126,25 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         await self._session.flush()
         return stale
 
+    async def resolve_edge_targets(self) -> int:
+        """Resolve late-indexed edge target ids from canonical target paths.
+
+        Returns:
+            Number of edge rows updated with a target note id.
+        """
+        rows = await self._session.execute(
+            select(ObsidianEdgeORM).where(ObsidianEdgeORM.target_note_id.is_(None))
+        )
+        resolved = 0
+        for edge in rows.scalars().all():
+            target = await self.get_by_path(edge.target_path)
+            if target is None or target.index_status != ObsidianIndexStatus.INDEXED:
+                continue
+            edge.target_note_id = target.note_id
+            resolved += 1
+        await self._session.flush()
+        return resolved
+
     async def get_by_id(self, note_id: str) -> ObsidianNote | None:
         """Read one indexed note by id.
 

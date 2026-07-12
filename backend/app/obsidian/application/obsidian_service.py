@@ -245,6 +245,7 @@ class ObsidianService:
             except (OSError, ValueError) as exc:
                 errors.append(f"{relative_path}: {exc}")
         stale_marked = await self._repository.mark_missing_stale(seen_paths)
+        await self._repository.resolve_edge_targets()
         return ObsidianReindexResult(
             files_seen=files_seen,
             files_indexed=files_indexed,

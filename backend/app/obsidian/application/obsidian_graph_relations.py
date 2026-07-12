@@ -6,6 +6,7 @@ import ast
 import hashlib
 import re
 from collections.abc import Iterable, Mapping, Sequence
+from pathlib import PurePosixPath
 from typing import cast
 
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianEdgeIndex
@@ -27,6 +28,19 @@ _FRONTMATTER_RELATIONS: tuple[tuple[str, ObsidianRelationType], ...] = (
     ("promotes_to", ObsidianRelationType.PROMOTES_TO),
     ("blocks", ObsidianRelationType.BLOCKS),
     ("resolves", ObsidianRelationType.RESOLVES),
+)
+_ROOT_RELATIVE_LINK_PREFIXES = frozenset(
+    {
+        "Archive",
+        "Contexts",
+        "Indexes",
+        "Memory Compacts",
+        "Prompts",
+        "Skills",
+        "START_HERE.md",
+        "_Inbox",
+        "_Ops",
+    }
 )
 _RELATION_HEADINGS: dict[ObsidianRelationType, str] = {
     ObsidianRelationType.CITES: "Sources",
@@ -90,7 +104,11 @@ def relation_edges_from_note(
                     confidence=1.0,
                 )
             )
-    for target_path in _wikilink_targets(body, alexandria_root=alexandria_root):
+    for target_path in _wikilink_targets(
+        body,
+        relative_path=relative_path,
+        alexandria_root=alexandria_root,
+    ):
         if target_path == relative_path:
             continue
         key = (
@@ -227,11 +245,17 @@ def _relation_or_none(value: str | None) -> ObsidianRelationType | None:
         return None
 
 
-def _wikilink_targets(body: str, *, alexandria_root: str) -> list[str]:
+def _wikilink_targets(
+    body: str,
+    *,
+    relative_path: str,
+    alexandria_root: str,
+) -> list[str]:
     targets: list[str] = []
     for match in _WIKILINK_RE.finditer(body):
-        target = _normalize_target_path(
+        target = _normalize_wikilink_target_path(
             match.group(1),
+            relative_path=relative_path,
             alexandria_root=alexandria_root,
         )
         if target is not None:
@@ -239,14 +263,28 @@ def _wikilink_targets(body: str, *, alexandria_root: str) -> list[str]:
     return targets
 
 
+def _normalize_wikilink_target_path(
+    path: str | None,
+    *,
+    relative_path: str,
+    alexandria_root: str,
+) -> str | None:
+    normalized = _normalize_markdown_target(path)
+    if normalized is None:
+        return None
+    root = alexandria_root.strip().strip("/") or "."
+    first_segment = normalized.split("/", maxsplit=1)[0]
+    if root != "." and normalized.startswith(f"{root}/"):
+        return normalized
+    if first_segment in _ROOT_RELATIVE_LINK_PREFIXES:
+        return normalized if root == "." else f"{root}/{normalized}"
+    source_parent = PurePosixPath(relative_path).parent
+    return str(source_parent / normalized)
+
+
 def _normalize_target_path(path: str | None, *, alexandria_root: str) -> str | None:
-    if path is None:
-        return None
-    normalized = path.strip().removeprefix("./")
-    if not normalized or "://" in normalized or normalized.startswith("#"):
-        return None
-    normalized = normalized.removesuffix(".md") + ".md"
-    if normalized.startswith("/") or ".." in normalized.split("/"):
+    normalized = _normalize_markdown_target(path)
+    if normalized is None:
         return None
     root = alexandria_root.strip().strip("/") or "."
     if root == ".":
@@ -256,6 +294,18 @@ def _normalize_target_path(path: str | None, *, alexandria_root: str) -> str | N
             return normalized
         return f"{root}/{normalized}"
     return f"{root}/{normalized}"
+
+
+def _normalize_markdown_target(path: str | None) -> str | None:
+    if path is None:
+        return None
+    normalized = path.strip().removeprefix("./")
+    if not normalized or "://" in normalized or normalized.startswith("#"):
+        return None
+    normalized = normalized.removesuffix(".md") + ".md"
+    if normalized.startswith("/") or ".." in normalized.split("/"):
+        return None
+    return normalized
 
 
 def _edge(
