@@ -96,7 +96,7 @@ def test_health_routes_remain_public_without_operator_key() -> None:
 
 
 def test_backend_app_has_no_direct_environment_reads() -> None:
-    """Application code should use typed config/Typer boundaries for env values."""
+    """Application code should use typed config boundaries for env values."""
     offenders = sorted(
         str(path.relative_to(BACKEND_ROOT))
         for path in (BACKEND_ROOT / "app").rglob("*.py")

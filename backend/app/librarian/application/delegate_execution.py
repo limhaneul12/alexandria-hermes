@@ -76,7 +76,7 @@ def build_execution_plans(
     """Build provider/profile execution plans for a collaboration request.
 
     Args:
-        command: Ask-librarian command from API/MCP/CLI.
+        command: Ask-librarian command from API/MCP.
         routing: Selected librarian profiles and routing metadata.
         executable_providers: Providers that passed execution-readiness checks.
 
@@ -210,7 +210,7 @@ def representative_resolution(
     """Resolve top-level response execution settings.
 
     Args:
-        command: Ask-librarian command from API/MCP/CLI.
+        command: Ask-librarian command from API/MCP.
         routing: Selected profiles and routing metadata.
         representative_plan: Preferred executable or preview plan.
 

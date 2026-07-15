@@ -23,6 +23,12 @@ from app.librarian.interface.routers.librarian_brief_router import (
 from app.librarian.interface.routers.librarian_ops_router import (
     router as librarian_ops_router,
 )
+from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
+from app.mcp_server.http_mount import (
+    MCP_HTTP_MOUNT_PATH,
+    McpHttpMount,
+    mcp_streamable_http_lifespan,
+)
 from app.memory.interface.routers.context_retrieval_router import (
     router as context_retrieval_router,
 )
@@ -73,6 +79,12 @@ def create_app(app_config: AppConfig) -> FastAPI:
     """
     lifecycle = LifecycleState()
     container = ApplicationContainer()
+    operator_api_key = app_config.operator_api_key.get_secret_value()
+    mcp_mount = McpHttpMount(expected_operator_api_key=operator_api_key)
+    mcp_api_settings = AlexandriaApiSettings.from_env().model_copy(
+        update={"operator_api_key": operator_api_key}
+    )
+    mcp_api_client = AlexandriaApiClient(mcp_api_settings)
 
     async def refresh_dependency_health() -> None:
         """Refresh dependency health before serving readiness requests.
@@ -109,7 +121,12 @@ def create_app(app_config: AppConfig) -> FastAPI:
             lifecycle.mark_database_unavailable()
         lifecycle.mark_running()
         try:
-            yield
+            async with mcp_streamable_http_lifespan(client=mcp_api_client) as mcp_app:
+                mcp_mount.set_app(mcp_app)
+                try:
+                    yield
+                finally:
+                    mcp_mount.set_app(None)
         finally:
             await cast(Awaitable[None], container.shutdown_resources())
             lifecycle.mark_stopping()
@@ -152,6 +169,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
         lifecycle=lifecycle,
         refresh_dependency_health=refresh_dependency_health,
     )
+    app.mount(MCP_HTTP_MOUNT_PATH, mcp_mount)
 
     app.include_router(context_router)
     app.include_router(context_retrieval_router)

@@ -12,7 +12,6 @@ Keep the backend organized by bounded context, while avoiding both root-level sp
 - Domain-specific code belongs in bounded-context folders.
 - Current active app areas are:
   - `<backend_root>/archive/`
-  - `<backend_root>/cli_support/`
   - `<backend_root>/connections/`
   - `<backend_root>/librarian/`
   - `<backend_root>/library/`
@@ -201,7 +200,7 @@ Current repo rule:
 
 - keep one discoverable exception catalog under `<shared_root>/exceptions/`
 - domain-specific failures live in domain-scoped modules such as
-  `library_exceptions.py` and `cli_exceptions.py`
+  `library_exceptions.py`
 - exception class names must stay domain-scoped, for example
   `LibraryProviderConfigError`
 - only truly cross-domain route/runtime/stream contracts belong in neutral shared modules such as `route_exceptions.py`, `stream_exceptions.py`, and `common_exceptions.py`

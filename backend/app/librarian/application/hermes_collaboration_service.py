@@ -112,7 +112,7 @@ class HermesCollaborationService:
         """Return collaboration guidance or a profile-backed delegation result.
 
         Args:
-            command: Ask-librarian command from API/MCP/CLI.
+            command: Ask-librarian command from API/MCP.
 
         Returns:
             HermesLibrarianAskPayload: Public collaboration result.

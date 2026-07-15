@@ -8,6 +8,7 @@ from inspect import iscoroutinefunction
 import anyio
 import httpx
 import pytest
+from app.main import app
 from app.mcp_server.backend_api_client import (
     AlexandriaApiClient,
     AlexandriaApiSettings,
@@ -15,12 +16,13 @@ from app.mcp_server.backend_api_client import (
 from app.mcp_server.backend_tool_gateway import (
     alexandria_archive_context,
     alexandria_ask_librarian,
+    alexandria_ask_obsidian_librarian,
     alexandria_complete_skill_acquisition,
     alexandria_delete_context,
     alexandria_delete_memory_compact,
     alexandria_get_current_memory_compact,
-    alexandria_get_related_notes,
     alexandria_get_memory_compact,
+    alexandria_get_related_notes,
     alexandria_librarian_brief_preview,
     alexandria_librarian_job_status,
     alexandria_librarian_oauth_poll,
@@ -28,23 +30,24 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_librarian_oauth_start,
     alexandria_librarian_oauth_status,
     alexandria_librarian_route_preview,
-    alexandria_ask_obsidian_librarian,
     alexandria_list_memory_compact_artifacts,
     alexandria_rag_status,
     alexandria_read_note,
     alexandria_reindex_vault,
+    alexandria_save_note,
     alexandria_search,
     alexandria_search_vault,
-    alexandria_save_note,
     alexandria_skill_acquisition_job_status,
     alexandria_start_skill_acquisition,
 )
-from app.mcp_server.server_runtime import create_mcp_server
+from app.mcp_server.server_runtime import build_mcp_server
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
+from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONValue
+from fastapi.testclient import TestClient
 
 RecordedCall = httpx.Request
 
@@ -576,10 +579,39 @@ def test_mcp_librarian_oauth_tools_map_to_safe_backend_lifecycle() -> None:
     assert "oauth_access_token" not in serialized_payloads
 
 
+def test_fastapi_app_mounts_guarded_streamable_http_mcp_endpoint() -> None:
+    """FastAPI should expose the real FastMCP HTTP app behind operator auth."""
+    initialize_request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "pytest", "version": "0.1.0"},
+        },
+    }
+
+    with TestClient(app, base_url="http://127.0.0.1:8000") as client:
+        unauthorized = client.post("/mcp/", json=initialize_request)
+        response = client.post(
+            "/mcp/",
+            json=initialize_request,
+            headers={
+                OPERATOR_API_KEY_HEADER: "test-operator-api-key-for-route-contracts-000000000000",
+                "Accept": "application/json, text/event-stream",
+            },
+        )
+
+    assert unauthorized.status_code == 401
+    assert response.status_code == 200
+    assert response.json()["result"]["serverInfo"]["name"] == "Alexandria-Hermes"
+
+
 def test_fastmcp_server_registers_required_alexandria_tools() -> None:
     """FastMCP registration should expose the durable tool contract names."""
     client, _ = _client()
-    server = create_mcp_server(client=client)
+    server = build_mcp_server(client=client)
 
     tools = anyio.run(server.list_tools)
 

@@ -24,7 +24,6 @@ For this repository:
 - `<rule_root>` = `backend/.agents/rule`
 - current active app areas:
   - `archive`
-  - `cli_support`
   - `connections`
   - `librarian`
   - `library`

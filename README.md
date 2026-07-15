@@ -9,30 +9,29 @@
   <a href="https://docs.pydantic.dev/"><img alt="Pydantic" src="https://img.shields.io/badge/Pydantic-2.13.4-E92063?logo=pydantic&logoColor=white"></a>
   <a href="https://www.sqlalchemy.org/"><img alt="SQLAlchemy" src="https://img.shields.io/badge/SQLAlchemy-2.0.49-D71F00"></a>
   <a href="https://modelcontextprotocol.io/"><img alt="MCP" src="https://img.shields.io/badge/MCP-1.27.1-5B5BD6"></a>
-  <a href="https://typer.tiangolo.com/"><img alt="Typer" src="https://img.shields.io/badge/Typer-0.25.1-009688"></a>
   <a href="https://github.com/limhaneul12/alexandria-hermes/actions/workflows/backend.yml"><img alt="Backend CI" src="https://github.com/limhaneul12/alexandria-hermes/actions/workflows/backend.yml/badge.svg"></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
 </p>
 
 # Alexandria-Hermes
 
-Alexandria-Hermes is a backend/CLI/MCP service for agent long-term memory, memory compaction, Obsidian Markdown storage, and librarian collaboration.
+Alexandria-Hermes is a FastAPI + MCP backend for agent long-term memory, memory compaction, Obsidian Markdown storage, and librarian collaboration.
 
-The previous Next.js frontend and SQLite-backed skill/prompt/harness CRUD surfaces have been removed. Obsidian Markdown is the human-facing source of truth; SQLite is a rebuildable search/index/cache layer plus operational state.
+The previous Next.js frontend, standalone product CLI, and SQLite-backed skill/prompt/harness CRUD surfaces have been removed. Obsidian Markdown is the human-facing source of truth; SQLite is a rebuildable search/index/cache layer plus operational state.
 
 ```text
 Obsidian Markdown = canonical notes people can read and edit
 SQLite = local index/cache/search and backend operational state
-Alexandria-Hermes = FastAPI + CLI + MCP protocol
+Alexandria-Hermes = FastAPI backend + MCP endpoint
 Librarian = optional Obsidian-aware collaborator/chat pane
 ```
 
 ## Current scope
 
-Alexandria-Hermes now focuses on a narrow, backend-only recall surface:
+Alexandria-Hermes now focuses on a narrow MCP-first recall surface:
 
 - FastAPI backend on `127.0.0.1:8000`
-- CLI entrypoint: `alexandria-hermes`
+- Streamable HTTP MCP endpoint at `POST /mcp/`
 - MCP tools for Context Vault recall, RAG Context Packs, Memory Compact lookup, librarian collaboration, Obsidian note search/read/save, and skill-acquisition jobs
 - SQLite-backed operational storage for provider profiles, OAuth state, librarian jobs, workflow checkpoints, and rebuildable Obsidian/Context search indexes
 - Obsidian-backed Markdown notes under `SERVICE_OBSIDIAN_VAULT_PATH`
@@ -41,108 +40,105 @@ Alexandria-Hermes now focuses on a narrow, backend-only recall surface:
 Removed surfaces stay removed by contract tests:
 
 - Next.js/frontend runtime and frontend CI
+- standalone product/operator CLI commands
 - SQLite library item CRUD, category/folder management, and `app/library` package code
 - SQLite-backed skill/prompt/harness CRUD
 - MinIO/object-storage archive/import/provider/health surfaces
 - public Context Vault lint/manual-save routes
-- stale skill/prompt/context authoring CLI commands
 
-## Quick start: generated Obsidian vault
+## Quick start
 
-Terminal 1:
+Run the backend with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Or run it locally from `backend/`:
 
 ```bash
 cd backend
 uv sync
-uv run alexandria-hermes setup --mode backend-daemon --apply --write-guidebook --run-migrations
-uv run alexandria-hermes serve \
-  --env-file "$HOME/.hermes/alexandria-hermes/.env" \
-  --host 127.0.0.1 \
-  --port 8000
+uv run alembic upgrade head
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Terminal 2, after the backend is running:
+Required local secret:
 
 ```bash
-cd backend
-uv run alexandria-hermes obsidian init
-uv run alexandria-hermes obsidian reindex
+export ALEXANDRIA_OPERATOR_API_KEY="replace-with-at-least-32-characters"
 ```
 
-Open the generated vault path in Obsidian:
+Useful Obsidian storage settings:
+
+```bash
+export SERVICE_OBSIDIAN_VAULT_PATH="$HOME/Desktop/Alexandria"
+export SERVICE_ALEXANDRIA_OBSIDIAN_ROOT="."
+export SERVICE_MEMORY_COMPACT_NOTE_DIR="Memory Compacts"
+```
+
+Use `SERVICE_ALEXANDRIA_OBSIDIAN_ROOT="."` when the vault itself is the Alexandria workspace. This avoids a nested `Alexandria/Alexandria` layout.
+
+## MCP endpoint
+
+The FastAPI app mounts the MCP server at `/mcp/`. Requests must include the operator API key header:
 
 ```text
-~/.hermes/alexandria-hermes/data/obsidian-vault
+X-Alexandria-Operator-Key: <ALEXANDRIA_OPERATOR_API_KEY>
 ```
 
-## Quick start: existing vault named `Alexandria`
+MCP clients that support Streamable HTTP should connect to:
 
-If you already created an Obsidian vault such as `~/Desktop/Alexandria`, point setup at that vault and manage the vault root directly:
+```text
+http://127.0.0.1:8000/mcp/
+```
+
+A minimal JSON-RPC initialize smoke request is:
 
 ```bash
-cd backend
-uv sync
-uv run alexandria-hermes setup \
-  --mode backend-daemon \
-  --apply \
-  --write-guidebook \
-  --run-migrations \
-  --obsidian-vault-path "$HOME/Desktop/Alexandria" \
-  --alexandria-obsidian-root "."
-uv run alexandria-hermes serve \
-  --env-file "$HOME/.hermes/alexandria-hermes/.env" \
-  --host 127.0.0.1 \
-  --port 8000
+curl -sS http://127.0.0.1:8000/mcp/ \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "X-Alexandria-Operator-Key: $ALEXANDRIA_OPERATOR_API_KEY" \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"initialize",
+    "params":{
+      "protocolVersion":"2025-06-18",
+      "capabilities":{},
+      "clientInfo":{"name":"curl-smoke","version":"0.1.0"}
+    }
+  }'
 ```
-
-Use `--alexandria-obsidian-root "."` when the vault itself is the Alexandria workspace. This avoids a nested `Alexandria/Alexandria` layout.
-
-Smoke-tested local vault: `/Users/imhaneul/Desktop/Alexandria` with root `.`. The current local vault is larger than the generated smoke fixture; a full reindex recently saw 95 files, indexed 79 Alexandria notes, skipped 16 non-Alexandria files, verified plugin copy install, and confirmed delegated librarian ask falls back transparently to the local librarian when no OAuth provider runner is attached.
 
 ## Obsidian plugin: librarian side pane
 
-Install the local plugin into the target vault:
+The optional local plugin lives at:
 
-```bash
-cd backend
-uv run alexandria-hermes obsidian install-local \
-  --vault-path "$HOME/Desktop/Alexandria" \
-  --plugin-install-mode copy
+```text
+integrations/obsidian/alexandria-librarian/
 ```
 
-`copy` is the default and avoids Obsidian writing plugin `data.json` into the repo. Use `--plugin-install-mode symlink` only for plugin development.
+Copy or symlink that plugin into the target vault's `.obsidian/plugins/` folder during local plugin development. Then open Obsidian, enable Community plugins, enable **Alexandria Librarian**, and run the command palette action `Ask Alexandria Librarian`.
 
-Then open Obsidian, enable Community plugins, enable **Alexandria Librarian**, and run the command palette action `Ask Alexandria Librarian`. The pane now defaults to **Whole vault** scope so the librarian searches indexed memory, skills, prompts, plans, and context notes before citing source notes. Switch to active-note or selection scope only when the current note should be pinned as extra context. The pane sends the question, project, scope-derived context, note-type filter, source count, transcript preference, optional provider/profile ids, and explicit OAuth-delegate flag to the local backend. It also includes a **GPT OAuth connection** card for status, device-login start, browser verification, polling, and refresh; OAuth tokens remain in backend provider storage, not in Obsidian.
+The pane defaults to **Whole vault** scope so the librarian searches indexed memory, skills, prompts, plans, and context notes before citing source notes. OAuth tokens remain in backend provider storage, not in Obsidian.
 
 ## Canonical memory, skills, and prompts
 
-Reusable artifacts live as Obsidian notes, not SQLite library rows. The backend may keep operational job metadata, but the human-editable source of truth is Markdown in the vault:
+Reusable artifacts live as Obsidian notes, not SQLite library rows. The backend may keep operational job metadata, but the human-editable source of truth is Markdown in the vault.
+
+Memory Compact lifecycle APIs write Markdown under `SERVICE_MEMORY_COMPACT_NOTE_DIR`. Rebuild the Obsidian index with:
 
 ```bash
-uv run alexandria-hermes obsidian capture "Browser Verification Skill" \
-  --body-file ./skill.md \
-  --type skill \
-  --project alexandria-hermes
-
-uv run alexandria-hermes obsidian capture "Release Review Prompt" \
-  --body-file ./prompt.md \
-  --type prompt \
-  --prompt-kind template
-
-uv run alexandria-hermes obsidian search "bounded waits" --type skill
-uv run alexandria-hermes obsidian search "release notes" --type prompt
+curl -sS -X POST http://127.0.0.1:8000/obsidian/index/rebuild
 ```
 
-Memory Compact lifecycle APIs already write Markdown under `SERVICE_MEMORY_COMPACT_NOTE_DIR`; run `obsidian reindex` to rebuild SQLite search/cache rows from the vault after manual edits or cache deletion. If SQLite is deleted, Markdown can rebuild indexes/caches; provider profiles, OAuth state, and job/workflow operational state should be backed up separately when needed.
+If SQLite is deleted, Markdown can rebuild indexes/caches. Provider profiles, OAuth state, and job/workflow operational state should be backed up separately when needed.
 
 ## Graph edges, related notes, and workflows
 
-Reindex now rebuilds an `obsidian_edges` cache from relation frontmatter and body wikilinks. Obsidian Markdown remains canonical; deleting SQLite and running reindex rebuilds the cache.
-
-```bash
-uv run alexandria-hermes obsidian related --path "START_HERE.md"
-uv run alexandria-hermes obsidian ask "정리해줘" --delegate --provider-id codex-oauth --profile-id research-critic
-```
+Reindex rebuilds an `obsidian_edges` cache from relation frontmatter and body wikilinks. Obsidian Markdown remains canonical; deleting SQLite and running reindex rebuilds the cache.
 
 HTTP/MCP additions include related-note retrieval and resumable LangGraph librarian workflows:
 
@@ -155,7 +151,7 @@ POST /obsidian/librarian/workflows/{thread_id}/resume
 POST /obsidian/librarian/workflows/{thread_id}/cancel
 ```
 
-The workflow runtime now uses the real `langgraph` package with `StateGraph`, `interrupt(...)`, `Command(resume=...)`, and a SQLite LangGraph checkpoint file. Default checkpoint path: `SERVICE_OBSIDIAN_LIBRARIAN_LANGGRAPH_CHECKPOINT_PATH=./data/obsidian_librarian_langgraph.sqlite`. Approving `ask_oauth_librarian` routes to the backend GPT/OAuth librarian provider/profile when connected; missing providers/profiles degrade to guidance-only without writing OAuth secrets into Obsidian.
+The workflow runtime uses `langgraph` with `StateGraph`, `interrupt(...)`, `Command(resume=...)`, and a SQLite LangGraph checkpoint file. Default checkpoint path: `SERVICE_OBSIDIAN_LIBRARIAN_LANGGRAPH_CHECKPOINT_PATH=./data/obsidian_librarian_langgraph.sqlite`.
 
 ## Local development
 
@@ -176,18 +172,8 @@ cd backend
 make ci
 ```
 
-Run the backend with Docker Compose:
-
-```bash
-docker compose up --build
-```
-
 Health check:
 
 ```bash
 curl http://127.0.0.1:8000/health/live
 ```
-
-## Direction
-
-Use Obsidian/Markdown as the human-facing recall surface. Alexandria-Hermes should provide the agent-facing protocol: recall durable memory, prepare compacts as Obsidian notes, ask or route librarian work, and preserve skill-acquisition job results without reintroducing a web UI, SQLite CRUD library, or object-storage import surface.

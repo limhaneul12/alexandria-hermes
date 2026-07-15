@@ -60,7 +60,7 @@ class LibrarianProfileRouter:
         """Select librarian profiles by explicit id or specialty routing.
 
         Args:
-            command: Ask-librarian command from API/MCP/CLI.
+            command: Ask-librarian command from API/MCP.
 
         Returns:
             LibrarianRoutingDecision: Selected profiles and routing evidence.

@@ -264,7 +264,7 @@ Use a short comment only when it communicates something the code itself cannot m
 
 ### Docstring direction
 
-- Public CLI commands, public-facing adapter entrypoints, and custom exceptions may use short docstrings.
+- Public-facing adapter entrypoints and custom exceptions may use short docstrings.
 - Keep docstrings concise and factual.
 - Use the project docstring format from
   `backend/.agents/rule/archtecture_rule/05-type-and-schema-rules.md` when a

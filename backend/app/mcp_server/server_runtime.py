@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
-from collections.abc import Sequence
-
 from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
-from app.mcp_server.mcp_protocol_enums import McpTransport
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextScope,
@@ -20,14 +16,19 @@ from app.shared.types.extra_types import JSONValue
 from mcp.server.fastmcp import FastMCP
 
 
-def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
-    """Create the Alexandria-Hermes FastMCP server.
+def build_mcp_server(
+    client: AlexandriaApiClient | None = None,
+    *,
+    streamable_http_path: str = "/mcp",
+) -> FastMCP:
+    """Build the Alexandria-Hermes FastMCP server.
 
     Args:
         client: Optional backend API client for tests.
+        streamable_http_path: FastMCP Streamable HTTP route path.
 
     Returns:
-        Configured FastMCP server.
+        FastMCP server with async tool callbacks registered.
     """
     if client is None:
         api_client = AlexandriaApiClient(AlexandriaApiSettings.from_env())
@@ -41,6 +42,7 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
             "a tool name explicitly says delete."
         ),
         json_response=True,
+        streamable_http_path=streamable_http_path,
     )
 
     @server.tool(name="alexandria_search")
@@ -593,42 +595,3 @@ def create_mcp_server(client: AlexandriaApiClient | None = None) -> FastMCP:
         )
 
     return server
-
-
-def build_parser() -> argparse.ArgumentParser:
-    """Build the MCP server parser.
-
-    Args:
-        None.
-
-    Returns:
-        Configured argument parser.
-    """
-    parser = argparse.ArgumentParser(description="Alexandria-Hermes MCP server")
-    parser.add_argument(
-        "--transport",
-        default=McpTransport.STDIO.value,
-        choices=[transport.value for transport in McpTransport],
-        help="MCP transport to run.",
-    )
-    return parser
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the MCP server.
-
-    Args:
-        argv: Optional CLI arguments.
-
-    Returns:
-        Process-style exit code.
-    """
-    parser = build_parser()
-    namespace = parser.parse_args(argv)
-    server = create_mcp_server()
-    server.run(transport=namespace.transport)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -50,7 +50,7 @@ Prefer Pydantic v2 for I/O DTOs at external boundaries:
 - response payloads
 - external input validation
 - settings/config parsing when needed
-- CLI/MCP command input and output contracts when they cross process/tool boundaries
+- MCP command input and output contracts when they cross process/tool boundaries
 
 Do not use Pydantic models as internal domain state by default unless there is a concrete validation/serialization reason.
 
@@ -380,7 +380,7 @@ Good candidates:
 
 - repository record dictionaries
 - item/detail payload dictionaries
-- normalized provider/MCP/CLI payload dictionaries after boundary parsing
+- normalized provider/MCP payload dictionaries after boundary parsing
 - patch/update payload shapes that still need dictionary semantics
 
 Use dataclasses instead when the shape is object state with behavior or

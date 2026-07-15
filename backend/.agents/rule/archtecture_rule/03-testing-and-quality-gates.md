@@ -10,7 +10,6 @@ Keep tests centralized under one backend test root, while preserving domain owne
 
 Current layout:
 
-- `<test_root>/cli/`
 - `<test_root>/library/`
 - `<test_root>/mcp/`
 - `<test_root>/platform/`

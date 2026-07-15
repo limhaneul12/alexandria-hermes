@@ -63,7 +63,7 @@ def without_oauth_sensitive_fields(
     Args:
         payload: Backend OAuth lifecycle response.
         keep_device_user_instructions: Whether to keep the device-flow
-            ``user_code`` and complete verification URL for a local CLI/UI that
+            ``user_code`` and complete verification URL for a local UI that
             must show them to the operator.
 
     Returns:
