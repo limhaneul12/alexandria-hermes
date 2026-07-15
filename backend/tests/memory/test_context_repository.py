@@ -11,6 +11,7 @@ from threading import Event
 import anyio
 import pytest
 from app.memory.application.context_service import ContextService
+from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
 from app.memory.domain.entities.context_read_models import ContextPack
 from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
@@ -24,12 +25,12 @@ from app.memory.infrastructure.models.context_models import ContextChunkORM, Con
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
 from app.shared.exceptions import (
     MemoryContextNotFoundError,
 )
 from app.shared.infrastructure.database import Database
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 from tests.memory.context_seed import seed_context
 
 
@@ -662,6 +663,52 @@ semantic-target was stored without an embedding.
         assert result.warnings == []
         assert [match.context.id for match in after.matches] == [target.id]
         assert after.matches[0].vector_score is not None
+
+    anyio.run(scenario)
+
+
+def test_rag_health_degrades_when_embedding_status_probe_hits_storage_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RAG status should not 500 when embedding index status probe fails."""
+
+    async def scenario() -> None:
+        async with (
+            _temporary_database(tmp_path / "rag-status-storage-error.db") as database,
+            database.session() as session,
+        ):
+            repository = SqlAlchemyContextRepository(session=session)
+
+            async def failing_embedding_index_status(
+                *,
+                model_name: str,
+                dimensions: int,
+                fingerprint_key: str,
+            ) -> RagHealthState:
+                raise OperationalError("SELECT context_chunks.id", {}, "disk I/O error")
+
+            monkeypatch.setattr(
+                repository,
+                "embedding_index_status",
+                failing_embedding_index_status,
+            )
+            service = ContextService(
+                repository=repository,
+                embedding_provider=KeywordEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+
+            health = await service.rag_health_with_index_status()
+
+        assert health.fts is RagHealthState.HEALTHY
+        assert health.vector is RagHealthState.HEALTHY
+        assert health.embedding is RagHealthState.DEGRADED
+        assert health.default_strategy is RagStrategy.FTS_ONLY
+        assert any(
+            "Embedding index status check failed" in warning
+            for warning in health.warnings
+        )
 
     anyio.run(scenario)
 

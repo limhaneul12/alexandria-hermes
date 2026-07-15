@@ -6,7 +6,6 @@ import httpx
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 
-from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.config import settings_model_config
 from app.shared.utils.http_helpers.json_payloads import (
@@ -33,10 +32,6 @@ class AlexandriaApiSettings(BaseSettings):
     base_url: str = Field(
         default=DEFAULT_ALEXANDRIA_API_URL,
         validation_alias=AliasChoices("ALEXANDRIA_API_URL", "HERMES_API_URL"),
-    )
-    operator_api_key: str | None = Field(
-        default=None,
-        validation_alias="ALEXANDRIA_OPERATOR_API_KEY",
     )
     timeout: float = Field(
         default=DEFAULT_MCP_TIMEOUT_SECONDS,
@@ -69,23 +64,6 @@ class AlexandriaApiSettings(BaseSettings):
         """
         stripped = value.strip()
         return (stripped or DEFAULT_ALEXANDRIA_API_URL).rstrip("/")
-
-    @field_validator("operator_api_key", mode="before")
-    @classmethod
-    # Broad type justified: Pydantic before validators receive raw settings input.
-    def normalize_operator_key(cls, value: object) -> str | None:
-        """Normalize optional operator-key environment values.
-
-        Args:
-            value: Raw operator key value.
-
-        Returns:
-            Non-empty operator key, or None.
-        """
-        if not isinstance(value, str):
-            return None
-        stripped = value.strip()
-        return stripped or None
 
     @field_validator("timeout")
     @classmethod
@@ -192,8 +170,6 @@ class AlexandriaApiClient:
         headers: HttpHeaders = {"Accept": "application/json"}
         if request_body is not None:
             headers["Content-Type"] = "application/json"
-        if self._settings.operator_api_key:
-            headers[OPERATOR_API_KEY_HEADER] = self._settings.operator_api_key
         try:
             async with httpx.AsyncClient(
                 base_url=self._settings.base_url,

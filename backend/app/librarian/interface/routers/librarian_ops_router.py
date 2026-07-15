@@ -31,7 +31,6 @@ from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import 
     SkillAcquisitionJobResponse,
     skill_acquisition_job_response,
 )
-from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
 from app.shared.infrastructure.database import Database
@@ -41,7 +40,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, status
 router = APIRouter(
     prefix="/librarians",
     tags=["librarian"],
-    dependencies=[Depends(require_operator_api_key)],
 )
 logger = logging.getLogger(__name__)
 

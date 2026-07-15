@@ -51,6 +51,7 @@ from app.shared.exceptions import (
 )
 from app.shared.types.types_convert_utils import enum_value, now_utc
 from asyncer import asyncify
+from sqlalchemy.exc import SQLAlchemyError
 
 
 class ContextService:
@@ -333,7 +334,10 @@ class ContextService:
         ):
             return health
 
-        index_status = await self._embedding_index_status(provider)
+        try:
+            index_status = await self._embedding_index_status(provider)
+        except SQLAlchemyError as exc:
+            return _embedding_index_status_probe_failed_health(health, exc)
         if index_status is not RagHealthState.REINDEX_REQUIRED:
             return health
 
@@ -676,6 +680,22 @@ class ContextService:
             if source_status is RagHealthState.REINDEX_REQUIRED:
                 return source_status
         return RagHealthState.HEALTHY
+
+
+def _embedding_index_status_probe_failed_health(
+    health: RagDependencyHealth,
+    error: SQLAlchemyError,
+) -> RagDependencyHealth:
+    warning = (
+        "Embedding index status check failed; vector recall is disabled until "
+        f"the storage probe succeeds: {error.__class__.__name__}"
+    )
+    return replace(
+        health,
+        embedding=RagHealthState.DEGRADED,
+        default_strategy=RagStrategy.FTS_ONLY,
+        warnings=[*health.warnings, warning],
+    )
 
 
 async def _reindex_embedding_sources(

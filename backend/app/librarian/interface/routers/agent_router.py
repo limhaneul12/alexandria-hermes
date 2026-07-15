@@ -12,7 +12,6 @@ from app.librarian.interface.schemas.agent.agent_schema import (
     AgentResponse,
     AgentResponseList,
 )
-from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
 from app.shared.types.types_convert_utils import now_utc
@@ -22,7 +21,6 @@ from fastapi import APIRouter, Depends, status
 router = APIRouter(
     prefix="/librarians/profiles",
     tags=["agents"],
-    dependencies=[Depends(require_operator_api_key)],
 )
 
 

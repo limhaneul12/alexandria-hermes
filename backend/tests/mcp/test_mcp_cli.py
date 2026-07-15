@@ -8,10 +8,11 @@ from collections.abc import Sequence
 from enum import StrEnum
 
 from app import cli
-from app.cli import librarian_gateway as cli_librarian_gateway
-from app.cli import librarian_readiness_commands as cli_librarian_readiness
-from app.cli import librarian_workflow_commands as cli_librarian
-from app.cli import mcp_server_commands as cli_mcp
+from app.cli import (
+    librarian_gateway as cli_librarian_gateway,
+    librarian_readiness_commands as cli_librarian_readiness,
+    mcp_server_commands as cli_mcp,
+)
 from app.cli.type_validate.command_options import RequiredMcpTool
 from app.cli.type_validate.mcp_protocol_payload_contracts import (
     decode_mcp_json_response,
@@ -63,7 +64,11 @@ def test_cli_type_contracts_use_str_enums() -> None:
 def test_mcp_runtime_main_runs_selected_transport(monkeypatch) -> None:
     """Runtime MCP entrypoint should run FastMCP with the requested transport."""
     fake_server = FakeMcpServer()
-    monkeypatch.setattr(server_runtime, "build_mcp_server", lambda: fake_server)
+    monkeypatch.setattr(
+        server_runtime,
+        "build_mcp_server",
+        lambda transport_host=server_runtime.DEFAULT_MCP_TRANSPORT_HOST: fake_server,
+    )
 
     exit_code = server_runtime.main(["--transport", "streamable-http"])
 

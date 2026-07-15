@@ -8,7 +8,6 @@ from app.connections.interface.schemas.librarian.oauth_schema import (
     LibrarianOAuthStatusResponse,
 )
 from app.container import ApplicationContainer
-from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import CONNECTIONS_ROUTE_EXCEPTION_MAPPING
 from dependency_injector.wiring import Provide, inject
@@ -17,7 +16,6 @@ from fastapi import APIRouter, Depends, status
 router = APIRouter(
     prefix="/settings/connections",
     tags=["librarians"],
-    dependencies=[Depends(require_operator_api_key)],
 )
 
 

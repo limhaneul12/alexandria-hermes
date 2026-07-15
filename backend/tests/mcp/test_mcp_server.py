@@ -7,7 +7,6 @@ from inspect import iscoroutinefunction
 
 import anyio
 import httpx
-import pytest
 from app.main import app
 from app.mcp_server.backend_api_client import (
     AlexandriaApiClient,
@@ -32,10 +31,10 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_librarian_oauth_start,
     alexandria_librarian_oauth_status,
     alexandria_librarian_readiness,
+    alexandria_librarian_refresh_current_compact,
     alexandria_librarian_review_apply_moves,
     alexandria_librarian_review_move_plan,
     alexandria_librarian_review_queue,
-    alexandria_librarian_refresh_current_compact,
     alexandria_librarian_route_preview,
     alexandria_librarian_vault_apply_moves,
     alexandria_librarian_vault_inventory,
@@ -56,7 +55,6 @@ from app.mcp_server.server_runtime import build_mcp_server
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
-from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
@@ -74,7 +72,6 @@ def _client() -> tuple[AlexandriaApiClient, list[RecordedCall]]:
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -94,7 +91,6 @@ def _client_with_payload(
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -157,8 +153,8 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
     assert all(iscoroutinefunction(tool) for tool in async_tools)
 
 
-def test_mcp_client_sends_backend_http_only_with_auth_headers() -> None:
-    """MCP client should call the backend URL and attach the operator header."""
+def test_mcp_client_sends_backend_http_without_custom_auth_headers() -> None:
+    """MCP client should call the backend URL without custom auth headers."""
     client, calls = _client()
 
     payload = _run_json(
@@ -173,25 +169,12 @@ def test_mcp_client_sends_backend_http_only_with_auth_headers() -> None:
     assert request.headers["accept"] == "application/json"
     assert request.headers["content-type"] == "application/json"
     assert "authorization" not in request.headers
-    assert request.headers["X-Alexandria-Operator-Key"] == "operator-secret"
+    assert "x-alexandria-operator-key" not in request.headers
     assert request_body == {
         "query": "context recall",
         "strategy": "FTS_ONLY",
         "limit": 3,
     }
-
-
-def test_mcp_settings_ignore_legacy_api_token_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """MCP env loading should not treat the legacy token as operator authority."""
-    legacy_token_name = "ALEXANDRIA_" + "API_TOKEN"
-    monkeypatch.setenv("ALEXANDRIA_OPERATOR_API_KEY", "")
-    monkeypatch.setenv(legacy_token_name, "legacy-token")
-
-    settings = AlexandriaApiSettings.from_env()
-
-    assert settings.operator_api_key is None
 
 
 def test_mcp_tools_map_to_non_destructive_backend_endpoints() -> None:
@@ -304,7 +287,6 @@ def test_mcp_skill_acquisition_status_polling_returns_job_status() -> None:
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -548,7 +530,6 @@ def test_mcp_librarian_review_apply_requires_confirmation_when_plan_has_moves() 
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -613,7 +594,6 @@ def test_mcp_librarian_review_apply_confirmed_calls_apply_endpoint() -> None:
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -678,7 +658,6 @@ def test_mcp_librarian_readiness_combines_health_compact_and_review_queue() -> N
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -733,7 +712,6 @@ def test_mcp_librarian_readiness_flags_stale_current_compact() -> None:
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -794,7 +772,6 @@ def test_mcp_librarian_readiness_flags_attention_items() -> None:
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -874,7 +851,6 @@ def test_mcp_librarian_readiness_separates_manual_review_queue_action() -> None:
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -924,7 +900,6 @@ def test_mcp_librarian_refresh_current_compact_plans_stale_compact_refresh() -> 
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -984,7 +959,6 @@ def test_mcp_librarian_refresh_current_compact_applies_stale_compact_refresh() -
     client = AlexandriaApiClient(
         AlexandriaApiSettings(
             base_url="http://backend:8000",
-            operator_api_key="operator-secret",
             timeout=12.0,
         ),
         transport=httpx.MockTransport(fake_transport),
@@ -1218,8 +1192,8 @@ def test_mcp_librarian_oauth_tools_map_to_safe_backend_lifecycle() -> None:
     assert "oauth_access_token" not in serialized_payloads
 
 
-def test_fastapi_app_mounts_guarded_streamable_http_mcp_endpoint() -> None:
-    """FastAPI should expose the real FastMCP HTTP app behind operator auth."""
+def test_fastapi_app_accepts_tunnel_host_for_streamable_http_mcp() -> None:
+    """FastAPI should expose MCP to reverse-tunnel hosts without 421."""
     initialize_request = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -1231,20 +1205,26 @@ def test_fastapi_app_mounts_guarded_streamable_http_mcp_endpoint() -> None:
         },
     }
 
-    with TestClient(app, base_url="http://127.0.0.1:8000") as client:
-        unauthorized = client.post("/mcp/", json=initialize_request)
+    with TestClient(
+        app, base_url="https://b973-121-135-181-35.ngrok-free.app"
+    ) as client:
         response = client.post(
             "/mcp/",
             json=initialize_request,
-            headers={
-                OPERATOR_API_KEY_HEADER: "test-operator-api-key-for-route-contracts-000000000000",
-                "Accept": "application/json, text/event-stream",
-            },
+            headers={"Accept": "application/json, text/event-stream"},
         )
 
-    assert unauthorized.status_code == 401
     assert response.status_code == 200
     assert response.json()["result"]["serverInfo"]["name"] == "Alexandria-Hermes"
+
+
+def test_fastmcp_server_uses_tunnel_compatible_transport_host() -> None:
+    """FastMCP should not install localhost-only Host protection for tunnels."""
+    client, _ = _client()
+    server = build_mcp_server(client=client)
+
+    assert server.settings.host == "0.0.0.0"
+    assert server.settings.transport_security is None
 
 
 def test_fastmcp_server_registers_required_alexandria_tools() -> None:

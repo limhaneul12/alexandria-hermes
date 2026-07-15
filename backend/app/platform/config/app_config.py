@@ -1,21 +1,21 @@
 """Common service configuration model.
 
 This module reads shared service configuration from ``.env`` and environment
-variables. Most service fields use the ``SERVICE_`` prefix; the single operator
-secret uses the public Alexandria runtime name, ``ALEXANDRIA_OPERATOR_API_KEY``.
+variables. Most service fields use the ``SERVICE_`` prefix.
 """
 
 from __future__ import annotations
 
 from typing import Final, Literal
 
+from app.mcp_server.type_validate.auth_contracts import McpAuthMode
 from app.memory.application.retrieval.embedding_factory import EmbeddingProviderName
 from app.memory.application.retrieval.embedding_provider import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
 )
 from app.shared.utils.config import settings_model_config
-from pydantic import Field, SecretStr
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 DEFAULT_CODEX_OAUTH_ISSUER: Final[str] = "https://auth.openai.com"
@@ -47,11 +47,22 @@ class AppConfig(BaseSettings):
     app_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     # 32-byte URL-safe base64 key or passphrase used to encrypt provider secrets at rest.
     secret_encryption_key: str | None = Field(default=None)
-    # Operator API key required for sensitive settings/provider operations.
-    operator_api_key: SecretStr = Field(
-        min_length=32,
-        validation_alias="ALEXANDRIA_OPERATOR_API_KEY",
-    )
+    # Host value passed to FastMCP transport settings. Use 0.0.0.0 for reverse tunnels.
+    mcp_transport_host: str = Field(default="0.0.0.0", min_length=1)
+    # Public MCP authentication mode for ChatGPT Apps/Connectors.
+    mcp_auth_mode: McpAuthMode = Field(default=McpAuthMode.NONE)
+    # OAuth issuer expected in ChatGPT MCP Bearer tokens when MCP auth is oauth2.
+    mcp_oauth_issuer: str | None = Field(default=None)
+    # OAuth audience/resource expected in ChatGPT MCP Bearer tokens.
+    mcp_oauth_audience: str | None = Field(default=None)
+    # JWKS endpoint used to verify ChatGPT MCP Bearer token signatures.
+    mcp_oauth_jwks_url: str | None = Field(default=None)
+    # Public MCP resource URL advertised in protected-resource metadata.
+    mcp_oauth_resource: str | None = Field(default=None)
+    # Comma-separated OAuth authorization-server metadata URLs.
+    mcp_oauth_authorization_servers: str | None = Field(default=None)
+    # Space-separated scopes required for ChatGPT MCP Bearer tokens.
+    mcp_oauth_required_scope: str = Field(default="alexandria:mcp")
     # OpenAI Codex OAuth issuer used to derive official device-flow endpoints.
     codex_oauth_issuer: str = Field(default=DEFAULT_CODEX_OAUTH_ISSUER, min_length=1)
     # Public OpenAI Codex OAuth client id. This is overridable but not a secret.
@@ -99,3 +110,50 @@ class AppConfig(BaseSettings):
         default="./data/obsidian_librarian_langgraph.sqlite",
         min_length=1,
     )
+
+    @model_validator(mode="after")
+    def validate_mcp_oauth_configuration(self) -> AppConfig:
+        """Validate MCP OAuth settings when OAuth mode is enabled.
+
+        Returns:
+            Validated app config.
+        """
+        if self.mcp_auth_mode != McpAuthMode.OAUTH2:
+            return self
+        missing = [
+            name
+            for name, value in (
+                ("mcp_oauth_issuer", self.mcp_oauth_issuer),
+                ("mcp_oauth_audience", self.mcp_oauth_audience),
+                ("mcp_oauth_jwks_url", self.mcp_oauth_jwks_url),
+            )
+            if value is None or not value
+        ]
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"MCP OAuth mode requires: {joined}")
+        return self
+
+    def mcp_oauth_required_scopes(self) -> tuple[str, ...]:
+        """Return normalized MCP OAuth scopes from configuration.
+
+        Returns:
+            Required scope tuple.
+        """
+        return tuple(scope for scope in self.mcp_oauth_required_scope.split() if scope)
+
+    def mcp_oauth_authorization_server_urls(self) -> tuple[str, ...]:
+        """Return advertised OAuth authorization-server metadata URLs.
+
+        Returns:
+            Authorization server URL tuple.
+        """
+        if self.mcp_oauth_authorization_servers:
+            return tuple(
+                item.strip()
+                for item in self.mcp_oauth_authorization_servers.split(",")
+                if item.strip()
+            )
+        if self.mcp_oauth_issuer:
+            return (self.mcp_oauth_issuer,)
+        return ()

@@ -15,10 +15,7 @@ def test_app_config_uses_hermes_codex_oauth_defaults_when_env_is_absent(
     monkeypatch.delenv("SERVICE_CODEX_OAUTH_DEVICE_EXPIRES_IN_SECONDS", raising=False)
     monkeypatch.delenv("SERVICE_CODEX_OAUTH_MIN_POLL_INTERVAL_SECONDS", raising=False)
 
-    config = AppConfig(
-        _env_file=None,
-        operator_api_key="x" * 32,
-    )
+    config = AppConfig(_env_file=None)
 
     expected = {
         "issuer": "https://auth.openai.com",
@@ -55,10 +52,7 @@ def test_app_config_keeps_codex_oauth_env_overrides(
         "/tmp/langgraph.sqlite",
     )
 
-    config = AppConfig(
-        _env_file=None,
-        operator_api_key="x" * 32,
-    )
+    config = AppConfig(_env_file=None)
 
     assert config.codex_oauth_issuer == "https://auth.openai.com"
     assert config.codex_oauth_client_id == "custom-client-id"
@@ -69,13 +63,40 @@ def test_app_config_keeps_codex_oauth_env_overrides(
     )
 
 
-def test_app_config_reads_operator_key_from_alexandria_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The shared operator secret should use the Alexandria env name."""
-    expected_key = "alexandria-operator-key-for-local-single-operator"
-    monkeypatch.setenv("ALEXANDRIA_OPERATOR_API_KEY", expected_key)
-
+def test_app_config_defaults_mcp_auth_to_no_auth() -> None:
+    """ChatGPT developer-mode MCP connections should not require custom headers."""
     config = AppConfig(_env_file=None)
 
-    assert config.operator_api_key.get_secret_value() == expected_key
+    assert config.mcp_auth_mode == "none"
+    assert config.mcp_transport_host == "0.0.0.0"
+    assert config.mcp_oauth_required_scopes() == ("alexandria:mcp",)
+
+
+def test_app_config_rejects_incomplete_mcp_oauth_config() -> None:
+    """OAuth mode should fail closed when issuer metadata is missing."""
+    with pytest.raises(ValueError, match="MCP OAuth mode requires"):
+        AppConfig(_env_file=None, mcp_auth_mode="oauth2")
+
+
+def test_app_config_accepts_complete_mcp_oauth_config() -> None:
+    """OAuth mode should normalize resource-server metadata settings."""
+    config = AppConfig(
+        _env_file=None,
+        mcp_auth_mode="oauth2",
+        mcp_oauth_issuer="https://auth.example.com",
+        mcp_oauth_audience="https://mcp.example.com/mcp",
+        mcp_oauth_jwks_url="https://auth.example.com/.well-known/jwks.json",
+        mcp_oauth_authorization_servers=(
+            "https://auth.example.com, https://backup.example.com"
+        ),
+        mcp_oauth_required_scope="alexandria:mcp alexandria:read",
+    )
+
+    assert config.mcp_oauth_authorization_server_urls() == (
+        "https://auth.example.com",
+        "https://backup.example.com",
+    )
+    assert config.mcp_oauth_required_scopes() == (
+        "alexandria:mcp",
+        "alexandria:read",
+    )

@@ -24,10 +24,14 @@ from app.librarian.interface.routers.librarian_ops_router import (
     router as librarian_ops_router,
 )
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
+from app.mcp_server.http_auth_factory import build_mcp_http_auth_gate
 from app.mcp_server.http_mount import (
     MCP_HTTP_MOUNT_PATH,
     McpHttpMount,
     mcp_streamable_http_lifespan,
+)
+from app.mcp_server.interface.routers.protected_resource_metadata_router import (
+    router as protected_resource_metadata_router,
 )
 from app.memory.interface.routers.context_retrieval_router import (
     router as context_retrieval_router,
@@ -79,11 +83,8 @@ def create_app(app_config: AppConfig) -> FastAPI:
     """
     lifecycle = LifecycleState()
     container = ApplicationContainer()
-    operator_api_key = app_config.operator_api_key.get_secret_value()
-    mcp_mount = McpHttpMount(expected_operator_api_key=operator_api_key)
-    mcp_api_settings = AlexandriaApiSettings.from_env().model_copy(
-        update={"operator_api_key": operator_api_key}
-    )
+    mcp_mount = McpHttpMount(build_mcp_http_auth_gate(app_config))
+    mcp_api_settings = AlexandriaApiSettings.from_env()
     mcp_api_client = AlexandriaApiClient(mcp_api_settings)
 
     async def refresh_dependency_health() -> None:
@@ -121,7 +122,10 @@ def create_app(app_config: AppConfig) -> FastAPI:
             lifecycle.mark_database_unavailable()
         lifecycle.mark_running()
         try:
-            async with mcp_streamable_http_lifespan(client=mcp_api_client) as mcp_app:
+            async with mcp_streamable_http_lifespan(
+                client=mcp_api_client,
+                transport_host=app_config.mcp_transport_host,
+            ) as mcp_app:
                 mcp_mount.set_app(mcp_app)
                 try:
                     yield
@@ -143,6 +147,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
 
     app.state.lifecycle = lifecycle
     app.state.container = container
+    app.state.app_config = app_config
 
     async def resolve_database() -> Database:
         """Resolve the lifecycle-owned database resource for request middleware.
@@ -169,6 +174,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
         lifecycle=lifecycle,
         refresh_dependency_health=refresh_dependency_health,
     )
+    app.include_router(protected_resource_metadata_router)
     app.mount(MCP_HTTP_MOUNT_PATH, mcp_mount)
 
     app.include_router(context_router)

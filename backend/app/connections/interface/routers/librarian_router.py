@@ -12,7 +12,6 @@ from app.connections.interface.schemas.librarian.provider_schema import (
     LibrarianProviderTestResponse,
 )
 from app.container import ApplicationContainer
-from app.platform.security.operator_api_key import require_operator_api_key
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import (
     CONNECTIONS_PROVIDER_TEST_EXCEPTION_MAPPING,
@@ -24,7 +23,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 router = APIRouter(
     prefix="/settings/connections",
     tags=["librarians"],
-    dependencies=[Depends(require_operator_api_key)],
 )
 
 

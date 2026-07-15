@@ -20,16 +20,20 @@ from app.memory.domain.event_enum.memory_compact_enums import (
 )
 from app.shared.types.extra_types import JSONValue
 
+DEFAULT_MCP_TRANSPORT_HOST = "0.0.0.0"
+
 
 def build_mcp_server(
     client: AlexandriaApiClient | None = None,
     streamable_http_path: str = "/mcp",
+    transport_host: str = DEFAULT_MCP_TRANSPORT_HOST,
 ) -> FastMCP:
     """Build the Alexandria-Hermes FastMCP server.
 
     Args:
         client: Optional backend API client for tests.
         streamable_http_path: FastMCP Streamable HTTP route path.
+        transport_host: Host value used by FastMCP transport security.
 
     Returns:
         FastMCP server with async tool callbacks registered.
@@ -46,6 +50,7 @@ def build_mcp_server(
             "a tool name explicitly says delete."
         ),
         json_response=True,
+        host=transport_host,
         streamable_http_path=streamable_http_path,
     )
 
@@ -768,6 +773,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="MCP transport protocol.",
     )
     args = parser.parse_args(argv)
-    server = build_mcp_server()
+    server = build_mcp_server(transport_host=DEFAULT_MCP_TRANSPORT_HOST)
     server.run(transport=args.transport)
     return 0

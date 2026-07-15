@@ -23,7 +23,6 @@ from app.cli.type_validate.mcp_protocol_payload_contracts import (
 from app.mcp_server import server_runtime
 from app.mcp_server.backend_api_client import AlexandriaApiError, AlexandriaApiSettings
 from app.mcp_server.type_validate.transport_contracts import McpTransport
-from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.types.extra_types import JSONValue
 
 mcp_app = typer.Typer(
@@ -112,8 +111,6 @@ class McpToolSmokeChecker:
             "Accept": "application/json, text/event-stream",
             "Content-Type": "application/json",
         }
-        if self._settings.operator_api_key:
-            headers[OPERATOR_API_KEY_HEADER] = self._settings.operator_api_key
         return headers
 
     def _session_headers(
