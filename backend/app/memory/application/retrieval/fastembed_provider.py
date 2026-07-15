@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
 
-from app.retrieval.application.embedding_provider import (
+from app.memory.application.retrieval.embedding_provider import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
     EmbeddingProvider,

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from app.memory.domain.entities.context_read_models import RagDependencyHealth
-from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
-from app.retrieval.application.embedding_provider import (
+from app.memory.application.retrieval.embedding_provider import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
     EmbeddingProvider,
 )
-from app.retrieval.application.sqlite_vec import probe_sqlite_vec
+from app.memory.application.retrieval.sqlite_vec import probe_sqlite_vec
+from app.memory.domain.entities.context_read_models import RagDependencyHealth
+from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
 
 
 def build_rag_dependency_health(

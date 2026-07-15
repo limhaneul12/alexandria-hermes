@@ -30,7 +30,7 @@ from app.obsidian.infrastructure.models.obsidian_index_models import ObsidianChu
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
-from app.retrieval.application.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
 from app.shared.infrastructure.database import Database
 from sqlalchemy import func, select
 from tests.memory.context_seed import seed_context

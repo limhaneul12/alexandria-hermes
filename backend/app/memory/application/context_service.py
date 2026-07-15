@@ -11,6 +11,13 @@ from app.memory.application.context_lint import (
     ContextLintResult,
     lint_context,
 )
+from app.memory.application.retrieval.context_pack import build_context_pack
+from app.memory.application.retrieval.context_ranking import merge_hybrid_matches
+from app.memory.application.retrieval.embedding_provider import (
+    EmbeddingProvider,
+)
+from app.memory.application.retrieval.rag_health import build_rag_dependency_health
+from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.memory.domain.contracts.context_contracts import (
     ContextAccessCreate,
     ContextChunkEmbeddingUpdate,
@@ -35,13 +42,6 @@ from app.memory.domain.event_enum.context_enums import (
 )
 from app.memory.domain.repositories.context_repository import IContextRepository
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
-from app.retrieval.application.context_pack import build_context_pack
-from app.retrieval.application.context_ranking import merge_hybrid_matches
-from app.retrieval.application.embedding_provider import (
-    EmbeddingProvider,
-)
-from app.retrieval.application.rag_health import build_rag_dependency_health
-from app.retrieval.application.vector_serialization import vector_to_sqlite_json
 from app.shared.exceptions import (
     MemoryContextNotFoundError,
     MemoryContextValidationError,

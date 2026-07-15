@@ -11,14 +11,11 @@ Keep the backend organized by bounded context, while avoiding both root-level sp
 - `<test_root>/` is the root test area.
 - Domain-specific code belongs in bounded-context folders.
 - Current active app areas are:
-  - `<backend_root>/archive/`
   - `<backend_root>/connections/`
   - `<backend_root>/librarian/`
-  - `<backend_root>/library/`
   - `<backend_root>/memory/`
   - `<backend_root>/mcp_server/`
   - `<backend_root>/platform/`
-  - `<backend_root>/retrieval/`
 
 ## Root Rule
 
@@ -115,23 +112,26 @@ Allowed exception:
 
 Current repo review target:
 
-- classes and modules under `<backend_root>/library/` should stay split by
-  search, item, prompt, skill, provider, import/export, usage, and context
-  ownership instead of becoming one omnibus library manager.
+- modules under `<backend_root>/memory/` should own Context Vault, Memory
+  Compact, and memory-local retrieval implementation without leaking those
+  internals into a separate top-level context.
+- modules under `<backend_root>/librarian/` should stay split by brief
+  compilation, routing, delegation, jobs, and skill-acquisition ownership
+  instead of becoming one omnibus librarian manager.
 
 Good example direction:
 
 - `ProviderCredentialPolicy`
   - decides credential validity
   - does not persist providers or call external providers
-- `LibraryItemPayloadMapper`
-  - maps item models into read payloads
-  - does not search, mutate status, or own provider calls
+- `ContextSearchSource` implementations
+  - retrieve memory/search matches
+  - do not own librarian routing or provider execution
 
 Bad example direction:
 
-- one service that searches library items, mutates item details, calls provider
-  credentials, imports archives, records usage, and shapes responses together
+- one service that searches memory, mutates notes, calls provider credentials,
+  executes librarian delegation, and formats response DTOs together
 - one router/helper that validates request payloads, persists data, calls
   providers, and formats response DTOs together
 
@@ -200,7 +200,7 @@ Current repo rule:
 
 - keep one discoverable exception catalog under `<shared_root>/exceptions/`
 - domain-specific failures live in domain-scoped modules such as
-  `library_exceptions.py`
+  domain-scoped exception modules
 - exception class names must stay domain-scoped, for example
   `LibraryProviderConfigError`
 - only truly cross-domain route/runtime/stream contracts belong in neutral shared modules such as `route_exceptions.py`, `stream_exceptions.py`, and `common_exceptions.py`

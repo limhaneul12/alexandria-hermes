@@ -12,7 +12,6 @@ When a bounded context has repeated, semantically distinct failure cases, define
 
 Active backend domains should use:
 
-- `<shared_root>/exceptions/library_exceptions.py`
 
 The current rule is to keep the catalog under `<shared_root>/exceptions/` because the repo explicitly wants one discoverable exception surface. Domain-specific modules may live there, but class names must still stay domain-scoped.
 

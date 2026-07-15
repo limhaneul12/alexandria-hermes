@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.memory.application.context_service import ContextService
 from app.memory.application.memory_compact_service import MemoryCompactService
+from app.memory.application.retrieval.embedding_factory import create_embedding_provider
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
@@ -14,7 +15,6 @@ from app.memory.infrastructure.repositories.memory_compact_repository import (
     ObsidianMemoryCompactRepository,
 )
 from app.platform.config.app_config import AppConfig
-from app.retrieval.application.embedding_factory import create_embedding_provider
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
 

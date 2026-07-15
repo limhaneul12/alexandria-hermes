@@ -666,7 +666,7 @@ await redis_durability_adapter.wait_for_replicas(replicas=1, timeout_ms=100)
 TODO 주석은 임시 작업 표시로만 사용하고, 조건과 제거 기준을 함께 적는다.
 
 ```python
-# TODO(library-v0.2): replace rule-only parsing after provider fixtures exist.
+# TODO(provider-fixtures): replace rule-only parsing after provider fixtures exist.
 ```
 
 Rule of thumb:

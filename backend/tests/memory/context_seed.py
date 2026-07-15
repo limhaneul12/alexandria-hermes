@@ -19,9 +19,9 @@ from app.memory.infrastructure.repositories.contexts.fts import (
     ensure_context_chunk_fts_table,
 )
 from app.memory.infrastructure.repositories.contexts.mapping import map_context_row
-from app.retrieval.application.chunker import chunk_markdown
-from app.retrieval.application.embedding_provider import EmbeddingProvider
-from app.retrieval.application.vector_serialization import vector_to_sqlite_json
+from app.memory.application.retrieval.chunker import chunk_markdown
+from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.shared.types.types_convert_utils import now_utc
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
