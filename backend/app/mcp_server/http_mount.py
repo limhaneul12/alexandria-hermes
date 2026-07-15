@@ -20,7 +20,7 @@ _MOUNTED_STREAMABLE_HTTP_PATH = "/"
 class McpHttpMount:
     """Restart-safe ASGI delegate for the mounted FastMCP HTTP app."""
 
-    def __init__(self, *, expected_operator_api_key: str) -> None:
+    def __init__(self, expected_operator_api_key: str) -> None:
         """Create the guarded MCP mount delegate.
 
         Args:
@@ -80,7 +80,7 @@ class McpHttpMount:
 
 @asynccontextmanager
 async def mcp_streamable_http_lifespan(
-    *, client: AlexandriaApiClient | None = None
+    client: AlexandriaApiClient | None = None,
 ) -> AsyncIterator[ASGIApp]:
     """Run one restart-safe FastMCP Streamable HTTP app lifespan.
 

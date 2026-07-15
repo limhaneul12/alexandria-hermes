@@ -24,7 +24,6 @@ def utc_now_text() -> str:
 
 
 def refresh_compact_payload(
-    *,
     project: str | None,
     readiness: ReadinessSummaryPayload,
     covered_to: str,
@@ -60,7 +59,6 @@ def refresh_compact_payload(
 
 
 def refresh_source_refs(
-    *,
     previous_id: JSONValue | None,
     covered_to: str,
 ) -> list[CompactSourceRefPayload]:
@@ -98,7 +96,6 @@ def refresh_source_refs(
 
 
 def refresh_markdown_body(
-    *,
     project: str | None,
     readiness: ReadinessSummaryPayload,
     covered_from: JSONValue,

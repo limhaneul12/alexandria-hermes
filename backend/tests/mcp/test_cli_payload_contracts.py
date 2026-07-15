@@ -41,8 +41,8 @@ def test_review_queue_summary_uses_validated_items_when_payload_is_mixed() -> No
 def test_check_summary_defaults_missing_nested_payloads_to_not_ready() -> None:
     """Check summaries should not treat absent readiness evidence as healthy."""
     summary = check_summary(
-        mcp_smoke={"ok": True, "required_tools": ["tool-a"]},
-        preflight={"status": "missing-readiness"},
+        {"ok": True, "required_tools": ["tool-a"]},
+        {"status": "missing-readiness"},
     )
 
     assert summary["ok"] is False

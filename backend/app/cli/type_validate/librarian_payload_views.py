@@ -43,7 +43,7 @@ def review_queue_summary(payload: JSONValue) -> JSONValue:
     return summary.model_dump(mode="json")
 
 
-def check_summary(*, mcp_smoke: JSONValue, preflight: JSONValue) -> JSONValue:
+def check_summary(mcp_smoke: JSONValue, preflight: JSONValue) -> JSONValue:
     """Return a compact combined MCP/preflight status payload.
 
     Args:

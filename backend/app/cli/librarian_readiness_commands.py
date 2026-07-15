@@ -136,11 +136,9 @@ def _check(
             options
         )
         if summary:
-            return check_summary(mcp_smoke=mcp_smoke, preflight=preflight_payload)
+            return check_summary(mcp_smoke, preflight_payload)
         check_payload = LibrarianCheckPayload(
-            ok=check_ok(
-                check_summary(mcp_smoke=mcp_smoke, preflight=preflight_payload)
-            ),
+            ok=check_ok(check_summary(mcp_smoke, preflight_payload)),
             mcp_smoke=mcp_smoke,
             preflight=preflight_payload,
         )

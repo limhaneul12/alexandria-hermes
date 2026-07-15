@@ -38,7 +38,6 @@ class McpToolSmokeChecker:
 
     def __init__(
         self,
-        *,
         settings: AlexandriaApiSettings,
         mcp_url: str | None,
         required_tools: Sequence[str],
@@ -160,7 +159,6 @@ def _smoke_tools_command(
 
 
 async def _mcp_smoke_tools(
-    *,
     settings: AlexandriaApiSettings,
     mcp_url: str | None,
     required_tools: Sequence[str],

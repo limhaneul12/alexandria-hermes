@@ -24,7 +24,6 @@ def emit_json(payload: JSONValue) -> None:
 
 def run_json_command(
     operation: Callable[[], Awaitable[JSONValue]],
-    *,
     error_prefix: str,
     attention_required: Callable[[JSONValue], bool] | None = None,
 ) -> int:

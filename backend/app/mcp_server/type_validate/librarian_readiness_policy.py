@@ -30,7 +30,6 @@ def needs_current_compact_refresh(warnings: tuple[str, ...]) -> bool:
 
 
 def readiness_warnings(
-    *,
     rag: RagStatusPayload,
     compact: CurrentCompactPayload,
     compact_age_days: int | None,
@@ -68,7 +67,6 @@ def readiness_warnings(
 
 
 def readiness_next_actions(
-    *,
     warnings: list[str],
     auto_move_candidates: int,
     manual_review_required: int,

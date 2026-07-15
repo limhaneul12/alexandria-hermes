@@ -23,7 +23,6 @@ from app.shared.types.extra_types import JSONValue
 
 def build_mcp_server(
     client: AlexandriaApiClient | None = None,
-    *,
     streamable_http_path: str = "/mcp",
 ) -> FastMCP:
     """Build the Alexandria-Hermes FastMCP server.
