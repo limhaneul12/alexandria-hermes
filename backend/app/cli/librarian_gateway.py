@@ -2,15 +2,28 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.cli.type_validate.command_options import (
     CompactRefreshOptions,
     LibrarianReadinessOptions,
     LibrarianReviewOptions,
     ReviewApplyOptions,
 )
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
 from app.shared.types.extra_types import JSONValue
+
+
+class _BackendToolGatewayProxy:
+    """Lazily resolve backend MCP tool gateway functions for command execution."""
+
+    def __getattr__(self, name: str) -> Any:
+        from app.mcp_server import backend_tool_gateway as real_gateway
+
+        return getattr(real_gateway, name)
+
+
+backend_tool_gateway = _BackendToolGatewayProxy()
 
 
 class LibrarianGateway:

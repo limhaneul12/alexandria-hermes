@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import sys
 from collections.abc import Sequence
 from enum import StrEnum
 
@@ -29,6 +31,15 @@ class FakeMcpServer:
     def run(self, transport: str = "stdio", mount_path: str | None = None) -> None:
         """Record the requested transport instead of blocking on a server loop."""
         self.runs.append((transport, mount_path))
+
+
+def test_cli_librarian_gateway_defers_backend_tool_gateway_import() -> None:
+    """CLI import should not load the broad backend gateway just to render help."""
+    sys.modules.pop("app.mcp_server.backend_tool_gateway", None)
+
+    importlib.reload(cli_librarian_gateway)
+
+    assert "app.mcp_server.backend_tool_gateway" not in sys.modules
 
 
 def test_cli_type_contracts_use_str_enums() -> None:
