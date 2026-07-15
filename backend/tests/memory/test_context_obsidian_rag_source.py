@@ -144,6 +144,139 @@ def test_context_rag_search_includes_obsidian_vault_fts_source(
     assert "obsidian:" in context_pack
 
 
+def test_context_rag_excludes_librarian_ops_and_superseded_notes_by_default(
+    tmp_path: Path,
+) -> None:
+    """Default Obsidian RAG should avoid operational and superseded recall noise."""
+
+    async def scenario() -> list[str]:
+        async with (
+            _temporary_database(tmp_path / "obsidian-rag-visibility.db") as database,
+            database.session() as session,
+        ):
+            obsidian_service = ObsidianService(
+                repository=SqlAlchemyObsidianIndexRepository(session=session),
+                vault_path=str(tmp_path / "vault"),
+                alexandria_root="Alexandria",
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Canonical Librarian Policy",
+                    body="# Canonical\n\nlibrarian-curation-policy durable guidance.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="canonical_librarian_policy",
+                    project="alexandria-hermes",
+                    status="active",
+                )
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Librarian Chat Noise",
+                    body="# Chat\n\nlibrarian-curation-policy operational transcript.",
+                    alexandria_type=AlexandriaNoteType.LIBRARIAN_CHAT,
+                    note_id="librarian_chat_noise",
+                    relative_path="_Ops/Librarian/Chats/librarian_chat_noise.md",
+                    project="alexandria-hermes",
+                    status="active",
+                )
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Superseded Librarian Policy",
+                    body="# Superseded\n\nlibrarian-curation-policy outdated draft.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="superseded_librarian_policy",
+                    project="alexandria-hermes",
+                    status="superseded",
+                )
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Archived Librarian Policy",
+                    body="# Archived\n\nlibrarian-curation-policy archived note.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="archived_librarian_policy",
+                    project="alexandria-hermes",
+                    status="archived",
+                )
+            )
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                extra_search_sources=[
+                    SqlAlchemyObsidianContextSearchSource(session=session)
+                ],
+            )
+            pack = await service.search(
+                query="librarian-curation-policy",
+                strategy=RagStrategy.FTS_ONLY,
+                limit=10,
+                project="alexandria-hermes",
+            )
+            return [match.context.id for match in pack.matches]
+
+    context_ids = anyio.run(scenario)
+
+    assert context_ids == ["obsidian:canonical_librarian_policy"]
+
+
+def test_context_rag_returns_one_best_chunk_per_obsidian_note(
+    tmp_path: Path,
+) -> None:
+    """Context packs should not spend the result budget on duplicate note chunks."""
+
+    async def scenario() -> list[str]:
+        async with (
+            _temporary_database(tmp_path / "obsidian-rag-dedupe.db") as database,
+            database.session() as session,
+        ):
+            obsidian_service = ObsidianService(
+                repository=SqlAlchemyObsidianIndexRepository(session=session),
+                vault_path=str(tmp_path / "vault"),
+                alexandria_root="Alexandria",
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Multi Chunk Librarian Playbook",
+                    body=(
+                        "# First\n\ncontext-dedupe-token first guidance.\n\n"
+                        "# Second\n\ncontext-dedupe-token second guidance.\n\n"
+                        "# Third\n\ncontext-dedupe-token third guidance."
+                    ),
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="multi_chunk_librarian_playbook",
+                    project="alexandria-hermes",
+                )
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Single Chunk Librarian Playbook",
+                    body="# Single\n\ncontext-dedupe-token separate guidance.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="single_chunk_librarian_playbook",
+                    project="alexandria-hermes",
+                )
+            )
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                extra_search_sources=[
+                    SqlAlchemyObsidianContextSearchSource(session=session)
+                ],
+            )
+            pack = await service.search(
+                query="context-dedupe-token",
+                strategy=RagStrategy.FTS_ONLY,
+                limit=10,
+                project="alexandria-hermes",
+            )
+            return [match.context.id for match in pack.matches]
+
+    context_ids = anyio.run(scenario)
+
+    assert context_ids.count("obsidian:multi_chunk_librarian_playbook") == 1
+    assert context_ids.count("obsidian:single_chunk_librarian_playbook") == 1
+    assert len(context_ids) == 2
+
+
 def test_context_embedding_reindex_backfills_obsidian_chunks_for_vector_search(
     tmp_path: Path,
 ) -> None:

@@ -44,9 +44,30 @@ def merge_hybrid_matches(
             ),
         )
 
-    ranked = sorted(
-        matches_by_chunk.values(),
+    ranked = rank_best_matches_per_context(list(matches_by_chunk.values()), limit)
+    return ranked
+
+
+def rank_best_matches_per_context(
+    matches: list[ContextSearchMatch],
+    limit: int,
+) -> list[ContextSearchMatch]:
+    """Rank matches while keeping only the best chunk per context.
+
+    Args:
+        matches: Candidate matches from one or more retrieval sources.
+        limit: Maximum returned contexts.
+
+    Returns:
+        Highest-scoring match per context, sorted by score.
+    """
+    best_by_context: dict[str, ContextSearchMatch] = {}
+    for match in matches:
+        existing = best_by_context.get(match.context.id)
+        if existing is None or match.score > existing.score:
+            best_by_context[match.context.id] = match
+    return sorted(
+        best_by_context.values(),
         key=lambda match: match.score,
         reverse=True,
     )[:limit]
-    return ranked

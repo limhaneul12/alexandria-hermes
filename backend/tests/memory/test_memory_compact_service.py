@@ -122,3 +122,45 @@ def test_current_memory_compact_requires_source_refs(tmp_path: Path) -> None:
             )
 
     anyio.run(scenario)
+
+
+def test_memory_compact_service_lists_legacy_obsidian_notes(
+    tmp_path: Path,
+) -> None:
+    """Legacy Obsidian Memory Compact notes should stay visible to the API."""
+
+    async def scenario() -> None:
+        vault = tmp_path / "vault"
+        notes_dir = vault / "Alexandria" / "Memory Compacts"
+        notes_dir.mkdir(parents=True)
+        (notes_dir / "legacy compact.md").write_text(
+            """---
+alexandria_type: memory_compact
+title: Legacy Compact
+id: legacy-compact
+project: alexandria-hermes
+status: current
+created: 2026-05-28
+tags:
+  - memory-compact
+---
+# Legacy Compact
+
+Durable legacy summary.
+""",
+            encoding="utf-8",
+        )
+
+        service = _service(vault)
+        current = await service.current(project="alexandria-hermes")
+        listed, total = await service.list_compacts(project="alexandria-hermes")
+
+        assert total == 1
+        assert listed == [current]
+        assert current.id == "legacy-compact"
+        assert current.status is MemoryCompactStatus.CURRENT
+        assert current.markdown_body == "# Legacy Compact\n\nDurable legacy summary."
+        assert current.covered_from == datetime(2026, 5, 28, tzinfo=UTC)
+        assert current.covered_to == datetime(2026, 5, 28, tzinfo=UTC)
+
+    anyio.run(scenario)

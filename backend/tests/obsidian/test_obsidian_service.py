@@ -35,6 +35,8 @@ from app.obsidian.application.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianChunkIndex,
     ObsidianLibrarianAsk,
+    ObsidianLibrarianReviewApplyRequest,
+    ObsidianLibrarianReviewQueueRequest,
     ObsidianNoteIndex,
     ObsidianSaveNote,
     ObsidianSearchQuery,
@@ -1063,6 +1065,316 @@ def test_obsidian_librarian_vault_inventory_and_path_search(
 
     assert paths == ["Alexandria/Contexts/Projects/Loose Project Context.md"]
     assert matches == ["ctx_loose_project_context"]
+
+
+def test_obsidian_librarian_review_queue_prioritizes_curation_candidates(
+    tmp_path: Path,
+) -> None:
+    """Review queue should expose inbox/draft/legacy notes without ops noise."""
+
+    async def scenario() -> list[tuple[str, str, str | None, float, bool, str | None]]:
+        database, session, service = await _service(tmp_path)
+        try:
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Captured Context",
+                    body="# Captured Context\n\nNeeds classification.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_captured_context",
+                    relative_path="Alexandria/_Inbox/Captures/Captured Context.md",
+                    project="alexandria-hermes",
+                )
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Draft Skill",
+                    body="# Draft Skill\n\nNeeds promotion review.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_draft_review",
+                    relative_path="Alexandria/Skills/Drafts/Draft Skill.md",
+                    project="alexandria-hermes",
+                )
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Archived Draft",
+                    body="# Archived Draft\n\nShould not appear.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_archived_draft",
+                    relative_path="Alexandria/_Inbox/Captures/Archived Draft.md",
+                    status="archived",
+                    project="alexandria-hermes",
+                )
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Ops Chat",
+                    body="# Ops Chat\n\nOperational noise.",
+                    alexandria_type=AlexandriaNoteType.LIBRARIAN_CHAT,
+                    note_id="librarian_chat_review_noise",
+                    relative_path=(
+                        "Alexandria/_Ops/Librarian/Chats/librarian_chat_review_noise.md"
+                    ),
+                    project="alexandria-hermes",
+                )
+            )
+            queue = await service.librarian_review_queue(
+                ObsidianLibrarianReviewQueueRequest(project="alexandria-hermes")
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return [
+            (
+                item.note_id,
+                item.reason,
+                item.suggested_destination_path,
+                item.confidence,
+                item.requires_human_review,
+                item.verification_query,
+            )
+            for item in queue
+        ]
+
+    queue_items = anyio.run(scenario)
+
+    assert queue_items == [
+        (
+            "ctx_captured_context",
+            "inbox_capture",
+            "Alexandria/Contexts/Projects/Captured Context.md",
+            0.85,
+            False,
+            "Captured Context",
+        ),
+        (
+            "skill_draft_review",
+            "skill_draft",
+            "Alexandria/Skills/Active/Draft Skill.md",
+            0.70,
+            True,
+            "Draft Skill",
+        ),
+    ]
+
+
+def test_obsidian_librarian_review_queue_generates_safe_move_plan(
+    tmp_path: Path,
+) -> None:
+    """Review queue candidates should become a dry-run safe move plan."""
+
+    async def scenario() -> tuple[str, list[tuple[str, str, str]], bool]:
+        database, session, service = await _service(tmp_path)
+        try:
+            captured = await service.save_note(
+                ObsidianSaveNote(
+                    title="Captured Move Candidate",
+                    body="# Captured Move Candidate\n\nNeeds shelf move.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_captured_move_candidate",
+                    relative_path=(
+                        "Alexandria/_Inbox/Captures/Captured Move Candidate.md"
+                    ),
+                    project="alexandria-hermes",
+                )
+            )
+            plan = await service.plan_librarian_review_moves(
+                ObsidianLibrarianReviewQueueRequest(project="alexandria-hermes")
+            )
+            source_exists = (tmp_path / "vault" / captured.relative_path).exists()
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            plan.status,
+            [
+                (move.source_path, move.destination_path, move.reason)
+                for move in plan.moves
+            ],
+            source_exists,
+        )
+
+    status, moves, source_exists = anyio.run(scenario)
+
+    assert status == "ready"
+    assert moves == [
+        (
+            "Alexandria/_Inbox/Captures/Captured Move Candidate.md",
+            "Alexandria/Contexts/Projects/Captured Move Candidate.md",
+            "classify_and_promote: inbox_capture",
+        )
+    ]
+    assert source_exists is True
+
+
+def test_obsidian_librarian_review_queue_excludes_manual_review_from_move_plan(
+    tmp_path: Path,
+) -> None:
+    """Ambiguous lifecycle candidates should be queued but not auto-moved."""
+
+    async def scenario() -> tuple[list[tuple[str, bool]], list[str]]:
+        database, session, service = await _service(tmp_path)
+        try:
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Needs Human Draft",
+                    body="# Needs Human Draft\n\nNeeds promotion decision.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_needs_human_draft",
+                    relative_path="Alexandria/Skills/Drafts/Needs Human Draft.md",
+                    project="alexandria-hermes",
+                )
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Review Status Context",
+                    body="# Review Status Context\n\nLifecycle is not decided.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_review_status_context",
+                    relative_path=(
+                        "Alexandria/Contexts/Projects/Review Status Context.md"
+                    ),
+                    status="review",
+                    project="alexandria-hermes",
+                )
+            )
+            queue = await service.librarian_review_queue(
+                ObsidianLibrarianReviewQueueRequest(project="alexandria-hermes")
+            )
+            plan = await service.plan_librarian_review_moves(
+                ObsidianLibrarianReviewQueueRequest(project="alexandria-hermes")
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            [(item.note_id, item.requires_human_review) for item in queue],
+            [move.source_path for move in plan.moves],
+        )
+
+    queue, planned_sources = anyio.run(scenario)
+
+    assert queue == [
+        ("ctx_review_status_context", True),
+        ("skill_needs_human_draft", True),
+    ]
+    assert planned_sources == []
+
+
+def test_obsidian_librarian_review_queue_apply_moves_writes_report_and_reindexes(
+    tmp_path: Path,
+) -> None:
+    """Review queue apply should use the safe move workflow and report evidence."""
+
+    destination_path = "Alexandria/Contexts/Projects/Captured Apply Candidate.md"
+
+    async def scenario() -> tuple[str, str, str, bool, bool, bool, int]:
+        database, session, service = await _service(tmp_path)
+        try:
+            captured = await service.save_note(
+                ObsidianSaveNote(
+                    title="Captured Apply Candidate",
+                    body="# Captured Apply Candidate\n\nreview apply marker.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_captured_apply_candidate",
+                    relative_path=(
+                        "Alexandria/_Inbox/Captures/Captured Apply Candidate.md"
+                    ),
+                    project="alexandria-hermes",
+                )
+            )
+            report = await service.apply_librarian_review_moves(
+                ObsidianLibrarianReviewApplyRequest(
+                    project="alexandria-hermes",
+                    report_path=(
+                        "Alexandria/_Ops/Librarian/Reports/"
+                        "review-apply-candidate-report"
+                    ),
+                    verification_query="review apply marker",
+                )
+            )
+            moved_note = await service.read_note_by_path(destination_path)
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            report.status,
+            report.moved[0].source_path,
+            moved_note.relative_path,
+            report.hard_delete_performed,
+            (tmp_path / "vault" / captured.relative_path).exists(),
+            (tmp_path / "vault" / report.report_markdown_path).exists(),
+            report.verification.verification_hits,
+        )
+
+    (
+        status,
+        source_path,
+        moved_path,
+        hard_delete_performed,
+        source_exists,
+        report_exists,
+        verification_hits,
+    ) = anyio.run(scenario)
+
+    assert status == "succeeded"
+    assert source_path == "Alexandria/_Inbox/Captures/Captured Apply Candidate.md"
+    assert moved_path == destination_path
+    assert hard_delete_performed is False
+    assert source_exists is False
+    assert report_exists is True
+    assert verification_hits == 1
+
+
+def test_obsidian_librarian_review_queue_apply_empty_queue_is_no_op(
+    tmp_path: Path,
+) -> None:
+    """Applying an empty review queue should report no_op, not failure."""
+
+    async def scenario() -> tuple[str, bool, int, str, bool]:
+        database, session, service = await _service(tmp_path)
+        try:
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Already Organized",
+                    body="# Already Organized\n\nNo review needed.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_already_organized",
+                    relative_path="Alexandria/Contexts/Projects/Already Organized.md",
+                    project="alexandria-hermes",
+                )
+            )
+            report = await service.apply_librarian_review_moves(
+                ObsidianLibrarianReviewApplyRequest(
+                    project="alexandria-hermes",
+                    report_path=(
+                        "Alexandria/_Ops/Librarian/Reports/review-apply-empty-report"
+                    ),
+                )
+            )
+            note_still_exists = (
+                tmp_path / "vault" / "Alexandria/Contexts/Projects/Already Organized.md"
+            ).exists()
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            report.status,
+            report.hard_delete_performed,
+            len(report.moved),
+            report.verification.reindex_status,
+            note_still_exists,
+        )
+
+    status, hard_delete_performed, moved_count, reindex_status, note_still_exists = (
+        anyio.run(scenario)
+    )
+
+    assert status == "no_op"
+    assert hard_delete_performed is False
+    assert moved_count == 0
+    assert reindex_status == "skipped"
+    assert note_still_exists is True
 
 
 def test_obsidian_librarian_vault_move_plan_blocks_overwrite(

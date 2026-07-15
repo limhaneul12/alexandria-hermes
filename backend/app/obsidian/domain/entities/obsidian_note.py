@@ -147,6 +147,26 @@ class ObsidianVaultInventoryItem:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianLibrarianReviewQueueItem:
+    """One note that should be reviewed by the librarian curation loop."""
+
+    note_id: str
+    relative_path: str
+    alexandria_type: AlexandriaNoteType
+    title: str
+    status: str
+    tags: list[str]
+    project: str | None
+    reason: str
+    recommended_action: str
+    suggested_destination_path: str | None
+    priority: int
+    confidence: float
+    requires_human_review: bool
+    verification_query: str | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianVaultMoveCandidate:
     """One planned vault move after safety validation."""
 

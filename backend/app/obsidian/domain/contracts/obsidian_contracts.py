@@ -105,6 +105,27 @@ class ObsidianVaultInventoryRequest:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianLibrarianReviewQueueRequest:
+    """Request to list notes that need librarian curation."""
+
+    scope_path: str | None = None
+    project: str | None = None
+    limit: int = 50
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianLibrarianReviewApplyRequest:
+    """Request to apply safe moves generated from librarian review candidates."""
+
+    scope_path: str | None = None
+    project: str | None = None
+    limit: int = 50
+    report_path: str | None = None
+    reindex: bool = True
+    verification_query: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianVaultMoveRequest:
     """One safe vault move requested by a librarian workflow."""
 

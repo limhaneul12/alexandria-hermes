@@ -6,11 +6,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from hmac import compare_digest
 
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+
 from app.mcp_server.backend_api_client import AlexandriaApiClient
 from app.mcp_server.server_runtime import build_mcp_server
 from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
-from starlette.responses import JSONResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 MCP_HTTP_MOUNT_PATH = "/mcp"
 _MOUNTED_STREAMABLE_HTTP_PATH = "/"

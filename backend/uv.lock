@@ -52,6 +52,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
     { name = "sqlite-vec" },
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -81,6 +82,7 @@ requires-dist = [
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
     { name = "sqlite-vec", specifier = ">=0.1.9" },
+    { name = "typer", specifier = ">=0.25.1,<1.0.0" },
 ]
 
 [package.metadata.requires-dev]

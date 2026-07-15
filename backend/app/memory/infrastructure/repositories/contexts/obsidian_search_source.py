@@ -20,6 +20,8 @@ from app.memory.domain.event_enum.context_enums import (
 )
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
 from app.memory.infrastructure.repositories.contexts.obsidian_context_mapping import (
+    DEFAULT_EXCLUDED_OBSIDIAN_RECALL_PREFIXES,
+    DEFAULT_EXCLUDED_OBSIDIAN_RECALL_STATUSES,
     chunk_record_from_obsidian_row,
     match_from_obsidian_rows,
     matches_context_filters,
@@ -29,7 +31,10 @@ from app.memory.infrastructure.repositories.contexts.obsidian_context_mapping im
 from app.memory.infrastructure.repositories.contexts.sqlite_vec_connection import (
     load_sqlite_vec_for_session,
 )
-from app.obsidian.domain.event_enum.obsidian_enums import ObsidianIndexStatus
+from app.obsidian.domain.event_enum.obsidian_enums import (
+    AlexandriaNoteType,
+    ObsidianIndexStatus,
+)
 from app.obsidian.infrastructure.models.obsidian_index_models import (
     ObsidianChunkORM,
     ObsidianFileORM,
@@ -91,6 +96,9 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
         fts_query = build_obsidian_fts_query(
             query,
             limit=_candidate_limit(limit),
+            excluded_alexandria_types=[AlexandriaNoteType.LIBRARIAN_CHAT],
+            excluded_statuses=list(DEFAULT_EXCLUDED_OBSIDIAN_RECALL_STATUSES),
+            excluded_path_prefixes=list(DEFAULT_EXCLUDED_OBSIDIAN_RECALL_PREFIXES),
             project=project,
         )
         if fts_query is None:
@@ -191,7 +199,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
                 ObsidianChunkORM.embedding_dimensions == bindparam("dimensions"),
                 ObsidianChunkORM.embedding_fingerprint_key
                 == bindparam("fingerprint_key"),
-                ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value,
+                *_default_recall_visibility_conditions(),
             )
             .order_by(distance.asc())
             .limit(bindparam("limit"))
@@ -264,7 +272,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
         statement = (
             select(ObsidianChunkORM)
             .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
-            .where(ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value)
+            .where(*_default_recall_visibility_conditions())
             .where(func.length(func.trim(ObsidianChunkORM.text)) > 0)
             .limit(limit)
         )
@@ -323,7 +331,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
         statement = (
             select(ObsidianChunkORM.id)
             .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
-            .where(ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value)
+            .where(*_default_recall_visibility_conditions())
             .where(func.length(func.trim(ObsidianChunkORM.text)) > 0)
             .where(
                 or_(
@@ -378,3 +386,14 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
 
 def _candidate_limit(limit: int) -> int:
     return max(limit, limit * OBSIDIAN_MATCH_LIMIT_MULTIPLIER)
+
+
+def _default_recall_visibility_conditions() -> tuple[ColumnElement[bool], ...]:
+    return (
+        ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value,
+        ObsidianFileORM.alexandria_type != AlexandriaNoteType.LIBRARIAN_CHAT.value,
+        func.lower(ObsidianFileORM.status).not_in(
+            DEFAULT_EXCLUDED_OBSIDIAN_RECALL_STATUSES
+        ),
+        ~ObsidianFileORM.relative_path.like("\\_Ops/%", escape="\\"),
+    )

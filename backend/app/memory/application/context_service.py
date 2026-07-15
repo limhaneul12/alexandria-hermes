@@ -12,7 +12,10 @@ from app.memory.application.context_lint import (
     lint_context,
 )
 from app.memory.application.retrieval.context_pack import build_context_pack
-from app.memory.application.retrieval.context_ranking import merge_hybrid_matches
+from app.memory.application.retrieval.context_ranking import (
+    merge_hybrid_matches,
+    rank_best_matches_per_context,
+)
 from app.memory.application.retrieval.embedding_provider import (
     EmbeddingProvider,
 )
@@ -773,4 +776,4 @@ def _rank_matches(
     matches: list[ContextSearchMatch],
     limit: int,
 ) -> list[ContextSearchMatch]:
-    return sorted(matches, key=lambda match: match.score, reverse=True)[:limit]
+    return rank_best_matches_per_context(matches, limit)

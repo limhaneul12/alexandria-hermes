@@ -148,19 +148,31 @@ def _compact_from_frontmatter(
 ) -> MemoryCompact | None:
     try:
         compact_id = _required_text(frontmatter, "id")
-        status = MemoryCompactStatus(_required_text(frontmatter, "status"))
+        status = _status_from_frontmatter(frontmatter)
+        created_at = _datetime_from_frontmatter(
+            frontmatter, ("created_at", "created", "date")
+        )
+        updated_at = _datetime_from_frontmatter(
+            frontmatter, ("updated_at", "updated", "modified"), fallback=created_at
+        )
+        covered_from = _datetime_from_frontmatter(
+            frontmatter, ("covered_from",), fallback=created_at
+        )
+        covered_to = _datetime_from_frontmatter(
+            frontmatter, ("covered_to",), fallback=updated_at
+        )
         return MemoryCompact(
             id=compact_id,
             project=frontmatter.get("project"),
-            covered_from=_required_datetime(frontmatter, "covered_from"),
-            covered_to=_required_datetime(frontmatter, "covered_to"),
+            covered_from=covered_from,
+            covered_to=covered_to,
             markdown_body=body.rstrip("\n"),
             status=status,
             source_refs=_source_refs_from_json(
                 frontmatter.get("source_refs"), compact_id=compact_id
             ),
-            created_at=_required_datetime(frontmatter, "created_at"),
-            updated_at=_required_datetime(frontmatter, "updated_at"),
+            created_at=created_at,
+            updated_at=updated_at,
             archived_at=_optional_datetime(frontmatter.get("archived_at")),
         )
     except (KeyError, TypeError, ValueError):
@@ -172,7 +184,10 @@ def _source_refs_from_json(
 ) -> tuple[MemoryCompactSourceRef, ...]:
     if not value:
         return ()
-    decoded = loads_json(value)
+    try:
+        decoded = loads_json(value)
+    except ValueError:
+        return ()
     if not isinstance(decoded, list):
         return ()
     refs: list[MemoryCompactSourceRef] = []
@@ -200,8 +215,27 @@ def _required_text(frontmatter: dict[str, str | None], key: str) -> str:
     return value
 
 
-def _required_datetime(frontmatter: dict[str, str | None], key: str) -> datetime:
-    return _parse_datetime(_required_text(frontmatter, key))
+def _status_from_frontmatter(
+    frontmatter: dict[str, str | None],
+) -> MemoryCompactStatus:
+    value = _required_text(frontmatter, "status")
+    return MemoryCompactStatus(value.strip().upper())
+
+
+def _datetime_from_frontmatter(
+    frontmatter: dict[str, str | None],
+    keys: tuple[str, ...],
+    *,
+    fallback: datetime | None = None,
+) -> datetime:
+    for key in keys:
+        value = frontmatter.get(key)
+        if value:
+            return _parse_datetime(value)
+    if fallback is not None:
+        return fallback
+    joined_keys = ", ".join(keys)
+    raise ValueError(f"Missing Memory Compact frontmatter: {joined_keys}")
 
 
 def _optional_datetime(value: str | None) -> datetime | None:

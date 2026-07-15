@@ -40,6 +40,8 @@ from app.obsidian.application.obsidian_note_templates import (
 )
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
+    ObsidianLibrarianReviewApplyRequest,
+    ObsidianLibrarianReviewQueueRequest,
     ObsidianSaveNote,
     ObsidianSearchQuery,
     ObsidianVaultInventoryRequest,
@@ -49,6 +51,7 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianVaultSettingsUpdate,
 )
 from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianLibrarianReviewQueueItem,
     ObsidianNote,
     ObsidianReindexResult,
     ObsidianSearchHit,
@@ -87,6 +90,10 @@ from app.shared.utils.secret_redaction import redact_secret_text
 
 SELECTION_CONTEXT_MAX_CHARS = 4_000
 NOTE_SUFFIX_GLOB = f"*{NOTE_SUFFIX}"
+REVIEW_QUEUE_EXCLUDED_STATUSES = frozenset({"archived", "deprecated", "superseded"})
+REVIEW_QUEUE_STATUS_MARKERS = frozenset(
+    {"draft", "needs_review", "pending", "review", "to_promote"}
+)
 
 
 class ObsidianService:
@@ -321,6 +328,142 @@ class ObsidianService:
             ObsidianVaultInventoryRequest(scope_path=scope_path)
         )
         return [item for item in items if _inventory_item_matches(item, needle)]
+
+    async def librarian_review_queue(
+        self,
+        request: ObsidianLibrarianReviewQueueRequest,
+    ) -> list[ObsidianLibrarianReviewQueueItem]:
+        """List managed notes that need librarian curation.
+
+        Args:
+            request: Queue scope and project filter.
+
+        Returns:
+            Prioritized curation candidates with suggested next actions.
+        """
+        items = await self.inventory_vault(
+            ObsidianVaultInventoryRequest(scope_path=request.scope_path)
+        )
+        candidates: list[ObsidianLibrarianReviewQueueItem] = []
+        for item in items:
+            if request.project is not None and item.project != request.project:
+                continue
+            candidate = _review_queue_item(item, root=self._alexandria_root)
+            if candidate is not None:
+                candidates.append(candidate)
+        candidates.sort(
+            key=lambda candidate: (
+                -candidate.priority,
+                candidate.relative_path.casefold(),
+            )
+        )
+        bounded_limit = min(max(int(request.limit), 1), 200)
+        return candidates[:bounded_limit]
+
+    async def plan_librarian_review_moves(
+        self,
+        request: ObsidianLibrarianReviewQueueRequest,
+    ) -> ObsidianVaultMovePlan:
+        """Build a dry-run move plan from librarian review candidates.
+
+        Args:
+            request: Queue scope and project filter.
+
+        Returns:
+            Safety-validated move plan for review candidates that have a
+            suggested destination.
+        """
+        moves = await self._librarian_review_move_requests(request)
+        if not moves:
+            return ObsidianVaultMovePlan(
+                status="empty",
+                hard_delete_performed=False,
+                moves=[],
+                skipped=[],
+                ambiguous=[],
+            )
+        return await self.plan_vault_moves(ObsidianVaultMovePlanRequest(moves=moves))
+
+    async def apply_librarian_review_moves(
+        self,
+        request: ObsidianLibrarianReviewApplyRequest,
+    ) -> ObsidianVaultMoveReport:
+        """Apply safe moves generated from librarian review candidates.
+
+        Args:
+            request: Queue scope plus report/reindex options.
+
+        Returns:
+            Move application report written through the existing safe move path.
+        """
+        moves = await self._librarian_review_move_requests(
+            ObsidianLibrarianReviewQueueRequest(
+                scope_path=request.scope_path,
+                project=request.project,
+                limit=request.limit,
+            )
+        )
+        if not moves:
+            return self._empty_review_apply_report(request)
+        return await self.apply_vault_moves(
+            ObsidianVaultMoveApplyRequest(
+                moves=moves,
+                report_path=request.report_path,
+                reindex=request.reindex,
+                verification_query=request.verification_query,
+            )
+        )
+
+    async def _librarian_review_move_requests(
+        self,
+        request: ObsidianLibrarianReviewQueueRequest,
+    ) -> list[ObsidianVaultMoveRequest]:
+        candidates = await self.librarian_review_queue(request)
+        return [
+            ObsidianVaultMoveRequest(
+                source_path=candidate.relative_path,
+                destination_path=candidate.suggested_destination_path,
+                reason=(f"{candidate.recommended_action}: {candidate.reason}"),
+            )
+            for candidate in candidates
+            if candidate.suggested_destination_path is not None
+            and not candidate.requires_human_review
+        ]
+
+    def _empty_review_apply_report(
+        self,
+        request: ObsidianLibrarianReviewApplyRequest,
+    ) -> ObsidianVaultMoveReport:
+        verification = ObsidianVaultMoveVerification(
+            source_root_loose_notes_remaining=0,
+            reindex_status="skipped",
+            verification_hits=0,
+        )
+        report_paths = self._vault_move_report_paths(
+            ObsidianVaultMoveApplyRequest(
+                moves=[],
+                report_path=request.report_path,
+                reindex=False,
+                verification_query=None,
+            )
+        )
+        report_markdown_path, report_json_path = self._write_vault_move_report(
+            report_paths=report_paths,
+            status="no_op",
+            moved=[],
+            skipped=[],
+            verification=verification,
+        )
+        return ObsidianVaultMoveReport(
+            status="no_op",
+            hard_delete_performed=False,
+            moved=[],
+            skipped=[],
+            ambiguous=[],
+            verification=verification,
+            report_markdown_path=report_markdown_path,
+            report_json_path=report_json_path,
+        )
 
     async def plan_vault_moves(
         self,
@@ -856,6 +999,138 @@ def _inventory_item_matches(
         ]
     ).casefold()
     return needle in haystack
+
+
+def _review_queue_item(
+    item: ObsidianVaultInventoryItem,
+    *,
+    root: str,
+) -> ObsidianLibrarianReviewQueueItem | None:
+    if item.status.casefold() in REVIEW_QUEUE_EXCLUDED_STATUSES:
+        return None
+    inside_root = _inside_alexandria_root(item.relative_path, root)
+    if inside_root.startswith(f"{LIBRARIAN_OPERATIONS_FOLDER}/"):
+        return None
+    status_needs_review = item.status.casefold() in REVIEW_QUEUE_STATUS_MARKERS
+    if inside_root.startswith("_Inbox/"):
+        return _queue_item(
+            item,
+            reason="inbox_capture",
+            recommended_action="classify_and_promote",
+            suggested_destination_path=_suggested_canonical_path(item, root=root),
+            priority=100,
+            confidence=0.85,
+            requires_human_review=False,
+        )
+    if status_needs_review:
+        return _queue_item(
+            item,
+            reason="status_requires_review",
+            recommended_action="review_lifecycle_and_destination",
+            suggested_destination_path=_suggested_canonical_path(item, root=root),
+            priority=90,
+            confidence=0.65,
+            requires_human_review=True,
+        )
+    if inside_root.startswith("Skills/Drafts/"):
+        return _queue_item(
+            item,
+            reason="skill_draft",
+            recommended_action="promote_to_active_or_mark_deprecated",
+            suggested_destination_path=_rooted_path(
+                root, f"Skills/Active/{Path(item.relative_path).name}"
+            ),
+            priority=80,
+            confidence=0.70,
+            requires_human_review=True,
+        )
+    if inside_root.startswith("Contexts/Project Context/"):
+        return _queue_item(
+            item,
+            reason="legacy_context_shelf",
+            recommended_action="merge_or_move_to_project_contexts",
+            suggested_destination_path=_rooted_path(
+                root, f"Contexts/Projects/{Path(item.relative_path).name}"
+            ),
+            priority=60,
+            confidence=0.95,
+            requires_human_review=False,
+        )
+    if "/" not in inside_root and inside_root != "START_HERE.md":
+        return _queue_item(
+            item,
+            reason="loose_root_note",
+            recommended_action="move_to_canonical_shelf",
+            suggested_destination_path=_suggested_canonical_path(item, root=root),
+            priority=50,
+            confidence=0.75,
+            requires_human_review=False,
+        )
+    return None
+
+
+def _queue_item(
+    item: ObsidianVaultInventoryItem,
+    *,
+    reason: str,
+    recommended_action: str,
+    suggested_destination_path: str | None,
+    priority: int,
+    confidence: float,
+    requires_human_review: bool,
+) -> ObsidianLibrarianReviewQueueItem:
+    return ObsidianLibrarianReviewQueueItem(
+        note_id=item.note_id,
+        relative_path=item.relative_path,
+        alexandria_type=item.alexandria_type,
+        title=item.title,
+        status=item.status,
+        tags=item.tags,
+        project=item.project,
+        reason=reason,
+        recommended_action=recommended_action,
+        suggested_destination_path=suggested_destination_path,
+        priority=priority,
+        confidence=confidence,
+        requires_human_review=requires_human_review,
+        verification_query=item.title,
+    )
+
+
+def _inside_alexandria_root(relative_path: str, root: str) -> str:
+    normalized_root = root.strip("/")
+    if normalized_root in {"", "."}:
+        return relative_path
+    prefix = f"{normalized_root}/"
+    return relative_path.removeprefix(prefix)
+
+
+def _rooted_path(root: str, relative_inside_root: str) -> str:
+    normalized_root = root.strip("/")
+    if normalized_root in {"", "."}:
+        return relative_inside_root
+    return f"{normalized_root}/{relative_inside_root}"
+
+
+def _suggested_canonical_path(
+    item: ObsidianVaultInventoryItem,
+    *,
+    root: str,
+) -> str | None:
+    filename = Path(item.relative_path).name
+    folder = {
+        AlexandriaNoteType.CONTEXT: "Contexts/Projects",
+        AlexandriaNoteType.MEMORY_COMPACT: "Memory Compacts",
+        AlexandriaNoteType.SKILL: "Skills/Drafts",
+        AlexandriaNoteType.PROMPT: "Prompts/Task Prompts",
+        AlexandriaNoteType.LIBRARIAN_BRIEF: f"{LIBRARIAN_OPERATIONS_FOLDER}/Briefs",
+        AlexandriaNoteType.LIBRARIAN_CHAT: f"{LIBRARIAN_OPERATIONS_FOLDER}/Chats",
+        AlexandriaNoteType.JOB_PLAN: "Jobs",
+    }[item.alexandria_type]
+    destination = _rooted_path(root, f"{folder}/{filename}")
+    if destination == item.relative_path:
+        return None
+    return destination
 
 
 def _move_skip(

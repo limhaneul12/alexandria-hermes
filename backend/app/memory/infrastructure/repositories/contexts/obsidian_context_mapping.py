@@ -30,6 +30,13 @@ from app.shared.types.types_convert_utils import aware_utc_datetime
 OBSIDIAN_CONTEXT_ID_PREFIX = "obsidian:"
 OBSIDIAN_CHUNK_ID_PREFIX = "obsidian-chunk:"
 OBSIDIAN_SOURCE_AGENT = "obsidian-vault"
+DEFAULT_EXCLUDED_OBSIDIAN_RECALL_TYPES = frozenset(
+    {AlexandriaNoteType.LIBRARIAN_CHAT.value}
+)
+DEFAULT_EXCLUDED_OBSIDIAN_RECALL_STATUSES = frozenset(
+    {"archived", "deprecated", "superseded"}
+)
+DEFAULT_EXCLUDED_OBSIDIAN_RECALL_PREFIXES = ("_Ops/",)
 
 
 def metadata_filters_present(
@@ -50,12 +57,30 @@ def matches_context_filters(
     kind: ContextKind | None,
     include_scopes: list[ContextScope] | None,
 ) -> bool:
-    if note.index_status != ObsidianIndexStatus.INDEXED.value:
+    if not is_default_recall_visible(note):
         return False
     context = context_record_from_obsidian_row(note)
     if kind is not None and context.kind != kind:
         return False
     return not (include_scopes and context.scope not in include_scopes)
+
+
+def is_default_recall_visible(note: ObsidianFileORM) -> bool:
+    """Return whether a note belongs in default agent recall.
+
+    Args:
+        note: Indexed Obsidian note row.
+
+    Returns:
+        True when the note is safe for default Context RAG recall.
+    """
+    if note.index_status != ObsidianIndexStatus.INDEXED.value:
+        return False
+    if note.alexandria_type in DEFAULT_EXCLUDED_OBSIDIAN_RECALL_TYPES:
+        return False
+    if note.status.lower() in DEFAULT_EXCLUDED_OBSIDIAN_RECALL_STATUSES:
+        return False
+    return not note.relative_path.startswith(DEFAULT_EXCLUDED_OBSIDIAN_RECALL_PREFIXES)
 
 
 def match_from_obsidian_rows(

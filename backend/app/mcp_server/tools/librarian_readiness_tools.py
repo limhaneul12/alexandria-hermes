@@ -1,0 +1,165 @@
+"""MCP HTTP tool adapters for librarian readiness and compact refresh."""
+
+from __future__ import annotations
+
+from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.librarian_compact_refresh import (
+    refresh_compact_payload,
+    utc_now_text,
+)
+from app.mcp_server.tools.memory_compact_tools import alexandria_create_memory_compact
+from app.mcp_server.type_validate.librarian_readiness_contracts import (
+    ReadinessReviewQueueOutputPayload,
+    ReadinessToolOutputPayload,
+    RefreshCurrentCompactOutputPayload,
+    needs_current_compact_refresh,
+    parse_current_compact,
+    parse_rag_status,
+    parse_readiness_summary,
+    parse_review_queue,
+    readiness_next_actions,
+    readiness_warnings,
+    result_object,
+    source_ref_dicts,
+)
+from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
+from app.shared.types.extra_types import JSONObject, JSONValue
+
+
+async def alexandria_librarian_readiness(
+    client: AlexandriaApiClient,
+    project: str | None = None,
+    max_compact_age_days: int = 30,
+) -> JSONValue:
+    """Return a one-call librarian/second-brain readiness summary.
+
+    Args:
+        client: Backend HTTP client.
+        project: Optional project filter for current compact and review queue.
+        max_compact_age_days: Maximum acceptable age for the current compact.
+
+    Returns:
+        Readiness summary composed from RAG health, current Memory Compact, and
+        librarian review queue state.
+    """
+    rag_status = await client.get("/memory/contexts/rag/status")
+    compact_query: JSONObject | None = None if project is None else {"project": project}
+    current_compact = await client.get("/memory/compacts/current", params=compact_query)
+    review_payload: JSONObject = {"limit": 20}
+    if project is not None:
+        review_payload["project"] = project
+    review_queue_payload = await client.post(
+        "/obsidian/librarian/review-queue", review_payload
+    )
+
+    rag = parse_rag_status(rag_status)
+    compact = parse_current_compact(current_compact)
+    review_queue = parse_review_queue(review_queue_payload)
+    review_total = review_queue.total_count()
+    auto_move_candidates = review_queue.auto_move_candidate_count()
+    manual_review_required = review_queue.manual_required_count()
+    compact_age_days = compact.calculated_age_days()
+    bounded_max_age_days = max(int(max_compact_age_days), 1)
+    warnings = readiness_warnings(
+        rag=rag,
+        compact=compact,
+        compact_age_days=compact_age_days,
+        max_compact_age_days=bounded_max_age_days,
+        review_total=review_total,
+    )
+    next_actions = readiness_next_actions(
+        warnings=warnings,
+        auto_move_candidates=auto_move_candidates,
+        manual_review_required=manual_review_required,
+        review_total=review_total,
+    )
+    output = ReadinessToolOutputPayload(
+        ready=not warnings,
+        status="ready" if not warnings else "needs_attention",
+        project=project,
+        rag=rag,
+        current_memory_compact=compact.model_copy(
+            update={
+                "age_days": compact_age_days,
+                "max_age_days": bounded_max_age_days,
+            }
+        ),
+        review_queue=ReadinessReviewQueueOutputPayload(
+            total=review_total,
+            auto_move_candidates=auto_move_candidates,
+            manual_review_required=manual_review_required,
+            items=tuple(review_queue.object_items()),
+        ),
+        warnings=tuple(warnings),
+        next_actions=tuple(next_actions),
+    )
+    return output.model_dump(mode="json")
+
+
+async def alexandria_librarian_refresh_current_compact(
+    client: AlexandriaApiClient,
+    project: str | None = None,
+    max_compact_age_days: int = 30,
+    apply: bool = False,
+    force: bool = False,
+    covered_to: str | None = None,
+) -> JSONValue:
+    """Plan or apply a CURRENT Memory Compact refresh from readiness evidence.
+
+    Args:
+        client: Backend HTTP client.
+        project: Optional project filter for the compact.
+        max_compact_age_days: Maximum acceptable age for the current compact.
+        apply: Create the compact when refresh is required or forced.
+        force: Create a compact even when readiness is already fresh.
+        covered_to: Optional deterministic coverage end timestamp.
+
+    Returns:
+        Refresh plan, optional creation result, and post-refresh readiness.
+    """
+    readiness_payload = await alexandria_librarian_readiness(
+        client, project=project, max_compact_age_days=max_compact_age_days
+    )
+    readiness = parse_readiness_summary(readiness_payload)
+    refresh_required = force or needs_current_compact_refresh(readiness.warnings)
+    refresh_status = "refresh_required" if refresh_required else "up_to_date"
+    compact_draft = refresh_compact_payload(
+        project=project,
+        readiness=readiness,
+        covered_to=covered_to or utc_now_text(),
+    )
+    created: JSONValue | None = None
+    post_refresh_readiness = ReadinessToolOutputPayload.model_validate(
+        result_object(readiness_payload)
+    )
+    if apply and refresh_required:
+        created = await alexandria_create_memory_compact(
+            client,
+            covered_from=compact_draft.covered_from,
+            covered_to=compact_draft.covered_to,
+            markdown_body=compact_draft.markdown_body,
+            project=project,
+            status=MemoryCompactStatus.CURRENT,
+            source_refs=source_ref_dicts(compact_draft),
+        )
+        post_refresh_payload = await alexandria_librarian_readiness(
+            client, project=project, max_compact_age_days=max_compact_age_days
+        )
+        post_refresh_readiness = ReadinessToolOutputPayload.model_validate(
+            result_object(post_refresh_payload)
+        )
+        refresh_status = "refreshed"
+
+    output = RefreshCurrentCompactOutputPayload(
+        status=refresh_status,
+        apply=apply,
+        force=force,
+        refresh_required=refresh_required,
+        readiness=ReadinessToolOutputPayload.model_validate(
+            result_object(readiness_payload)
+        ),
+        compact_draft=compact_draft,
+        created=created,
+        post_refresh_readiness=post_refresh_readiness,
+    )
+    return output.model_dump(mode="json")

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import httpx
+from pydantic import AliasChoices, Field, field_validator
+from pydantic_settings import BaseSettings
+
 from app.platform.security.operator_api_key import OPERATOR_API_KEY_HEADER
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.config import settings_model_config
@@ -11,8 +14,6 @@ from app.shared.utils.http_helpers.json_payloads import (
     extract_json_error_message,
     json_body_bytes,
 )
-from pydantic import AliasChoices, Field, field_validator
-from pydantic_settings import BaseSettings
 
 DEFAULT_ALEXANDRIA_API_URL = "http://localhost:8000"
 DEFAULT_MCP_TIMEOUT_SECONDS = 30.0

@@ -9,6 +9,10 @@ from app.obsidian.application.obsidian_librarian_job_service import (
 from app.obsidian.application.obsidian_service import ObsidianService
 from app.obsidian.interface.schemas.obsidian.obsidian_librarian_execution_schema import (
     ObsidianLibrarianJobResponse,
+    ObsidianLibrarianReviewApplyRequestSchema,
+    ObsidianLibrarianReviewQueueItemResponse,
+    ObsidianLibrarianReviewQueueRequestSchema,
+    ObsidianLibrarianReviewQueueResponse,
     ObsidianVaultInventoryItemResponse,
     ObsidianVaultInventoryRequestSchema,
     ObsidianVaultInventoryResponse,
@@ -58,6 +62,103 @@ async def inventory_obsidian_vault_notes(
     items = await service.inventory_vault(request.to_command())
     responses = [ObsidianVaultInventoryItemResponse.from_entity(item) for item in items]
     return ObsidianVaultInventoryResponse(items=responses, total=len(responses))
+
+
+@router.post(
+    "/librarian/review-queue",
+    response_model=ObsidianLibrarianReviewQueueResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List notes needing librarian curation",
+    description=(
+        "Return inbox, draft, legacy, and loose managed notes that should be "
+        "classified, promoted, archived, or moved by a librarian workflow."
+    ),
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def list_obsidian_librarian_review_queue(
+    request: ObsidianLibrarianReviewQueueRequestSchema,
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianLibrarianReviewQueueResponse:
+    """List notes that need librarian curation.
+
+    Args:
+        request: Queue scope request.
+        service: Obsidian application service.
+
+    Returns:
+        Prioritized librarian review queue.
+    """
+    items = await service.librarian_review_queue(request.to_command())
+    responses = [
+        ObsidianLibrarianReviewQueueItemResponse.from_entity(item) for item in items
+    ]
+    return ObsidianLibrarianReviewQueueResponse(items=responses, total=len(responses))
+
+
+@router.post(
+    "/librarian/review-queue/move-plan",
+    response_model=ObsidianVaultMovePlanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Plan safe moves from librarian review queue",
+    description=(
+        "Convert current review-queue candidates into a dry-run safe move plan. "
+        "This endpoint does not mutate the vault."
+    ),
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def plan_obsidian_librarian_review_moves(
+    request: ObsidianLibrarianReviewQueueRequestSchema,
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianVaultMovePlanResponse:
+    """Plan safe note moves from the librarian review queue.
+
+    Args:
+        request: Queue scope request.
+        service: Obsidian application service.
+
+    Returns:
+        Dry-run move plan for queue candidates.
+    """
+    plan = await service.plan_librarian_review_moves(request.to_command())
+    return ObsidianVaultMovePlanResponse.from_entity(plan)
+
+
+@router.post(
+    "/librarian/review-queue/apply-moves",
+    response_model=ObsidianVaultMoveReportResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Apply safe moves from librarian review queue",
+    description=(
+        "Convert current review-queue candidates into safe note moves, apply "
+        "them through the existing no-hard-delete move workflow, reindex, and "
+        "write report files."
+    ),
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def apply_obsidian_librarian_review_moves(
+    request: ObsidianLibrarianReviewApplyRequestSchema,
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianVaultMoveReportResponse:
+    """Apply safe note moves generated from the librarian review queue.
+
+    Args:
+        request: Queue scope and report options.
+        service: Obsidian application service.
+
+    Returns:
+        Safe move application report.
+    """
+    report = await service.apply_librarian_review_moves(request.to_command())
+    return ObsidianVaultMoveReportResponse.from_entity(report)
 
 
 @router.post(

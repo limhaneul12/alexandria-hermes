@@ -109,6 +109,8 @@ def build_obsidian_fts_query(
     limit: int,
     alexandria_type: AlexandriaNoteType | None = None,
     excluded_alexandria_types: list[AlexandriaNoteType] | None = None,
+    excluded_statuses: list[str] | None = None,
+    excluded_path_prefixes: list[str] | None = None,
     project: str | None = None,
     tags: list[str] | None = None,
 ) -> ObsidianFtsQuery | None:
@@ -119,6 +121,8 @@ def build_obsidian_fts_query(
         limit: Maximum result count.
         alexandria_type: Optional note type filter.
         excluded_alexandria_types: Optional note types to omit.
+        excluded_statuses: Optional lifecycle statuses to omit.
+        excluded_path_prefixes: Optional relative path prefixes to omit.
         project: Optional project filter.
         tags: Optional required tags.
 
@@ -157,6 +161,25 @@ def build_obsidian_fts_query(
         parameters["excluded_alexandria_types"] = [
             note_type.value for note_type in excluded_alexandria_types
         ]
+    if excluded_statuses:
+        statement = statement.where(
+            func.lower(fts_table.c.status).not_in(
+                bindparam("excluded_statuses", expanding=True)
+            )
+        )
+        parameters["excluded_statuses"] = [
+            status.strip().lower() for status in excluded_statuses
+        ]
+    if excluded_path_prefixes:
+        for index, prefix in enumerate(excluded_path_prefixes):
+            parameter_name = f"excluded_path_prefix_{index}"
+            statement = statement.where(
+                ~fts_table.c.relative_path.like(
+                    bindparam(parameter_name),
+                    escape="\\",
+                )
+            )
+            parameters[parameter_name] = f"{_escape_like_pattern(prefix)}%"
     if project is not None:
         statement = statement.where(fts_table.c.project == bindparam("project"))
         parameters["project"] = project
@@ -169,3 +192,7 @@ def build_obsidian_fts_query(
         statement=cast(ObsidianFtsStatement, statement),
         parameters=parameters,
     )
+
+
+def _escape_like_pattern(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

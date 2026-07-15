@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
+from collections.abc import Sequence
+
+from mcp.server.fastmcp import FastMCP
+
 from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
+from app.mcp_server.type_validate.transport_contracts import McpTransport
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextScope,
@@ -13,7 +19,6 @@ from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
 from app.shared.types.extra_types import JSONValue
-from mcp.server.fastmcp import FastMCP
 
 
 def build_mcp_server(
@@ -175,6 +180,40 @@ def build_mcp_server(
         """Read the current Memory Compact for a project."""
         return await backend_tool_gateway.alexandria_get_current_memory_compact(
             api_client, project
+        )
+
+    @server.tool(name="alexandria_create_memory_compact")
+    async def _tool_create_memory_compact(
+        covered_from: str,
+        covered_to: str,
+        markdown_body: str,
+        project: str | None = None,
+        status: MemoryCompactStatus = MemoryCompactStatus.DRAFT,
+        source_refs: list[dict[str, str]] | None = None,
+    ) -> JSONValue:
+        """Create a durable Memory Compact artifact."""
+        return await backend_tool_gateway.alexandria_create_memory_compact(
+            api_client,
+            covered_from,
+            covered_to,
+            markdown_body,
+            project,
+            status,
+            source_refs,
+        )
+
+    @server.tool(name="alexandria_mark_memory_compact_current")
+    async def _tool_mark_memory_compact_current(compact_id: str) -> JSONValue:
+        """Promote one compact to CURRENT."""
+        return await backend_tool_gateway.alexandria_mark_memory_compact_current(
+            api_client, compact_id
+        )
+
+    @server.tool(name="alexandria_archive_memory_compact")
+    async def _tool_archive_memory_compact(compact_id: str) -> JSONValue:
+        """Archive one compact without deleting it."""
+        return await backend_tool_gateway.alexandria_archive_memory_compact(
+            api_client, compact_id
         )
 
     @server.tool(name="alexandria_get_memory_compact")
@@ -519,6 +558,122 @@ def build_mcp_server(
             api_client, query, limit, alexandria_type, project, tags
         )
 
+    @server.tool(name="alexandria_librarian_review_queue")
+    async def _tool_librarian_review_queue(
+        project: str | None = None,
+        scope_path: str | None = None,
+        limit: int = 20,
+    ) -> JSONValue:
+        """List Obsidian notes that need librarian curation."""
+        return await backend_tool_gateway.alexandria_librarian_review_queue(
+            api_client, project, scope_path, limit
+        )
+
+    @server.tool(name="alexandria_librarian_review_move_plan")
+    async def _tool_librarian_review_move_plan(
+        project: str | None = None,
+        scope_path: str | None = None,
+        limit: int = 20,
+    ) -> JSONValue:
+        """Build a dry-run safe move plan from librarian review candidates."""
+        return await backend_tool_gateway.alexandria_librarian_review_move_plan(
+            api_client, project, scope_path, limit
+        )
+
+    @server.tool(name="alexandria_librarian_review_apply_moves")
+    async def _tool_librarian_review_apply_moves(
+        project: str | None = None,
+        scope_path: str | None = None,
+        limit: int = 20,
+        report_path: str | None = None,
+        reindex: bool = True,
+        verification_query: str | None = None,
+        confirm_apply: bool = False,
+    ) -> JSONValue:
+        """Apply safe moves generated from librarian review candidates."""
+        return await backend_tool_gateway.alexandria_librarian_review_apply_moves(
+            api_client,
+            project,
+            scope_path,
+            limit,
+            report_path,
+            reindex,
+            verification_query,
+            confirm_apply,
+        )
+
+    @server.tool(name="alexandria_librarian_vault_inventory")
+    async def _tool_librarian_vault_inventory(
+        scope_path: str | None = None,
+    ) -> JSONValue:
+        """Inventory managed Obsidian notes for librarian operations."""
+        return await backend_tool_gateway.alexandria_librarian_vault_inventory(
+            api_client, scope_path
+        )
+
+    @server.tool(name="alexandria_librarian_vault_path_search")
+    async def _tool_librarian_vault_path_search(
+        query: str,
+        scope_path: str | None = None,
+    ) -> JSONValue:
+        """Search managed Obsidian note paths and metadata."""
+        return await backend_tool_gateway.alexandria_librarian_vault_path_search(
+            api_client, query, scope_path
+        )
+
+    @server.tool(name="alexandria_librarian_vault_move_plan")
+    async def _tool_librarian_vault_move_plan(
+        moves: list[dict[str, str]],
+    ) -> JSONValue:
+        """Build a dry-run safe move plan for explicit vault moves."""
+        return await backend_tool_gateway.alexandria_librarian_vault_move_plan(
+            api_client, moves
+        )
+
+    @server.tool(name="alexandria_librarian_vault_apply_moves")
+    async def _tool_librarian_vault_apply_moves(
+        moves: list[dict[str, str]],
+        report_path: str | None = None,
+        reindex: bool = True,
+        verification_query: str | None = None,
+    ) -> JSONValue:
+        """Apply explicit safe vault moves through the librarian workflow."""
+        return await backend_tool_gateway.alexandria_librarian_vault_apply_moves(
+            api_client,
+            moves,
+            report_path,
+            reindex,
+            verification_query,
+        )
+
+    @server.tool(name="alexandria_librarian_readiness")
+    async def _tool_librarian_readiness(
+        project: str | None = None,
+        max_compact_age_days: int = 30,
+    ) -> JSONValue:
+        """Return librarian/second-brain readiness in one call."""
+        return await backend_tool_gateway.alexandria_librarian_readiness(
+            api_client, project, max_compact_age_days
+        )
+
+    @server.tool(name="alexandria_librarian_refresh_current_compact")
+    async def _tool_librarian_refresh_current_compact(
+        project: str | None = None,
+        max_compact_age_days: int = 30,
+        apply: bool = False,
+        force: bool = False,
+        covered_to: str | None = None,
+    ) -> JSONValue:
+        """Plan or apply a CURRENT compact refresh from readiness evidence."""
+        return await backend_tool_gateway.alexandria_librarian_refresh_current_compact(
+            api_client,
+            project,
+            max_compact_age_days,
+            apply,
+            force,
+            covered_to,
+        )
+
     @server.tool(name="alexandria_read_note")
     async def _tool_read_note(
         note_id: str | None = None,
@@ -595,3 +750,25 @@ def build_mcp_server(
         )
 
     return server
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the Alexandria-Hermes FastMCP server.
+
+    Args:
+        argv: Optional process arguments without the executable name.
+
+    Returns:
+        Process-style exit code after the MCP server exits normally.
+    """
+    parser = argparse.ArgumentParser(prog="alexandria-hermes mcp serve")
+    parser.add_argument(
+        "--transport",
+        choices=[transport.value for transport in McpTransport],
+        default=McpTransport.STDIO.value,
+        help="MCP transport protocol.",
+    )
+    args = parser.parse_args(argv)
+    server = build_mcp_server()
+    server.run(transport=args.transport)
+    return 0
