@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from app.memory.application.retrieval.vector_serialization import (
+    cosine_distance_to_score,
+    vector_to_sqlite_json,
+)
 from app.memory.domain.entities.context_read_models import ContextSearchMatch
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
@@ -9,15 +13,11 @@ from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
 )
+from app.memory.infrastructure.repositories.contexts.sqlite_vec_connection import (
+    load_sqlite_vec_for_session,
+)
 from app.memory.infrastructure.repositories.contexts.vector_query import (
     build_context_vector_query,
-)
-from app.retrieval.application.vector_serialization import (
-    cosine_distance_to_score,
-    vector_to_sqlite_json,
-)
-from app.retrieval.infrastructure.sqlite_vec_connection import (
-    load_sqlite_vec_for_session,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

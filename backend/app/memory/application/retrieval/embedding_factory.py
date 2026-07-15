@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.retrieval.application.embedding_provider import (
+from app.memory.application.retrieval.embedding_provider import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
     EmbeddingProvider,
     FakeEmbeddingProvider,
 )
-from app.retrieval.application.fastembed_provider import FastEmbedEmbeddingProvider
+from app.memory.application.retrieval.fastembed_provider import (
+    FastEmbedEmbeddingProvider,
+)
 
 EmbeddingProviderName = Literal["fastembed", "fake-test", "disabled"]
 

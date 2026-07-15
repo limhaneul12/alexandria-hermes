@@ -13,7 +13,6 @@ Current target naming:
 The repo has several app areas with different responsibilities:
 
 - `platform` owns FastAPI/runtime concerns.
-- `library` owns library, provider, context, and item behavior.
 - `mcp_server` owns MCP-facing tool surfaces.
 
 This means a single giant shared container is not the right target.

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import cast
 
+from app.memory.application.retrieval.vector_serialization import (
+    cosine_distance_to_score,
+    vector_to_sqlite_json,
+)
 from app.memory.domain.contracts.context_contracts import ContextChunkEmbeddingUpdate
 from app.memory.domain.entities.context_read_models import (
     ContextChunkRecord,
@@ -22,6 +26,9 @@ from app.memory.infrastructure.repositories.contexts.obsidian_context_mapping im
     metadata_filters_present,
     raw_obsidian_chunk_id,
 )
+from app.memory.infrastructure.repositories.contexts.sqlite_vec_connection import (
+    load_sqlite_vec_for_session,
+)
 from app.obsidian.domain.event_enum.obsidian_enums import ObsidianIndexStatus
 from app.obsidian.infrastructure.models.obsidian_index_models import (
     ObsidianChunkORM,
@@ -30,13 +37,6 @@ from app.obsidian.infrastructure.models.obsidian_index_models import (
 from app.obsidian.infrastructure.repositories.obsidian_fts import (
     build_obsidian_fts_query,
     ensure_obsidian_chunk_fts_table,
-)
-from app.retrieval.application.vector_serialization import (
-    cosine_distance_to_score,
-    vector_to_sqlite_json,
-)
-from app.retrieval.infrastructure.sqlite_vec_connection import (
-    load_sqlite_vec_for_session,
 )
 from sqlalchemy import bindparam, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession

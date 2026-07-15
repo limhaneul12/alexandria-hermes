@@ -130,8 +130,8 @@ Use these current repo patterns as the active baseline:
 
 - `<backend_root>/container.py` for shared runtime ownership
 - `<shared_root>/infrastructure/container.py` for shared database resource ownership
-- `<backend_root>/library/containers.py` for bounded-context composition when
-  the library context owns local wiring
+- `<backend_root>/memory/containers.py` and `<backend_root>/librarian/containers.py`
+  for bounded-context composition when those contexts own local wiring
 - `<backend_root>/mcp_server/containers.py` or similar context-owned
   composition only when that context needs local wiring
 - route dependency helpers should stay in each active bounded context router module

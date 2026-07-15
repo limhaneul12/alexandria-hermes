@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-from app.retrieval.application.embedding_factory import EmbeddingProviderName
-from app.retrieval.application.embedding_provider import (
+from app.memory.application.retrieval.embedding_factory import EmbeddingProviderName
+from app.memory.application.retrieval.embedding_provider import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
 )

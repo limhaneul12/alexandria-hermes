@@ -23,14 +23,11 @@ For this repository:
 - `<shared_root>` = `backend/app/shared`
 - `<rule_root>` = `backend/.agents/rule`
 - current active app areas:
-  - `archive`
   - `connections`
   - `librarian`
-  - `library`
   - `memory`
   - `mcp_server`
   - `platform`
-  - `retrieval`
 
 ## Usage Rule
 
@@ -46,8 +43,8 @@ Use logical paths in rules:
 Avoid hardcoding project-local paths in normative rules:
 
 ```text
-backend/app/library/domain/repositories/
-backend/tests/library/
+backend/app/<domain>/domain/repositories/
+backend/tests/<domain>/
 backend/app/shared/exceptions/
 ```
 

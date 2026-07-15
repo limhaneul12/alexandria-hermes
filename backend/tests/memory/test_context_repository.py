@@ -24,7 +24,7 @@ from app.memory.infrastructure.models.context_models import ContextChunkORM, Con
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
-from app.retrieval.application.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
 from app.shared.exceptions import (
     MemoryContextNotFoundError,
 )
