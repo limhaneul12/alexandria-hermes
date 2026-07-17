@@ -13,6 +13,17 @@ COMPACT_REFRESH_WARNINGS = frozenset(
         "current_memory_compact_missing",
         "current_memory_compact_stale",
         "current_memory_compact_timestamp_missing",
+        "current_memory_compact_review_blocked",
+        "current_memory_compact_review_needs_revision",
+    }
+)
+RAG_HEALTH_WARNINGS = frozenset(
+    {
+        "rag_fts_not_healthy",
+        "rag_vector_not_healthy",
+        "rag_embedding_not_healthy",
+        "rag_status_warnings_present",
+        "rag_status_unavailable",
     }
 )
 
@@ -27,6 +38,40 @@ def needs_current_compact_refresh(warnings: tuple[str, ...]) -> bool:
         True when compact freshness warnings are present.
     """
     return any(warning in COMPACT_REFRESH_WARNINGS for warning in warnings)
+
+
+def rag_health_blocking_warnings(warnings: tuple[str, ...]) -> tuple[str, ...]:
+    """Return RAG warnings that block CURRENT compact refresh apply.
+
+    Args:
+        warnings: Readiness warning codes.
+
+    Returns:
+        RAG warning codes that require repair before compact refresh.
+    """
+    return tuple(warning for warning in warnings if warning in RAG_HEALTH_WARNINGS)
+
+
+def review_blocking_warnings(
+    warnings: tuple[str, ...],
+    manual_review_required: int,
+) -> tuple[str, ...]:
+    """Return review warnings that block automatic compact refresh apply.
+
+    Args:
+        warnings: Readiness warning codes.
+        manual_review_required: Count of queue items requiring manual review.
+
+    Returns:
+        Review warning codes that require librarian judgment before auto-apply.
+    """
+    blockers: list[str] = []
+    if "librarian_review_queue_not_empty" in warnings and manual_review_required > 0:
+        blockers.append("librarian_manual_review_required")
+    if "current_memory_compact_review_blocked" in warnings:
+        blockers.append("current_memory_compact_review_blocked")
+    return tuple(blockers)
+    return ()
 
 
 def readiness_warnings(
@@ -55,15 +100,30 @@ def readiness_warnings(
         warnings.append("rag_vector_not_healthy")
     if rag.embedding != "HEALTHY":
         warnings.append("rag_embedding_not_healthy")
+    if rag.warnings:
+        warnings.append("rag_status_warnings_present")
     if not compact.id:
         warnings.append("current_memory_compact_missing")
-    elif compact_age_days is None:
+    elif compact.has_source_hash_mismatch():
+        warnings.append("current_memory_compact_stale")
+    elif _compact_timestamp_missing(compact) or compact_age_days is None:
         warnings.append("current_memory_compact_timestamp_missing")
     elif compact_age_days > max_compact_age_days:
         warnings.append("current_memory_compact_stale")
     if review_total > 0:
         warnings.append("librarian_review_queue_not_empty")
     return warnings
+
+
+def _compact_timestamp_missing(compact: CurrentCompactPayload) -> bool:
+    return any(
+        warning
+        in {
+            "memory_compact_timestamp_missing",
+            "current_memory_compact_timestamp_missing",
+        }
+        for warning in compact.warnings
+    )
 
 
 def readiness_next_actions(
@@ -89,6 +149,8 @@ def readiness_next_actions(
         "rag_fts_not_healthy",
         "rag_vector_not_healthy",
         "rag_embedding_not_healthy",
+        "rag_status_warnings_present",
+        "rag_status_unavailable",
     } & warning_set:
         actions.append(
             {

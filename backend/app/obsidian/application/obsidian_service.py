@@ -90,10 +90,11 @@ from app.shared.utils.secret_redaction import redact_secret_text
 
 SELECTION_CONTEXT_MAX_CHARS = 4_000
 NOTE_SUFFIX_GLOB = f"*{NOTE_SUFFIX}"
-REVIEW_QUEUE_EXCLUDED_STATUSES = frozenset({"archived", "deprecated", "superseded"})
+REVIEW_QUEUE_EXCLUDED_STATUSES = frozenset({"archived"})
 REVIEW_QUEUE_STATUS_MARKERS = frozenset(
     {"draft", "needs_review", "pending", "review", "to_promote"}
 )
+SKILL_CURATION_STATUSES = frozenset({"deprecated", "stale", "superseded"})
 
 
 class ObsidianService:
@@ -344,11 +345,16 @@ class ObsidianService:
         items = await self.inventory_vault(
             ObsidianVaultInventoryRequest(scope_path=request.scope_path)
         )
+        duplicate_skill_note_ids = _duplicate_skill_note_ids(items)
         candidates: list[ObsidianLibrarianReviewQueueItem] = []
         for item in items:
             if request.project is not None and item.project != request.project:
                 continue
-            candidate = _review_queue_item(item, root=self._alexandria_root)
+            candidate = _review_queue_item(
+                item,
+                root=self._alexandria_root,
+                duplicate_skill_note_ids=duplicate_skill_note_ids,
+            )
             if candidate is not None:
                 candidates.append(candidate)
         candidates.sort(
@@ -1005,12 +1011,20 @@ def _review_queue_item(
     item: ObsidianVaultInventoryItem,
     *,
     root: str,
+    duplicate_skill_note_ids: set[str],
 ) -> ObsidianLibrarianReviewQueueItem | None:
     if item.status.casefold() in REVIEW_QUEUE_EXCLUDED_STATUSES:
         return None
     inside_root = _inside_alexandria_root(item.relative_path, root)
     if inside_root.startswith(f"{LIBRARIAN_OPERATIONS_FOLDER}/"):
         return None
+    skill_curation_item = _skill_curation_queue_item(
+        item,
+        root=root,
+        duplicate_skill_note_ids=duplicate_skill_note_ids,
+    )
+    if skill_curation_item is not None:
+        return skill_curation_item
     status_needs_review = item.status.casefold() in REVIEW_QUEUE_STATUS_MARKERS
     if inside_root.startswith("_Inbox/"):
         return _queue_item(
@@ -1067,6 +1081,97 @@ def _review_queue_item(
             requires_human_review=False,
         )
     return None
+
+
+def _duplicate_skill_note_ids(
+    items: list[ObsidianVaultInventoryItem],
+) -> set[str]:
+    grouped: dict[tuple[str, str | None], list[ObsidianVaultInventoryItem]] = {}
+    for item in items:
+        if item.alexandria_type is not AlexandriaNoteType.SKILL:
+            continue
+        status = item.status.casefold()
+        if (
+            status in REVIEW_QUEUE_EXCLUDED_STATUSES
+            or status in SKILL_CURATION_STATUSES
+        ):
+            continue
+        key = (_normalized_skill_title(item.title), item.project)
+        grouped.setdefault(key, []).append(item)
+    duplicate_ids: set[str] = set()
+    for group in grouped.values():
+        if len(group) > 1:
+            duplicate_ids.update(item.note_id for item in group)
+    return duplicate_ids
+
+
+def _normalized_skill_title(title: str) -> str:
+    return " ".join(title.casefold().split())
+
+
+def _skill_curation_queue_item(
+    item: ObsidianVaultInventoryItem,
+    *,
+    root: str,
+    duplicate_skill_note_ids: set[str],
+) -> ObsidianLibrarianReviewQueueItem | None:
+    if item.alexandria_type is not AlexandriaNoteType.SKILL:
+        return None
+    status = item.status.casefold()
+    if status == "stale":
+        return _queue_item(
+            item,
+            reason="skill_stale_candidate",
+            recommended_action="review_or_refresh_skill_evidence",
+            suggested_destination_path=None,
+            priority=95,
+            confidence=0.80,
+            requires_human_review=True,
+        )
+    if status == "superseded":
+        return _queue_item(
+            item,
+            reason="skill_superseded_candidate",
+            recommended_action="review_supersedes_relation_and_deprecation_plan",
+            suggested_destination_path=_skill_deprecated_path(item, root=root),
+            priority=94,
+            confidence=0.80,
+            requires_human_review=True,
+        )
+    if item.note_id in duplicate_skill_note_ids:
+        return _queue_item(
+            item,
+            reason="skill_duplicate_candidate",
+            recommended_action="review_duplicate_or_supersedes_relation",
+            suggested_destination_path=None,
+            priority=92,
+            confidence=0.75,
+            requires_human_review=True,
+        )
+    if status == "deprecated":
+        return _queue_item(
+            item,
+            reason="skill_deprecated_candidate",
+            recommended_action="review_deprecated_skill_retention_plan",
+            suggested_destination_path=_skill_deprecated_path(item, root=root),
+            priority=88,
+            confidence=0.75,
+            requires_human_review=True,
+        )
+    return None
+
+
+def _skill_deprecated_path(
+    item: ObsidianVaultInventoryItem,
+    *,
+    root: str,
+) -> str | None:
+    destination = _rooted_path(
+        root, f"Skills/Deprecated/{Path(item.relative_path).name}"
+    )
+    if destination == item.relative_path:
+        return None
+    return destination
 
 
 def _queue_item(
@@ -1126,6 +1231,7 @@ def _suggested_canonical_path(
         AlexandriaNoteType.LIBRARIAN_BRIEF: f"{LIBRARIAN_OPERATIONS_FOLDER}/Briefs",
         AlexandriaNoteType.LIBRARIAN_CHAT: f"{LIBRARIAN_OPERATIONS_FOLDER}/Chats",
         AlexandriaNoteType.JOB_PLAN: "Jobs",
+        AlexandriaNoteType.IMPLEMENTATION_HISTORY: "Implementation History",
     }[item.alexandria_type]
     destination = _rooted_path(root, f"{folder}/{filename}")
     if destination == item.relative_path:

@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiError
 from app.mcp_server.tools.librarian_compact_refresh import (
     refresh_compact_payload,
     utc_now_text,
 )
-from app.mcp_server.tools.memory_compact_tools import alexandria_create_memory_compact
+from app.mcp_server.tools.memory_compact_tools import (
+    alexandria_create_memory_compact,
+    alexandria_review_memory_compact,
+)
 from app.mcp_server.type_validate.librarian_readiness_contracts import (
+    CurrentCompactPayload,
+    CurrentCompactReviewPayload,
+    RagStatusPayload,
     ReadinessReviewQueueOutputPayload,
     ReadinessToolOutputPayload,
     RefreshCurrentCompactOutputPayload,
@@ -17,9 +23,11 @@ from app.mcp_server.type_validate.librarian_readiness_contracts import (
     parse_rag_status,
     parse_readiness_summary,
     parse_review_queue,
+    rag_health_blocking_warnings,
     readiness_next_actions,
     readiness_warnings,
     result_object,
+    review_blocking_warnings,
     source_ref_dicts,
 )
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
@@ -42,7 +50,14 @@ async def alexandria_librarian_readiness(
         Readiness summary composed from RAG health, current Memory Compact, and
         librarian review queue state.
     """
-    rag_status = await client.get("/memory/contexts/rag/status")
+    try:
+        rag_status = await client.get("/memory/contexts/rag/status")
+    except AlexandriaApiError as exc:
+        return _rag_status_unavailable_readiness(
+            project=project,
+            max_compact_age_days=max_compact_age_days,
+            error_message=str(exc),
+        )
     compact_query: JSONObject | None = None if project is None else {"project": project}
     current_compact = await client.get("/memory/compacts/current", params=compact_query)
     review_payload: JSONObject = {"limit": 20}
@@ -54,6 +69,7 @@ async def alexandria_librarian_readiness(
 
     rag = parse_rag_status(rag_status)
     compact = parse_current_compact(current_compact)
+    compact_review = await _current_compact_review(client, compact)
     review_queue = parse_review_queue(review_queue_payload)
     review_total = review_queue.total_count()
     auto_move_candidates = review_queue.auto_move_candidate_count()
@@ -67,6 +83,7 @@ async def alexandria_librarian_readiness(
         max_compact_age_days=bounded_max_age_days,
         review_total=review_total,
     )
+    warnings.extend(_compact_review_warnings(compact_review))
     next_actions = readiness_next_actions(
         warnings=warnings,
         auto_move_candidates=auto_move_candidates,
@@ -84,6 +101,7 @@ async def alexandria_librarian_readiness(
                 "max_age_days": bounded_max_age_days,
             }
         ),
+        current_memory_compact_review=compact_review,
         review_queue=ReadinessReviewQueueOutputPayload(
             total=review_total,
             auto_move_candidates=auto_move_candidates,
@@ -94,6 +112,82 @@ async def alexandria_librarian_readiness(
         next_actions=tuple(next_actions),
     )
     return output.model_dump(mode="json")
+
+
+async def _current_compact_review(
+    client: AlexandriaApiClient,
+    compact: CurrentCompactPayload,
+) -> CurrentCompactReviewPayload | None:
+    if not isinstance(compact.id, str) or not compact.id:
+        return None
+    source_observations = _source_observations_from_compact(compact)
+    review_payload = await alexandria_review_memory_compact(
+        client,
+        compact.id,
+        source_observations=source_observations,
+    )
+    return CurrentCompactReviewPayload.model_validate(result_object(review_payload))
+
+
+def _rag_status_unavailable_readiness(
+    *, project: str | None, max_compact_age_days: int, error_message: str
+) -> JSONValue:
+    warnings = ["rag_status_unavailable"]
+    next_actions = readiness_next_actions(
+        warnings=warnings,
+        auto_move_candidates=0,
+        manual_review_required=0,
+        review_total=0,
+    )
+    bounded_max_age_days = max(int(max_compact_age_days), 1)
+    output = ReadinessToolOutputPayload(
+        ready=False,
+        status="needs_attention",
+        project=project,
+        rag=RagStatusPayload(warnings=(error_message,)),
+        current_memory_compact=CurrentCompactPayload(
+            project=project,
+            max_age_days=bounded_max_age_days,
+        ),
+        current_memory_compact_review=None,
+        review_queue=ReadinessReviewQueueOutputPayload(
+            total=0,
+            auto_move_candidates=0,
+            manual_review_required=0,
+            items=(),
+        ),
+        warnings=tuple(warnings),
+        next_actions=tuple(next_actions),
+    )
+    return output.model_dump(mode="json")
+
+
+def _source_observations_from_compact(
+    compact: CurrentCompactPayload,
+) -> list[JSONObject]:
+    observations: list[JSONObject] = []
+    for source_ref in compact.source_refs:
+        if not isinstance(source_ref.source_id, str) or not source_ref.source_id:
+            continue
+        observation: JSONObject = {"source_id": source_ref.source_id}
+        if isinstance(source_ref.detail_path, str):
+            observation["detail_path"] = source_ref.detail_path
+        if isinstance(source_ref.current_source_hash, str):
+            observation["current_source_hash"] = source_ref.current_source_hash
+        observations.append(observation)
+    return observations
+
+
+def _compact_review_warnings(
+    compact_review: CurrentCompactReviewPayload | None,
+) -> list[str]:
+    if compact_review is None:
+        return []
+    if compact_review.verdict == "blocked":
+        return ["current_memory_compact_review_blocked"]
+    if compact_review.verdict == "needs_revision":
+        return ["current_memory_compact_review_needs_revision"]
+    return []
 
 
 async def alexandria_librarian_refresh_current_compact(
@@ -122,7 +216,22 @@ async def alexandria_librarian_refresh_current_compact(
     )
     readiness = parse_readiness_summary(readiness_payload)
     refresh_required = force or needs_current_compact_refresh(readiness.warnings)
+    rag_blocked_reasons = rag_health_blocking_warnings(readiness.warnings)
+    review_blocked_reasons = review_blocking_warnings(
+        readiness.warnings,
+        readiness.review_queue.manual_required_count(),
+    )
+    blocked_reasons = rag_blocked_reasons + review_blocked_reasons
+    blocked_next_actions = tuple(
+        action
+        for action in readiness.next_actions
+        if action.code in {"repair_rag_index", "review_manual_librarian_queue"}
+    )
     refresh_status = "refresh_required" if refresh_required else "up_to_date"
+    if refresh_required and rag_blocked_reasons:
+        refresh_status = "blocked_by_rag_health"
+    elif refresh_required and review_blocked_reasons:
+        refresh_status = "blocked_by_librarian_review"
     compact_draft = refresh_compact_payload(
         project=project,
         readiness=readiness,
@@ -132,7 +241,7 @@ async def alexandria_librarian_refresh_current_compact(
     post_refresh_readiness = ReadinessToolOutputPayload.model_validate(
         result_object(readiness_payload)
     )
-    if apply and refresh_required:
+    if apply and refresh_required and not blocked_reasons:
         created = await alexandria_create_memory_compact(
             client,
             covered_from=compact_draft.covered_from,
@@ -155,6 +264,8 @@ async def alexandria_librarian_refresh_current_compact(
         apply=apply,
         force=force,
         refresh_required=refresh_required,
+        blocked_reasons=blocked_reasons,
+        blocked_next_actions=blocked_next_actions,
         readiness=ReadinessToolOutputPayload.model_validate(
             result_object(readiness_payload)
         ),

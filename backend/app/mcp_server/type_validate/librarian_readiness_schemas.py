@@ -26,6 +26,35 @@ class RagStatusPayload(LibrarianReadinessPayload):
     fts: str | None = None
     vector: str | None = None
     embedding: str | None = None
+    warnings: tuple[str, ...] = Field(default_factory=tuple)
+
+    @field_validator("warnings", mode="before")
+    @classmethod
+    def _filter_warning_strings(cls, value: object) -> object:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, str)]
+        return value
+
+
+class CurrentCompactSourceRefPayload(LibrarianReadinessPayload):
+    """Validated current compact source-ref freshness fields."""
+
+    source_id: JSONValue | None = None
+    detail_path: JSONValue | None = None
+    source_hash: str | None = None
+    current_source_hash: str | None = None
+
+    def hash_mismatched(self) -> bool:
+        """Return whether stored and current source hashes conflict.
+
+        Returns:
+            True when both hashes are present and different.
+        """
+        return (
+            self.source_hash is not None
+            and self.current_source_hash is not None
+            and self.source_hash != self.current_source_hash
+        )
 
 
 class CurrentCompactPayload(LibrarianReadinessPayload):
@@ -37,6 +66,24 @@ class CurrentCompactPayload(LibrarianReadinessPayload):
     updated_at: str | None = None
     age_days: int | None = None
     max_age_days: int | None = None
+    warnings: tuple[str, ...] = Field(default_factory=tuple)
+    source_refs: tuple[CurrentCompactSourceRefPayload, ...] = Field(
+        default_factory=tuple
+    )
+
+    @field_validator("warnings", mode="before")
+    @classmethod
+    def _filter_warning_strings(cls, value: object) -> object:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, str)]
+        return value
+
+    @field_validator("source_refs", mode="before")
+    @classmethod
+    def _filter_source_ref_objects(cls, value: object) -> object:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        return value
 
     def calculated_age_days(self) -> int | None:
         """Calculate compact age from updated_at when possible.
@@ -54,6 +101,66 @@ class CurrentCompactPayload(LibrarianReadinessPayload):
             updated = updated.replace(tzinfo=UTC)
         now = datetime.now(UTC)
         return max((now - updated.astimezone(UTC)).days, 0)
+
+    def has_source_hash_mismatch(self) -> bool:
+        """Return whether attached source evidence reports changed content.
+
+        Returns:
+            True when any source ref includes both the compact-time hash and a
+            current observed hash and they differ.
+        """
+        return any(source_ref.hash_mismatched() for source_ref in self.source_refs)
+
+
+class CurrentCompactReviewScorePayload(LibrarianReadinessPayload):
+    """Validated current compact review rubric score."""
+
+    code: str | None = None
+    label: str | None = None
+    score: int | None = None
+    required: bool | None = None
+    reasons: tuple[str, ...] = Field(default_factory=tuple)
+
+    @field_validator("reasons", mode="before")
+    @classmethod
+    def _filter_reason_strings(cls, value: object) -> object:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, str)]
+        return value
+
+
+class CurrentCompactReviewPayload(LibrarianReadinessPayload):
+    """Validated current compact librarian review summary."""
+
+    compact_id: str | None = None
+    verdict: str | None = None
+    total_score: int | None = None
+    max_score: int | None = None
+    scores: tuple[CurrentCompactReviewScorePayload, ...] = Field(default_factory=tuple)
+    missing_refs: tuple[str, ...] = Field(default_factory=tuple)
+    contradictions: tuple[str, ...] = Field(default_factory=tuple)
+    stale_reasons: tuple[str, ...] = Field(default_factory=tuple)
+    recommended_actions: tuple[str, ...] = Field(default_factory=tuple)
+
+    @field_validator(
+        "missing_refs",
+        "contradictions",
+        "stale_reasons",
+        "recommended_actions",
+        mode="before",
+    )
+    @classmethod
+    def _filter_strings(cls, value: object) -> object:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, str)]
+        return value
+
+    @field_validator("scores", mode="before")
+    @classmethod
+    def _filter_score_objects(cls, value: object) -> object:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        return value
 
 
 class ReviewQueueItemPayload(LibrarianReadinessPayload):
@@ -134,6 +241,7 @@ class ReadinessSummaryPayload(LibrarianReadinessPayload):
     current_memory_compact: CurrentCompactPayload = Field(
         default_factory=CurrentCompactPayload
     )
+    current_memory_compact_review: CurrentCompactReviewPayload | None = None
     review_queue: ReviewQueuePayload = Field(default_factory=ReviewQueuePayload)
     warnings: tuple[str, ...] = Field(default_factory=tuple)
     next_actions: tuple[NextActionPayload, ...] = Field(default_factory=tuple)
@@ -190,6 +298,7 @@ class ReadinessToolOutputPayload(LibrarianReadinessPayload):
     project: str | None = None
     rag: RagStatusPayload
     current_memory_compact: CurrentCompactPayload
+    current_memory_compact_review: CurrentCompactReviewPayload | None = None
     review_queue: ReadinessReviewQueueOutputPayload
     warnings: tuple[str, ...] = Field(default_factory=tuple)
     next_actions: tuple[NextActionPayload, ...] = Field(default_factory=tuple)
@@ -202,6 +311,8 @@ class RefreshCurrentCompactOutputPayload(LibrarianReadinessPayload):
     apply: bool
     force: bool
     refresh_required: bool
+    blocked_reasons: tuple[str, ...] = Field(default_factory=tuple)
+    blocked_next_actions: tuple[NextActionPayload, ...] = Field(default_factory=tuple)
     readiness: ReadinessToolOutputPayload
     compact_draft: CompactRefreshDraftPayload
     created: JSONValue | None = None

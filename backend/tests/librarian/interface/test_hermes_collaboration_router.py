@@ -521,11 +521,10 @@ def test_ask_librarian_saves_daily_memory_compact_from_delegate_action() -> None
     assert compact_payload.covered_from == FIXED_NOW - timedelta(days=1)
     assert compact_payload.covered_to == FIXED_NOW
     assert compact_payload.status is MemoryCompactStatus.CURRENT
-    assert compact_payload.markdown_body == (
-        "# Daily Memory Compact\n\n"
-        "## Summary\n"
-        "The librarian compacted today's durable project memory."
-    )
+    assert "## Durable Decisions" in compact_payload.markdown_body
+    assert "## Current State" in compact_payload.markdown_body
+    assert "# Daily Memory Compact" in compact_payload.markdown_body
+    assert "## Evidence Summary" in compact_payload.markdown_body
     assert [
         {
             "source_type": source_ref.source_type,

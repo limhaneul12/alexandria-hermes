@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from urllib.parse import quote
 
 from app.mcp_server.backend_api_client import AlexandriaApiClient
@@ -46,7 +47,7 @@ async def alexandria_create_memory_compact(
     markdown_body: str,
     project: str | None = None,
     status: MemoryCompactStatus = MemoryCompactStatus.DRAFT,
-    source_refs: list[dict[str, str]] | None = None,
+    source_refs: Sequence[Mapping[str, JSONValue]] | None = None,
 ) -> JSONValue:
     """Create a durable Memory Compact artifact.
 
@@ -159,15 +160,65 @@ async def alexandria_archive_memory_compact(
     )
 
 
-def _source_ref_payloads(source_refs: list[dict[str, str]] | None) -> list[JSONObject]:
+async def alexandria_review_memory_compact(
+    client: AlexandriaApiClient,
+    compact_id: str,
+    source_observations: Sequence[Mapping[str, JSONValue]] | None = None,
+) -> JSONValue:
+    """Review one Memory Compact with the librarian quality rubric.
+
+    Args:
+        client: Backend HTTP client.
+        compact_id: Memory Compact identifier.
+        source_observations: Optional current source observations.
+
+    Returns:
+        Backend Memory Compact review response.
+    """
+    payload: JSONObject = {
+        "source_observations": _source_observation_payloads(source_observations)
+    }
+    return await client.post(
+        f"/memory/compacts/{quote(compact_id, safe='')}/review",
+        payload,
+    )
+
+
+def _source_ref_payloads(
+    source_refs: Sequence[Mapping[str, JSONValue]] | None,
+) -> list[JSONObject]:
     if source_refs is None:
         return []
-    return [
-        {
+    payloads: list[JSONObject] = []
+    for source_ref in source_refs:
+        payload: JSONObject = {
             "source_type": source_ref["source_type"],
             "source_id": source_ref["source_id"],
             "title": source_ref["title"],
             "detail_path": source_ref["detail_path"],
         }
-        for source_ref in source_refs
-    ]
+        source_hash = source_ref.get("source_hash")
+        if source_hash is not None:
+            payload["source_hash"] = source_hash
+        payloads.append(payload)
+    return payloads
+
+
+def _source_observation_payloads(
+    source_observations: Sequence[Mapping[str, JSONValue]] | None,
+) -> list[JSONObject]:
+    if source_observations is None:
+        return []
+    payloads: list[JSONObject] = []
+    for observation in source_observations:
+        payload: JSONObject = {
+            "source_id": observation["source_id"],
+        }
+        detail_path = observation.get("detail_path")
+        if detail_path is not None:
+            payload["detail_path"] = detail_path
+        current_source_hash = observation.get("current_source_hash")
+        if current_source_hash is not None:
+            payload["current_source_hash"] = current_source_hash
+        payloads.append(payload)
+    return payloads

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dependency_injector import containers, providers
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
@@ -26,8 +29,6 @@ from app.librarian.infrastructure.repositories.skill_acquisition_job_repository 
     SqlAlchemySkillAcquisitionJobRepository,
 )
 from app.memory.application.memory_compact_service import MemoryCompactService
-from dependency_injector import containers, providers
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class LibrarianContainer(containers.DeclarativeContainer):

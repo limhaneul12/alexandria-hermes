@@ -125,6 +125,7 @@ def default_note_path(
         AlexandriaNoteType.LIBRARIAN_BRIEF: f"{LIBRARIAN_OPERATIONS_FOLDER}/Briefs",
         AlexandriaNoteType.LIBRARIAN_CHAT: f"{LIBRARIAN_OPERATIONS_FOLDER}/Chats",
         AlexandriaNoteType.JOB_PLAN: "Jobs",
+        AlexandriaNoteType.IMPLEMENTATION_HISTORY: "Implementation History",
     }[note_type]
     return f"{root}/{folder}/{safe_filename(title)}"
 
@@ -154,6 +155,7 @@ def default_folders(root: str) -> tuple[str, ...]:
         f"{root}/{LIBRARIAN_OPERATIONS_FOLDER}/Reports",
         f"{root}/{LIBRARIAN_OPERATIONS_FOLDER}/Research Results",
         f"{root}/{LIBRARIAN_OPERATIONS_FOLDER}/Skill Acquisition",
+        f"{root}/Implementation History",
         f"{root}/Indexes",
         f"{root}/Archive",
         f"{root}/Jobs",

@@ -15,6 +15,7 @@ class AlexandriaNoteType(StrEnum):
     LIBRARIAN_BRIEF = "librarian_brief"
     LIBRARIAN_CHAT = "librarian_chat"
     JOB_PLAN = "job_plan"
+    IMPLEMENTATION_HISTORY = "implementation_history"
 
 
 class ObsidianIndexStatus(StrEnum):

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import anyio
 from app.memory.application.context_service import ContextService
+from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     RagHealthState,
@@ -30,7 +31,6 @@ from app.obsidian.infrastructure.models.obsidian_index_models import ObsidianChu
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
 from app.shared.infrastructure.database import Database
 from sqlalchemy import func, select
 from tests.memory.context_seed import seed_context
@@ -424,12 +424,19 @@ def test_context_rag_status_detects_obsidian_embedding_fingerprint_mismatch(
     assert "mean-v2" in pooling_modes
 
 
-def test_context_soft_rebuild_prioritizes_stale_obsidian_before_current_context(
+def test_context_soft_rebuild_reports_and_prioritizes_stale_obsidian_source(
     tmp_path: Path,
 ) -> None:
     """Soft rebuild batches should update stale sources before current chunks."""
 
-    async def scenario() -> tuple[int, str, list[str | None], list[str | None]]:
+    async def scenario() -> tuple[
+        int,
+        str,
+        list[str | None],
+        list[str | None],
+        dict[str, tuple[int, int, int]],
+        dict[str, tuple[int, int, int]],
+    ]:
         async with (
             _temporary_database(tmp_path / "cross-source-soft-rebuild.db") as database,
             database.session() as session,
@@ -488,11 +495,38 @@ def test_context_soft_rebuild_prioritizes_stale_obsidian_before_current_context(
             report.after.embedding.value,
             [chunk.embedding_pooling_mode for chunk in context_chunks.all()],
             [chunk.embedding_pooling_mode for chunk in obsidian_chunks.all()],
+            {
+                status.source_name: (
+                    status.total_rows,
+                    status.current_rows,
+                    status.stale_rows,
+                )
+                for status in report.source_status_before
+            },
+            {
+                status.source_name: (
+                    status.total_rows,
+                    status.current_rows,
+                    status.stale_rows,
+                )
+                for status in report.source_status_after
+            },
         )
 
-    updated, after_status, context_pooling, obsidian_pooling = anyio.run(scenario)
+    (
+        updated,
+        after_status,
+        context_pooling,
+        obsidian_pooling,
+        source_status_before,
+        source_status_after,
+    ) = anyio.run(scenario)
 
     assert updated == 1
     assert after_status == RagHealthState.HEALTHY.value
     assert context_pooling == ["mean-v2"]
     assert obsidian_pooling == ["mean-v2"]
+    assert source_status_before["context_vault"] == (1, 1, 0)
+    assert source_status_before["obsidian_vault"] == (1, 0, 1)
+    assert source_status_after["context_vault"] == (1, 1, 0)
+    assert source_status_after["obsidian_vault"] == (1, 1, 0)

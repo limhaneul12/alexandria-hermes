@@ -285,7 +285,13 @@ async def _run_librarian_actions(
     action_preview: list[str] = []
     action_source_refs = _memory_compact_source_refs(command, job_id)
     for delegate in delegates:
-        compact_body = _daily_memory_compact_body(delegate.summary)
+        covered_from = covered_to - _DAILY_MEMORY_COMPACT_WINDOW
+        compact_body = _daily_memory_compact_body(
+            delegate.summary,
+            project=command.project,
+            covered_from=covered_from,
+            covered_to=covered_to,
+        )
         if (
             delegate.status is not LibrarianDelegateStatus.COMPLETED
             or compact_body is None
@@ -295,7 +301,7 @@ async def _run_librarian_actions(
         compact = await memory_compact_service.create(
             MemoryCompactCreate(
                 project=command.project,
-                covered_from=covered_to - _DAILY_MEMORY_COMPACT_WINDOW,
+                covered_from=covered_from,
                 covered_to=covered_to,
                 markdown_body=compact_body,
                 status=MemoryCompactStatus.CURRENT,
@@ -321,12 +327,43 @@ async def _run_librarian_actions(
     return updated, action_preview
 
 
-def _daily_memory_compact_body(summary: str) -> str | None:
+def _daily_memory_compact_body(
+    summary: str,
+    *,
+    project: str | None,
+    covered_from: datetime,
+    covered_to: datetime,
+) -> str | None:
     stripped = summary.strip()
     if not stripped.startswith(_DAILY_MEMORY_COMPACT_MARKER):
         return None
     compact_body = stripped[len(_DAILY_MEMORY_COMPACT_MARKER) :].lstrip()
-    return compact_body if compact_body else None
+    if not compact_body:
+        return None
+    return "\n".join(
+        [
+            "## Durable Decisions",
+            "- Preserve the delegate-approved daily project memory as CURRENT.",
+            "",
+            "## Current State",
+            compact_body,
+            "",
+            "## Risks and Blockers",
+            "- None recorded by the delegate action.",
+            "",
+            "## Next Actions",
+            "- Continue from this compact in the next session.",
+            "",
+            "## Coverage",
+            f"- covered_from: {covered_from.isoformat()}",
+            f"- covered_to: {covered_to.isoformat()}",
+            f"- project: {project or 'default'}",
+            "",
+            "## Evidence Summary",
+            "- Delegate-approved daily memory compact action.",
+            "",
+        ]
+    )
 
 
 def _memory_compact_source_refs(

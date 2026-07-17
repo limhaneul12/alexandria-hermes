@@ -47,6 +47,15 @@ from app.obsidian.interface.routers.obsidian_router import router as obsidian_ro
 from app.obsidian.interface.routers.obsidian_settings_router import (
     router as obsidian_settings_router,
 )
+from app.operations.interface.routers.operational_readiness_router import (
+    router as operational_readiness_router,
+)
+from app.operations.interface.routers.recovery_plan_router import (
+    router as recovery_plan_router,
+)
+from app.operations.interface.routers.recovery_run_router import (
+    router as recovery_run_router,
+)
 from app.platform.config.app_config import AppConfig
 from app.platform.health_router import install_health_routes
 from app.platform.lifecycle.state import LifecycleState
@@ -164,6 +173,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
             "app.librarian.interface.routers",
             "app.memory.interface.routers",
             "app.obsidian.interface.routers",
+            "app.operations.interface.routers",
         ]
     )
 
@@ -183,6 +193,9 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(obsidian_router)
     app.include_router(obsidian_librarian_execution_router)
     app.include_router(obsidian_settings_router)
+    app.include_router(operational_readiness_router)
+    app.include_router(recovery_plan_router)
+    app.include_router(recovery_run_router)
     app.include_router(agent_router)
     app.include_router(librarian_router)
     app.include_router(librarian_oauth_router)

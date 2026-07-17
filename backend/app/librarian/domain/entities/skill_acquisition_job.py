@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.librarian.domain.event_enum.collaboration_enums import (
+    SkillAcquisitionJobStage,
     SkillAcquisitionJobStatus,
 )
+from app.shared.types.extra_types import JSONObject
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +32,17 @@ class SkillAcquisitionJob:
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None
+    stage: SkillAcquisitionJobStage | None = None
+    progress_summary: str | None = None
+    skill_note_path: str | None = None
+    reindex_status: str | None = None
+    verification_status: str | None = None
+    handoff: JSONObject | None = None
+    repair_hint: str | None = None
+    search_snapshot: JSONObject | None = None
+    acquisition_override_reason: str | None = None
+    prompt_reference: str | None = None
+    prompt_reference_hash: str | None = None
 
     @property
     def result_available(self) -> bool:

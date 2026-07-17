@@ -133,6 +133,19 @@ class ContextPackPayload(TypedDict, closed=True):
     context_pack: str
 
 
+class ContextEmbeddingSourceStatusPayload(TypedDict, closed=True):
+    """API payload for source-level embedding fingerprint diagnostics."""
+
+    source_name: str
+    status: RagHealthState
+    total_rows: int
+    current_rows: int
+    stale_rows: int
+    missing_rows: int
+    current_fingerprint: JSONObject
+    stored_fingerprints: list[JSONObject]
+
+
 class RagHealthPayload(TypedDict, closed=True):
     """API payload for RAG dependency health."""
 
@@ -144,6 +157,7 @@ class RagHealthPayload(TypedDict, closed=True):
     dimensions: int
     fingerprint: JSONObject | None
     warnings: list[str]
+    source_statuses: list[ContextEmbeddingSourceStatusPayload]
 
 
 class ContextReindexPayload(TypedDict, closed=True):
@@ -162,8 +176,10 @@ class ContextSoftRebuildPayload(TypedDict, closed=True):
     source_preservation: str
     hard_delete_performed: bool
     before: RagHealthPayload
+    source_status_before: list[ContextEmbeddingSourceStatusPayload]
     reindex: ContextReindexPayload
     after: RagHealthPayload
+    source_status_after: list[ContextEmbeddingSourceStatusPayload]
     verification_query: str | None
     verification_matches: int
     verification_context_ids: list[str]

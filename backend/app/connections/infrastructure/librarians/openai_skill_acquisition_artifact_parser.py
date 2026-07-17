@@ -6,6 +6,7 @@ import re
 
 from app.librarian.domain.contracts.skill_acquisition_contracts import (
     SkillAcquisitionArtifact,
+    SkillAcquisitionEvidenceItem,
 )
 from app.librarian.domain.event_enum.skill_acquisition_enums import (
     ItemStatus,
@@ -44,6 +45,7 @@ def skill_acquisition_artifact_from_provider_text(
         tags=_string_list(payload, "tags"),
         required_tools=_string_list(payload, "required_tools"),
         evidence_urls=_string_list(payload, "evidence_urls"),
+        evidence_items=_evidence_items(payload),
         risk_level=_risk_level(payload.get("risk_level")),
         version=_optional_text(payload, "version") or "1.0.0",
         created_by_name=_optional_text(payload, "created_by_name", strip=False),
@@ -71,6 +73,34 @@ def _artifact_payload(summary: str) -> dict[str, JSONValue]:
             "Provider response must be a JSON object"
         )
     return raw_payload
+
+
+def _evidence_items(
+    payload: dict[str, JSONValue],
+) -> list[SkillAcquisitionEvidenceItem]:
+    value = payload.get("evidence_items")
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise LibrarianSkillAcquisitionArtifactError("evidence_items must be a list")
+    items: list[SkillAcquisitionEvidenceItem] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            raise LibrarianSkillAcquisitionArtifactError(
+                "evidence_items must be objects"
+            )
+        item = SkillAcquisitionEvidenceItem(
+            url_or_path=_required_text(entry, "url_or_path"),
+            title=_optional_text(entry, "title"),
+            source_kind=_optional_text(entry, "source_kind"),
+            publisher_or_repository=_optional_text(entry, "publisher_or_repository"),
+            accessed_at=_optional_text(entry, "accessed_at"),
+            supports_claims=_string_list(entry, "supports_claims"),
+            freshness=_optional_text(entry, "freshness"),
+            notes=_optional_text(entry, "notes"),
+        )
+        items.append(item)
+    return items
 
 
 def _string_list(payload: dict[str, JSONValue], key: str) -> list[str]:

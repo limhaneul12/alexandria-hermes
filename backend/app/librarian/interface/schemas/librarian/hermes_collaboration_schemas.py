@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pydantic import ConfigDict, Field
+
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
 )
@@ -18,7 +20,6 @@ from app.librarian.interface.schemas.librarian.librarian_brief_schemas import (
     SourceRefSchema,
 )
 from app.shared.schemas.common_schemas import StrictSchemaModel
-from pydantic import ConfigDict, Field
 
 
 class AskLibrarianRequest(StrictSchemaModel):

@@ -9,6 +9,7 @@ from app.memory.domain.contracts.context_contracts import (
 )
 from app.memory.domain.entities.context_read_models import (
     ContextChunkRecord,
+    ContextEmbeddingSourceStatus,
     ContextSearchMatch,
 )
 from app.memory.domain.event_enum.context_enums import (
@@ -16,6 +17,7 @@ from app.memory.domain.event_enum.context_enums import (
     ContextScope,
     RagHealthState,
 )
+from app.shared.types.extra_types import JSONObject
 
 
 class IContextSearchSource(ABC):
@@ -129,6 +131,27 @@ class IContextSearchSource(ABC):
 
         Returns:
             HEALTHY when indexed embeddings match; REINDEX_REQUIRED otherwise.
+        """
+
+    @abstractmethod
+    async def embedding_source_status(
+        self,
+        *,
+        model_name: str,
+        dimensions: int,
+        fingerprint_key: str,
+        current_fingerprint: JSONObject,
+    ) -> ContextEmbeddingSourceStatus:
+        """Return row counts and stored fingerprints for this source.
+
+        Args:
+            model_name: Current embedding model name.
+            dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
+            current_fingerprint: Current timestamp-free fingerprint payload.
+
+        Returns:
+            Source-level embedding fingerprint diagnostics.
         """
 
     @abstractmethod

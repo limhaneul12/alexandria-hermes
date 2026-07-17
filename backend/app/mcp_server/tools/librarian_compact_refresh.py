@@ -118,23 +118,20 @@ def refresh_markdown_body(
     compact = readiness.current_memory_compact
     queue = readiness.review_queue
     rag = readiness.rag
+    source_refs = refresh_source_refs(previous_id=compact.id, covered_to=covered_to)
     return "\n".join(
         [
             "# Alexandria-Hermes Current Memory Compact — Librarian Refresh",
             "",
-            "## Status",
+            "## Durable Decisions",
+            "- Obsidian Markdown remains the durable source of truth.",
+            "- RAG/index readiness gates must pass before trusting refreshed memory.",
+            "- Librarian review queues are handled through safe plan/apply workflows.",
+            "",
+            "## Current State",
             f"- Project: `{project_text}`",
-            f"- Coverage: `{covered_from}` → `{covered_to}`",
             f"- Readiness status: `{readiness.status}`",
             f"- Warnings: `{warning_text}`",
-            "",
-            "## Librarian Role",
-            "- Bridge Codex/Hermes to the Obsidian-first second brain.",
-            "- Diagnose RAG, current compact freshness, and review queue backlog.",
-            "- Keep vault hygiene through review queues and safe move/apply reports.",
-            "- Preserve working memory through CURRENT Memory Compact artifacts.",
-            "",
-            "## Current Signals",
             f"- RAG FTS: `{rag.fts}`",
             f"- RAG vector: `{rag.vector}`",
             f"- RAG embedding: `{rag.embedding}`",
@@ -151,10 +148,27 @@ def refresh_markdown_body(
             f"- Previous compact updated_at: `{compact.updated_at}`",
             f"- Previous compact age_days: `{compact.age_days}`",
             "",
+            "## Risks and Blockers",
+            (
+                f"- Active warnings: `{warning_text}`"
+                if readiness.warnings
+                else "- No active readiness warnings."
+            ),
+            "- Treat stale or missing compact state as needs-attention until refreshed.",
+            "",
             "## Next Actions",
             *action_lines,
             "",
+            "## Coverage",
+            f"- covered_from: `{covered_from}`",
+            f"- covered_to: `{covered_to}`",
+            f"- project: `{project_text}`",
+            "",
+            "## Evidence Summary",
+            *evidence_summary_lines(source_refs),
+            "",
             "## Operating Guidance",
+            "- Bridge Codex/Hermes to the Obsidian-first second brain.",
             "- Run librarian readiness before claiming the library is operational.",
             "- Refresh this compact when readiness reports stale/missing compact state.",
             "- Prefer safe move plans and report-backed apply flows for vault changes.",
@@ -162,6 +176,26 @@ def refresh_markdown_body(
             "",
         ]
     )
+
+
+def evidence_summary_lines(
+    source_refs: list[CompactSourceRefPayload],
+) -> list[str]:
+    """Render source-ref-linked evidence summary lines.
+
+    Args:
+        source_refs: Source refs that will be attached to the refresh compact.
+
+    Returns:
+        Evidence Summary markdown lines that mention source ids, titles, and paths.
+    """
+    return [
+        (
+            f"- `{source_ref.source_id}` — {source_ref.title}; "
+            f"detail_path: `{source_ref.detail_path}`."
+        )
+        for source_ref in source_refs
+    ]
 
 
 def next_action_markdown_lines(

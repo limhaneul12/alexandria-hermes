@@ -11,6 +11,7 @@ from app.memory.application.retrieval.vector_serialization import (
 from app.memory.domain.contracts.context_contracts import ContextChunkEmbeddingUpdate
 from app.memory.domain.entities.context_read_models import (
     ContextChunkRecord,
+    ContextEmbeddingSourceStatus,
     ContextSearchMatch,
 )
 from app.memory.domain.event_enum.context_enums import (
@@ -43,6 +44,7 @@ from app.obsidian.infrastructure.repositories.obsidian_fts import (
     build_obsidian_fts_query,
     ensure_obsidian_chunk_fts_table,
 )
+from app.shared.types.extra_types import JSONObject
 from sqlalchemy import bindparam, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -349,6 +351,106 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
             return RagHealthState.HEALTHY
         return RagHealthState.REINDEX_REQUIRED
 
+    async def embedding_source_status(
+        self,
+        *,
+        model_name: str,
+        dimensions: int,
+        fingerprint_key: str,
+        current_fingerprint: JSONObject,
+    ) -> ContextEmbeddingSourceStatus:
+        """Return source-level Obsidian embedding fingerprint diagnostics.
+
+        Args:
+            model_name: Current embedding model name.
+            dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
+            current_fingerprint: Current timestamp-free fingerprint payload.
+
+        Returns:
+            Obsidian source embedding diagnostics.
+        """
+        total_rows = await self._session.scalar(
+            select(func.count(ObsidianChunkORM.id))
+            .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
+            .where(*_default_recall_visibility_conditions())
+            .where(func.length(func.trim(ObsidianChunkORM.text)) > 0)
+        )
+        current_rows = await self._session.scalar(
+            select(func.count(ObsidianChunkORM.id))
+            .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
+            .where(
+                *_default_recall_visibility_conditions(),
+                func.length(func.trim(ObsidianChunkORM.text)) > 0,
+                ObsidianChunkORM.embedding.is_not(None),
+                ObsidianChunkORM.embedding_model == model_name,
+                ObsidianChunkORM.embedding_dimensions == dimensions,
+                ObsidianChunkORM.embedding_fingerprint_key == fingerprint_key,
+            )
+        )
+        missing_rows = await self._session.scalar(
+            select(func.count(ObsidianChunkORM.id))
+            .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
+            .where(
+                *_default_recall_visibility_conditions(),
+                func.length(func.trim(ObsidianChunkORM.text)) > 0,
+                or_(
+                    ObsidianChunkORM.embedding.is_(None),
+                    ObsidianChunkORM.embedding_fingerprint_key.is_(None),
+                ),
+            )
+        )
+        fingerprint_rows = await self._session.execute(
+            select(
+                ObsidianChunkORM.embedding_provider,
+                ObsidianChunkORM.embedding_model,
+                ObsidianChunkORM.embedding_provider_version,
+                ObsidianChunkORM.embedding_pooling_mode,
+                ObsidianChunkORM.embedding_normalize,
+                ObsidianChunkORM.embedding_dimensions,
+            )
+            .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
+            .where(
+                *_default_recall_visibility_conditions(),
+                func.length(func.trim(ObsidianChunkORM.text)) > 0,
+                ObsidianChunkORM.embedding_fingerprint_key.is_not(None),
+            )
+            .distinct()
+        )
+        total = int(total_rows or 0)
+        current = int(current_rows or 0)
+        stale = max(total - current, 0)
+        missing = int(missing_rows or 0)
+        return ContextEmbeddingSourceStatus(
+            source_name="obsidian_vault",
+            status=RagHealthState.HEALTHY
+            if stale == 0
+            else RagHealthState.REINDEX_REQUIRED,
+            total_rows=total,
+            current_rows=current,
+            stale_rows=stale,
+            missing_rows=missing,
+            current_fingerprint=current_fingerprint,
+            stored_fingerprints=[
+                _fingerprint_payload(
+                    provider=provider,
+                    model=model,
+                    provider_version=provider_version,
+                    pooling_mode=pooling_mode,
+                    normalize=normalize,
+                    dimensions=stored_dimensions,
+                )
+                for (
+                    provider,
+                    model,
+                    provider_version,
+                    pooling_mode,
+                    normalize,
+                    stored_dimensions,
+                ) in fingerprint_rows.all()
+            ],
+        )
+
     async def update_chunk_embeddings(
         self,
         updates: list[ContextChunkEmbeddingUpdate],
@@ -397,3 +499,22 @@ def _default_recall_visibility_conditions() -> tuple[ColumnElement[bool], ...]:
         ),
         ~ObsidianFileORM.relative_path.like("\\_Ops/%", escape="\\"),
     )
+
+
+def _fingerprint_payload(
+    *,
+    provider: str | None,
+    model: str | None,
+    provider_version: str | None,
+    pooling_mode: str | None,
+    normalize: bool | None,
+    dimensions: int | None,
+) -> JSONObject:
+    return {
+        "provider": provider,
+        "model": model,
+        "provider_version": provider_version,
+        "pooling_mode": pooling_mode,
+        "normalize": normalize,
+        "dimensions": dimensions,
+    }

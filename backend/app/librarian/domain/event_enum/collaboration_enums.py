@@ -30,6 +30,18 @@ class SkillAcquisitionJobStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class SkillAcquisitionJobStage(StrEnum):
+    """Observable stage for the durable skill-acquisition completion loop."""
+
+    REQUEST_ACCEPTED = "REQUEST_ACCEPTED"
+    GUIDANCE_READY = "GUIDANCE_READY"
+    PROVIDER_FAILED = "PROVIDER_FAILED"
+    ARTIFACT_RECEIVED = "ARTIFACT_RECEIVED"
+    SKILL_SAVED = "SKILL_SAVED"
+    HANDOFF_READY = "HANDOFF_READY"
+    FAILED = "FAILED"
+
+
 class LibrarianProfileRole(StrEnum):
     """Routing role assigned to a saved librarian profile."""
 

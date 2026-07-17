@@ -28,6 +28,7 @@ from app.memory.domain.contracts.context_contracts import (
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,
+    ContextEmbeddingSourceStatus,
     ContextPack,
     ContextRecord,
     ContextReindexResult,
@@ -336,10 +337,11 @@ class ContextService:
 
         try:
             index_status = await self._embedding_index_status(provider)
+            source_statuses = await self._embedding_source_statuses(provider)
         except SQLAlchemyError as exc:
             return _embedding_index_status_probe_failed_health(health, exc)
         if index_status is not RagHealthState.REINDEX_REQUIRED:
-            return health
+            return replace(health, source_statuses=source_statuses)
 
         warnings = [
             *health.warnings,
@@ -354,6 +356,7 @@ class ContextService:
             embedding=RagHealthState.REINDEX_REQUIRED,
             default_strategy=RagStrategy.FTS_ONLY,
             warnings=warnings,
+            source_statuses=source_statuses,
         )
 
     async def search(
@@ -557,8 +560,10 @@ class ContextService:
             Operator-facing soft rebuild report.
         """
         before = await self.rag_health_with_index_status()
+        source_status_before = await self.embedding_source_statuses()
         reindex = await self.reindex_embeddings(limit=limit, force=True)
         after = await self.rag_health_with_index_status()
+        source_status_after = await self.embedding_source_statuses()
         verification_context_ids: list[str] = []
         verification_warnings: list[str] = []
         if verification_query is not None and verification_query.strip():
@@ -586,8 +591,10 @@ class ContextService:
             ),
             hard_delete_performed=False,
             before=before,
+            source_status_before=source_status_before,
             reindex=reindex,
             after=after,
+            source_status_after=source_status_after,
             verification_query=verification_query,
             verification_matches=len(verification_context_ids),
             verification_context_ids=verification_context_ids,
@@ -595,6 +602,40 @@ class ContextService:
             warnings=warnings,
         )
         return result
+
+    async def embedding_source_statuses(self) -> list[ContextEmbeddingSourceStatus]:
+        """Return source-level embedding fingerprint diagnostics.
+
+        Returns:
+            One status object per configured Context RAG source.
+        """
+        provider = self._embedding_provider
+        health = self.rag_health()
+        if (
+            provider is None
+            or not self._vector_retrieval_enabled
+            or health.vector is not RagHealthState.HEALTHY
+            or health.embedding is not RagHealthState.HEALTHY
+        ):
+            return []
+
+        return await self._embedding_source_statuses(provider)
+
+    async def _embedding_source_statuses(
+        self,
+        provider: EmbeddingProvider,
+    ) -> list[ContextEmbeddingSourceStatus]:
+        fingerprint = provider.fingerprint()
+        statuses = [
+            await source.embedding_source_status(
+                model_name=provider.model_name,
+                dimensions=provider.dimensions,
+                fingerprint_key=fingerprint.key(),
+                current_fingerprint=fingerprint.identity_payload(),
+            )
+            for source in self._search_sources
+        ]
+        return statuses
 
     async def _search_fts_sources(
         self,

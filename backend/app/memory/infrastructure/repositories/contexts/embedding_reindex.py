@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from app.memory.domain.contracts.context_contracts import ContextChunkEmbeddingUpdate
-from app.memory.domain.entities.context_read_models import ContextChunkRecord
+from app.memory.domain.entities.context_read_models import (
+    ContextChunkRecord,
+    ContextEmbeddingSourceStatus,
+)
 from app.memory.domain.event_enum.context_enums import RagHealthState
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
 from app.memory.infrastructure.repositories.contexts.mapping import map_chunk_row
-from sqlalchemy import case, or_, select
+from app.shared.types.extra_types import JSONObject
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -141,3 +145,123 @@ async def embedding_index_status(
     if stale_chunk_id is None:
         return RagHealthState.HEALTHY
     return RagHealthState.REINDEX_REQUIRED
+
+
+async def embedding_source_status(
+    *,
+    session: AsyncSession,
+    source_name: str,
+    model_name: str,
+    dimensions: int,
+    fingerprint_key: str,
+    current_fingerprint: JSONObject,
+) -> ContextEmbeddingSourceStatus:
+    """Return source-level context embedding fingerprint diagnostics.
+
+    Args:
+        session: Active async database session.
+        source_name: Human-readable source label.
+        model_name: Current embedding model name.
+        dimensions: Current embedding dimensions.
+        fingerprint_key: Current embedding generation fingerprint key.
+        current_fingerprint: Current timestamp-free fingerprint payload.
+
+    Returns:
+        Source-level embedding status and row counts.
+    """
+    base_conditions = (ContextORM.is_archived.is_(False),)
+    total_rows = await session.scalar(
+        select(func.count(ContextChunkORM.id))
+        .join(ContextORM, ContextORM.id == ContextChunkORM.context_id)
+        .where(*base_conditions)
+    )
+    current_rows = await session.scalar(
+        select(func.count(ContextChunkORM.id))
+        .join(ContextORM, ContextORM.id == ContextChunkORM.context_id)
+        .where(
+            *base_conditions,
+            ContextChunkORM.embedding.is_not(None),
+            ContextChunkORM.embedding_model == model_name,
+            ContextChunkORM.embedding_dimensions == dimensions,
+            ContextChunkORM.embedding_fingerprint_key == fingerprint_key,
+        )
+    )
+    missing_rows = await session.scalar(
+        select(func.count(ContextChunkORM.id))
+        .join(ContextORM, ContextORM.id == ContextChunkORM.context_id)
+        .where(
+            *base_conditions,
+            or_(
+                ContextChunkORM.embedding.is_(None),
+                ContextChunkORM.embedding_fingerprint_key.is_(None),
+            ),
+        )
+    )
+    fingerprint_rows = await session.execute(
+        select(
+            ContextChunkORM.embedding_provider,
+            ContextChunkORM.embedding_model,
+            ContextChunkORM.embedding_provider_version,
+            ContextChunkORM.embedding_pooling_mode,
+            ContextChunkORM.embedding_normalize,
+            ContextChunkORM.embedding_dimensions,
+        )
+        .join(ContextORM, ContextORM.id == ContextChunkORM.context_id)
+        .where(
+            *base_conditions,
+            ContextChunkORM.embedding_fingerprint_key.is_not(None),
+        )
+        .distinct()
+    )
+    total = int(total_rows or 0)
+    current = int(current_rows or 0)
+    stale = max(total - current, 0)
+    missing = int(missing_rows or 0)
+    return ContextEmbeddingSourceStatus(
+        source_name=source_name,
+        status=RagHealthState.HEALTHY
+        if stale == 0
+        else RagHealthState.REINDEX_REQUIRED,
+        total_rows=total,
+        current_rows=current,
+        stale_rows=stale,
+        missing_rows=missing,
+        current_fingerprint=current_fingerprint,
+        stored_fingerprints=[
+            _fingerprint_payload(
+                provider=provider,
+                model=model,
+                provider_version=provider_version,
+                pooling_mode=pooling_mode,
+                normalize=normalize,
+                dimensions=stored_dimensions,
+            )
+            for (
+                provider,
+                model,
+                provider_version,
+                pooling_mode,
+                normalize,
+                stored_dimensions,
+            ) in fingerprint_rows.all()
+        ],
+    )
+
+
+def _fingerprint_payload(
+    *,
+    provider: str | None,
+    model: str | None,
+    provider_version: str | None,
+    pooling_mode: str | None,
+    normalize: bool | None,
+    dimensions: int | None,
+) -> JSONObject:
+    return {
+        "provider": provider,
+        "model": model,
+        "provider_version": provider_version,
+        "pooling_mode": pooling_mode,
+        "normalize": normalize,
+        "dimensions": dimensions,
+    }

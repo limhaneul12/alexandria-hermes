@@ -11,6 +11,7 @@ from app.memory.domain.contracts.context_contracts import (
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,
+    ContextEmbeddingSourceStatus,
     ContextRecord,
     ContextSearchMatch,
 )
@@ -29,6 +30,7 @@ from app.memory.infrastructure.repositories.contexts.deletion import delete_cont
 from app.memory.infrastructure.repositories.contexts.embedding_reindex import (
     chunks_missing_embeddings,
     embedding_index_status,
+    embedding_source_status,
     update_chunk_embeddings,
 )
 from app.memory.infrastructure.repositories.contexts.filters import (
@@ -49,6 +51,7 @@ from app.memory.infrastructure.repositories.contexts.vector_search import (
     search_context_vectors,
 )
 from app.shared.exceptions import MemoryContextNotFoundError
+from app.shared.types.extra_types import JSONObject
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -377,6 +380,35 @@ class SqlAlchemyContextRepository(IContextRepository):
             model_name=model_name,
             dimensions=dimensions,
             fingerprint_key=fingerprint_key,
+        )
+        return status
+
+    async def embedding_source_status(
+        self,
+        *,
+        model_name: str,
+        dimensions: int,
+        fingerprint_key: str,
+        current_fingerprint: JSONObject,
+    ) -> ContextEmbeddingSourceStatus:
+        """Return source-level embedding fingerprint diagnostics.
+
+        Args:
+            model_name: Current embedding model name.
+            dimensions: Current embedding dimensions.
+            fingerprint_key: Current embedding generation fingerprint key.
+            current_fingerprint: Current timestamp-free fingerprint payload.
+
+        Returns:
+            Context Vault embedding diagnostics.
+        """
+        status = await embedding_source_status(
+            session=self._session,
+            source_name="context_vault",
+            model_name=model_name,
+            dimensions=dimensions,
+            fingerprint_key=fingerprint_key,
+            current_fingerprint=current_fingerprint,
         )
         return status
 

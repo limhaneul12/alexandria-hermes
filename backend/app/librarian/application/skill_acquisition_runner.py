@@ -6,7 +6,10 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
+from app.librarian.application.skill_acquisition_service import (
+    SkillAcquisitionService,
+    SkillArtifactPublisher,
+)
 from app.librarian.domain.contracts.skill_acquisition_contracts import (
     SkillAcquisitionArtifact,
 )
@@ -82,11 +85,18 @@ class SkillAcquisitionRunner:
         self._service = service
         self._executor = executor
 
-    async def run_job(self, job_id: str) -> SkillAcquisitionJob:
+    async def run_job(
+        self,
+        job_id: str,
+        *,
+        artifact_publisher: SkillArtifactPublisher | None = None,
+    ) -> SkillAcquisitionJob:
         """Execute one job when acceptable and persist outcomes.
 
         Args:
             job_id: Durable acquisition job identifier.
+            artifact_publisher: Optional publisher that durably saves and verifies
+                acquired skill artifacts.
 
         Returns:
             Updated durable job.
@@ -137,6 +147,7 @@ class SkillAcquisitionRunner:
         return await self._service.complete_with_skill_artifact(
             job_id=job.id,
             artifact=artifact,
+            artifact_publisher=artifact_publisher,
         )
 
 

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, status
+
 from app.container import ApplicationContainer
 from app.librarian.application.agent_service import AgentService
 from app.librarian.domain.entities.read_models import AgentProfile
@@ -15,8 +18,6 @@ from app.librarian.interface.schemas.agent.agent_schema import (
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
 from app.shared.types.types_convert_utils import now_utc
-from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, status
 
 router = APIRouter(
     prefix="/librarians/profiles",

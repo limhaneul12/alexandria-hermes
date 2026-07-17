@@ -48,6 +48,7 @@ docs/usage_guidebook/install_onboard/install_onboard_guide_01.md
 | library_assets | [library_assets_guide_01.md](library_assets/library_assets_guide_01.md) | skills/prompts candidate search와 selected full-load 흐름 |
 | librarian_collaboration | [librarian_collaboration_guide_01.md](librarian_collaboration/librarian_collaboration_guide_01.md) | 사서를 optional 협업자로 쓰는 흐름 |
 | librarian_recovery | [librarian_recovery_guide_01.md](librarian_recovery/librarian_recovery_guide_01.md) | embedding fingerprint mismatch와 사서 실행 복구 절차 |
+| operational_sync | [operational_sync_guide_01.md](operational_sync/operational_sync_guide_01.md) | SQLite/Obsidian 재색인, embedding soft rebuild, readiness READY 복구 절차 |
 | security_privacy | [security_privacy_guide_01.md](security_privacy/security_privacy_guide_01.md) | local-first single-operator 보안/프라이버시 모델 |
 | troubleshooting | [troubleshooting_guide_01.md](troubleshooting/troubleshooting_guide_01.md) | 증상 기반 설치/recall/MCP/build 문제 해결 |
 | oss_onboarding | [oss_onboarding_guide_01.md](oss_onboarding/oss_onboarding_guide_01.md) | 유명 OSS 온보딩 패턴을 반영한 문서 작성 기준 |

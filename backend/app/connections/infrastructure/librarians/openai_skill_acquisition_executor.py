@@ -52,7 +52,11 @@ _SKILL_ACQUISITION_TIMEOUT_CONFIG_KEY = "skill_acquisition_timeout_seconds"
 _DEFAULT_INSTRUCTIONS = """
 Return only strict JSON with these fields:
 title, purpose, content, summary, tags, required_tools, evidence_urls,
-source_summary, next_steps, risk_level, version, activate, status.
+evidence_items, source_summary, next_steps, risk_level, version, activate, status.
+Each evidence_items object must include url_or_path, title, source_kind,
+publisher_or_repository, accessed_at, supports_claims, freshness, and notes.
+Use opened source metadata only; do not invent evidence. If evidence is
+insufficient, set status to NEEDS_REVIEW and explain the gap in next_steps.
 Do not include markdown fences, explanations, or extra prose.
 """.strip()
 logger = logging.getLogger(__name__)

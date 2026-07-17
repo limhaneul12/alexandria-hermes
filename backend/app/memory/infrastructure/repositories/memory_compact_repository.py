@@ -11,6 +11,7 @@ from app.memory.domain.entities.memory_compact import (
     MemoryCompactSourceRef,
 )
 from app.memory.domain.event_enum.memory_compact_enums import (
+    MemoryCompactReviewVerdict,
     MemoryCompactStatus,
 )
 from app.memory.domain.repositories.memory_compact_repository import (
@@ -63,6 +64,10 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
             created_at=now,
             updated_at=now,
             archived_at=None,
+            review_verdict=payload.review_verdict,
+            review_score=payload.review_score,
+            review_max_score=payload.review_max_score,
+            reviewed_at=payload.reviewed_at,
         )
         if payload.status is MemoryCompactStatus.CURRENT:
             await self._supersede_current_project(payload.project, excluded_id=None)
@@ -78,9 +83,6 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Matching compact, or None when absent.
         """
-        direct_path = self._compact_path(compact_id)
-        if direct_path is not None and direct_path.exists():
-            return read_compact_file(direct_path)
         for compact in self._read_all_compacts():
             if compact.id == compact_id:
                 return compact
@@ -136,11 +138,23 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
         compacts.sort(key=lambda item: item.updated_at, reverse=True)
         return compacts[0] if compacts else None
 
-    async def mark_current(self, compact_id: str) -> MemoryCompact:
+    async def mark_current(
+        self,
+        compact_id: str,
+        *,
+        review_verdict: MemoryCompactReviewVerdict | None = None,
+        review_score: int | None = None,
+        review_max_score: int | None = None,
+        reviewed_at: datetime | None = None,
+    ) -> MemoryCompact:
         """Mark one compact current and supersede prior current for project.
 
         Args:
             compact_id: Memory Compact identifier.
+            review_verdict: Latest librarian review verdict for the promotion.
+            review_score: Latest librarian review total score.
+            review_max_score: Latest librarian review maximum score.
+            reviewed_at: Review timestamp.
 
         Returns:
             Updated current compact.
@@ -154,6 +168,10 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
             status=MemoryCompactStatus.CURRENT,
             updated_at=datetime.now(UTC),
             archived_at=None,
+            review_verdict=review_verdict,
+            review_score=review_score,
+            review_max_score=review_max_score,
+            reviewed_at=reviewed_at,
         )
         self._write_compact(updated)
         return updated
@@ -240,12 +258,16 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
         return compacts
 
     def _read_all_compacts(self) -> list[MemoryCompact]:
-        compacts: list[MemoryCompact] = []
+        compacts_by_id: dict[str, MemoryCompact] = {}
         for path in self._note_paths():
             compact = read_compact_file(path)
             if compact is not None:
-                compacts.append(compact)
-        return compacts
+                existing = compacts_by_id.get(compact.id)
+                if existing is None or _compact_sort_key(compact) > _compact_sort_key(
+                    existing
+                ):
+                    compacts_by_id[compact.id] = compact
+        return list(compacts_by_id.values())
 
     def _delete_scanned_note(self, compact_id: str) -> None:
         for candidate in self._note_paths():
@@ -285,6 +307,11 @@ def _source_refs(
             source_id=source_ref.source_id,
             title=source_ref.title,
             detail_path=source_ref.detail_path,
+            source_hash=source_ref.source_hash,
         )
         for source_ref in payload.source_refs
     )
+
+
+def _compact_sort_key(compact: MemoryCompact) -> tuple[datetime, datetime]:
+    return compact.updated_at, compact.created_at

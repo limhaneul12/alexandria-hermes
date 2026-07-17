@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from pydantic import Field
+
 from app.librarian.domain.entities.budget_policy import BudgetPolicy
 from app.librarian.domain.entities.context_pack_compact import ContextPackCompact
 from app.librarian.domain.entities.source_ref import SourceRef, SourceRefType
 from app.shared.schemas.common_schemas import StrictSchemaModel
-from pydantic import Field
 
 
 class SourceRefSchema(StrictSchemaModel):

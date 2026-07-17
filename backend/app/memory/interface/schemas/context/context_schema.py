@@ -162,6 +162,19 @@ class ContextPackResponse(StrictSchemaModel):
     context_pack: str
 
 
+class ContextEmbeddingSourceStatusResponse(StrictSchemaModel):
+    """Source-level embedding fingerprint diagnostics."""
+
+    source_name: str
+    status: RagHealthState
+    total_rows: int
+    current_rows: int
+    stale_rows: int
+    missing_rows: int
+    current_fingerprint: JSONObject
+    stored_fingerprints: list[JSONObject]
+
+
 class RagStatusResponse(StrictSchemaModel):
     """Context RAG health response."""
 
@@ -173,6 +186,9 @@ class RagStatusResponse(StrictSchemaModel):
     dimensions: int
     fingerprint: JSONObject | None
     warnings: list[str]
+    source_statuses: list[ContextEmbeddingSourceStatusResponse] = Field(
+        default_factory=list
+    )
 
 
 class ContextReindexResponse(StrictSchemaModel):
@@ -191,8 +207,10 @@ class ContextSoftRebuildResponse(StrictSchemaModel):
     source_preservation: str
     hard_delete_performed: bool
     before: RagStatusResponse
+    source_status_before: list[ContextEmbeddingSourceStatusResponse]
     reindex: ContextReindexResponse
     after: RagStatusResponse
+    source_status_after: list[ContextEmbeddingSourceStatusResponse]
     verification_query: str | None
     verification_matches: int
     verification_context_ids: list[str]

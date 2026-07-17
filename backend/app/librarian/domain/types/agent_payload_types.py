@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
 from typing_extensions import TypedDict
+
+from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
 
 
 class AgentCreatePayload(TypedDict, closed=True):

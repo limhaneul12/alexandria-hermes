@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import JSON, Boolean, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
+
 from app.shared.infrastructure.database import Base
 from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
-from sqlalchemy import JSON, Boolean, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column
 
 
 class AgentProfileORM(Base):

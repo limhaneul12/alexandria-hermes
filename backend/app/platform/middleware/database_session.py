@@ -46,8 +46,9 @@ def install_database_session_middleware(
         async with database.request_session() as session:
             try:
                 response = await call_next(request)
-            except Exception:
+            except Exception as exc:
                 await session.rollback()
+                await database.recover_from_error(exc)
                 raise
 
             if response.status_code < 400:

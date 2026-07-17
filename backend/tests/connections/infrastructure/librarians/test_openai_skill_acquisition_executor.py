@@ -296,6 +296,18 @@ def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None
                 "tags": ["automation", "browser"],
                 "required_tools": ["playwright", "pytest"],
                 "evidence_urls": ["https://example.com/skill"],
+                "evidence_items": [
+                    {
+                        "url_or_path": "https://example.com/skill",
+                        "title": "Browser automation reference",
+                        "source_kind": "primary_docs",
+                        "publisher_or_repository": "example/browser",
+                        "accessed_at": "2026-07-17",
+                        "supports_claims": ["stable selector procedure"],
+                        "freshness": "current",
+                        "notes": "opened source metadata only",
+                    }
+                ],
                 "source_summary": "Test evidence summary.",
                 "next_steps": ["Wrap into a route test.", "Persist the skill."],
                 "risk_level": "LOW",
@@ -336,6 +348,11 @@ def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None
         assert artifact.tags == ["automation", "browser"]
         assert artifact.required_tools == ["playwright", "pytest"]
         assert artifact.evidence_urls == ["https://example.com/skill"]
+        assert len(artifact.evidence_items) == 1
+        assert artifact.evidence_items[0].supports_claims == [
+            "stable selector procedure"
+        ]
+        assert artifact.evidence_items[0].publisher_or_repository == "example/browser"
         assert artifact.source_summary == "Test evidence summary."
         assert artifact.next_steps == ["Wrap into a route test.", "Persist the skill."]
         assert artifact.activate is True
@@ -346,6 +363,9 @@ def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None
         instructions = str(client.responses.calls[0]["instructions"])
         assert "title, purpose, content" in instructions
         assert "next_steps" in instructions
+        assert "evidence_items" in instructions
+        assert "supports_claims" in instructions
+        assert "NEEDS_REVIEW" in instructions
         assert "status" in instructions
         assert "STRICT JSON" not in repr(artifact)
 

@@ -33,6 +33,7 @@ class FakeSkillAcquisitionService:
         """Initialize fake service state."""
         self.job = job
         self.completed_artifact: SkillAcquisitionArtifact | None = None
+        self.artifact_publisher_seen = False
         self.failure_message: str | None = None
 
     async def get_job(self, job_id: str) -> SkillAcquisitionJob:
@@ -45,10 +46,12 @@ class FakeSkillAcquisitionService:
         *,
         job_id: str,
         artifact: SkillAcquisitionArtifact,
+        artifact_publisher=None,  # type: ignore[no-untyped-def]
     ) -> SkillAcquisitionJob:
         """Record completion and return a completed job with durable handles."""
         assert job_id == self.job.id
         self.completed_artifact = artifact
+        self.artifact_publisher_seen = artifact_publisher is not None
         self.job = SkillAcquisitionJob(
             id=self.job.id,
             prompt=self.job.prompt,
@@ -169,7 +172,7 @@ def test_runner_persists_executor_artifact_when_job_is_accepted() -> None:
     """Accepted jobs should execute once and complete with durable handles."""
 
     async def run_case() -> tuple[
-        SkillAcquisitionJob, list[SkillAcquisitionExecutionRequest]
+        SkillAcquisitionJob, list[SkillAcquisitionExecutionRequest], bool
     ]:
         service = FakeSkillAcquisitionService(_accepted_job())
         executor = RecordingExecutor(
@@ -184,11 +187,14 @@ def test_runner_persists_executor_artifact_when_job_is_accepted() -> None:
         )
         runner = SkillAcquisitionRunner(service=service, executor=executor)
 
-        completed = await runner.run_job("skill-acquisition-1")
+        completed = await runner.run_job(
+            "skill-acquisition-1",
+            artifact_publisher=object(),  # type: ignore[arg-type]
+        )
 
-        return completed, executor.requests
+        return completed, executor.requests, service.artifact_publisher_seen
 
-    completed, requests = anyio.run(run_case)
+    completed, requests, artifact_publisher_seen = anyio.run(run_case)
 
     assert completed.status is SkillAcquisitionJobStatus.COMPLETED
     assert completed.skill_id is None
@@ -204,6 +210,7 @@ def test_runner_persists_executor_artifact_when_job_is_accepted() -> None:
             librarian_profile_id="profile-1",
         )
     ]
+    assert artifact_publisher_seen is True
 
 
 def test_runner_skips_terminal_jobs_when_retried() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,
+    ContextEmbeddingSourceStatus,
     ContextPack,
     ContextRecord,
     ContextReindexResult,
@@ -15,6 +16,7 @@ from app.memory.domain.entities.context_read_models import (
 from app.memory.domain.types.context_payload_types import (
     ContextAccessEventPayload,
     ContextChunkPayload,
+    ContextEmbeddingSourceStatusPayload,
     ContextPackPayload,
     ContextPayload,
     ContextReindexPayload,
@@ -172,6 +174,9 @@ def health_payload(health: RagDependencyHealth) -> RagHealthPayload:
         "dimensions": health.dimensions,
         "fingerprint": health.fingerprint,
         "warnings": health.warnings,
+        "source_statuses": [
+            source_status_payload(status) for status in health.source_statuses
+        ],
     }
     return payload
 
@@ -194,6 +199,30 @@ def reindex_payload(result: ContextReindexResult) -> ContextReindexPayload:
     return payload
 
 
+def source_status_payload(
+    status: ContextEmbeddingSourceStatus,
+) -> ContextEmbeddingSourceStatusPayload:
+    """Return an API payload for source embedding diagnostics.
+
+    Args:
+        status: Source embedding status read model.
+
+    Returns:
+        Typed response payload for one source status.
+    """
+    payload: ContextEmbeddingSourceStatusPayload = {
+        "source_name": status.source_name,
+        "status": status.status,
+        "total_rows": status.total_rows,
+        "current_rows": status.current_rows,
+        "stale_rows": status.stale_rows,
+        "missing_rows": status.missing_rows,
+        "current_fingerprint": status.current_fingerprint,
+        "stored_fingerprints": status.stored_fingerprints,
+    }
+    return payload
+
+
 def soft_rebuild_payload(
     result: ContextSoftRebuildResult,
 ) -> ContextSoftRebuildPayload:
@@ -210,8 +239,14 @@ def soft_rebuild_payload(
         "source_preservation": result.source_preservation,
         "hard_delete_performed": result.hard_delete_performed,
         "before": health_payload(result.before),
+        "source_status_before": [
+            source_status_payload(status) for status in result.source_status_before
+        ],
         "reindex": reindex_payload(result.reindex),
         "after": health_payload(result.after),
+        "source_status_after": [
+            source_status_payload(status) for status in result.source_status_after
+        ],
         "verification_query": result.verification_query,
         "verification_matches": result.verification_matches,
         "verification_context_ids": result.verification_context_ids,

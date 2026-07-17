@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, status
+
 from app.container import ApplicationContainer
 from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
 from app.librarian.interface.schemas.librarian.librarian_brief_schemas import (
@@ -12,8 +15,6 @@ from app.librarian.interface.schemas.librarian.librarian_brief_schemas import (
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
-from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, status
 
 router = APIRouter(
     prefix="/librarians",

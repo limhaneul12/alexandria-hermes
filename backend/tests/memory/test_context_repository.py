@@ -761,6 +761,9 @@ semantic-target was embedded before the pooling change.
 
         assert health.embedding is RagHealthState.REINDEX_REQUIRED
         assert health.default_strategy is RagStrategy.FTS_ONLY
+        assert health.source_statuses[0].source_name == "context_vault"
+        assert health.source_statuses[0].total_rows >= 1
+        assert health.source_statuses[0].stale_rows >= 1
         assert health.fingerprint is not None
         assert health.fingerprint["pooling_mode"] == "mean-v2"
         assert any("REINDEX_REQUIRED" in warning for warning in health.warnings)
@@ -770,6 +773,11 @@ semantic-target was embedded before the pooling change.
         assert rebuilt.updated >= 1
         assert rebuilt.skipped == 0
         assert healthy.embedding is RagHealthState.HEALTHY
+        assert (
+            healthy.source_statuses[0].current_rows
+            == health.source_statuses[0].total_rows
+        )
+        assert healthy.source_statuses[0].stale_rows == 0
         assert before_chunk.embedding == "[0,1,0]"
         assert before_chunk.embedding_pooling_mode == "mean-v2"
         assert before_chunk.embedding_fingerprint_key is not None
@@ -778,12 +786,26 @@ semantic-target was embedded before the pooling change.
     anyio.run(scenario)
 
 
-def test_context_soft_rebuild_preserves_sources_and_returns_verification(
+def test_context_soft_rebuild_preserves_sources_and_returns_source_diagnostics(
     tmp_path: Path,
 ) -> None:
     """Soft rebuild should update vectors without deleting source context rows."""
 
-    async def scenario() -> tuple[str, str, int, int, bool, int, list[str], bool, str]:
+    async def scenario() -> tuple[
+        str,
+        str,
+        int,
+        int,
+        bool,
+        int,
+        list[str],
+        bool,
+        str,
+        int,
+        int,
+        int,
+        int,
+    ]:
         async with (
             _temporary_database(tmp_path / "rag-soft-rebuild.db") as database,
             database.session() as session,
@@ -825,6 +847,10 @@ semantic-target survives the soft rebuild.
             report.verification_context_ids,
             "preserved" in report.source_preservation,
             saved.id,
+            report.source_status_before[0].total_rows,
+            report.source_status_before[0].stale_rows,
+            report.source_status_after[0].current_rows,
+            report.source_status_after[0].stale_rows,
         )
 
     (
@@ -837,6 +863,10 @@ semantic-target survives the soft rebuild.
         verification_context_ids,
         preservation_message,
         saved_id,
+        before_total_rows,
+        before_stale_rows,
+        after_current_rows,
+        after_stale_rows,
     ) = anyio.run(scenario)
 
     assert before_embedding == RagHealthState.REINDEX_REQUIRED.value
@@ -846,6 +876,10 @@ semantic-target survives the soft rebuild.
     assert verification_matches >= 1
     assert set(verification_context_ids) == {saved_id}
     assert preservation_message is True
+    assert before_total_rows >= 1
+    assert before_stale_rows >= 1
+    assert after_current_rows == before_total_rows
+    assert after_stale_rows == 0
 
 
 def test_context_soft_rebuild_small_batches_make_forward_progress(

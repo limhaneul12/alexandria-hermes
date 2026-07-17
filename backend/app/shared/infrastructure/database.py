@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from sqlalchemy import event, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -28,6 +29,10 @@ class Base(DeclarativeBase):
 
 
 SQLITE_BUSY_TIMEOUT_MS = 30_000
+SQLITE_CORRUPTION_ERROR_MARKERS = (
+    "database disk image is malformed",
+    "file is not a database",
+)
 
 
 class Database:
@@ -114,8 +119,40 @@ class Database:
             async with self._session_factory() as session:
                 await session.execute(text("SELECT 1"))
             return True
-        except Exception:
+        except Exception as exc:
+            await self.recover_from_error(exc)
             return False
+
+    async def recover_from_error(self, exc: BaseException) -> bool:
+        """Drop stale SQLite connections after file-level database failures.
+
+        SQLite files are sometimes repaired or replaced while the local service is
+        still running. SQLAlchemy can keep pooled connections to the old broken
+        file handle, causing every later request to keep failing even after the
+        on-disk database has been restored. Disposing the engine forces the next
+        request to reconnect to the current file.
+
+        Args:
+            exc: Exception observed at a database boundary.
+
+        Returns:
+            True when a SQLite recovery action was applied.
+        """
+        if self._sqlite_path is None:
+            return False
+        if not is_sqlite_corruption_error(exc):
+            return False
+        await self.engine.dispose()
+        return True
+
+    @property
+    def sqlite_path(self) -> str | None:
+        """Return local SQLite path when the database URL targets a file.
+
+        Returns:
+            SQLite file path for local SQLite URLs, otherwise None.
+        """
+        return self._sqlite_path
 
     def session(self) -> AsyncSession:
         """Create a new SQLAlchemy session.
@@ -178,4 +215,44 @@ class Database:
             return None
         if parsed.path in {"", "/:memory:"}:
             return None
+        if parsed.path.startswith("//"):
+            return parsed.path[1:]
         return parsed.path.lstrip("/")
+
+
+def is_sqlite_corruption_error(exc: BaseException) -> bool:
+    """Return whether an exception indicates SQLite file-level corruption.
+
+    Args:
+        exc: Exception to inspect.
+
+    Returns:
+        True for DBAPI/SQLAlchemy corruption errors that require reconnecting.
+    """
+    if isinstance(exc, DBAPIError):
+        return _contains_sqlite_corruption_marker(exc)
+    return any(
+        _contains_sqlite_corruption_marker(error) for error in _exception_chain(exc)
+    )
+
+
+def _exception_chain(exc: BaseException) -> tuple[BaseException, ...]:
+    """Collect the explicit exception chain for marker inspection.
+
+    Args:
+        exc: Root exception.
+
+    Returns:
+        Tuple containing the root and chained exceptions.
+    """
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    return tuple(chain)
+
+
+def _contains_sqlite_corruption_marker(exc: BaseException) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in SQLITE_CORRUPTION_ERROR_MARKERS)

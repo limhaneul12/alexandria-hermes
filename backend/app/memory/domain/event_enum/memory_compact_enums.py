@@ -12,3 +12,11 @@ class MemoryCompactStatus(StrEnum):
     CURRENT = "CURRENT"
     SUPERSEDED = "SUPERSEDED"
     ARCHIVED = "ARCHIVED"
+
+
+class MemoryCompactReviewVerdict(StrEnum):
+    """Librarian review verdict for Memory Compact quality gates."""
+
+    PASS = "pass"
+    NEEDS_REVISION = "needs_revision"
+    BLOCKED = "blocked"

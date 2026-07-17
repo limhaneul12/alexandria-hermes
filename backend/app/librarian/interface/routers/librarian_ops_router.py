@@ -7,6 +7,9 @@ from collections.abc import Awaitable, Callable
 from inspect import isawaitable
 from typing import cast
 
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, BackgroundTasks, Depends, status
+
 from app.container import ApplicationContainer
 from app.librarian.application.hermes_collaboration_service import (
     HermesCollaborationService,
@@ -14,6 +17,12 @@ from app.librarian.application.hermes_collaboration_service import (
 from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
 from app.librarian.application.skill_acquisition_runner import SkillAcquisitionRunner
 from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
+from app.librarian.application.skill_artifact_publisher import (
+    ObsidianSkillArtifactPublisher,
+)
+from app.librarian.application.skill_library_search_service import (
+    SkillLibrarySearchService,
+)
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
 )
@@ -29,13 +38,15 @@ from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import 
     SkillAcquisitionCompletionRequest,
     SkillAcquisitionJobRequest,
     SkillAcquisitionJobResponse,
+    SkillCapabilitySearchRequest,
+    SkillCapabilitySearchResponse,
     skill_acquisition_job_response,
+    skill_capability_search_response,
 )
+from app.obsidian.application.obsidian_service import ObsidianService
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
 from app.shared.infrastructure.database import Database
-from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 router = APIRouter(
     prefix="/librarians",
@@ -50,6 +61,9 @@ async def _run_skill_acquisition_background_job(
     runner_factory: Callable[
         [], SkillAcquisitionRunner | Awaitable[SkillAcquisitionRunner]
     ],
+    obsidian_service_factory: Callable[
+        [], ObsidianService | Awaitable[ObsidianService]
+    ],
     job_id: str,
 ) -> None:
     """Run one skill-acquisition job in an independently committed session.
@@ -58,6 +72,8 @@ async def _run_skill_acquisition_background_job(
         database: Application database coordinator.
         runner_factory: Provider that builds a runner after the background
             session has been rebound.
+        obsidian_service_factory: Provider that builds the Obsidian service after
+            the background session has been rebound.
         job_id: Durable skill-acquisition job identifier.
     """
     async with database.request_session() as session:
@@ -67,7 +83,17 @@ async def _run_skill_acquisition_background_job(
                 runner = await cast(Awaitable[SkillAcquisitionRunner], runner_candidate)
             else:
                 runner = runner_candidate
-            await runner.run_job(job_id)
+            obsidian_candidate = obsidian_service_factory()
+            if isawaitable(obsidian_candidate):
+                obsidian_service = await cast(
+                    Awaitable[ObsidianService], obsidian_candidate
+                )
+            else:
+                obsidian_service = obsidian_candidate
+            await runner.run_job(
+                job_id,
+                artifact_publisher=ObsidianSkillArtifactPublisher(obsidian_service),
+            )
         except Exception:
             # This is the background task transaction boundary. Roll back any
             # partially flushed state before FastAPI surfaces the task failure.
@@ -209,6 +235,36 @@ async def librarian_job_status(
 
 
 @router.post(
+    "/skill-library/search",
+    response_model=SkillCapabilitySearchResponse,
+    description="Search reusable skill notes and evaluate sufficiency before acquisition.",
+    status_code=status.HTTP_200_OK,
+    summary="Search skill library",
+)
+@router_exception_status(LIBRARIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def search_skill_library(
+    request: SkillCapabilitySearchRequest,
+    obsidian_service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> SkillCapabilitySearchResponse:
+    """Search existing skill artifacts before creating an acquisition job.
+
+    Args:
+        request: Normalized capability brief.
+        obsidian_service: Obsidian-backed skill library search boundary.
+
+    Returns:
+        Sufficiency decision and normalized candidates.
+    """
+    result = await SkillLibrarySearchService(obsidian_service).search_first(
+        request.to_brief()
+    )
+    return skill_capability_search_response(result)
+
+
+@router.post(
     "/skill-acquisition-jobs",
     response_model=SkillAcquisitionJobResponse,
     description="Create a durable local skill-acquisition job.",
@@ -229,6 +285,9 @@ async def create_skill_acquisition_job(
     ] = Depends(
         Provide[ApplicationContainer.librarian.skill_acquisition_runner.provider]
     ),
+    obsidian_service_factory: Callable[
+        [], ObsidianService | Awaitable[ObsidianService]
+    ] = Depends(Provide[ApplicationContainer.obsidian.obsidian_service.provider]),
 ) -> SkillAcquisitionJobResponse:
     """Create a durable skill-acquisition job.
 
@@ -246,12 +305,15 @@ async def create_skill_acquisition_job(
         task_summary=request.task_summary,
         provider_id=request.provider_id,
         librarian_profile_id=request.librarian_profile_id,
+        search_snapshot=request.search_snapshot,
+        acquisition_override_reason=request.acquisition_override_reason,
     )
     if job.status is SkillAcquisitionJobStatus.ACCEPTED:
         background_tasks.add_task(
             _run_skill_acquisition_background_job,
             database=database,
             runner_factory=runner_factory,
+            obsidian_service_factory=obsidian_service_factory,
             job_id=job.id,
         )
     return skill_acquisition_job_response(job)
@@ -300,6 +362,9 @@ async def complete_skill_acquisition_job(
     service: SkillAcquisitionService = Depends(
         Provide[ApplicationContainer.librarian.skill_acquisition_service]
     ),
+    obsidian_service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
 ) -> SkillAcquisitionJobResponse:
     """Complete one durable skill-acquisition job with a structured artifact.
 
@@ -307,6 +372,7 @@ async def complete_skill_acquisition_job(
         job_id: Skill-acquisition job identifier.
         request: Structured acquired skill artifact.
         service: Skill-acquisition application service.
+        obsidian_service: Obsidian service used to save the draft skill artifact.
 
     Returns:
         Completed durable job response with skill/context handles.
@@ -314,5 +380,6 @@ async def complete_skill_acquisition_job(
     job = await service.complete_with_skill_artifact(
         job_id=job_id,
         artifact=request.to_artifact(),
+        artifact_publisher=ObsidianSkillArtifactPublisher(obsidian_service),
     )
     return skill_acquisition_job_response(job)

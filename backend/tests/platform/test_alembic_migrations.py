@@ -94,6 +94,13 @@ def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> N
     assert skill_acquisition_job_columns["id"] == "VARCHAR(36)"
     assert skill_acquisition_job_columns["status"] == "VARCHAR(32)"
     assert skill_acquisition_job_columns["evidence_urls"] == "JSON"
+    assert skill_acquisition_job_columns["stage"] == "VARCHAR(64)"
+    assert skill_acquisition_job_columns["skill_note_path"] == "VARCHAR(1024)"
+    assert skill_acquisition_job_columns["handoff"] == "JSON"
+    assert skill_acquisition_job_columns["search_snapshot"] == "JSON"
+    assert skill_acquisition_job_columns["acquisition_override_reason"] == "TEXT"
+    assert skill_acquisition_job_columns["prompt_reference"] == "VARCHAR(255)"
+    assert skill_acquisition_job_columns["prompt_reference_hash"] == "VARCHAR(64)"
     assert "chunk_id UNINDEXED" in context_fts_definition
     assert obsidian_columns["note_id"] == "VARCHAR(255)"
     assert obsidian_columns["relative_path"] == "VARCHAR(1024)"

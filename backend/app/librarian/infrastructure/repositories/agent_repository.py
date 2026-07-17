@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import cast
 
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.librarian.domain.contracts.agent_contracts import AgentCreate, AgentUpdate
 from app.librarian.domain.entities.read_models import AgentProfile
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
@@ -12,8 +15,6 @@ from app.librarian.domain.repositories.agent_repository import IAgentRepository
 from app.librarian.infrastructure.models.agent_models import AgentProfileORM
 from app.shared.exceptions import LibrarianResourceNotFoundError
 from app.shared.types.types_convert_utils import aware_utc_datetime
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _to_read_model(row: AgentProfileORM) -> AgentProfile:

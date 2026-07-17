@@ -8,6 +8,7 @@ from datetime import datetime
 
 from app.memory.domain.entities.memory_compact import MemoryCompact
 from app.memory.domain.event_enum.memory_compact_enums import (
+    MemoryCompactReviewVerdict,
     MemoryCompactStatus,
 )
 
@@ -20,6 +21,7 @@ class MemoryCompactSourceRefCreate:
     source_id: str
     title: str
     detail_path: str
+    source_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -32,6 +34,10 @@ class MemoryCompactCreate:
     markdown_body: str
     status: MemoryCompactStatus
     source_refs: list[MemoryCompactSourceRefCreate]
+    review_verdict: MemoryCompactReviewVerdict | None = None
+    review_score: int | None = None
+    review_max_score: int | None = None
+    reviewed_at: datetime | None = None
 
 
 class IMemoryCompactRepository(ABC):
@@ -96,11 +102,23 @@ class IMemoryCompactRepository(ABC):
         """
 
     @abstractmethod
-    async def mark_current(self, compact_id: str) -> MemoryCompact:
+    async def mark_current(
+        self,
+        compact_id: str,
+        *,
+        review_verdict: MemoryCompactReviewVerdict | None = None,
+        review_score: int | None = None,
+        review_max_score: int | None = None,
+        reviewed_at: datetime | None = None,
+    ) -> MemoryCompact:
         """Mark one compact current and supersede previous current.
 
         Args:
             compact_id: Memory Compact identifier.
+            review_verdict: Latest librarian review verdict for the promotion.
+            review_score: Latest librarian review total score.
+            review_max_score: Latest librarian review maximum score.
+            reviewed_at: Review timestamp.
 
         Returns:
             Updated current compact.

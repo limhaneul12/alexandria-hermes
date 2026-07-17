@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from typing_extensions import TypedDict
+
 from app.librarian.domain.event_enum.collaboration_enums import (
     AcquisitionDecision,
     LibrarianDelegateKind,
     LibrarianDelegateStatus,
     LibrarianDelegationStatus,
 )
-from typing_extensions import TypedDict
 
 
 class LibrarianDelegatePayload(TypedDict, closed=True):

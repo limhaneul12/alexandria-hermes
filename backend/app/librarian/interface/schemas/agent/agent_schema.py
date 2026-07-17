@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Final, cast
 
+from pydantic import ConfigDict, Field, field_validator, model_validator
+
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
 from app.librarian.domain.types.agent_payload_types import AgentUpdatePayload
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from app.shared.serialization.model_codec import schema_payload
-from pydantic import ConfigDict, Field, field_validator, model_validator
 
 _NON_NULLABLE_PATCH_FIELDS: Final[tuple[str, ...]] = (
     "name",

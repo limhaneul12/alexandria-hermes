@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from app.librarian.domain.event_enum.skill_acquisition_enums import RiskLevel
 from app.librarian.interface.schemas.librarian.hermes_collaboration_schemas import (
     AskLibrarianRequest,
 )
@@ -13,7 +14,9 @@ from app.librarian.interface.schemas.librarian.librarian_brief_schemas import (
 )
 from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import (
     SkillAcquisitionCompletionRequest,
+    SkillAcquisitionEvidenceItemRequest,
     SkillAcquisitionJobRequest,
+    SkillCapabilitySearchRequest,
 )
 from app.mcp_server.backend_api_client import AlexandriaApiClient
 from app.mcp_server.tools.librarian_readiness_tools import (
@@ -28,6 +31,7 @@ from app.mcp_server.tools.memory_compact_tools import (
     alexandria_get_memory_compact as _alexandria_get_memory_compact,
     alexandria_list_memory_compact_artifacts as _alexandria_list_memory_compact_artifacts,
     alexandria_mark_memory_compact_current as _alexandria_mark_memory_compact_current,
+    alexandria_review_memory_compact as _alexandria_review_memory_compact,
 )
 from app.mcp_server.type_validate.librarian_review_gateway_contracts import (
     empty_review_apply_payload,
@@ -54,6 +58,7 @@ alexandria_get_memory_compact = _alexandria_get_memory_compact
 alexandria_create_memory_compact = _alexandria_create_memory_compact
 alexandria_mark_memory_compact_current = _alexandria_mark_memory_compact_current
 alexandria_archive_memory_compact = _alexandria_archive_memory_compact
+alexandria_review_memory_compact = _alexandria_review_memory_compact
 alexandria_librarian_readiness = _alexandria_librarian_readiness
 alexandria_librarian_refresh_current_compact = (
     _alexandria_librarian_refresh_current_compact
@@ -220,6 +225,192 @@ async def alexandria_rag_status(client: AlexandriaApiClient) -> JSONValue:
     return response
 
 
+async def alexandria_operational_readiness(
+    client: AlexandriaApiClient,
+) -> JSONValue:
+    """Read operational database, vault, and RAG readiness.
+
+    Args:
+        client: Backend HTTP client.
+
+    Returns:
+        Operational readiness response.
+    """
+    response = await client.get("/operations/readiness")
+    return response
+
+
+async def alexandria_recovery_plan(
+    client: AlexandriaApiClient,
+    trigger: str = "manual",
+    actor: str = DEFAULT_SOURCE_AGENT,
+    idempotency_key: str | None = None,
+    parent_run_id: str | None = None,
+) -> JSONValue:
+    """Build a read-only operational recovery dry-run plan.
+
+    Args:
+        client: Backend HTTP client.
+        trigger: Recovery plan trigger source.
+        actor: Operator or agent requesting the plan.
+        idempotency_key: Optional idempotency key.
+        parent_run_id: Optional parent recovery run identifier.
+
+    Returns:
+        Recovery dry-run plan response.
+    """
+    payload: JSONObject = {
+        "trigger": trigger,
+        "actor": actor,
+    }
+    if idempotency_key is not None:
+        payload["idempotency_key"] = idempotency_key
+    if parent_run_id is not None:
+        payload["parent_run_id"] = parent_run_id
+    response = await client.post("/operations/recovery/plan", payload)
+    return response
+
+
+async def alexandria_recovery_run(
+    client: AlexandriaApiClient,
+    trigger: str = "manual",
+    actor: str = DEFAULT_SOURCE_AGENT,
+    idempotency_key: str | None = None,
+    parent_run_id: str | None = None,
+) -> JSONValue:
+    """Start or return an idempotent operational recovery run.
+
+    Args:
+        client: Backend HTTP client.
+        trigger: Recovery run trigger source.
+        actor: Operator or agent requesting recovery.
+        idempotency_key: Required idempotency key for the explicit apply.
+        parent_run_id: Optional parent recovery run identifier.
+
+    Returns:
+        Recovery run response.
+    """
+    required_idempotency_key = _required_recovery_run_idempotency_key(idempotency_key)
+    payload: JSONObject = {
+        "trigger": trigger,
+        "actor": actor,
+        "idempotency_key": required_idempotency_key,
+    }
+    if parent_run_id is not None:
+        payload["parent_run_id"] = parent_run_id
+    response = await client.post("/operations/recovery/runs", payload)
+    return response
+
+
+async def alexandria_recovery_run_status(
+    client: AlexandriaApiClient,
+    run_id: str,
+) -> JSONValue:
+    """Return a persisted operational recovery run by id.
+
+    Args:
+        client: Backend HTTP client.
+        run_id: Recovery run identifier.
+
+    Returns:
+        Recovery run response.
+    """
+    response = await client.get(f"/operations/recovery/runs/{_path_segment(run_id)}")
+    return response
+
+
+async def alexandria_recovery_retry(
+    client: AlexandriaApiClient,
+    run_id: str,
+    trigger: str = "retry",
+    actor: str = DEFAULT_SOURCE_AGENT,
+    idempotency_key: str | None = None,
+) -> JSONValue:
+    """Start or return a parent-linked operational recovery retry.
+
+    Args:
+        client: Backend HTTP client.
+        run_id: Parent recovery run identifier.
+        trigger: Recovery retry trigger source.
+        actor: Operator or agent requesting retry.
+        idempotency_key: Optional retry idempotency key.
+
+    Returns:
+        Recovery retry run response.
+    """
+    payload: JSONObject = {
+        "trigger": trigger,
+        "actor": actor,
+    }
+    if idempotency_key is not None:
+        payload["idempotency_key"] = idempotency_key
+    response = await client.post(
+        f"/operations/recovery/runs/{_path_segment(run_id)}/retry",
+        payload,
+    )
+    return response
+
+
+async def alexandria_recovery_quarantine(
+    client: AlexandriaApiClient,
+) -> JSONValue:
+    """Return stored recovery quarantine artifacts.
+
+    Args:
+        client: Backend HTTP client.
+
+    Returns:
+        Recovery quarantine inventory response.
+    """
+    response = await client.get("/operations/recovery/quarantine")
+    return response
+
+
+async def alexandria_search_skills(
+    client: AlexandriaApiClient,
+    capability: str,
+    task_goal: str | None = None,
+    project: str | None = None,
+    environment: str | None = None,
+    required_tools: list[str] | None = None,
+    constraints: list[str] | None = None,
+    risk_tolerance: RiskLevel = RiskLevel.MEDIUM,
+    success_criteria: list[str] | None = None,
+    limit: int = 5,
+) -> JSONValue:
+    """Search reusable skill notes before starting acquisition.
+
+    Args:
+        client: Backend HTTP client.
+        capability: Needed capability.
+        task_goal: Current task goal.
+        project: Optional project scope.
+        environment: Runtime/framework context.
+        required_tools: Tool names the skill must support.
+        constraints: Operational or safety constraints.
+        risk_tolerance: Maximum acceptable risk level.
+        success_criteria: Criteria for sufficient reuse.
+        limit: Maximum candidates.
+
+    Returns:
+        Search-first sufficiency decision.
+    """
+    request = SkillCapabilitySearchRequest(
+        capability=capability,
+        task_goal=task_goal,
+        project=project,
+        environment=environment,
+        required_tools=_items_or_empty(required_tools),
+        constraints=_items_or_empty(constraints),
+        risk_tolerance=risk_tolerance,
+        success_criteria=_items_or_empty(success_criteria),
+        limit=max(1, min(limit, 10)),
+    )
+    payload = schema_payload(request, exclude_none=True)
+    response = await client.post("/librarians/skill-library/search", payload)
+    return without_oauth_sensitive_fields(response)
+
+
 async def alexandria_start_skill_acquisition(
     client: AlexandriaApiClient,
     prompt: str,
@@ -228,6 +419,8 @@ async def alexandria_start_skill_acquisition(
     task_summary: str | None = None,
     provider_id: str | None = None,
     librarian_profile_id: str | None = None,
+    search_snapshot: JSONObject | None = None,
+    acquisition_override_reason: str | None = None,
 ) -> JSONValue:
     """Start a durable async skill-acquisition job.
 
@@ -239,6 +432,8 @@ async def alexandria_start_skill_acquisition(
         task_summary: Optional current task summary.
         provider_id: Optional preferred librarian provider.
         librarian_profile_id: Optional librarian profile.
+        search_snapshot: Optional search-first decision snapshot.
+        acquisition_override_reason: Explicit reason for starting without search.
 
     Returns:
         Sanitized durable job response.
@@ -250,6 +445,8 @@ async def alexandria_start_skill_acquisition(
         task_summary=task_summary,
         provider_id=provider_id,
         librarian_profile_id=librarian_profile_id,
+        search_snapshot=search_snapshot,
+        acquisition_override_reason=acquisition_override_reason,
     )
     payload = schema_payload(request, exclude_none=True)
     response = await client.post("/librarians/skill-acquisition-jobs", payload)
@@ -283,6 +480,7 @@ async def alexandria_complete_skill_acquisition(
     content: str,
     summary: str | None = None,
     evidence_urls: list[str] | None = None,
+    evidence_items: list[JSONObject] | None = None,
     source_summary: str | None = None,
     next_steps: list[str] | None = None,
     tags: list[str] | None = None,
@@ -299,6 +497,8 @@ async def alexandria_complete_skill_acquisition(
         content: Candidate Markdown content.
         summary: Optional summary.
         evidence_urls: Source URLs gathered by the agent/librarian.
+        evidence_items: Claim-linked structured evidence gathered by the
+            agent/librarian.
         source_summary: Optional source/evidence summary.
         next_steps: Optional resume-packet next actions.
         tags: Optional skill tags.
@@ -317,6 +517,7 @@ async def alexandria_complete_skill_acquisition(
         required_tools=_items_or_empty(required_tools),
         created_by_name=created_by_name,
         evidence_urls=_items_or_empty(evidence_urls),
+        evidence_items=_evidence_items_or_empty(evidence_items),
         source_summary=source_summary,
         next_steps=_items_or_empty(next_steps),
     )
@@ -968,6 +1169,12 @@ def _path_segment(value: str) -> str:
     return quote(value, safe="")
 
 
+def _required_recovery_run_idempotency_key(value: str | None) -> str:
+    if value is None or not value.strip():
+        raise ValueError("idempotency_key is required for alexandria_recovery_run")
+    return value.strip()
+
+
 def _items_or_empty(items: list[str] | None) -> list[str]:
     """Normalize optional bullet lists for compact handoff payloads.
 
@@ -980,6 +1187,22 @@ def _items_or_empty(items: list[str] | None) -> list[str]:
     if items is None:
         return []
     return items
+
+
+def _evidence_items_or_empty(
+    items: list[JSONObject] | None,
+) -> list[SkillAcquisitionEvidenceItemRequest]:
+    """Normalize optional structured evidence payloads for job completion.
+
+    Args:
+        items: Caller-provided evidence item dictionaries or omitted value.
+
+    Returns:
+        Validated evidence item schemas, or an empty list when omitted.
+    """
+    if items is None:
+        return []
+    return [SkillAcquisitionEvidenceItemRequest.model_validate(item) for item in items]
 
 
 def _move_payloads(moves: list[dict[str, str]]) -> list[JSONObject]:

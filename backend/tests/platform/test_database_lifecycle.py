@@ -6,8 +6,26 @@ import sqlite3
 from pathlib import Path
 
 import anyio
-from app.shared.infrastructure.database import SQLITE_BUSY_TIMEOUT_MS, Database
+import app.connections.infrastructure.models.librarian_provider_models as _librarian_provider_models
+import app.librarian.infrastructure.models.agent_models as _agent_models
+import app.librarian.infrastructure.models.skill_acquisition_job_models as _skill_acquisition_job_models
+import app.memory.infrastructure.models.context_models as _context_models
+import app.obsidian.infrastructure.models.obsidian_index_models as _obsidian_index_models
+from app.shared.infrastructure.database import (
+    SQLITE_BUSY_TIMEOUT_MS,
+    Database,
+    is_sqlite_corruption_error,
+)
 from sqlalchemy import text
+from sqlalchemy.exc import DatabaseError
+
+_ORM_MODELS_LOADED = (
+    _agent_models,
+    _context_models,
+    _librarian_provider_models,
+    _obsidian_index_models,
+    _skill_acquisition_job_models,
+)
 
 
 def _table_names(database_path: Path) -> set[str]:
@@ -85,3 +103,45 @@ def test_sqlite_connections_use_wal_and_extended_busy_timeout(
             await database.shutdown()
 
     anyio.run(scenario)
+
+
+def test_database_recovers_from_sqlite_file_corruption_errors(
+    tmp_path: Path,
+) -> None:
+    """SQLite file failures should drop stale pooled connections for later requests."""
+
+    async def scenario() -> tuple[bool, int]:
+        database_path = tmp_path / "recovered.db"
+        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
+        await database.initialize()
+        try:
+            corruption_error = DatabaseError(
+                "SELECT 1",
+                {},
+                sqlite3.DatabaseError("file is not a database"),
+            )
+
+            recovered = await database.recover_from_error(corruption_error)
+
+            async with database.session_factory()() as session:
+                scalar = await session.scalar(text("SELECT 1"))
+
+            return recovered, int(scalar or 0)
+        finally:
+            await database.shutdown()
+
+    recovered, scalar = anyio.run(scenario)
+
+    assert recovered is True
+    assert scalar == 1
+
+
+def test_sqlite_corruption_detection_ignores_unrelated_database_errors() -> None:
+    """Only file-level SQLite failures should trigger pool recovery."""
+    integrity_error = DatabaseError(
+        "INSERT INTO messages VALUES (?)",
+        {},
+        sqlite3.IntegrityError("UNIQUE constraint failed: messages.id"),
+    )
+
+    assert is_sqlite_corruption_error(integrity_error) is False

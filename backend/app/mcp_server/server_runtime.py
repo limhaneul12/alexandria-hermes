@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from mcp.server.fastmcp import FastMCP
 
+from app.librarian.domain.event_enum.skill_acquisition_enums import RiskLevel
 from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
 from app.mcp_server.type_validate.transport_contracts import McpTransport
@@ -18,7 +19,7 @@ from app.memory.domain.event_enum.context_enums import (
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
-from app.shared.types.extra_types import JSONValue
+from app.shared.types.extra_types import JSONObject, JSONValue
 
 DEFAULT_MCP_TRANSPORT_HOST = "0.0.0.0"
 
@@ -227,11 +228,62 @@ def build_mcp_server(
             api_client, compact_id
         )
 
+    @server.tool(name="alexandria_review_memory_compact")
+    async def _tool_review_memory_compact(
+        compact_id: str,
+        source_observations: list[dict[str, str]] | None = None,
+    ) -> JSONValue:
+        """Review one Memory Compact with the librarian quality rubric."""
+        return await backend_tool_gateway.alexandria_review_memory_compact(
+            api_client, compact_id, source_observations
+        )
+
     @server.tool(name="alexandria_delete_memory_compact")
     async def _tool_delete_memory_compact(compact_id: str) -> JSONValue:
         """Hard delete one selected Memory Compact by id."""
         return await backend_tool_gateway.alexandria_delete_memory_compact(
             api_client, compact_id
+        )
+
+    @server.tool(name="alexandria_search_skills")
+    async def _tool_search_skills(
+        capability: str,
+        task_goal: str | None = None,
+        project: str | None = None,
+        environment: str | None = None,
+        required_tools: list[str] | None = None,
+        constraints: list[str] | None = None,
+        risk_tolerance: RiskLevel = RiskLevel.MEDIUM,
+        success_criteria: list[str] | None = None,
+        limit: int = 5,
+    ) -> JSONValue:
+        """Search reusable skill notes before starting acquisition.
+
+        Args:
+            capability: Needed capability.
+            task_goal: Current task goal.
+            project: Optional project scope.
+            environment: Runtime/framework context.
+            required_tools: Tool names the skill must support.
+            constraints: Operational or safety constraints.
+            risk_tolerance: Maximum acceptable risk level.
+            success_criteria: Criteria for sufficient reuse.
+            limit: Maximum candidates.
+
+        Returns:
+            Search-first sufficiency decision.
+        """
+        return await backend_tool_gateway.alexandria_search_skills(
+            api_client,
+            capability=capability,
+            task_goal=task_goal,
+            project=project,
+            environment=environment,
+            required_tools=required_tools,
+            constraints=constraints,
+            risk_tolerance=risk_tolerance,
+            success_criteria=success_criteria,
+            limit=limit,
         )
 
     @server.tool(name="alexandria_start_skill_acquisition")
@@ -242,6 +294,8 @@ def build_mcp_server(
         task_summary: str | None = None,
         provider_id: str | None = None,
         librarian_profile_id: str | None = None,
+        search_snapshot: JSONObject | None = None,
+        acquisition_override_reason: str | None = None,
     ) -> JSONValue:
         """Start a durable async skill-acquisition job.
 
@@ -252,6 +306,8 @@ def build_mcp_server(
             task_summary: Optional current task summary.
             provider_id: Optional preferred librarian provider.
             librarian_profile_id: Optional librarian profile.
+            search_snapshot: Optional search-first decision snapshot.
+            acquisition_override_reason: Explicit reason for starting without search.
 
         Returns:
             Sanitized durable job response.
@@ -264,6 +320,8 @@ def build_mcp_server(
             task_summary=task_summary,
             provider_id=provider_id,
             librarian_profile_id=librarian_profile_id,
+            search_snapshot=search_snapshot,
+            acquisition_override_reason=acquisition_override_reason,
         )
 
     @server.tool(name="alexandria_skill_acquisition_job_status")
@@ -543,6 +601,117 @@ def build_mcp_server(
             Backend RAG health response.
         """
         return await backend_tool_gateway.alexandria_rag_status(api_client)
+
+    @server.tool(name="alexandria_operational_readiness")
+    async def _tool_operational_readiness() -> JSONValue:
+        """Read operational database, vault, and RAG readiness.
+
+        Returns:
+            Backend operational readiness response.
+        """
+        return await backend_tool_gateway.alexandria_operational_readiness(api_client)
+
+    @server.tool(name="alexandria_recovery_plan")
+    async def _tool_recovery_plan(
+        trigger: str = "manual",
+        actor: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        idempotency_key: str | None = None,
+        parent_run_id: str | None = None,
+    ) -> JSONValue:
+        """Build a read-only operational recovery dry-run plan.
+
+        Args:
+            trigger: Recovery plan trigger source.
+            actor: Operator or agent requesting the plan.
+            idempotency_key: Optional idempotency key.
+            parent_run_id: Optional parent recovery run identifier.
+
+        Returns:
+            Backend recovery dry-run plan response.
+        """
+        return await backend_tool_gateway.alexandria_recovery_plan(
+            api_client,
+            trigger,
+            actor,
+            idempotency_key,
+            parent_run_id,
+        )
+
+    @server.tool(name="alexandria_recovery_run")
+    async def _tool_recovery_run(
+        idempotency_key: str,
+        trigger: str = "manual",
+        actor: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        parent_run_id: str | None = None,
+    ) -> JSONValue:
+        """Start or return an idempotent operational recovery run.
+
+        Args:
+            idempotency_key: Required idempotency key for the explicit apply.
+            trigger: Recovery run trigger source.
+            actor: Operator or agent requesting recovery.
+            parent_run_id: Optional parent recovery run identifier.
+
+        Returns:
+            Backend recovery run response.
+        """
+        return await backend_tool_gateway.alexandria_recovery_run(
+            api_client,
+            trigger=trigger,
+            actor=actor,
+            idempotency_key=idempotency_key,
+            parent_run_id=parent_run_id,
+        )
+
+    @server.tool(name="alexandria_recovery_run_status")
+    async def _tool_recovery_run_status(run_id: str) -> JSONValue:
+        """Return a persisted operational recovery run by id.
+
+        Args:
+            run_id: Recovery run identifier.
+
+        Returns:
+            Backend recovery run response.
+        """
+        return await backend_tool_gateway.alexandria_recovery_run_status(
+            api_client,
+            run_id,
+        )
+
+    @server.tool(name="alexandria_recovery_retry")
+    async def _tool_recovery_retry(
+        run_id: str,
+        trigger: str = "retry",
+        actor: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        idempotency_key: str | None = None,
+    ) -> JSONValue:
+        """Start or return a parent-linked operational recovery retry.
+
+        Args:
+            run_id: Parent recovery run identifier.
+            trigger: Recovery retry trigger source.
+            actor: Operator or agent requesting retry.
+            idempotency_key: Optional retry idempotency key.
+
+        Returns:
+            Backend recovery retry response.
+        """
+        return await backend_tool_gateway.alexandria_recovery_retry(
+            api_client,
+            run_id,
+            trigger,
+            actor,
+            idempotency_key,
+        )
+
+    @server.tool(name="alexandria_recovery_quarantine")
+    async def _tool_recovery_quarantine() -> JSONValue:
+        """Return stored recovery quarantine artifacts.
+
+        Returns:
+            Backend recovery quarantine inventory response.
+        """
+        return await backend_tool_gateway.alexandria_recovery_quarantine(api_client)
 
     @server.tool(name="alexandria_reindex_vault")
     async def _tool_reindex_vault() -> JSONValue:

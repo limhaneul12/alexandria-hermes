@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.memory.domain.event_enum.memory_compact_enums import (
+    MemoryCompactReviewVerdict,
     MemoryCompactStatus,
 )
 
@@ -20,6 +21,7 @@ class MemoryCompactSourceRef:
     source_id: str
     title: str
     detail_path: str
+    source_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -36,3 +38,9 @@ class MemoryCompact:
     created_at: datetime
     updated_at: datetime
     archived_at: datetime | None
+    review_verdict: MemoryCompactReviewVerdict | None = None
+    review_score: int | None = None
+    review_max_score: int | None = None
+    reviewed_at: datetime | None = None
+    metadata_warnings: tuple[str, ...] = ()
+    deduplicated: bool = False

@@ -555,8 +555,20 @@ def test_obsidian_roundtrips_memory_skill_prompt_after_sqlite_rebuild(
                 covered_from=datetime(2026, 5, 25, tzinfo=UTC),
                 covered_to=datetime(2026, 5, 26, tzinfo=UTC),
                 markdown_body=(
-                    "# Current Memory Compact\n\n"
-                    "Obsidian canonical memory survives SQLite rebuild."
+                    "## Durable Decisions\n"
+                    "- Obsidian remains canonical memory.\n\n"
+                    "## Current State\n"
+                    "- Obsidian canonical memory survives SQLite rebuild.\n\n"
+                    "## Risks and Blockers\n"
+                    "- None recorded.\n\n"
+                    "## Next Actions\n"
+                    "- Rebuild SQLite cache as needed.\n\n"
+                    "## Coverage\n"
+                    "- covered_from: 2026-05-25T00:00:00+00:00\n"
+                    "- covered_to: 2026-05-26T00:00:00+00:00\n"
+                    "- project: alexandria-hermes\n\n"
+                    "## Evidence Summary\n"
+                    "- Storage decision source ref."
                 ),
                 status=MemoryCompactStatus.CURRENT,
                 source_refs=[
@@ -671,7 +683,7 @@ def test_obsidian_roundtrips_memory_skill_prompt_after_sqlite_rebuild(
         assert skill_hits[0].note.note_id == "skill_browser_verification"
         assert prompt_hits[0].note.note_id == "prompt_release_review"
         assert memory_note.alexandria_type is AlexandriaNoteType.MEMORY_COMPACT
-        assert memory_note.body.startswith("# Current Memory Compact")
+        assert memory_note.body.startswith("## Durable Decisions")
         assert skill_note.frontmatter["skill_status"] == "draft"
         assert prompt_note.frontmatter["prompt_kind"] == "template"
 
@@ -1067,6 +1079,81 @@ def test_obsidian_librarian_vault_inventory_and_path_search(
     assert matches == ["ctx_loose_project_context"]
 
 
+def test_obsidian_librarian_vault_inventory_accepts_implementation_history(
+    tmp_path: Path,
+) -> None:
+    """Vault inventory should classify implementation history notes."""
+
+    async def scenario() -> tuple[list[tuple[str, AlexandriaNoteType, str]], list[str]]:
+        database, session, service = await _service(tmp_path)
+        try:
+            history_dir = (
+                tmp_path
+                / "vault"
+                / "Alexandria"
+                / "Contexts"
+                / "Projects"
+                / "alexandria-hermes"
+                / "dev-size"
+                / "Implementation History"
+            )
+            history_dir.mkdir(parents=True)
+            (history_dir / "2026-07-17 PRD implementation history.md").write_text(
+                "---\n"
+                "alexandria_type: implementation_history\n"
+                "id: implementation_history_2026_07_17_prd\n"
+                "title: 2026-07-17 PRD implementation history\n"
+                "project: alexandria-hermes\n"
+                "status: active\n"
+                "---\n\n"
+                "# 2026-07-17 PRD implementation history\n\n"
+                "[Summarlization]\n"
+                "- Memory Compact gate was hardened.\n\n"
+                "[본문]\n"
+                "- Evidence and validation commands are preserved here.\n",
+                encoding="utf-8",
+            )
+            inventory = await service.inventory_vault(
+                ObsidianVaultInventoryRequest(
+                    scope_path=(
+                        "Alexandria/Contexts/Projects/alexandria-hermes/dev-size/"
+                        "Implementation History"
+                    )
+                )
+            )
+            matches = await service.search_vault_paths(
+                query="PRD implementation",
+                scope_path=(
+                    "Alexandria/Contexts/Projects/alexandria-hermes/dev-size/"
+                    "Implementation History"
+                ),
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            [
+                (item.note_id, item.alexandria_type, item.relative_path)
+                for item in inventory
+            ],
+            [item.note_id for item in matches],
+        )
+
+    inventory, matches = anyio.run(scenario)
+
+    assert inventory == [
+        (
+            "implementation_history_2026_07_17_prd",
+            AlexandriaNoteType.IMPLEMENTATION_HISTORY,
+            (
+                "Alexandria/Contexts/Projects/alexandria-hermes/dev-size/"
+                "Implementation History/2026-07-17 PRD implementation history.md"
+            ),
+        )
+    ]
+    assert matches == ["implementation_history_2026_07_17_prd"]
+
+
 def test_obsidian_librarian_review_queue_prioritizes_curation_candidates(
     tmp_path: Path,
 ) -> None:
@@ -1156,6 +1243,177 @@ def test_obsidian_librarian_review_queue_prioritizes_curation_candidates(
             "Draft Skill",
         ),
     ]
+
+
+def test_obsidian_librarian_review_queue_surfaces_skill_curation_candidates_safely(
+    tmp_path: Path,
+) -> None:
+    """Skill duplicate/stale/superseded candidates require human curation."""
+
+    async def scenario() -> tuple[list[tuple[str, str, str | None, bool]], list[str]]:
+        database, session, service = await _service(tmp_path)
+        try:
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Duplicate Skill",
+                    body="# Duplicate Skill\n\nCanonical active skill.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_duplicate_primary",
+                    relative_path="Alexandria/Skills/Active/Duplicate Skill.md",
+                    status="active",
+                    project="alexandria-hermes",
+                )
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Duplicate Skill",
+                    body="# Duplicate Skill\n\nDuplicate active skill candidate.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_duplicate_secondary",
+                    relative_path="Alexandria/Skills/Active/Duplicate Skill Copy.md",
+                    status="active",
+                    project="alexandria-hermes",
+                )
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Stale Skill",
+                    body="# Stale Skill\n\nEvidence may be stale.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_stale_candidate",
+                    relative_path="Alexandria/Skills/Active/Stale Skill.md",
+                    status="stale",
+                    project="alexandria-hermes",
+                )
+            )
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Superseded Skill",
+                    body="# Superseded Skill\n\nA newer skill replaced this.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_superseded_candidate",
+                    relative_path="Alexandria/Skills/Active/Superseded Skill.md",
+                    status="superseded",
+                    project="alexandria-hermes",
+                )
+            )
+            queue = await service.librarian_review_queue(
+                ObsidianLibrarianReviewQueueRequest(project="alexandria-hermes")
+            )
+            plan = await service.plan_librarian_review_moves(
+                ObsidianLibrarianReviewQueueRequest(project="alexandria-hermes")
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            [
+                (
+                    item.note_id,
+                    item.reason,
+                    item.suggested_destination_path,
+                    item.requires_human_review,
+                )
+                for item in queue
+            ],
+            [move.source_path for move in plan.moves],
+        )
+
+    queue, planned_sources = anyio.run(scenario)
+
+    assert queue == [
+        ("skill_stale_candidate", "skill_stale_candidate", None, True),
+        (
+            "skill_superseded_candidate",
+            "skill_superseded_candidate",
+            "Alexandria/Skills/Deprecated/Superseded Skill.md",
+            True,
+        ),
+        ("skill_duplicate_secondary", "skill_duplicate_candidate", None, True),
+        ("skill_duplicate_primary", "skill_duplicate_candidate", None, True),
+    ]
+    assert planned_sources == []
+
+
+def test_obsidian_librarian_review_apply_does_not_move_skill_curation_candidates(
+    tmp_path: Path,
+) -> None:
+    """Skill curation candidates should remain review-only on apply without approval."""
+
+    async def scenario() -> tuple[str, bool, int, bool, bool, bool]:
+        database, session, service = await _service(tmp_path)
+        try:
+            duplicate_primary = await service.save_note(
+                ObsidianSaveNote(
+                    title="Duplicate Apply Skill",
+                    body="# Duplicate Apply Skill\n\nCanonical active skill.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_duplicate_apply_primary",
+                    relative_path="Alexandria/Skills/Active/Duplicate Apply Skill.md",
+                    status="active",
+                    project="alexandria-hermes",
+                )
+            )
+            duplicate_secondary = await service.save_note(
+                ObsidianSaveNote(
+                    title="Duplicate Apply Skill",
+                    body="# Duplicate Apply Skill\n\nDuplicate active skill.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_duplicate_apply_secondary",
+                    relative_path=(
+                        "Alexandria/Skills/Active/Duplicate Apply Skill Copy.md"
+                    ),
+                    status="active",
+                    project="alexandria-hermes",
+                )
+            )
+            superseded = await service.save_note(
+                ObsidianSaveNote(
+                    title="Superseded Apply Skill",
+                    body="# Superseded Apply Skill\n\nA newer skill replaced this.",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_superseded_apply_candidate",
+                    relative_path="Alexandria/Skills/Active/Superseded Apply Skill.md",
+                    status="superseded",
+                    project="alexandria-hermes",
+                )
+            )
+            report = await service.apply_librarian_review_moves(
+                ObsidianLibrarianReviewApplyRequest(
+                    project="alexandria-hermes",
+                    report_path=(
+                        "Alexandria/_Ops/Librarian/Reports/skill-curation-no-op-report"
+                    ),
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        vault = tmp_path / "vault"
+        return (
+            report.status,
+            report.hard_delete_performed,
+            len(report.moved),
+            (vault / duplicate_primary.relative_path).exists(),
+            (vault / duplicate_secondary.relative_path).exists(),
+            (vault / superseded.relative_path).exists(),
+        )
+
+    (
+        status,
+        hard_delete_performed,
+        moved_count,
+        primary_exists,
+        secondary_exists,
+        superseded_exists,
+    ) = anyio.run(scenario)
+
+    assert status == "no_op"
+    assert hard_delete_performed is False
+    assert moved_count == 0
+    assert primary_exists is True
+    assert secondary_exists is True
+    assert superseded_exists is True
 
 
 def test_obsidian_librarian_review_queue_generates_safe_move_plan(

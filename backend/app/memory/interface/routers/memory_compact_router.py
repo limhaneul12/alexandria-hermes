@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from app.container import ApplicationContainer
+from app.memory.application.context_service import ContextService
 from app.memory.application.memory_compact_service import MemoryCompactService
+from app.memory.domain.entities.context_read_models import RagDependencyHealth
+from app.memory.domain.entities.memory_compact import MemoryCompact
+from app.memory.domain.event_enum.context_enums import RagHealthState
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
 from app.memory.interface.schemas.memory_compact.memory_compact_schema import (
     MemoryCompactCreateRequest,
     MemoryCompactListResponse,
+    MemoryCompactRagGateResponse,
     MemoryCompactResponse,
+    MemoryCompactReviewRequest,
+    MemoryCompactReviewResponse,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import (
@@ -18,9 +27,21 @@ from app.shared.exceptions.route_exceptions import (
 )
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from typing_extensions import TypedDict
 
 router = APIRouter(prefix="/memory/compacts", tags=["memory-compacts"])
+
+
+class RagHealthGateBlockDetail(TypedDict, closed=True):
+    """Structured RAG healthy-gate block payload."""
+
+    error: str
+    gate_status: str
+    components: list[str]
+    warnings: list[str]
+    recommended_recovery_tools: list[str]
+    retryable: bool
 
 
 @router.get(
@@ -82,6 +103,7 @@ async def list_memory_compacts(
 @inject
 async def get_current_memory_compact(
     project: str | None = Query(default=None),
+    max_compact_age_days: int = Query(default=30, ge=1, le=365_000),
     service: MemoryCompactService = Depends(
         Provide[ApplicationContainer.memory.memory_compact_service]
     ),
@@ -90,13 +112,16 @@ async def get_current_memory_compact(
 
     Args:
         project: Optional project filter; None addresses the default project.
+        max_compact_age_days: Maximum accepted age for freshness warnings.
         service: Memory Compact application service.
 
     Returns:
         Current Memory Compact response.
     """
     compact = await service.current(project=project)
-    return MemoryCompactResponse.from_entity(compact)
+    return MemoryCompactResponse.from_entity(
+        compact, warnings=_current_compact_warnings(compact, max_compact_age_days)
+    )
 
 
 @router.get(
@@ -141,18 +166,25 @@ async def create_memory_compact(
     service: MemoryCompactService = Depends(
         Provide[ApplicationContainer.memory.memory_compact_service]
     ),
+    context_service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
 ) -> MemoryCompactResponse:
     """Create a Memory Compact artifact.
 
     Args:
         request: Public Memory Compact creation payload.
         service: Memory Compact application service.
+        context_service: Context/RAG service for the CURRENT healthy gate.
 
     Returns:
         Created Memory Compact response.
     """
+    rag_gate = None
+    if request.status == MemoryCompactStatus.CURRENT:
+        rag_gate = await _ensure_rag_healthy_for_current(context_service)
     compact = await service.create(request.to_create())
-    return MemoryCompactResponse.from_entity(compact)
+    return MemoryCompactResponse.from_entity(compact, rag_gate=rag_gate)
 
 
 @router.post(
@@ -169,18 +201,57 @@ async def mark_memory_compact_current(
     service: MemoryCompactService = Depends(
         Provide[ApplicationContainer.memory.memory_compact_service]
     ),
+    context_service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
 ) -> MemoryCompactResponse:
     """Mark one compact as current.
 
     Args:
         compact_id: Memory Compact identifier.
         service: Memory Compact application service.
+        context_service: Context/RAG service for the CURRENT healthy gate.
 
     Returns:
         Updated current Memory Compact response.
     """
+    rag_gate = await _ensure_rag_healthy_for_current(context_service)
     compact = await service.mark_current(compact_id)
-    return MemoryCompactResponse.from_entity(compact)
+    return MemoryCompactResponse.from_entity(compact, rag_gate=rag_gate)
+
+
+@router.post(
+    "/{compact_id}/review",
+    response_model=MemoryCompactReviewResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Review Memory Compact quality",
+    description=(
+        "Run the librarian quality rubric and return item scores, verdict, "
+        "missing refs, contradictions, stale reasons, and recommended actions."
+    ),
+)
+@router_exception_status(MEMORY_COMPACT_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def review_memory_compact(
+    compact_id: str,
+    request: MemoryCompactReviewRequest | None = None,
+    service: MemoryCompactService = Depends(
+        Provide[ApplicationContainer.memory.memory_compact_service]
+    ),
+) -> MemoryCompactReviewResponse:
+    """Review one Memory Compact against the librarian rubric.
+
+    Args:
+        compact_id: Memory Compact identifier.
+        request: Optional current source observations.
+        service: Memory Compact application service.
+
+    Returns:
+        Structured librarian review result.
+    """
+    observations = () if request is None else request.to_observations()
+    result = await service.review(compact_id, source_observations=observations)
+    return MemoryCompactReviewResponse.from_result(result)
 
 
 @router.delete(
@@ -236,3 +307,83 @@ async def archive_memory_compact(
     """
     compact = await service.archive(compact_id)
     return MemoryCompactResponse.from_entity(compact)
+
+
+def _current_compact_warnings(
+    compact: MemoryCompact, max_compact_age_days: int
+) -> list[str]:
+    freshness_reference = compact.reviewed_at or compact.updated_at
+    if datetime.now(UTC) - freshness_reference > timedelta(days=max_compact_age_days):
+        return ["current_memory_compact_stale"]
+    return []
+
+
+async def _ensure_rag_healthy_for_current(
+    context_service: ContextService,
+) -> MemoryCompactRagGateResponse:
+    try:
+        health = await context_service.rag_health_with_index_status()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_rag_health_block_detail(
+                blockers=["rag_status_unavailable"],
+                warnings=[],
+            ),
+        ) from exc
+    blockers = _rag_health_blockers(health)
+    if blockers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_rag_health_block_detail(
+                blockers=blockers,
+                warnings=list(health.warnings),
+            ),
+        )
+    return MemoryCompactRagGateResponse(
+        gate_status="passed",
+        checked_at=datetime.now(UTC),
+        fingerprint=health.fingerprint,
+        warnings=list(health.warnings),
+    )
+
+
+def _rag_health_blockers(health: RagDependencyHealth) -> list[str]:
+    blockers: list[str] = []
+    if health.fts is not RagHealthState.HEALTHY:
+        blockers.append("rag_fts_not_healthy")
+    if health.vector is not RagHealthState.HEALTHY:
+        blockers.append("rag_vector_not_healthy")
+    if health.embedding is RagHealthState.REINDEX_REQUIRED:
+        blockers.append("rag_embedding_reindex_required")
+    elif health.embedding is not RagHealthState.HEALTHY:
+        blockers.append("rag_embedding_not_healthy")
+    if health.warnings:
+        blockers.append("rag_status_warnings_present")
+    return blockers
+
+
+def _rag_health_block_detail(
+    *,
+    blockers: list[str],
+    warnings: list[str],
+) -> RagHealthGateBlockDetail:
+    return RagHealthGateBlockDetail(
+        error="blocked_by_rag_health",
+        gate_status="blocked",
+        components=blockers,
+        warnings=warnings,
+        recommended_recovery_tools=_rag_health_recovery_tools(blockers),
+        retryable=True,
+    )
+
+
+def _rag_health_recovery_tools(blockers: list[str]) -> list[str]:
+    tools: list[str] = []
+    if "rag_embedding_reindex_required" in blockers:
+        tools.append("alexandria_reindex_context_embeddings")
+    if any(blocker != "rag_embedding_reindex_required" for blocker in blockers):
+        tools.append("alexandria_check_context_rag_status")
+    if not tools:
+        tools.append("alexandria_check_context_rag_status")
+    return tools

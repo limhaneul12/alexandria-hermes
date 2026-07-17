@@ -10,7 +10,10 @@ from app.memory.domain.entities.memory_compact import (
     MemoryCompact,
     MemoryCompactSourceRef,
 )
-from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
+from app.memory.domain.event_enum.memory_compact_enums import (
+    MemoryCompactReviewVerdict,
+    MemoryCompactStatus,
+)
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
@@ -21,6 +24,7 @@ NOTE_SUFFIX = ".md"
 _ALEXANDRIA_TYPE = "memory_compact"
 _DEFAULT_TAGS = "[alexandria, memory-compact]"
 _DEFAULT_SOURCE = "alexandria-hermes"
+_UPDATED_AT_KEYS = ("updated_at", "updated", "modified")
 
 
 def is_safe_note_id(compact_id: str) -> bool:
@@ -77,6 +81,7 @@ def serialize_compact(compact: MemoryCompact) -> str:
             "source_id": source_ref.source_id,
             "title": source_ref.title,
             "detail_path": source_ref.detail_path,
+            "source_hash": source_ref.source_hash,
         }
         for source_ref in compact.source_refs
     ]
@@ -93,6 +98,18 @@ def serialize_compact(compact: MemoryCompact) -> str:
         "updated_at": _isoformat(compact.updated_at),
         "archived_at": _isoformat(compact.archived_at)
         if compact.archived_at is not None
+        else None,
+        "review_verdict": compact.review_verdict.value
+        if compact.review_verdict is not None
+        else None,
+        "review_score": str(compact.review_score)
+        if compact.review_score is not None
+        else None,
+        "review_max_score": str(compact.review_max_score)
+        if compact.review_max_score is not None
+        else None,
+        "reviewed_at": _isoformat(compact.reviewed_at)
+        if compact.reviewed_at is not None
         else None,
         "source_refs": dumps_json(cast(JSONValue, source_refs)).decode("utf-8"),
     }
@@ -152,8 +169,9 @@ def _compact_from_frontmatter(
         created_at = _datetime_from_frontmatter(
             frontmatter, ("created_at", "created", "date")
         )
+        updated_at_missing = not any(frontmatter.get(key) for key in _UPDATED_AT_KEYS)
         updated_at = _datetime_from_frontmatter(
-            frontmatter, ("updated_at", "updated", "modified"), fallback=created_at
+            frontmatter, _UPDATED_AT_KEYS, fallback=created_at
         )
         covered_from = _datetime_from_frontmatter(
             frontmatter, ("covered_from",), fallback=created_at
@@ -174,6 +192,13 @@ def _compact_from_frontmatter(
             created_at=created_at,
             updated_at=updated_at,
             archived_at=_optional_datetime(frontmatter.get("archived_at")),
+            review_verdict=_optional_review_verdict(frontmatter.get("review_verdict")),
+            review_score=_optional_int(frontmatter.get("review_score")),
+            review_max_score=_optional_int(frontmatter.get("review_max_score")),
+            reviewed_at=_optional_datetime(frontmatter.get("reviewed_at")),
+            metadata_warnings=(
+                ("memory_compact_timestamp_missing",) if updated_at_missing else ()
+            ),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -203,6 +228,7 @@ def _source_refs_from_json(
                 source_id=str(payload.get("source_id") or ""),
                 title=str(payload.get("title") or ""),
                 detail_path=str(payload.get("detail_path") or ""),
+                source_hash=_optional_string(payload.get("source_hash")),
             )
         )
     return tuple(refs)
@@ -213,6 +239,12 @@ def _required_text(frontmatter: dict[str, str | None], key: str) -> str:
     if value is None or not value:
         raise ValueError(f"Missing Memory Compact frontmatter: {key}")
     return value
+
+
+def _optional_string(value: JSONValue | None) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def _status_from_frontmatter(
@@ -242,6 +274,18 @@ def _optional_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     return _parse_datetime(value)
+
+
+def _optional_review_verdict(value: str | None) -> MemoryCompactReviewVerdict | None:
+    if not value:
+        return None
+    return MemoryCompactReviewVerdict(value)
+
+
+def _optional_int(value: str | None) -> int | None:
+    if not value:
+        return None
+    return int(value)
 
 
 def _parse_datetime(value: str) -> datetime:

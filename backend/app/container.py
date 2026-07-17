@@ -75,6 +75,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
             "app.librarian.interface.routers",
             "app.memory.interface.routers",
             "app.obsidian.interface.routers",
+            "app.operations.interface.routers",
         ],
     )
 
