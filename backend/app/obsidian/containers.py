@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from app.memory.application.context_service import ContextService
 from app.obsidian.application.obsidian_graph_service import ObsidianGraphService
 from app.obsidian.application.obsidian_librarian_job_service import (
@@ -22,7 +24,6 @@ from app.obsidian.infrastructure.repositories.obsidian_workflow_repository impor
 )
 from app.platform.config.app_config import AppConfig
 from app.shared.infrastructure.database import Database
-from collections.abc import Awaitable, Callable
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
 
