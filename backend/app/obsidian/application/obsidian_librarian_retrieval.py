@@ -7,7 +7,10 @@ from collections.abc import Iterable
 from typing import Final
 
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianLibrarianAsk
-from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
+from app.obsidian.domain.event_enum.obsidian_enums import (
+    AlexandriaNoteType,
+    ObsidianLibrarianStopToken,
+)
 from app.shared.utils.text_metrics import extract_word_tokens
 
 MAX_LIBRARIAN_QUERY_VARIANTS: Final[int] = 16
@@ -18,56 +21,7 @@ DEFAULT_LIBRARIAN_EXCLUDED_TYPES: Final[tuple[AlexandriaNoteType, ...]] = (
 
 _QUERY_SEGMENT_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[,;\n]+")
 _STOP_TOKENS: Final[frozenset[str]] = frozenset(
-    {
-        "a",
-        "about",
-        "an",
-        "and",
-        "artifact",
-        "artifacts",
-        "by",
-        "concrete",
-        "decision",
-        "decisions",
-        "exclusion",
-        "find",
-        "for",
-        "from",
-        "how",
-        "in",
-        "intent",
-        "is",
-        "location",
-        "locations",
-        "note",
-        "notes",
-        "of",
-        "on",
-        "only",
-        "or",
-        "please",
-        "point",
-        "points",
-        "prior",
-        "recover",
-        "return",
-        "show",
-        "source",
-        "sources",
-        "that",
-        "the",
-        "these",
-        "this",
-        "those",
-        "to",
-        "was",
-        "were",
-        "what",
-        "when",
-        "where",
-        "why",
-        "with",
-    }
+    token.value for token in ObsidianLibrarianStopToken
 )
 
 

@@ -296,6 +296,67 @@ def test_obsidian_search_filters_stale_notes_before_fts_limit(
     assert anyio.run(scenario) == ["ctx_durable_crowdout"]
 
 
+def test_obsidian_reindex_triggers_embedding_reindex_when_hook_is_configured(
+    tmp_path: Path,
+) -> None:
+    """Reindex should trigger embedding backfill after vault index rebuild."""
+
+    async def scenario() -> tuple[bool, int]:
+        database = Database(
+            database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
+        )
+        await database.initialize()
+        session = database.session()
+        try:
+            repository = SqlAlchemyObsidianIndexRepository(session=session)
+            service = ObsidianService(
+                repository=repository,
+                vault_path=str(tmp_path / "vault"),
+                alexandria_root="Alexandria",
+                context_reindex_hook=lambda: None,
+            )
+            note_path = tmp_path / "vault" / "Alexandria" / "Contexts" / "Decisions"
+            note_path.mkdir(parents=True, exist_ok=True)
+            (note_path / "Reindex.md").write_text(
+                "---\n"
+                "alexandria_type: context\n"
+                "id: ctx_reindex\n"
+                "title: Reindex Hook\n"
+                "tags:\n"
+                "  - obsidian\n"
+                "status: active\n"
+                "source: human\n"
+                "project: alexandria-hermes\n"
+                "---\n\n"
+                "# Reindex Hook\n\nTrigger embedding reindex.\n",
+                encoding="utf-8",
+            )
+
+            called = False
+
+            async def hook() -> None:
+                nonlocal called
+                called = True
+
+            service = ObsidianService(
+                repository=repository,
+                vault_path=str(tmp_path / "vault"),
+                alexandria_root="Alexandria",
+                context_reindex_hook=hook,
+            )
+            result = await service.reindex()
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        return called, result.files_indexed
+
+    called, files_indexed = anyio.run(scenario)
+
+    assert called is True
+    assert files_indexed == 1
+
+
 def test_obsidian_reindex_handles_note_id_change_for_same_path(
     tmp_path: Path,
 ) -> None:

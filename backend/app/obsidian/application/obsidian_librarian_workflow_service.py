@@ -20,7 +20,10 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
 from app.obsidian.domain.repositories.obsidian_repository import (
     IObsidianWorkflowRepository,
 )
-from app.shared.exceptions import ObsidianNotFoundError, ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import (
+    ObsidianNotFoundError,
+    ObsidianValidationError,
+)
 from app.shared.types.extra_types import JSONObject
 
 

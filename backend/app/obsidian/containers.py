@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.memory.application.context_service import ContextService
 from app.obsidian.application.obsidian_graph_service import ObsidianGraphService
 from app.obsidian.application.obsidian_librarian_job_service import (
     ObsidianLibrarianJobService,
@@ -21,8 +22,22 @@ from app.obsidian.infrastructure.repositories.obsidian_workflow_repository impor
 )
 from app.platform.config.app_config import AppConfig
 from app.shared.infrastructure.database import Database
+from collections.abc import Awaitable, Callable
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def _build_context_reindex_hook(
+    context_service: ContextService | None,
+) -> Callable[[], Awaitable[None]] | None:
+    """Build an async hook that backfills context embeddings after vault reindex."""
+    if context_service is None:
+        return None
+
+    async def _hook() -> None:
+        await context_service.reindex_embeddings(limit=1000, force=True)
+
+    return _hook
 
 
 class ObsidianContainer(containers.DeclarativeContainer):
@@ -32,6 +47,10 @@ class ObsidianContainer(containers.DeclarativeContainer):
     database = providers.Dependency(instance_of=Database)
     app_config = providers.Dependency(instance_of=AppConfig)
     librarian_delegate_service = providers.Dependency(default=None)
+    memory_context_service = providers.Dependency(
+        instance_of=ContextService,
+        default=None,
+    )
     index_repo = providers.Factory(
         SqlAlchemyObsidianIndexRepository, session=db_session
     )
@@ -46,6 +65,10 @@ class ObsidianContainer(containers.DeclarativeContainer):
         repository=index_repo,
         vault_config_store=vault_config_store,
         delegate_service=librarian_delegate_service,
+        context_reindex_hook=providers.Factory(
+            _build_context_reindex_hook,
+            context_service=memory_context_service,
+        ),
     )
     graph_service = providers.Factory(
         ObsidianGraphService,

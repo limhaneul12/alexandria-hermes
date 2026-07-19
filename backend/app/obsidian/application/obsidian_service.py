@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -108,6 +109,7 @@ class ObsidianService:
         alexandria_root: str = "Alexandria",
         vault_config_store: ObsidianVaultConfigStore | None = None,
         delegate_service: ObsidianLibrarianDelegateService | None = None,
+        context_reindex_hook: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         """Initialize service dependencies.
 
@@ -120,6 +122,7 @@ class ObsidianService:
         """
         self._repository = repository
         self._delegate_service = delegate_service
+        self._context_reindex_hook = context_reindex_hook
         if vault_config_store is None:
             if vault_path is None:
                 raise ObsidianValidationError("vault_path is required")
@@ -254,6 +257,8 @@ class ObsidianService:
                 errors.append(f"{relative_path}: {exc}")
         stale_marked = await self._repository.mark_missing_stale(seen_paths)
         await self._repository.resolve_edge_targets()
+        if self._context_reindex_hook is not None:
+            await self._context_reindex_hook()
         return ObsidianReindexResult(
             files_seen=files_seen,
             files_indexed=files_indexed,
