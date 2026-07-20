@@ -18,14 +18,14 @@ from app.librarian.domain.event_enum.collaboration_enums import (
 from app.librarian.domain.types.hermes_collaboration_payload_types import (
     HermesLibrarianAskPayload,
 )
-from app.obsidian.application.obsidian_librarian_langgraph_support import (
+from app.obsidian.application.librarian.obsidian_librarian_langgraph_support import (
     ObsidianLibrarianDelegateService,
 )
-from app.obsidian.application.obsidian_librarian_workflow_service import (
+from app.obsidian.application.librarian.obsidian_librarian_workflow_service import (
     ObsidianLibrarianWorkflowService,
 )
-from app.obsidian.application.obsidian_graph_service import ObsidianGraphService
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.graph.obsidian_graph_service import ObsidianGraphService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
     ObsidianLibrarianWorkflowResume,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.obsidian.application.obsidian_note_indexer import note_index_from_path
+from app.obsidian.application.notes.obsidian_note_indexer import note_index_from_path
 from app.obsidian.domain.entities.obsidian_note import ObsidianNote
 from app.obsidian.infrastructure.markdown.paths import resolve_note_path
 from app.shared.exceptions import ObsidianNotFoundError, ObsidianValidationError

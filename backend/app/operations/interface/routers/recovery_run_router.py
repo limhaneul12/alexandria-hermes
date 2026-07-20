@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.container import ApplicationContainer
 from app.memory.application.context_service import ContextService
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.operations.application.recovery_run_service import (
     RecoveryInProgressError,
     RecoveryRunService,

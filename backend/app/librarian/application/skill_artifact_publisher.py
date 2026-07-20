@@ -21,7 +21,7 @@ from app.librarian.domain.event_enum.skill_acquisition_enums import (
     ItemStatus,
     RiskLevel,
 )
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianSaveNote,
     ObsidianSearchQuery,

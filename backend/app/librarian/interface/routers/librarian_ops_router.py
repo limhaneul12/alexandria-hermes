@@ -43,7 +43,7 @@ from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import 
     skill_acquisition_job_response,
     skill_capability_search_response,
 )
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import LIBRARIAN_ROUTE_EXCEPTION_MAPPING
 from app.shared.infrastructure.database import Database

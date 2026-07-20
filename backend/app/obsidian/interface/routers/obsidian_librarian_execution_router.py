@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from app.container import ApplicationContainer
-from app.obsidian.application.obsidian_librarian_job_service import (
+from app.obsidian.application.librarian.obsidian_librarian_job_service import (
     ObsidianLibrarianJobService,
 )
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.interface.schemas.obsidian.obsidian_librarian_execution_schema import (
     ObsidianLibrarianJobResponse,
     ObsidianLibrarianReviewApplyRequestSchema,

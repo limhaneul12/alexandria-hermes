@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.obsidian.application.obsidian_librarian_langgraph import (
+from app.obsidian.application.librarian.obsidian_librarian_langgraph import (
     ObsidianLibrarianDelegateService,
     ObsidianLibrarianLangGraphExecutor,
 )
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
     ObsidianLibrarianWorkflowResume,

@@ -28,10 +28,10 @@ from app.memory.domain.repositories.memory_compact_repository import (
 from app.memory.infrastructure.repositories.memory_compact_repository import (
     ObsidianMemoryCompactRepository,
 )
-from app.obsidian.application.obsidian_librarian_job_service import (
+from app.obsidian.application.librarian.obsidian_librarian_job_service import (
     ObsidianLibrarianJobService,
 )
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianChunkIndex,
     ObsidianLibrarianAsk,

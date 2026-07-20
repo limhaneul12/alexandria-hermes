@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.container import ApplicationContainer
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
     ObsidianStatusResponse,
 )

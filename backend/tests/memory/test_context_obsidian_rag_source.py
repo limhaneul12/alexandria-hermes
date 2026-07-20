@@ -21,7 +21,7 @@ from app.memory.infrastructure.repositories.context_repository import (
 from app.memory.infrastructure.repositories.contexts.obsidian_search_source import (
     SqlAlchemyObsidianContextSearchSource,
 )
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianSaveNote
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 from app.obsidian.infrastructure.models import (

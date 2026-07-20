@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.obsidian.application.obsidian_librarian_delegation import (
+from app.obsidian.application.librarian.obsidian_librarian_delegation import (
     ObsidianLibrarianDelegateService,
 )
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianVaultMoveApplyRequest,
 )
@@ -22,7 +22,7 @@ from app.obsidian.infrastructure.obsidian_vault_config_store import (
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
-from app.shared.exceptions import ObsidianNotFoundError
+from app.shared.exceptions.obsidian_exceptions import ObsidianNotFoundError
 from app.shared.infrastructure.database import Database
 from app.shared.infrastructure.identifiers import new_uuid
 

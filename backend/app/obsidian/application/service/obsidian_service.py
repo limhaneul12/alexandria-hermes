@@ -4,31 +4,34 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from enum import StrEnum
 from pathlib import Path
 
-from app.obsidian.application.obsidian_authoritative_read import (
-    authoritative_note_from_path,
-)
-from app.obsidian.application.obsidian_frontmatter_redaction import (
-    redacted_frontmatter,
-)
-from app.obsidian.application.obsidian_graph_relations import (
+from app.obsidian.application.graph.obsidian_graph_relations import (
     add_or_update_alexandria_links_section,
 )
-from app.obsidian.application.obsidian_graph_writeback import graph_link_save_payload
-from app.obsidian.application.obsidian_librarian_delegation import (
+from app.obsidian.application.graph.obsidian_graph_writeback import (
+    graph_link_save_payload,
+)
+from app.obsidian.application.librarian.obsidian_librarian_delegation import (
     ObsidianLibrarianDelegateService,
     apply_provider_delegate,
 )
-from app.obsidian.application.obsidian_librarian_retrieval import (
+from app.obsidian.application.librarian.obsidian_librarian_retrieval import (
     librarian_excluded_types,
     librarian_query_text,
     librarian_query_variants,
     librarian_search_limit,
     librarian_type_filters,
 )
-from app.obsidian.application.obsidian_note_indexer import note_index_from_path
-from app.obsidian.application.obsidian_note_templates import (
+from app.obsidian.application.notes.obsidian_authoritative_read import (
+    authoritative_note_from_path,
+)
+from app.obsidian.application.notes.obsidian_frontmatter_redaction import (
+    redacted_frontmatter,
+)
+from app.obsidian.application.notes.obsidian_note_indexer import note_index_from_path
+from app.obsidian.application.notes.obsidian_note_templates import (
     LIBRARIAN_OPERATIONS_FOLDER,
     conversation_id,
     default_folders,
@@ -83,7 +86,10 @@ from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfig,
     ObsidianVaultConfigStore,
 )
-from app.shared.exceptions import ObsidianNotFoundError, ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import (
+    ObsidianNotFoundError,
+    ObsidianValidationError,
+)
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.serialization.orjson_codec import dumps_pretty_json
 from app.shared.types.extra_types import JSONObject
@@ -92,8 +98,18 @@ from app.shared.utils.secret_redaction import redact_secret_text
 SELECTION_CONTEXT_MAX_CHARS = 4_000
 NOTE_SUFFIX_GLOB = f"*{NOTE_SUFFIX}"
 REVIEW_QUEUE_EXCLUDED_STATUSES = frozenset({"archived"})
+
+
+class ReviewQueueStatusMarker(StrEnum):
+    DRAFT = "draft"
+    NEEDS_REVIEW = "needs_review"
+    PENDING = "pending"
+    REVIEW = "review"
+    TO_PROMOTE = "to_promote"
+
+
 REVIEW_QUEUE_STATUS_MARKERS = frozenset(
-    {"draft", "needs_review", "pending", "review", "to_promote"}
+    marker.value for marker in ReviewQueueStatusMarker
 )
 SKILL_CURATION_STATUSES = frozenset({"deprecated", "stale", "superseded"})
 

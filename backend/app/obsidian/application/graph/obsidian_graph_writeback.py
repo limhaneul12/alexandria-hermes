@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from app.obsidian.application.obsidian_graph_relations import (
+from app.obsidian.application.graph.obsidian_graph_relations import (
     add_or_update_alexandria_links_section,
     source_refs_from_json,
 )
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianSaveNote
 from app.obsidian.domain.entities.obsidian_note import ObsidianNote
-from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.types.extra_types import JSONObject
 
 

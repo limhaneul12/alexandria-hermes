@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.obsidian.application.obsidian_graph_relations import (
+from app.obsidian.application.graph.obsidian_graph_relations import (
     add_or_update_alexandria_links_section,
     relation_edges_from_note,
 )

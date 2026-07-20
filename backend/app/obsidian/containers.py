@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from app.memory.application.context_service import ContextService
-from app.obsidian.application.obsidian_graph_service import ObsidianGraphService
-from app.obsidian.application.obsidian_librarian_job_service import (
+from app.obsidian.application.graph.obsidian_graph_service import ObsidianGraphService
+from app.obsidian.application.librarian.obsidian_librarian_job_service import (
     ObsidianLibrarianJobService,
 )
-from app.obsidian.application.obsidian_librarian_workflow_service import (
+from app.obsidian.application.librarian.obsidian_librarian_workflow_service import (
     ObsidianLibrarianWorkflowService,
 )
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
 )

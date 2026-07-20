@@ -13,8 +13,10 @@ from app.librarian.domain.entities.source_ref import SourceRef, SourceRefType
 from app.librarian.domain.types.hermes_collaboration_payload_types import (
     HermesLibrarianAskPayload,
 )
-from app.obsidian.application.obsidian_graph_relations import source_refs_from_json
-from app.obsidian.application.obsidian_librarian_state_access import (
+from app.obsidian.application.graph.obsidian_graph_relations import (
+    source_refs_from_json,
+)
+from app.obsidian.application.librarian.obsidian_librarian_state_access import (
     state_int as _state_int,
     state_json_object_list as _state_json_object_list,
     state_note_types as _state_note_types,

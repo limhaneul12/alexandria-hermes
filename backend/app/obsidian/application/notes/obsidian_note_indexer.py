@@ -5,8 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.obsidian.application.obsidian_graph_relations import relation_edges_from_note
-from app.obsidian.application.obsidian_note_templates import (
+from app.obsidian.application.graph.obsidian_graph_relations import (
+    relation_edges_from_note,
+)
+from app.obsidian.application.notes.obsidian_note_templates import (
     chunks_for_body,
     sha256_text,
     title_from_document,

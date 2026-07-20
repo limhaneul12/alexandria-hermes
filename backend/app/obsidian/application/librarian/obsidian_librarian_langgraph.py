@@ -8,8 +8,10 @@ from typing import Any, cast
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
 )
-from app.obsidian.application.obsidian_graph_relations import source_refs_from_json
-from app.obsidian.application.obsidian_librarian_langgraph_support import (
+from app.obsidian.application.graph.obsidian_graph_relations import (
+    source_refs_from_json,
+)
+from app.obsidian.application.librarian.obsidian_librarian_langgraph_support import (
     ObsidianLibrarianDelegateService,
     ObsidianLibrarianGraphResult,
     ObsidianLibrarianGraphState,
@@ -31,15 +33,15 @@ from app.obsidian.application.obsidian_librarian_langgraph_support import (
     _transcript_body as transcript_body,
     _workflow_snapshot_from_state as workflow_snapshot_from_state,
 )
-from app.obsidian.application.obsidian_librarian_state_access import (
+from app.obsidian.application.librarian.obsidian_librarian_state_access import (
     state_string_list,
 )
-from app.obsidian.application.obsidian_librarian_workflow_prompts import (
+from app.obsidian.application.librarian.obsidian_librarian_workflow_prompts import (
     delegate_brief,
     delegate_prompt,
 )
-from app.obsidian.application.obsidian_note_templates import conversation_id
-from app.obsidian.application.obsidian_service import ObsidianService
+from app.obsidian.application.notes.obsidian_note_templates import conversation_id
+from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
     ObsidianLibrarianWorkflowResume,
@@ -49,10 +51,8 @@ from app.obsidian.domain.entities.obsidian_note import (
     ObsidianNote,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
-from app.shared.exceptions import (
-    LibrarianResourceNotFoundError,
-    ObsidianValidationError,
-)
+from app.shared.exceptions import LibrarianResourceNotFoundError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.types.extra_types import JSONObject
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
