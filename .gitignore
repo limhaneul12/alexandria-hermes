@@ -270,4 +270,7 @@ integrations/obsidian/alexandria-librarian/data.json
 # Playwright demo recordings (generated locally)
 docs/assets/demo/recordings/
 backend/.smoke/
-docs/jobs/
+docs/jobs/**
+
+docs/deprecated/**
+backend/.agents/**
