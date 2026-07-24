@@ -1,0 +1,18 @@
+{
+  "test_run_id": "agent-scope-memory-20260724-ca32547",
+  "git_commit_sha": "ca32547b869612a0d2c7bfcc9dedb5250c76273e",
+  "strategies": {
+    "FTS_ONLY": [
+      "obsidian:ctx_agent_a",
+      "obsidian:ctx_project_shared"
+    ],
+    "VECTOR_ONLY": [
+      "obsidian:ctx_agent_a",
+      "obsidian:ctx_project_shared"
+    ],
+    "HYBRID": [
+      "obsidian:ctx_agent_a",
+      "obsidian:ctx_project_shared"
+    ]
+  }
+}

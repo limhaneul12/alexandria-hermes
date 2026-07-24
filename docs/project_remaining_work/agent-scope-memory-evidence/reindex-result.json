@@ -1,0 +1,59 @@
+{
+  "test_run_id": "agent-scope-memory-20260724-ca32547",
+  "git_commit_sha": "ca32547b869612a0d2c7bfcc9dedb5250c76273e",
+  "files_seen": 4,
+  "files_indexed": 4,
+  "files_skipped": 0,
+  "stale_marked": 0,
+  "errors": [],
+  "restored_frontmatter": {
+    "ctx_agent_a": {
+      "scope": "AGENT",
+      "project": "agent-platform",
+      "workspace_id": "default",
+      "agent_id": "hermes-coding",
+      "session_id": null,
+      "status": "current",
+      "version": 3,
+      "content_hash": "fcd1fcc9d16962ae5eee096413840e077fd98b6d162d20e062e9b7ec9f05ce2a",
+      "source_actor_id": "hermes-coding",
+      "source_run_id": "run-001"
+    },
+    "ctx_agent_b": {
+      "scope": "AGENT",
+      "project": "agent-platform",
+      "workspace_id": "default",
+      "agent_id": "hermes-research",
+      "session_id": null,
+      "status": "current",
+      "version": 1,
+      "content_hash": "d5a9192fe6befcd97c2b828056ffd096e67aaa1ca3cb0dd5dd3abf7af17ccf9b",
+      "source_actor_id": null,
+      "source_run_id": null
+    },
+    "ctx_project_shared": {
+      "scope": "PROJECT",
+      "project": "agent-platform",
+      "workspace_id": "default",
+      "agent_id": null,
+      "session_id": null,
+      "status": "current",
+      "version": 1,
+      "content_hash": "63daebf0f5644cafc88d21e5ab302124e02911ca9a75999bd62e037dd3afe7a7",
+      "source_actor_id": null,
+      "source_run_id": null
+    },
+    "ctx_session_a": {
+      "scope": "SESSION",
+      "project": "agent-platform",
+      "workspace_id": "default",
+      "agent_id": null,
+      "session_id": "session-a",
+      "status": "current",
+      "version": 1,
+      "content_hash": "dca9bf52e4d96bdadc0e1196254da3b880c397778df2e9a498331615e60c4b75",
+      "source_actor_id": null,
+      "source_run_id": null
+    }
+  }
+}

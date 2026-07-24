@@ -1,0 +1,13 @@
+{
+  "test_run_id": "agent-scope-memory-20260724-ca32547",
+  "git_commit_sha": "ca32547b869612a0d2c7bfcc9dedb5250c76273e",
+  "sample_count": 40,
+  "fts_recall_p95_ms": 9.663,
+  "hybrid_recall_p95_ms": 14.456,
+  "context_save_p95_ms": 21.047,
+  "targets_ms": {
+    "fts_recall": 500,
+    "hybrid_recall": 2000,
+    "context_save": 1000
+  }
+}
