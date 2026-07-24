@@ -14,6 +14,9 @@ TOKEN_ASSIGNMENT_PATTERN = re.compile(
     r"(?i)\b(api[_-]?key|token|secret|password)\s*[:=]\s*([\"']?)[A-Za-z0-9_./+=\-]{12,}\2"
 )
 LONG_TOKEN_PATTERN = re.compile(r"\b[A-Za-z0-9+/._=-]{48,}\b")
+SECRET_FIELD_NAME_PATTERN = re.compile(
+    r"(?i)(api[_-]?key|token|secret|password|credential|private[_-]?key)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,3 +61,15 @@ def redact_secret_text(content: str) -> SecretRedactionResult:
         redaction_count=redaction_count,
         warnings=warnings,
     )
+
+
+def is_secret_field_name(field_name: str) -> bool:
+    """Return whether a structured field name denotes credential material.
+
+    Args:
+        field_name: Structured mapping key.
+
+    Returns:
+        True when the key denotes credential material.
+    """
+    return SECRET_FIELD_NAME_PATTERN.search(field_name) is not None
