@@ -229,16 +229,6 @@ backend/**/*.sqlite-*
 backend/**/*.sqlite3
 backend/**/*.sqlite3-*
 
-# Frontend Prisma runtime SQLite databases
-frontend/prisma/*.db
-frontend/prisma/*.db-*
-frontend/prisma/*.sqlite
-frontend/prisma/*.sqlite-*
-frontend/prisma/*.sqlite3
-frontend/prisma/*.sqlite3-*
-
-# Local frontend agent skill packs
-frontend/.agents/skills/
 
 # Local agent runtime state
 .agent-remote/
@@ -274,4 +264,3 @@ backend/.smoke/
 docs/jobs/**
 
 docs/deprecated/**
-backend/.agents/**
