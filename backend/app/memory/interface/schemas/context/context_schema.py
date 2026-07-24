@@ -8,22 +8,47 @@ from app.memory.domain.event_enum.context_enums import (
     ContextContentFormat,
     ContextImportance,
     ContextKind,
+    ContextRecallLifecycleStatus,
     ContextScope,
     ContextSourceType,
     ContextStorageStatus,
     RagHealthState,
     RagStrategy,
 )
+from app.memory.domain.types.context_payload_types import ContextRetrievalSource
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from app.shared.types.extra_types import JSONObject
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
+
+
+class ContextProvenanceResponse(StrictSchemaModel):
+    """Generalized Context origin and evidence references."""
+
+    source_actor_id: str | None
+    source_actor_type: ContextSourceType | None
+    source_run_id: str | None
+    external_run_id: str | None
+    artifact_refs: list[str]
+    evidence_refs: list[str]
+    confidence: ContextImportance | None
+
+
+class ContextLifecycleResponse(StrictSchemaModel):
+    """Context lifecycle, integrity, and supersede metadata."""
+
+    status: ContextRecallLifecycleStatus
+    content_hash: str | None
+    version: int | None
+    supersedes_context_id: str | None
+    superseded_by_context_id: str | None
 
 
 class ContextResponse(StrictSchemaModel):
     """Stored context response."""
 
     id: str
+    canonical_context_id: str
     kind: ContextKind
     title: str
     summary: str
@@ -41,6 +66,9 @@ class ContextResponse(StrictSchemaModel):
     importance: ContextImportance
     tags: list[str]
     status: ContextStorageStatus
+    lifecycle_status: ContextRecallLifecycleStatus
+    provenance: ContextProvenanceResponse
+    lifecycle: ContextLifecycleResponse
     quality_score: int
     warnings: list[str]
     restore_prompt: str | None
@@ -119,8 +147,11 @@ class ContextSearchRequest(StrictSchemaModel):
     agent_id: str | None = None
     user_id: str | None = None
     session_id: str | None = None
+    include_lifecycle_statuses: list[ContextRecallLifecycleStatus] = Field(
+        default_factory=list
+    )
 
-    @field_validator("include_scopes", mode="before")
+    @field_validator("include_scopes", "include_lifecycle_statuses", mode="before")
     @classmethod
     # Broad type justified: Pydantic before validators receive raw boundary input
     # when normalizing legacy null scope filters to the default empty list.
@@ -138,6 +169,29 @@ class ContextSearchRequest(StrictSchemaModel):
             return []
         return value
 
+    @model_validator(mode="after")
+    def validate_requested_scope_identities(self) -> ContextSearchRequest:
+        """Reject explicit scope lanes whose required identity is absent.
+
+        Returns:
+            Validated search request.
+        """
+        requirements = (
+            (ContextScope.PROJECT, self.project, "MISSING_PROJECT"),
+            (ContextScope.AGENT, self.agent_id, "MISSING_AGENT_ID"),
+            (ContextScope.USER, self.user_id, "MISSING_USER_ID"),
+            (ContextScope.SESSION, self.session_id, "MISSING_SESSION_ID"),
+        )
+        missing = [
+            field_name
+            for scope, identity, field_name in requirements
+            if scope in self.include_scopes
+            and (identity is None or not identity.strip())
+        ]
+        if missing:
+            raise ValueError("scope identity is required: " + ", ".join(missing))
+        return self
+
 
 class ContextSearchMatchResponse(StrictSchemaModel):
     """One retrieved context chunk with scores."""
@@ -148,6 +202,10 @@ class ContextSearchMatchResponse(StrictSchemaModel):
     fts_score: float | None
     vector_score: float | None
     why_retrieved: str
+    canonical_context_id: str
+    lifecycle_status: ContextRecallLifecycleStatus
+    source: ContextRetrievalSource
+    retrieval_strategy: RagStrategy
 
 
 class ContextPackResponse(StrictSchemaModel):

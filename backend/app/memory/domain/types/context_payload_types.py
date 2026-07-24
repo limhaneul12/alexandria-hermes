@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal, NotRequired
 
 from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
@@ -10,6 +11,7 @@ from app.memory.domain.event_enum.context_enums import (
     ContextContentFormat,
     ContextImportance,
     ContextKind,
+    ContextRecallLifecycleStatus,
     ContextScope,
     ContextSourceType,
     ContextStorageStatus,
@@ -19,9 +21,48 @@ from app.memory.domain.event_enum.context_enums import (
 from app.shared.types.extra_types import JSONObject, JSONValue
 from typing_extensions import TypedDict
 
+type ContextRetrievalSource = Literal["context_vault", "obsidian_vault"]
+
 
 class ContextMetadataPayload(TypedDict, extra_items=JSONValue):
-    """Arbitrary JSON metadata owned by Context Vault callers."""
+    """Known Context metadata fields plus preserved caller extensions."""
+
+    source_surface: NotRequired[str]
+    obsidian_note_id: NotRequired[str]
+    canonical_context_id: NotRequired[str]
+    relative_path: NotRequired[str]
+    alexandria_type: NotRequired[str]
+    index_status: NotRequired[str]
+    wikilink: NotRequired[str]
+    lifecycle_status: NotRequired[str]
+    content_hash: NotRequired[str]
+    version: NotRequired[int]
+    provenance: NotRequired[dict[str, JSONValue]]
+    supersedes_context_id: NotRequired[str | None]
+    superseded_by_context_id: NotRequired[str | None]
+    source: NotRequired[str]
+
+
+class ContextProvenancePayload(TypedDict, closed=True):
+    """Generalized origin and evidence references for one Context."""
+
+    source_actor_id: str | None
+    source_actor_type: ContextSourceType | None
+    source_run_id: str | None
+    external_run_id: str | None
+    artifact_refs: list[str]
+    evidence_refs: list[str]
+    confidence: ContextImportance | None
+
+
+class ContextLifecyclePayload(TypedDict, closed=True):
+    """Canonical lifecycle and integrity metadata for one Context."""
+
+    status: ContextRecallLifecycleStatus
+    content_hash: str | None
+    version: int | None
+    supersedes_context_id: str | None
+    superseded_by_context_id: str | None
 
 
 class ContextLintNormalizedPayload(TypedDict, closed=True):
@@ -54,6 +95,7 @@ class ContextPayload(TypedDict, closed=True):
     """API payload for one stored context."""
 
     id: str
+    canonical_context_id: str
     kind: ContextKind
     title: str
     summary: str
@@ -71,6 +113,9 @@ class ContextPayload(TypedDict, closed=True):
     importance: ContextImportance
     tags: list[str]
     status: ContextStorageStatus
+    lifecycle_status: ContextRecallLifecycleStatus
+    provenance: ContextProvenancePayload
+    lifecycle: ContextLifecyclePayload
     quality_score: int
     warnings: list[str]
     restore_prompt: str | None
@@ -119,6 +164,10 @@ class ContextSearchMatchPayload(TypedDict, closed=True):
     fts_score: float | None
     vector_score: float | None
     why_retrieved: str
+    canonical_context_id: str
+    lifecycle_status: ContextRecallLifecycleStatus
+    source: ContextRetrievalSource
+    retrieval_strategy: RagStrategy
 
 
 class ContextPackPayload(TypedDict, closed=True):

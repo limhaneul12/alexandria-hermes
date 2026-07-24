@@ -41,7 +41,7 @@ def frontmatter_for_save(
             "tags": payload.tags,
             "status": payload.status,
             "created_at": frontmatter.get("created_at") or now,
-            "updated_at": now,
+            "updated_at": frontmatter.get("updated_at") or now,
             "source": payload.source,
         }
     )

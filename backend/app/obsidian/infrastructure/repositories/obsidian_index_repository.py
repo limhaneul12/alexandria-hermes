@@ -4,16 +4,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.obsidian.application.notes.obsidian_note_templates import sha256_text
 from app.obsidian.domain.contracts.obsidian_contracts import (
+    ObsidianContextDuplicateQuery,
     ObsidianNoteIndex,
     ObsidianSearchQuery,
 )
 from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianIndexError,
     ObsidianNote,
     ObsidianRelatedNote,
     ObsidianSearchHit,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import (
+    ObsidianIndexErrorCode,
     ObsidianIndexStatus,
 )
 from app.obsidian.domain.repositories.obsidian_repository import (
@@ -43,9 +47,11 @@ from app.obsidian.infrastructure.repositories.obsidian_index_row_cleanup import 
     discard_obsidian_note_index,
     get_obsidian_file_by_path,
 )
+from app.shared.exceptions.obsidian_exceptions import ObsidianIndexWriteError
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.types_convert_utils import aware_utc_datetime
 from sqlalchemy import delete, func, insert, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -68,7 +74,16 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         Returns:
             Persisted note entity.
         """
-        await self.ensure_search_tables()
+        try:
+            await self.ensure_search_tables()
+            async with self._session.begin_nested():
+                return await self._upsert_note(payload)
+        except SQLAlchemyError as exc:
+            raise ObsidianIndexWriteError(
+                f"failed to index Obsidian note: {payload.relative_path}"
+            ) from exc
+
+    async def _upsert_note(self, payload: ObsidianNoteIndex) -> ObsidianNote:
         now = datetime.now(UTC)
         path_model = await get_obsidian_file_by_path(
             self._session, payload.relative_path
@@ -168,6 +183,96 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
         """
         model = await get_obsidian_file_by_path(self._session, relative_path)
         return None if model is None else note_from_model(model)
+
+    async def find_context_duplicate(
+        self,
+        query: ObsidianContextDuplicateQuery,
+    ) -> ObsidianNote | None:
+        """Return an indexed Context with the same scope identity and body hash.
+
+        Args:
+            query: Canonical duplicate lookup constraints.
+
+        Returns:
+            Existing duplicate Context when found.
+        """
+        frontmatter = ObsidianFileORM.frontmatter_json
+        statement = select(ObsidianFileORM).where(
+            ObsidianFileORM.note_id != query.excluded_note_id,
+            ObsidianFileORM.alexandria_type == "context",
+            ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value,
+            func.upper(func.json_extract(frontmatter, "$.scope")) == query.scope,
+            func.json_extract(frontmatter, "$.content_hash") == query.content_hash,
+        )
+        identity_filters = (
+            ("project", query.project),
+            ("workspace_id", query.workspace_id),
+            ("agent_id", query.agent_id),
+            ("user_id", query.user_id),
+            ("session_id", query.session_id),
+        )
+        for field_name, field_value in identity_filters:
+            column = func.json_extract(frontmatter, f"$.{field_name}")
+            statement = statement.where(
+                column.is_(None) if field_value is None else column == field_value
+            )
+        model = await self._session.scalar(statement.limit(1))
+        return None if model is None else note_from_model(model)
+
+    async def record_index_error(self, error: ObsidianIndexError) -> None:
+        """Persist a failed note row so operators can observe and recover it.
+
+        Args:
+            error: Structured note indexing failure.
+        """
+        path_model = await get_obsidian_file_by_path(self._session, error.note_path)
+        note_id = f"index-error:{sha256_text(error.note_path)[:32]}"
+        model = await self._session.get(ObsidianFileORM, note_id)
+        if path_model is not None and path_model.note_id != note_id:
+            await discard_obsidian_note_index(self._session, path_model.note_id)
+            await self._session.delete(path_model)
+            await self._session.flush()
+        if model is None:
+            model = ObsidianFileORM(note_id=note_id)
+            self._session.add(model)
+        model.relative_path = error.note_path
+        model.alexandria_type = "context"
+        model.title = error.note_path.rsplit("/", maxsplit=1)[-1].removesuffix(".md")
+        model.status = "error"
+        model.tags = []
+        model.project = None
+        model.source = "reindex"
+        model.content_hash = sha256_text(error.note_path)
+        model.frontmatter_json = {"index_error_code": error.error_code.value}
+        if error.context_id is not None:
+            model.frontmatter_json["id"] = error.context_id
+        model.body = ""
+        model.index_status = ObsidianIndexStatus.ERROR.value
+        model.error_message = error.error_message
+        model.size_bytes = 0
+        model.modified_at = error.detected_at
+        model.indexed_at = error.detected_at
+        await self._session.flush()
+
+    async def list_index_errors(
+        self,
+        limit: int = 20,
+    ) -> list[ObsidianIndexError]:
+        """Return recent failed-note rows as structured diagnostics.
+
+        Args:
+            limit: Maximum number of recent errors to return.
+
+        Returns:
+            Recent structured indexing failures.
+        """
+        rows = await self._session.scalars(
+            select(ObsidianFileORM)
+            .where(ObsidianFileORM.index_status == ObsidianIndexStatus.ERROR.value)
+            .order_by(ObsidianFileORM.indexed_at.desc())
+            .limit(limit)
+        )
+        return [_index_error_from_model(model) for model in rows.all()]
 
     async def search(self, query: ObsidianSearchQuery) -> list[ObsidianSearchHit]:
         """Search notes using FTS and indexed metadata filters.
@@ -422,3 +527,35 @@ class SqlAlchemyObsidianIndexRepository(IObsidianIndexRepository):
             for model in rows.scalars().all()
             if matches_tags(model.tags, query.tags)
         ]
+
+
+def _index_error_from_model(model: ObsidianFileORM) -> ObsidianIndexError:
+    error_text = model.error_message or "Unknown index error"
+    stored_error_code = model.frontmatter_json.get("index_error_code")
+    if isinstance(stored_error_code, str):
+        try:
+            error_code = ObsidianIndexErrorCode(stored_error_code)
+        except ValueError:
+            error_code = ObsidianIndexErrorCode.INDEX_WRITE_FAILED
+        error_message = error_text
+    else:
+        legacy_code, separator, legacy_message = error_text.partition(":")
+        try:
+            error_code = ObsidianIndexErrorCode(legacy_code)
+        except ValueError:
+            error_code = ObsidianIndexErrorCode.INDEX_WRITE_FAILED
+        error_message = legacy_message if separator else error_text
+    stored_context_id = model.frontmatter_json.get("id")
+    if isinstance(stored_context_id, str):
+        context_id = stored_context_id
+    elif model.note_id.startswith("index-error:"):
+        context_id = None
+    else:
+        context_id = model.note_id
+    return ObsidianIndexError(
+        note_path=model.relative_path,
+        context_id=context_id,
+        error_code=error_code,
+        error_message=error_message.strip(),
+        detected_at=aware_utc_datetime(model.indexed_at),
+    )

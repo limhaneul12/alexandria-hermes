@@ -59,6 +59,51 @@ def resolve_note_path(vault_path: str | Path, relative_path: str | Path) -> Path
     return target
 
 
+def validate_discovered_note_path(
+    vault_path: str | Path,
+    managed_root: str | Path,
+    candidate: Path,
+) -> Path:
+    """Reject symlinked or escaped Markdown files found during vault scans.
+
+    Args:
+        vault_path: Configured vault root.
+        managed_root: Managed Alexandria root within the vault.
+        candidate: Markdown path discovered by the filesystem scan.
+
+    Returns:
+        Canonical resolved candidate path inside both roots.
+
+    Raises:
+        ObsidianValidationError: If the candidate uses a symlink or escapes a root.
+    """
+    vault = resolve_vault_path(vault_path)
+    root = resolve_note_path(vault, managed_root)
+    if candidate.is_symlink() or _has_symlink_component(root, candidate):
+        raise ObsidianValidationError(
+            "PATH_SECURITY_VIOLATION: managed notes cannot use symlinks"
+        )
+    resolved = candidate.resolve(strict=True)
+    if vault not in resolved.parents or root not in resolved.parents:
+        raise ObsidianValidationError(
+            "PATH_SECURITY_VIOLATION: managed note escaped the vault root"
+        )
+    return resolved
+
+
+def _has_symlink_component(root: Path, candidate: Path) -> bool:
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError:
+        return True
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def safe_filename(title: str) -> str:
     """Return a filesystem-friendly Markdown filename for a note title.
 

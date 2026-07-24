@@ -29,7 +29,10 @@ from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
     ObsidianStatusResponse,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
-from app.shared.exceptions.route_exceptions import OBSIDIAN_ROUTE_EXCEPTION_MAPPING
+from app.shared.exceptions.route_exceptions import (
+    OBSIDIAN_ROUTE_EXCEPTION_MAPPING,
+    OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING,
+)
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query, status
 
@@ -268,7 +271,7 @@ async def read_obsidian_note(
     summary="Save Obsidian note",
     description="Create or replace one Alexandria-managed Markdown note.",
 )
-@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@router_exception_status(OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def save_obsidian_note(
     request: ObsidianSaveNoteRequest,

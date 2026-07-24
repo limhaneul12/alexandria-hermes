@@ -13,3 +13,7 @@ class ObsidianNotFoundError(ObsidianDomainError):
 
 class ObsidianValidationError(ObsidianDomainError):
     """Raised when an Obsidian request violates a storage invariant."""
+
+
+class ObsidianIndexWriteError(ObsidianDomainError):
+    """Raised when one rebuildable Obsidian index write fails."""

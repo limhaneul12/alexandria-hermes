@@ -69,45 +69,22 @@ alexandria_list_memory_compact_artifacts = _alexandria_list_memory_compact_artif
 
 async def alexandria_search(
     client: AlexandriaApiClient,
-    query: str,
-    limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
-    strategy: RagStrategy = DEFAULT_CONTEXT_SEARCH_STRATEGY,
-    project: str | None = None,
-    kind: ContextKind | None = None,
-    include_scopes: list[ContextScope] | None = None,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
+    request: ContextSearchRequest,
 ) -> JSONValue:
     """Search Context Vault and return a Context Pack.
 
     Args:
         client: Backend HTTP client.
-        query: Search query.
-        limit: Maximum matches.
-        strategy: Retrieval strategy.
-        project: Optional project filter.
-        kind: Optional context kind filter.
+        request: Validated Context search boundary contract.
 
     Returns:
         Backend Context Pack response.
     """
-    request = ContextSearchRequest(
-        query=query,
-        strategy=strategy,
-        limit=_bounded_search_limit(limit),
-        project=project,
-        kind=kind,
-        include_scopes=[] if include_scopes is None else include_scopes,
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        user_id=user_id,
-        session_id=session_id,
-    )
     payload = schema_payload(request, exclude_none=True)
     if payload.get("include_scopes") == []:
         del payload["include_scopes"]
+    if payload.get("include_lifecycle_statuses") == []:
+        del payload["include_lifecycle_statuses"]
     response = await client.post("/memory/contexts/retrieval/search", payload)
     return response
 
@@ -138,16 +115,18 @@ async def alexandria_recall_context(
     """
     response = await alexandria_search(
         client,
-        query,
-        limit,
-        DEFAULT_CONTEXT_SEARCH_STRATEGY,
-        project,
-        kind,
-        include_scopes,
-        workspace_id,
-        agent_id,
-        user_id,
-        session_id,
+        ContextSearchRequest(
+            query=query,
+            limit=_bounded_search_limit(limit),
+            strategy=DEFAULT_CONTEXT_SEARCH_STRATEGY,
+            project=project,
+            kind=kind,
+            include_scopes=[] if include_scopes is None else include_scopes,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            session_id=session_id,
+        ),
     )
     return response
 
@@ -173,7 +152,15 @@ async def alexandria_rag_context(
         Backend Context Pack response.
     """
     response = await alexandria_search(
-        client, query, limit, strategy, project, kind, include_scopes
+        client,
+        ContextSearchRequest(
+            query=query,
+            strategy=strategy,
+            limit=_bounded_search_limit(limit),
+            project=project,
+            kind=kind,
+            include_scopes=[] if include_scopes is None else include_scopes,
+        ),
     )
     return response
 

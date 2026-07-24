@@ -28,7 +28,9 @@ from app.shared.types.types_convert_utils import aware_utc_datetime
 
 
 def _json_object(value: dict[str, JSONValue]) -> ContextMetadataPayload:
-    return ContextMetadataPayload(**value)
+    metadata = ContextMetadataPayload()
+    metadata.update(value.items())
+    return metadata
 
 
 def map_context_row(row: ContextORM) -> ContextRecord:

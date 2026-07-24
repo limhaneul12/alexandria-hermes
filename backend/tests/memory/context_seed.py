@@ -71,12 +71,12 @@ async def seed_context(
     summary: str = "Seeded context for retrieval tests.",
     content: str,
     project: str | None = None,
-    scope: ContextScope = ContextScope.PROJECT,
+    scope: ContextScope | None = None,
     workspace_id: str | None = None,
     agent_id: str | None = None,
     user_id: str | None = None,
     session_id: str | None = None,
-    visibility: ContextScope = ContextScope.PROJECT,
+    visibility: ContextScope | None = None,
     source_agent: str = "Hermes",
     source_type: ContextSourceType = ContextSourceType.AGENT,
     importance: ContextImportance = ContextImportance.MEDIUM,
@@ -102,6 +102,14 @@ async def seed_context(
         Seeded context read model.
     """
     now = now_utc()
+    resolved_scope = (
+        ContextScope.PROJECT
+        if scope is None and project is not None
+        else ContextScope.GLOBAL
+        if scope is None
+        else scope
+    )
+    resolved_visibility = resolved_scope if visibility is None else visibility
     model = ContextORM(
         kind=kind.value,
         title=title,
@@ -109,12 +117,12 @@ async def seed_context(
         content=content,
         content_format=ContextContentFormat.MARKDOWN.value,
         project=project,
-        scope=scope.value,
+        scope=resolved_scope.value,
         workspace_id=workspace_id,
         agent_id=agent_id,
         user_id=user_id,
         session_id=session_id,
-        visibility=visibility.value,
+        visibility=resolved_visibility.value,
         source_agent=source_agent,
         source_type=source_type.value,
         importance=importance.value,

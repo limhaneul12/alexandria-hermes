@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+from app.memory.application.retrieval.context_retrieval_metadata import (
+    canonical_context_id,
+    lifecycle_metadata,
+    lifecycle_status,
+    provenance_metadata,
+    retrieval_metadata,
+)
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,
@@ -17,8 +24,10 @@ from app.memory.domain.types.context_payload_types import (
     ContextAccessEventPayload,
     ContextChunkPayload,
     ContextEmbeddingSourceStatusPayload,
+    ContextLifecyclePayload,
     ContextPackPayload,
     ContextPayload,
+    ContextProvenancePayload,
     ContextReindexPayload,
     ContextSearchMatchPayload,
     ContextSoftRebuildPayload,
@@ -35,8 +44,27 @@ def context_payload(context: ContextRecord) -> ContextPayload:
     Returns:
         Typed response payload for the context API boundary.
     """
+    provenance = provenance_metadata(context)
+    lifecycle = lifecycle_metadata(context)
+    provenance_payload = ContextProvenancePayload(
+        source_actor_id=provenance.source_actor_id,
+        source_actor_type=provenance.source_actor_type,
+        source_run_id=provenance.source_run_id,
+        external_run_id=provenance.external_run_id,
+        artifact_refs=list(provenance.artifact_refs),
+        evidence_refs=list(provenance.evidence_refs),
+        confidence=provenance.confidence,
+    )
+    lifecycle_payload = ContextLifecyclePayload(
+        status=lifecycle.status,
+        content_hash=lifecycle.content_hash,
+        version=lifecycle.version,
+        supersedes_context_id=lifecycle.supersedes_context_id,
+        superseded_by_context_id=lifecycle.superseded_by_context_id,
+    )
     payload: ContextPayload = {
         "id": context.id,
+        "canonical_context_id": canonical_context_id(context),
         "kind": context.kind,
         "title": context.title,
         "summary": context.summary,
@@ -54,6 +82,9 @@ def context_payload(context: ContextRecord) -> ContextPayload:
         "importance": context.importance,
         "tags": context.tags,
         "status": context.status,
+        "lifecycle_status": lifecycle_status(context),
+        "provenance": provenance_payload,
+        "lifecycle": lifecycle_payload,
         "quality_score": context.quality_score,
         "warnings": context.warnings,
         "restore_prompt": context.restore_prompt,
@@ -124,6 +155,7 @@ def match_payload(match: ContextSearchMatch) -> ContextSearchMatchPayload:
     Returns:
         Typed response payload for one retrieved match.
     """
+    metadata = retrieval_metadata(match)
     payload: ContextSearchMatchPayload = {
         "context": context_payload(match.context),
         "chunk": chunk_payload(match.chunk),
@@ -131,6 +163,10 @@ def match_payload(match: ContextSearchMatch) -> ContextSearchMatchPayload:
         "fts_score": match.fts_score,
         "vector_score": match.vector_score,
         "why_retrieved": match.why_retrieved,
+        "canonical_context_id": metadata.canonical_context_id,
+        "lifecycle_status": metadata.lifecycle_status,
+        "source": metadata.retrieval_source,
+        "retrieval_strategy": metadata.retrieval_strategy,
     }
     return payload
 

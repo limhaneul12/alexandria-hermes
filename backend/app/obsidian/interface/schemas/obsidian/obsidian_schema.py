@@ -7,6 +7,7 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianSearchQuery,
 )
 from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianIndexError,
     ObsidianNote,
     ObsidianReindexResult,
     ObsidianRelatedNote,
@@ -16,6 +17,7 @@ from app.obsidian.domain.entities.obsidian_note import (
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianEdgeSourceKind,
+    ObsidianIndexErrorCode,
     ObsidianIndexStatus,
     ObsidianRelationType,
 )
@@ -35,6 +37,7 @@ class ObsidianStatusResponse(StrictSchemaModel):
     indexed_notes: int
     stale_notes: int
     error_notes: int
+    index_errors: list[ObsidianIndexErrorResponse]
 
     @classmethod
     def from_entity(cls, status: ObsidianVaultStatus) -> ObsidianStatusResponse:
@@ -54,6 +57,30 @@ class ObsidianStatusResponse(StrictSchemaModel):
             indexed_notes=status.indexed_notes,
             stale_notes=status.stale_notes,
             error_notes=status.error_notes,
+            index_errors=[
+                ObsidianIndexErrorResponse.from_entity(error)
+                for error in status.index_errors
+            ],
+        )
+
+
+class ObsidianIndexErrorResponse(StrictSchemaModel):
+    """Structured note-index failure returned to operators."""
+
+    note_path: str
+    context_id: str | None
+    error_code: ObsidianIndexErrorCode
+    error_message: str
+    detected_at: AwareTimestamp
+
+    @classmethod
+    def from_entity(cls, error: ObsidianIndexError) -> ObsidianIndexErrorResponse:
+        return cls(
+            note_path=error.note_path,
+            context_id=error.context_id,
+            error_code=error.error_code,
+            error_message=error.error_message,
+            detected_at=error.detected_at,
         )
 
 
@@ -65,6 +92,7 @@ class ObsidianReindexResponse(StrictSchemaModel):
     files_skipped: int
     stale_marked: int
     errors: list[str]
+    error_details: list[ObsidianIndexErrorResponse]
 
     @classmethod
     def from_entity(cls, result: ObsidianReindexResult) -> ObsidianReindexResponse:
@@ -82,6 +110,10 @@ class ObsidianReindexResponse(StrictSchemaModel):
             files_skipped=result.files_skipped,
             stale_marked=result.stale_marked,
             errors=result.errors,
+            error_details=[
+                ObsidianIndexErrorResponse.from_entity(error)
+                for error in result.error_details
+            ],
         )
 
 

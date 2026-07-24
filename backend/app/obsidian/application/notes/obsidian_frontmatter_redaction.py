@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 from app.shared.exceptions import ObsidianValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
-from app.shared.utils.secret_redaction import redact_secret_text
+from app.shared.utils.secret_redaction import (
+    is_secret_field_name,
+    redact_secret_text,
+)
+
+_FRONTMATTER_KEY_PATTERN = re.compile(r"^\s*(?:-\s*)?([^:#][^:]*)\s*:")
 
 
 def redacted_frontmatter(frontmatter: JSONObject) -> tuple[JSONObject, list[str]]:
@@ -18,6 +25,27 @@ def redacted_frontmatter(frontmatter: JSONObject) -> tuple[JSONObject, list[str]
     """
     redacted, warnings = _redacted_json(frontmatter)
     return dict(redacted) if isinstance(redacted, dict) else {}, warnings
+
+
+def frontmatter_contains_secret_field(markdown: str) -> bool:
+    """Return whether raw YAML frontmatter declares a secret-like key.
+
+    Args:
+        markdown: Complete Markdown document.
+
+    Returns:
+        True when frontmatter contains a credential-like field name.
+    """
+    lines = markdown.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return False
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return False
+        match = _FRONTMATTER_KEY_PATTERN.match(line)
+        if match is not None and is_secret_field_name(match.group(1).strip()):
+            return True
+    return False
 
 
 def _redacted_json(value: JSONValue) -> tuple[JSONValue, list[str]]:
@@ -54,6 +82,9 @@ def _redacted_mapping(value: dict[str, JSONValue]) -> tuple[JSONObject, list[str
     payload: JSONObject = {}
     warnings: list[str] = []
     for key, item in value.items():
+        if is_secret_field_name(str(key)) and item not in (None, ""):
+            warnings.append("potential secret-like frontmatter field was redacted")
+            continue
         redacted_item, item_warnings = _redacted_json(item)
         payload[str(key)] = redacted_item
         warnings.extend(item_warnings)

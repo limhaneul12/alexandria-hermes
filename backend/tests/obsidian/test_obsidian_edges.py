@@ -59,6 +59,7 @@ def test_reindex_builds_edges_and_related_notes_from_markdown(tmp_path: Path) ->
                     note_id="alexandria_start_here",
                     relative_path="Alexandria/START_HERE.md",
                     tags=["start"],
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             current = await obsidian.save_note(
@@ -68,13 +69,14 @@ def test_reindex_builds_edges_and_related_notes_from_markdown(tmp_path: Path) ->
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_graph_current",
                     frontmatter={
+                        "scope": "GLOBAL",
                         "source_refs": [
                             {
                                 "id": start.note_id,
                                 "path": "START_HERE.md",
                                 "relation": "cites",
                             }
-                        ]
+                        ],
                     },
                 )
             )
@@ -167,6 +169,7 @@ def test_repository_resolves_edges_after_target_note_is_indexed_later(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_late_source",
                     relative_path="Alexandria/Late Source.md",
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             await obsidian.save_note(
@@ -176,6 +179,7 @@ def test_repository_resolves_edges_after_target_note_is_indexed_later(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_late_target",
                     relative_path="Alexandria/Late Target.md",
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             resolved = await repository.resolve_edge_targets()
@@ -207,6 +211,7 @@ def test_related_notes_include_incoming_backlinks(tmp_path: Path) -> None:
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_target",
                     relative_path="Alexandria/Target.md",
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             await obsidian.save_note(
@@ -216,6 +221,7 @@ def test_related_notes_include_incoming_backlinks(tmp_path: Path) -> None:
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_source",
                     relative_path="Alexandria/Source.md",
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             related = await graph.related_notes("ctx_target")

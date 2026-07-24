@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import cast
 
 from app.memory.application.retrieval.vector_serialization import (
@@ -9,25 +10,31 @@ from app.memory.application.retrieval.vector_serialization import (
     vector_to_sqlite_json,
 )
 from app.memory.domain.contracts.context_contracts import ContextChunkEmbeddingUpdate
+from app.memory.domain.contracts.context_recall_contracts import (
+    ContextFtsRecall,
+    ContextVectorRecall,
+    ScopeIdentity,
+)
 from app.memory.domain.entities.context_read_models import (
     ContextChunkRecord,
     ContextEmbeddingSourceStatus,
     ContextSearchMatch,
 )
 from app.memory.domain.event_enum.context_enums import (
-    ContextKind,
-    ContextScope,
+    ContextRecallLifecycleStatus,
     RagHealthState,
 )
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
 from app.memory.infrastructure.repositories.contexts.obsidian_context_mapping import (
     DEFAULT_EXCLUDED_OBSIDIAN_RECALL_PREFIXES,
-    DEFAULT_EXCLUDED_OBSIDIAN_RECALL_STATUSES,
     chunk_record_from_obsidian_row,
     match_from_obsidian_rows,
     matches_context_filters,
-    metadata_filters_present,
     raw_obsidian_chunk_id,
+)
+from app.memory.infrastructure.repositories.contexts.scope_recall_filter import (
+    ScopeRecallColumns,
+    scope_recall_clause,
 )
 from app.memory.infrastructure.repositories.contexts.sqlite_vec_connection import (
     load_sqlite_vec_for_session,
@@ -41,6 +48,7 @@ from app.obsidian.infrastructure.models.obsidian_index_models import (
     ObsidianFileORM,
 )
 from app.obsidian.infrastructure.repositories.obsidian_fts import (
+    OBSIDIAN_FILES_TABLE,
     build_obsidian_fts_query,
     ensure_obsidian_chunk_fts_table,
 )
@@ -58,54 +66,43 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
     def __init__(self, *, session: AsyncSession) -> None:
         self._session = session
 
-    async def search_fts(
-        self,
-        *,
-        query: str,
-        limit: int,
-        project: str | None = None,
-        kind: ContextKind | None = None,
-        include_scopes: list[ContextScope] | None = None,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-    ) -> list[ContextSearchMatch]:
+    async def search_fts(self, recall: ContextFtsRecall) -> list[ContextSearchMatch]:
         """Search indexed Obsidian note chunks through SQLite FTS5.
 
         Args:
-            query: Search query text.
-            limit: Maximum returned matches.
-            project: Optional project filter.
-            kind: Optional Context RAG kind filter.
-            include_scopes: Optional Context RAG scope filters.
-            workspace_id: Optional workspace filter.
-            agent_id: Optional agent filter.
-            user_id: Optional user filter.
-            session_id: Optional session filter.
+            recall: Validated FTS query and recall filters.
 
         Returns:
             Obsidian-backed matches mapped into Context RAG read models.
         """
-        if metadata_filters_present(
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-        ):
-            return []
+        recall_filter = recall.recall_filter
+        scope_filter = recall_filter.scope_identity
         await ensure_obsidian_chunk_fts_table(session=self._session)
         fts_query = build_obsidian_fts_query(
-            query,
-            limit=_candidate_limit(limit),
+            recall.query,
+            limit=_candidate_limit(recall_filter.limit),
             excluded_alexandria_types=[AlexandriaNoteType.LIBRARIAN_CHAT],
-            excluded_statuses=list(DEFAULT_EXCLUDED_OBSIDIAN_RECALL_STATUSES),
+            included_statuses=list(
+                ContextRecallLifecycleStatus.obsidian_values(
+                    recall_filter.lifecycle_statuses
+                )
+            ),
             excluded_path_prefixes=list(DEFAULT_EXCLUDED_OBSIDIAN_RECALL_PREFIXES),
-            project=project,
+            project=None,
         )
         if fts_query is None:
             return []
-        rows = await self._session.execute(fts_query.statement, fts_query.parameters)
+        statement = fts_query.statement
+        parameters = dict(fts_query.parameters)
+        statement = statement.where(
+            _obsidian_scope_recall_clause(
+                OBSIDIAN_FILES_TABLE.c.frontmatter_json,
+                OBSIDIAN_FILES_TABLE.c.project,
+                scope_filter,
+            )
+        )
+        parameters.update(scope_filter.sql_parameters())
+        rows = await self._session.execute(statement, parameters)
         ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
         matches: list[ContextSearchMatch] = []
         for chunk_id, note_id, rank in ranked:
@@ -117,8 +114,10 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
                 continue
             if not matches_context_filters(
                 note,
-                kind=kind,
-                include_scopes=include_scopes,
+                recall_filter.kind,
+                scope_filter,
+                project=scope_filter.project,
+                include_lifecycle_statuses=recall_filter.lifecycle_statuses,
             ):
                 continue
             fts_score = 1.0 / (1.0 + abs(rank))
@@ -134,52 +133,23 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
                     ),
                 )
             )
-            if len(matches) >= limit:
+            if len(matches) >= recall_filter.limit:
                 break
         return matches
 
     async def search_vector(
-        self,
-        *,
-        query_embedding: list[float],
-        model_name: str,
-        dimensions: int,
-        fingerprint_key: str,
-        limit: int,
-        project: str | None = None,
-        kind: ContextKind | None = None,
-        include_scopes: list[ContextScope] | None = None,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
+        self, recall: ContextVectorRecall
     ) -> list[ContextSearchMatch]:
         """Search indexed Obsidian note chunks through sqlite-vec.
 
         Args:
-            query_embedding: Query embedding vector.
-            model_name: Embedding model that produced the query vector.
-            dimensions: Expected embedding dimensions.
-            fingerprint_key: Current embedding generation fingerprint key.
-            limit: Maximum returned matches.
-            project: Optional project filter.
-            kind: Optional Context RAG kind filter.
-            include_scopes: Optional Context RAG scope filters.
-            workspace_id: Optional workspace filter.
-            agent_id: Optional agent filter.
-            user_id: Optional user filter.
-            session_id: Optional session filter.
+            recall: Validated vector query and recall filters.
 
         Returns:
             Obsidian-backed vector matches mapped into Context RAG read models.
         """
-        if metadata_filters_present(
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-        ):
-            return []
+        recall_filter = recall.recall_filter
+        scope_filter = recall_filter.scope_identity
         await load_sqlite_vec_for_session(self._session)
         distance = cast(
             ColumnElement[float],
@@ -201,21 +171,27 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
                 ObsidianChunkORM.embedding_dimensions == bindparam("dimensions"),
                 ObsidianChunkORM.embedding_fingerprint_key
                 == bindparam("fingerprint_key"),
-                *_default_recall_visibility_conditions(),
+                *_recall_visibility_conditions(recall_filter.lifecycle_statuses),
             )
             .order_by(distance.asc())
             .limit(bindparam("limit"))
         )
         parameters: dict[str, str | int] = {
-            "query_embedding": vector_to_sqlite_json(query_embedding),
-            "model_name": model_name,
-            "dimensions": dimensions,
-            "fingerprint_key": fingerprint_key,
-            "limit": _candidate_limit(limit),
+            "query_embedding": vector_to_sqlite_json(recall.query_embedding),
+            "model_name": recall.model_name,
+            "dimensions": recall.dimensions,
+            "fingerprint_key": recall.fingerprint_key,
+            "limit": _candidate_limit(recall_filter.limit),
         }
-        if project is not None:
-            statement = statement.where(ObsidianFileORM.project == bindparam("project"))
-            parameters["project"] = project
+        obsidian_table = ObsidianFileORM.__table__
+        statement = statement.where(
+            _obsidian_scope_recall_clause(
+                obsidian_table.c.frontmatter_json,
+                obsidian_table.c.project,
+                scope_filter,
+            )
+        )
+        parameters.update(scope_filter.sql_parameters())
         rows = await self._session.execute(statement, parameters)
         ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
         matches: list[ContextSearchMatch] = []
@@ -228,8 +204,10 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
                 continue
             if not matches_context_filters(
                 note,
-                kind=kind,
-                include_scopes=include_scopes,
+                recall_filter.kind,
+                scope_filter,
+                project=scope_filter.project,
+                include_lifecycle_statuses=recall_filter.lifecycle_statuses,
             ):
                 continue
             vector_score = cosine_distance_to_score(distance_value)
@@ -246,7 +224,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
                     ),
                 )
             )
-            if len(matches) >= limit:
+            if len(matches) >= recall_filter.limit:
                 break
         return matches
 
@@ -490,15 +468,48 @@ def _candidate_limit(limit: int) -> int:
     return max(limit, limit * OBSIDIAN_MATCH_LIMIT_MULTIPLIER)
 
 
-def _default_recall_visibility_conditions() -> tuple[ColumnElement[bool], ...]:
+def _obsidian_scope_recall_clause(
+    frontmatter_column: ColumnElement[JSONObject],
+    project_column: ColumnElement[str | None],
+    scope_filter: ScopeIdentity,
+) -> ColumnElement[bool]:
+    scope_column = func.upper(func.json_extract(frontmatter_column, "$.scope"))
+    workspace_id_column = func.json_extract(frontmatter_column, "$.workspace_id")
+    agent_id_column = func.json_extract(frontmatter_column, "$.agent_id")
+    user_id_column = func.json_extract(frontmatter_column, "$.user_id")
+    session_id_column = func.json_extract(frontmatter_column, "$.session_id")
+    return scope_recall_clause(
+        ScopeRecallColumns(
+            scope=scope_column,
+            project=project_column,
+            agent_id=agent_id_column,
+            user_id=user_id_column,
+            session_id=session_id_column,
+            workspace_id=workspace_id_column,
+        ),
+        scope_filter,
+    )
+
+
+def _recall_visibility_conditions(
+    include_lifecycle_statuses: Sequence[ContextRecallLifecycleStatus] | None,
+) -> tuple[ColumnElement[bool], ...]:
+    normalized_status = func.coalesce(
+        func.nullif(func.lower(func.trim(ObsidianFileORM.status)), ""),
+        "active",
+    )
     return (
         ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value,
         ObsidianFileORM.alexandria_type != AlexandriaNoteType.LIBRARIAN_CHAT.value,
-        func.lower(ObsidianFileORM.status).not_in(
-            DEFAULT_EXCLUDED_OBSIDIAN_RECALL_STATUSES
+        normalized_status.in_(
+            ContextRecallLifecycleStatus.obsidian_values(include_lifecycle_statuses)
         ),
         ~ObsidianFileORM.relative_path.like("\\_Ops/%", escape="\\"),
     )
+
+
+def _default_recall_visibility_conditions() -> tuple[ColumnElement[bool], ...]:
+    return _recall_visibility_conditions(None)
 
 
 def _fingerprint_payload(

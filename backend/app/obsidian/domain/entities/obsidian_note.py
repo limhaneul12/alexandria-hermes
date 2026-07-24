@@ -8,6 +8,7 @@ from datetime import datetime
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianEdgeSourceKind,
+    ObsidianIndexErrorCode,
     ObsidianIndexStatus,
     ObsidianLibrarianJobStatus,
     ObsidianLibrarianWorkflowStatus,
@@ -116,6 +117,18 @@ class ObsidianReindexResult:
     files_skipped: int
     stale_marked: int
     errors: list[str] = field(default_factory=list)
+    error_details: list[ObsidianIndexError] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianIndexError:
+    """Structured failure recorded for one note during reindex."""
+
+    note_path: str
+    context_id: str | None
+    error_code: ObsidianIndexErrorCode
+    error_message: str
+    detected_at: datetime
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -129,6 +142,7 @@ class ObsidianVaultStatus:
     indexed_notes: int
     stale_notes: int
     error_notes: int
+    index_errors: list[ObsidianIndexError] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

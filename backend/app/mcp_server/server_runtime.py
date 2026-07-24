@@ -13,12 +13,14 @@ from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApi
 from app.mcp_server.type_validate.transport_contracts import McpTransport
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
+    ContextRecallLifecycleStatus,
     ContextScope,
     RagStrategy,
 )
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
+from app.memory.interface.schemas.context.context_schema import ContextSearchRequest
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 DEFAULT_MCP_TRANSPORT_HOST = "0.0.0.0"
@@ -67,6 +69,7 @@ def build_mcp_server(
         agent_id: str | None = None,
         user_id: str | None = None,
         session_id: str | None = None,
+        include_lifecycle_statuses: list[ContextRecallLifecycleStatus] | None = None,
     ) -> JSONValue:
         """Search Context Vault and return a Context Pack.
 
@@ -81,22 +84,30 @@ def build_mcp_server(
             agent_id: Optional agent filter.
             user_id: Optional user filter.
             session_id: Optional session filter.
+            include_lifecycle_statuses: Optional administrative lifecycle filter.
 
         Returns:
             Backend Context Pack response.
         """
         return await backend_tool_gateway.alexandria_search(
             api_client,
-            query,
-            limit,
-            strategy,
-            project,
-            kind,
-            include_scopes,
-            workspace_id,
-            agent_id,
-            user_id,
-            session_id,
+            ContextSearchRequest(
+                query=query,
+                limit=backend_tool_gateway._bounded_search_limit(limit),
+                strategy=strategy,
+                project=project,
+                kind=kind,
+                include_scopes=[] if include_scopes is None else include_scopes,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+                include_lifecycle_statuses=(
+                    []
+                    if include_lifecycle_statuses is None
+                    else include_lifecycle_statuses
+                ),
+            ),
         )
 
     @server.tool(name="alexandria_recall_context")

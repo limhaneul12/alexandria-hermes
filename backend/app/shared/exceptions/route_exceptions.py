@@ -58,6 +58,11 @@ OBSIDIAN_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     ObsidianValidationError: status.HTTP_400_BAD_REQUEST,
 }
 
+OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
+    **OBSIDIAN_ROUTE_EXCEPTION_MAPPING,
+    ObsidianValidationError: status.HTTP_422_UNPROCESSABLE_CONTENT,
+}
+
 LIBRARIAN_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     BoundaryValidationError: status.HTTP_400_BAD_REQUEST,
     LibrarianProviderUnsupportedError: status.HTTP_400_BAD_REQUEST,

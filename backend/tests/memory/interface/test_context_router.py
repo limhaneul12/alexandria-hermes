@@ -9,6 +9,9 @@ from typing import Any
 import anyio
 from app.main import app
 from app.memory.application.context_service import ContextService
+from app.memory.application.integration.obsidian_canonical_context_gateway import (
+    ObsidianCanonicalContextGateway,
+)
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextScope,
@@ -21,6 +24,12 @@ from app.memory.infrastructure.models.context_models import (
 )
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
+)
+from app.obsidian.application.service.obsidian_service import ObsidianService
+from app.obsidian.domain.contracts.obsidian_contracts import ObsidianSaveNote
+from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
+from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
+    SqlAlchemyObsidianIndexRepository,
 )
 from app.shared.infrastructure.database import Database
 from fastapi.testclient import TestClient
@@ -222,7 +231,11 @@ def test_context_api_hard_deletes_context_rows_chunks_access_events_and_search_i
             access_response = client.post(f"/memory/contexts/{context_id}/access")
             before_search_response = client.post(
                 "/memory/contexts/retrieval/search",
-                json={"query": "API saves recalls", "strategy": "HYBRID"},
+                json={
+                    "query": "API saves recalls",
+                    "strategy": "HYBRID",
+                    "project": "alexandria-hermes",
+                },
             )
             delete_response = client.delete(f"/memory/contexts/{context_id}")
             after_get_response = client.get(f"/memory/contexts/{context_id}")
@@ -231,7 +244,11 @@ def test_context_api_hard_deletes_context_rows_chunks_access_events_and_search_i
             )
             after_search_response = client.post(
                 "/memory/contexts/retrieval/search",
-                json={"query": "API saves recalls", "strategy": "HYBRID"},
+                json={
+                    "query": "API saves recalls",
+                    "strategy": "HYBRID",
+                    "project": "alexandria-hermes",
+                },
             )
             counts = anyio.run(_context_persistence_counts, session, context_id)
     finally:
@@ -271,7 +288,11 @@ def test_context_api_lists_searches_accesses_and_archives_seeded_context(
             chunks_response = client.get(f"/memory/contexts/{context_id}/chunks")
             search_response = client.post(
                 "/memory/contexts/retrieval/search",
-                json={"query": "API saves recalls", "strategy": "HYBRID"},
+                json={
+                    "query": "API saves recalls",
+                    "strategy": "HYBRID",
+                    "project": "alexandria-hermes",
+                },
             )
             access_response = client.post(f"/memory/contexts/{context_id}/access")
             access_event_response = client.post(
@@ -299,6 +320,22 @@ def test_context_api_lists_searches_accesses_and_archives_seeded_context(
     assert get_response.json()["id"] == context_id
     assert get_response.json()["restore_prompt"] == "Continue from the API context."
     assert get_response.json()["source_type"] == "AGENT"
+    assert get_response.json()["provenance"] == {
+        "source_actor_id": "Hermes",
+        "source_actor_type": "AGENT",
+        "source_run_id": None,
+        "external_run_id": None,
+        "artifact_refs": [],
+        "evidence_refs": [],
+        "confidence": None,
+    }
+    assert get_response.json()["lifecycle"] == {
+        "status": "SAVED",
+        "content_hash": None,
+        "version": None,
+        "supersedes_context_id": None,
+        "superseded_by_context_id": None,
+    }
     assert chunks_response.status_code == 200
     assert chunks_response.json()[0]["context_id"] == context_id
     assert search_response.status_code == 200
@@ -314,6 +351,99 @@ def test_context_api_lists_searches_accesses_and_archives_seeded_context(
     assert rag_response.json()["fts"] == "HEALTHY"
     assert reindex_response.status_code == 200
     assert reindex_response.json()["updated"] == 0
+
+
+def test_context_api_gets_and_archives_source_qualified_obsidian_context(
+    tmp_path: Path,
+) -> None:
+    """Existing Context routes must operate on canonical Obsidian search IDs."""
+
+    async def open_service() -> tuple[
+        Database,
+        Any,
+        AsyncSession,
+        ContextService,
+        ObsidianService,
+    ]:
+        database = Database(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'canonical-api.db'}",
+            create_schema=True,
+        )
+        await database.initialize()
+        session_context = database.session()
+        session = await session_context.__aenter__()
+        obsidian_service = ObsidianService(
+            repository=SqlAlchemyObsidianIndexRepository(session=session),
+            vault_path=str(tmp_path / "vault"),
+            alexandria_root="Alexandria",
+        )
+        await obsidian_service.save_note(
+            ObsidianSaveNote(
+                title="Router Canonical Context",
+                body="# Canonical\n\nrouter canonical context",
+                alexandria_type=AlexandriaNoteType.CONTEXT,
+                note_id="ctx_router_canonical",
+                status="current",
+                project="alexandria-hermes",
+                frontmatter={
+                    "scope": "PROJECT",
+                    "provenance": {
+                        "source_actor_id": "hermes-coding",
+                        "source_actor_type": "AGENT",
+                        "source_run_id": "platform-run-001",
+                        "external_run_id": "external-run-001",
+                        "artifact_refs": ["artifact://test-results.json"],
+                        "evidence_refs": ["context://decision-001"],
+                        "confidence": "HIGH",
+                    },
+                },
+            )
+        )
+        service = ContextService(
+            repository=SqlAlchemyContextRepository(session=session),
+            canonical_context_repository=(
+                ObsidianCanonicalContextGateway(obsidian_service)
+            ),
+        )
+        return database, session_context, session, service, obsidian_service
+
+    database, session_context, session, service, obsidian_service = anyio.run(
+        open_service
+    )
+    try:
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            get_response = client.get("/memory/contexts/obsidian:ctx_router_canonical")
+            archive_response = client.post(
+                "/memory/contexts/obsidian:ctx_router_canonical/archive"
+            )
+        canonical = anyio.run(obsidian_service.read_note, "ctx_router_canonical")
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert get_response.status_code == 200
+    assert get_response.json()["id"] == "obsidian:ctx_router_canonical"
+    assert get_response.json()["canonical_context_id"] == "ctx_router_canonical"
+    assert get_response.json()["lifecycle_status"] == "CURRENT"
+    assert get_response.json()["provenance"] == {
+        "source_actor_id": "hermes-coding",
+        "source_actor_type": "AGENT",
+        "source_run_id": "platform-run-001",
+        "external_run_id": "external-run-001",
+        "artifact_refs": ["artifact://test-results.json"],
+        "evidence_refs": ["context://decision-001"],
+        "confidence": "HIGH",
+    }
+    assert get_response.json()["lifecycle"]["status"] == "CURRENT"
+    assert len(get_response.json()["lifecycle"]["content_hash"]) == 64
+    assert get_response.json()["lifecycle"]["version"] == 1
+    assert archive_response.status_code == 200
+    assert archive_response.json()["lifecycle_status"] == "ARCHIVED"
+    assert archive_response.json()["lifecycle"]["status"] == "ARCHIVED"
+    assert archive_response.json()["is_archived"] is True
+    assert canonical.status == "archived"
 
 
 def test_context_api_filters_recall_by_memory_scope(tmp_path: Path) -> None:
@@ -349,7 +479,11 @@ def test_context_api_filters_recall_by_memory_scope(tmp_path: Path) -> None:
         ):
             search_response = client.post(
                 "/memory/contexts/retrieval/search",
-                json={"query": "Scoped recall token", "include_scopes": ["USER"]},
+                json={
+                    "query": "Scoped recall token",
+                    "include_scopes": ["USER"],
+                    "user_id": "ha_nori",
+                },
             )
     finally:
         anyio.run(_close_context_service, database, session_context, session)
@@ -358,6 +492,30 @@ def test_context_api_filters_recall_by_memory_scope(tmp_path: Path) -> None:
     matches = search_response.json()["matches"]
     assert {match["context"]["id"] for match in matches} == {user_context_id}
     assert search_response.json()["recall_scopes"] == ["USER"]
+
+
+def test_context_api_rejects_missing_scope_identity_with_422(tmp_path: Path) -> None:
+    """Requested scope lanes should require their identity at the HTTP boundary."""
+    database, session_context, session, service = anyio.run(
+        _open_context_service, tmp_path / "scope-recall-validation.db"
+    )
+    try:
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            response = client.post(
+                "/memory/contexts/retrieval/search",
+                json={
+                    "query": "Scoped recall token",
+                    "include_scopes": ["AGENT"],
+                },
+            )
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert response.status_code == 422
+    assert "MISSING_AGENT_ID" in response.text
 
 
 def test_context_api_write_routes_are_not_exposed() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import StrEnum
 
 
@@ -54,6 +55,110 @@ class ContextStorageStatus(StrEnum):
     REDACTED_AND_SAVED = "REDACTED_AND_SAVED"
     BLOCKED_SECRET_RISK = "BLOCKED_SECRET_RISK"
     PENDING_REVIEW = "PENDING_REVIEW"
+
+    @classmethod
+    def default_recall_values(cls) -> tuple[str, ...]:
+        """Return persisted Context statuses eligible for default recall.
+
+        Returns:
+            Persisted storage statuses included in ordinary recall.
+        """
+        return (
+            cls.SAVED.value,
+            cls.SAVED_WITH_WARNINGS.value,
+            cls.REDACTED_AND_SAVED.value,
+        )
+
+
+class ContextRecallLifecycleStatus(StrEnum):
+    """Lifecycle states selectable at the Context recall boundary."""
+
+    CURRENT = "CURRENT"
+    ACTIVE = "ACTIVE"
+    DRAFT = "DRAFT"
+    PENDING_REVIEW = "PENDING_REVIEW"
+    REVIEWED = "REVIEWED"
+    SUPERSEDED = "SUPERSEDED"
+    ARCHIVED = "ARCHIVED"
+    ERROR = "ERROR"
+    SAVED = "SAVED"
+    SAVED_WITH_WARNINGS = "SAVED_WITH_WARNINGS"
+    REDACTED_AND_SAVED = "REDACTED_AND_SAVED"
+
+    @classmethod
+    def default_recall_values(cls) -> tuple[ContextRecallLifecycleStatus, ...]:
+        """Return lifecycle states visible to ordinary recall.
+
+        Returns:
+            Lifecycle states included when no administrative filter is supplied.
+        """
+        return (
+            cls.CURRENT,
+            cls.ACTIVE,
+            cls.SAVED,
+            cls.SAVED_WITH_WARNINGS,
+            cls.REDACTED_AND_SAVED,
+        )
+
+    @classmethod
+    def context_storage_values(
+        cls,
+        statuses: Sequence[ContextRecallLifecycleStatus] | None,
+    ) -> tuple[str, ...]:
+        """Map recall lifecycle states to persisted Context storage statuses.
+
+        Args:
+            statuses: Explicit lifecycle selections, or None for defaults.
+
+        Returns:
+            Compatible persisted Context storage status values.
+        """
+        selected = statuses or list(cls.default_recall_values())
+        storage_values: list[str] = []
+        if cls.CURRENT in selected or cls.ACTIVE in selected:
+            storage_values.extend(ContextStorageStatus.default_recall_values())
+        persisted_values = frozenset(item.value for item in ContextStorageStatus)
+        storage_values.extend(
+            status.value for status in selected if status.value in persisted_values
+        )
+        return tuple(dict.fromkeys(storage_values))
+
+    @classmethod
+    def obsidian_values(
+        cls,
+        statuses: Sequence[ContextRecallLifecycleStatus] | None,
+    ) -> tuple[str, ...]:
+        """Map recall lifecycle states to normalized Obsidian status values.
+
+        Args:
+            statuses: Explicit lifecycle selections, or None for defaults.
+
+        Returns:
+            Normalized Obsidian lifecycle values.
+        """
+        selected = statuses or list(cls.default_recall_values())
+        values: list[str] = []
+        if any(
+            status
+            in {
+                cls.SAVED,
+                cls.SAVED_WITH_WARNINGS,
+                cls.REDACTED_AND_SAVED,
+            }
+            for status in selected
+        ):
+            values.extend((cls.CURRENT.value.lower(), cls.ACTIVE.value.lower()))
+        values.extend(
+            status.value.lower()
+            for status in selected
+            if status
+            not in {
+                cls.SAVED,
+                cls.SAVED_WITH_WARNINGS,
+                cls.REDACTED_AND_SAVED,
+            }
+        )
+        return tuple(dict.fromkeys(values))
 
 
 class ContextContentFormat(StrEnum):

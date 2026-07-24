@@ -41,6 +41,7 @@ from .memory_context_exceptions import (
 )
 from .obsidian_exceptions import (
     ObsidianDomainError,
+    ObsidianIndexWriteError,
     ObsidianNotFoundError,
     ObsidianValidationError,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "MemoryContextNotFoundError",
     "MemoryContextValidationError",
     "ObsidianDomainError",
+    "ObsidianIndexWriteError",
     "ObsidianNotFoundError",
     "ObsidianValidationError",
     "RedisExceptionAction",

@@ -245,6 +245,14 @@ def _save_note_command(
     refs: list[JSONObject],
 ) -> ObsidianSaveNote:
     """Build an Obsidian save command for approved workflow writes."""
+    frontmatter: JSONObject = {
+        "workflow_thread_id": workflow.thread_id,
+        "workflow_engine": "langgraph",
+        "active_note_path": workflow.active_note_path,
+        relation_field: refs,
+    }
+    if alexandria_type is AlexandriaNoteType.CONTEXT:
+        frontmatter["scope"] = "PROJECT" if workflow.project is not None else "GLOBAL"
     return ObsidianSaveNote(
         title=title,
         body=body,
@@ -253,12 +261,7 @@ def _save_note_command(
         tags=["alexandria", "librarian", "workflow"],
         project=workflow.project,
         source="obsidian-librarian-langgraph",
-        frontmatter={
-            "workflow_thread_id": workflow.thread_id,
-            "workflow_engine": "langgraph",
-            "active_note_path": workflow.active_note_path,
-            relation_field: refs,
-        },
+        frontmatter=frontmatter,
     )
 
 

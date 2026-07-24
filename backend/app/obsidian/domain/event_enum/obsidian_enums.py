@@ -26,6 +26,92 @@ class ObsidianIndexStatus(StrEnum):
     ERROR = "error"
 
 
+class ObsidianIndexErrorCode(StrEnum):
+    """Stable operator-facing error codes for Context note indexing."""
+
+    INVALID_SCOPE = "INVALID_SCOPE"
+    MISSING_AGENT_ID = "MISSING_AGENT_ID"
+    MISSING_SESSION_ID = "MISSING_SESSION_ID"
+    MISSING_PROJECT = "MISSING_PROJECT"
+    MISSING_USER_ID = "MISSING_USER_ID"
+    INVALID_STATUS = "INVALID_STATUS"
+    INVALID_PROVENANCE = "INVALID_PROVENANCE"
+    INVALID_SCOPE_IDENTITY = "INVALID_SCOPE_IDENTITY"
+    INVALID_SUPERSEDE = "INVALID_SUPERSEDE"
+    INVALID_CONTENT_HASH = "INVALID_CONTENT_HASH"
+    INVALID_CONTENT_INTEGRITY = "INVALID_CONTENT_INTEGRITY"
+    DUPLICATE_CONTEXT_ID = "DUPLICATE_CONTEXT_ID"
+    DUPLICATE_CONTEXT_CONTENT = "DUPLICATE_CONTEXT_CONTENT"
+    FRONTMATTER_SECRET_DETECTED = "FRONTMATTER_SECRET_DETECTED"
+    FRONTMATTER_PARSE_ERROR = "FRONTMATTER_PARSE_ERROR"
+    PATH_SECURITY_VIOLATION = "PATH_SECURITY_VIOLATION"
+    INDEX_WRITE_FAILED = "INDEX_WRITE_FAILED"
+
+
+class ObsidianContextLifecycleStatus(StrEnum):
+    """Lifecycle status values accepted for Context recall from Obsidian."""
+
+    ACTIVE = "active"
+    CURRENT = "current"
+    ARCHIVED = "archived"
+    DEPRECATED = "deprecated"
+    DRAFT = "draft"
+    ERROR = "error"
+    NEEDS_REVIEW = "needs_review"
+    PENDING = "pending"
+    PENDING_REVIEW = "pending_review"
+    REVIEW = "review"
+    REVIEWED = "reviewed"
+    STALE = "stale"
+    SUPERSEDED = "superseded"
+
+    @classmethod
+    def from_frontmatter_text(
+        cls,
+        value: str,
+    ) -> ObsidianContextLifecycleStatus:
+        """Normalize frontmatter text into a lifecycle status enum.
+
+        Args:
+            value: Raw lifecycle status text.
+
+        Returns:
+            Matching lifecycle status enum.
+        """
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        return cls(normalized)
+
+    @classmethod
+    def default_recall_values(cls) -> tuple[str, ...]:
+        """Return status values included in default Context recall.
+
+        Returns:
+            Status values that belong in default recall.
+        """
+        return (cls.ACTIVE.value, cls.CURRENT.value)
+
+    @classmethod
+    def default_excluded_values(cls) -> tuple[str, ...]:
+        """Return known status values excluded from default Context recall.
+
+        Returns:
+            Status values excluded from default recall.
+        """
+        return tuple(
+            status.value
+            for status in cls
+            if status.value not in cls.default_recall_values()
+        )
+
+    def is_default_recall_visible(self) -> bool:
+        """Return whether this lifecycle status belongs in default recall.
+
+        Returns:
+            True when this status is visible by default.
+        """
+        return self.value in self.default_recall_values()
+
+
 class ObsidianRelationType(StrEnum):
     """Supported Alexandria graph relation kinds."""
 

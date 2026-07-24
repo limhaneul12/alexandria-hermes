@@ -5,14 +5,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
-from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from app.memory.domain.contracts.context_recall_contracts import (
+    ContextFtsRecall,
+)
+from app.memory.domain.event_enum.context_enums import ContextRecallLifecycleStatus
+from app.memory.infrastructure.repositories.contexts.scope_recall_filter import (
+    ScopeRecallColumns,
+    scope_recall_clause,
+)
 from app.shared.utils.text_metrics import extract_word_tokens
 from sqlalchemy import (
     Select,
     bindparam,
     column,
     delete,
+    false,
     func,
+    or_,
     select,
     table,
     text,
@@ -64,9 +73,16 @@ CONTEXT_CHUNK_FTS_TABLE = table(
     column("heading"),
 )
 
+CONTEXTS_TABLE = table(
+    "contexts",
+    column("id"),
+    column("status"),
+    column("is_archived"),
+)
+
 type ContextFtsRow = tuple[str, str, float]
 type ContextFtsStatement = Select[ContextFtsRow]
-type ContextFtsParameter = str | int | list[str]
+type ContextFtsParameter = str | int | bool | list[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,35 +138,16 @@ def delete_context_fts_statement() -> Delete:
     )
 
 
-def build_context_fts_query(
-    query: str,
-    *,
-    limit: int,
-    project: str | None = None,
-    kind: ContextKind | None = None,
-    include_scopes: list[ContextScope] | None = None,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
-) -> ContextFtsQuery | None:
+def build_context_fts_query(recall: ContextFtsRecall) -> ContextFtsQuery | None:
     """Build a safe context FTS query from user input.
 
     Args:
-        query: Raw search query.
-        limit: Maximum returned matches.
-        project: Optional project filter.
-        kind: Optional context kind filter.
-        include_scopes: Optional recall scope filters.
-        workspace_id: Optional workspace filter.
-        agent_id: Optional agent filter.
-        user_id: Optional user filter.
-        session_id: Optional session filter.
+        recall: Validated FTS query and recall filters.
 
     Returns:
         SQL query contract when tokenization yields searchable terms.
     """
-    normalized = normalize_fts_query(query)
+    normalized = normalize_fts_query(recall.query)
     if normalized is None:
         return None
 
@@ -160,37 +157,62 @@ def build_context_fts_query(
         ColumnElement[float],
         func.bm25(fts_match_target).label("rank"),
     )
-    statement = select(
-        fts_table.c.chunk_id,
-        fts_table.c.context_id,
-        rank,
-    ).where(fts_match_target.op("MATCH")(bindparam("query")))
-    parameters: dict[str, ContextFtsParameter] = {"query": normalized, "limit": limit}
-    if project is not None:
-        statement = statement.where(fts_table.c.project == bindparam("project"))
-        parameters["project"] = project
-    if kind is not None:
+    recall_filter = recall.recall_filter
+    lifecycle_statuses = recall_filter.lifecycle_statuses
+    storage_statuses = ContextRecallLifecycleStatus.context_storage_values(
+        lifecycle_statuses
+    )
+    lifecycle_conditions: list[ColumnElement[bool]] = []
+    parameters: dict[str, ContextFtsParameter] = {
+        "query": normalized,
+        "limit": recall_filter.limit,
+    }
+    if storage_statuses:
+        lifecycle_conditions.append(
+            (CONTEXTS_TABLE.c.is_archived == bindparam("is_archived_active"))
+            & CONTEXTS_TABLE.c.status.in_(bindparam("recall_statuses", expanding=True))
+        )
+        parameters["is_archived_active"] = False
+        parameters["recall_statuses"] = list(storage_statuses)
+    if (
+        lifecycle_statuses is not None
+        and ContextRecallLifecycleStatus.ARCHIVED in lifecycle_statuses
+    ):
+        lifecycle_conditions.append(
+            CONTEXTS_TABLE.c.is_archived == bindparam("is_archived_requested")
+        )
+        parameters["is_archived_requested"] = True
+
+    statement = (
+        select(
+            fts_table.c.chunk_id,
+            fts_table.c.context_id,
+            rank,
+        )
+        .join(CONTEXTS_TABLE, fts_table.c.context_id == CONTEXTS_TABLE.c.id)
+        .where(
+            fts_match_target.op("MATCH")(bindparam("query")),
+            or_(*lifecycle_conditions) if lifecycle_conditions else false(),
+        )
+    )
+    identity_filter = recall_filter.scope_identity
+    statement = statement.where(
+        scope_recall_clause(
+            ScopeRecallColumns(
+                scope=fts_table.c.scope,
+                project=fts_table.c.project,
+                agent_id=fts_table.c.agent_id,
+                user_id=fts_table.c.user_id,
+                session_id=fts_table.c.session_id,
+                workspace_id=fts_table.c.workspace_id,
+            ),
+            identity_filter,
+        )
+    )
+    parameters.update(identity_filter.sql_parameters())
+    if recall_filter.kind is not None:
         statement = statement.where(fts_table.c.kind == bindparam("kind"))
-        parameters["kind"] = kind.value
-    if include_scopes:
-        statement = statement.where(
-            fts_table.c.scope.in_(bindparam("scope_values", expanding=True))
-        )
-        parameters["scope_values"] = [scope.value for scope in include_scopes]
-    if workspace_id is not None:
-        statement = statement.where(
-            fts_table.c.workspace_id == bindparam("workspace_id")
-        )
-        parameters["workspace_id"] = workspace_id
-    if agent_id is not None:
-        statement = statement.where(fts_table.c.agent_id == bindparam("agent_id"))
-        parameters["agent_id"] = agent_id
-    if user_id is not None:
-        statement = statement.where(fts_table.c.user_id == bindparam("user_id"))
-        parameters["user_id"] = user_id
-    if session_id is not None:
-        statement = statement.where(fts_table.c.session_id == bindparam("session_id"))
-        parameters["session_id"] = session_id
+        parameters["kind"] = recall_filter.kind.value
     statement = statement.order_by(rank.asc()).limit(bindparam("limit"))
     fts_query = ContextFtsQuery(
         statement=cast(ContextFtsStatement, statement),

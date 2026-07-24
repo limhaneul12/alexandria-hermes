@@ -16,6 +16,9 @@ from app.memory.application.retrieval.context_ranking import (
     merge_hybrid_matches,
     rank_best_matches_per_context,
 )
+from app.memory.application.retrieval.context_scope_filter import (
+    filter_context_matches,
+)
 from app.memory.application.retrieval.embedding_provider import (
     EmbeddingProvider,
 )
@@ -24,6 +27,12 @@ from app.memory.application.retrieval.vector_serialization import vector_to_sqli
 from app.memory.domain.contracts.context_contracts import (
     ContextAccessCreate,
     ContextChunkEmbeddingUpdate,
+)
+from app.memory.domain.contracts.context_recall_contracts import (
+    ContextFtsRecall,
+    ContextRecallFilter,
+    ContextVectorRecall,
+    validated_scope_identity,
 )
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
@@ -40,9 +49,13 @@ from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
     ContextKind,
+    ContextRecallLifecycleStatus,
     ContextScope,
     RagHealthState,
     RagStrategy,
+)
+from app.memory.domain.repositories.canonical_context_repository import (
+    ICanonicalContextRepository,
 )
 from app.memory.domain.repositories.context_repository import IContextRepository
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
@@ -64,6 +77,7 @@ class ContextService:
         embedding_provider: EmbeddingProvider | None = None,
         vector_retrieval_enabled: bool = False,
         extra_search_sources: Sequence[IContextSearchSource] | None = None,
+        canonical_context_repository: ICanonicalContextRepository | None = None,
     ) -> None:
         """Initialize service dependencies.
 
@@ -72,6 +86,7 @@ class ContextService:
             embedding_provider: Optional local embedding provider.
             vector_retrieval_enabled: Whether vector indexing and query paths are wired.
             extra_search_sources: Optional additional Context RAG sources.
+            canonical_context_repository: Optional canonical Markdown context adapter.
 
         Returns:
             None.
@@ -80,6 +95,7 @@ class ContextService:
         self._embedding_provider = embedding_provider
         self._vector_retrieval_enabled = vector_retrieval_enabled
         self._search_sources = [repository, *(extra_search_sources or ())]
+        self._canonical_context_repository = canonical_context_repository
 
     def lint(
         self,
@@ -148,6 +164,12 @@ class ContextService:
         Returns:
             Stored context read model.
         """
+        canonical_repository = self._canonical_context_repository
+        if canonical_repository is not None and canonical_repository.owns(context_id):
+            context = await canonical_repository.get(context_id)
+            if context is None:
+                raise MemoryContextNotFoundError(f"Context not found: {context_id}")
+            return context
         context = await self._repository.get(context_id)
         if context is None:
             raise MemoryContextNotFoundError(f"Context not found: {context_id}")
@@ -228,6 +250,10 @@ class ContextService:
         Returns:
             Stored chunks for the context.
         """
+        if self._is_canonical_context_id(context_id):
+            raise MemoryContextValidationError(
+                "Canonical Markdown contexts do not expose SQL chunk operations"
+            )
         await self.get(context_id)
         chunks = await self._repository.chunks(context_id)
         return chunks
@@ -241,8 +267,10 @@ class ContextService:
         Returns:
             Archived context read model.
         """
-        context = await self._repository.archive(context_id)
-        return context
+        canonical_repository = self._canonical_context_repository
+        if canonical_repository is not None and canonical_repository.owns(context_id):
+            return await canonical_repository.archive(context_id)
+        return await self._repository.archive(context_id)
 
     async def delete(self, context_id: str) -> None:
         """Hard delete one context.
@@ -253,6 +281,10 @@ class ContextService:
         Returns:
             None.
         """
+        if self._is_canonical_context_id(context_id):
+            raise MemoryContextValidationError(
+                "Canonical Markdown contexts cannot be hard-deleted through SQL"
+            )
         await self._repository.delete(context_id)
 
     async def access(
@@ -276,6 +308,10 @@ class ContextService:
         Returns:
             Updated context read model.
         """
+        if self._is_canonical_context_id(context_id):
+            raise MemoryContextValidationError(
+                "Canonical Markdown context access events are not stored in SQL"
+            )
         actor_type = enum_value(actor_type, ContextAccessActorType, "actor_type")
         access_method = enum_value(access_method, ContextAccessMethod, "access_method")
         context = await self._repository.record_access(
@@ -302,10 +338,20 @@ class ContextService:
         Returns:
             Recent access events ordered newest first.
         """
+        if self._is_canonical_context_id(context_id):
+            raise MemoryContextValidationError(
+                "Canonical Markdown context access events are not stored in SQL"
+            )
         events = await self._repository.access_events(
             context_id=context_id, limit=limit
         )
         return events
+
+    def _is_canonical_context_id(self, context_id: str) -> bool:
+        canonical_repository = self._canonical_context_repository
+        return canonical_repository is not None and canonical_repository.owns(
+            context_id
+        )
 
     def rag_health(self) -> RagDependencyHealth:
         """Return current RAG dependency health.
@@ -371,6 +417,7 @@ class ContextService:
         agent_id: str | None = None,
         user_id: str | None = None,
         session_id: str | None = None,
+        include_lifecycle_statuses: list[ContextRecallLifecycleStatus] | None = None,
     ) -> ContextPack:
         """Return a context pack for a query.
 
@@ -385,6 +432,7 @@ class ContextService:
             agent_id: Optional agent filter.
             user_id: Optional user filter.
             session_id: Optional session filter.
+            include_lifecycle_statuses: Optional administrative lifecycle filter.
 
         Returns:
             Context pack containing retrieved matches and warnings.
@@ -394,11 +442,48 @@ class ContextService:
         strategy = enum_value(strategy, RagStrategy, "strategy")
         if kind is not None:
             kind = enum_value(kind, ContextKind, "kind")
-        if include_scopes is not None:
-            include_scopes = [
-                enum_value(scope, ContextScope, "include_scopes")
-                for scope in include_scopes
+        include_scopes = [
+            enum_value(scope, ContextScope, "include_scopes")
+            for scope in (include_scopes or [])
+        ]
+        if not include_scopes:
+            include_scopes = (
+                [ContextScope.GLOBAL]
+                if project is None
+                else [ContextScope.PROJECT, ContextScope.GLOBAL]
+            )
+        if include_lifecycle_statuses is not None:
+            include_lifecycle_statuses = [
+                enum_value(
+                    lifecycle_status,
+                    ContextRecallLifecycleStatus,
+                    "include_lifecycle_statuses",
+                )
+                for lifecycle_status in include_lifecycle_statuses
             ]
+            if not include_lifecycle_statuses:
+                include_lifecycle_statuses = None
+        try:
+            scope_filter = validated_scope_identity(
+                tuple(include_scopes),
+                project,
+                workspace_id,
+                agent_id,
+                user_id,
+                session_id,
+            )
+        except ValueError as exc:
+            raise MemoryContextValidationError(str(exc)) from exc
+        recall_filter = ContextRecallFilter(
+            limit=limit,
+            kind=kind,
+            scope_identity=scope_filter,
+            lifecycle_statuses=(
+                None
+                if include_lifecycle_statuses is None
+                else tuple(include_lifecycle_statuses)
+            ),
+        )
         health = await self.rag_health_with_index_status()
         effective = strategy
         warnings = list(health.warnings)
@@ -419,63 +504,39 @@ class ContextService:
             )
         if effective is RagStrategy.FTS_ONLY:
             matches = await self._search_fts_sources(
-                query=query,
-                limit=limit,
-                project=project,
-                kind=kind,
-                include_scopes=include_scopes,
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                session_id=session_id,
+                ContextFtsRecall(
+                    query=query,
+                    recall_filter=recall_filter,
+                )
             )
         elif effective is RagStrategy.VECTOR_ONLY:
             matches = await self._search_vector_sources(
-                query=query,
-                limit=limit,
-                project=project,
-                kind=kind,
-                include_scopes=include_scopes,
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                session_id=session_id,
+                query,
+                recall_filter,
             )
         else:
             fts_matches = await self._search_fts_sources(
-                query=query,
-                limit=limit,
-                project=project,
-                kind=kind,
-                include_scopes=include_scopes,
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                session_id=session_id,
+                ContextFtsRecall(
+                    query=query,
+                    recall_filter=recall_filter,
+                )
             )
             vector_matches = await self._search_vector_sources(
-                query=query,
-                limit=limit,
-                project=project,
-                kind=kind,
-                include_scopes=include_scopes,
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                session_id=session_id,
+                query,
+                recall_filter,
             )
             matches = merge_hybrid_matches(
                 fts_matches=fts_matches,
                 vector_matches=vector_matches,
                 limit=limit,
             )
-        recall_scopes = include_scopes or [ContextScope.PROJECT, ContextScope.GLOBAL]
+        matches = filter_context_matches(matches, scope_filter)
         context_pack = ContextPack(
             query=query,
             strategy=strategy,
             effective_strategy=effective,
             warnings=warnings,
-            recall_scopes=recall_scopes,
+            recall_scopes=include_scopes,
             matches=matches,
             context_pack=build_context_pack(query=query, matches=matches),
         )
@@ -638,46 +699,18 @@ class ContextService:
         return statuses
 
     async def _search_fts_sources(
-        self,
-        *,
-        query: str,
-        limit: int,
-        project: str | None,
-        kind: ContextKind | None,
-        include_scopes: list[ContextScope] | None,
-        workspace_id: str | None,
-        agent_id: str | None,
-        user_id: str | None,
-        session_id: str | None,
+        self, recall: ContextFtsRecall
     ) -> list[ContextSearchMatch]:
         matches: list[ContextSearchMatch] = []
         for source in self._search_sources:
-            source_matches = await source.search_fts(
-                query=query,
-                limit=limit,
-                project=project,
-                kind=kind,
-                include_scopes=include_scopes,
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                session_id=session_id,
-            )
+            source_matches = await source.search_fts(recall)
             matches.extend(source_matches)
-        return _rank_matches(matches, limit)
+        return _rank_matches(matches, recall.recall_filter.limit)
 
     async def _search_vector_sources(
         self,
-        *,
         query: str,
-        limit: int,
-        project: str | None,
-        kind: ContextKind | None,
-        include_scopes: list[ContextScope] | None,
-        workspace_id: str | None,
-        agent_id: str | None,
-        user_id: str | None,
-        session_id: str | None,
+        recall_filter: ContextRecallFilter,
     ) -> list[ContextSearchMatch]:
         provider = self._embedding_provider
         if provider is None:
@@ -689,23 +722,17 @@ class ContextService:
                 "Embedding provider returned an unexpected dimension"
             )
         matches: list[ContextSearchMatch] = []
+        recall = ContextVectorRecall(
+            query_embedding=tuple(query_embedding),
+            model_name=provider.model_name,
+            dimensions=provider.dimensions,
+            fingerprint_key=fingerprint.key(),
+            recall_filter=recall_filter,
+        )
         for source in self._search_sources:
-            source_matches = await source.search_vector(
-                query_embedding=query_embedding,
-                model_name=provider.model_name,
-                dimensions=provider.dimensions,
-                fingerprint_key=fingerprint.key(),
-                limit=limit,
-                project=project,
-                kind=kind,
-                include_scopes=include_scopes,
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                session_id=session_id,
-            )
+            source_matches = await source.search_vector(recall)
             matches.extend(source_matches)
-        return _rank_matches(matches, limit)
+        return _rank_matches(matches, recall_filter.limit)
 
     async def _embedding_index_status(
         self,

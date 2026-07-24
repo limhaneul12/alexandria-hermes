@@ -61,13 +61,19 @@ from app.obsidian.infrastructure.obsidian_vault_config_store import (
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
-from app.shared.exceptions import ObsidianNotFoundError, ObsidianValidationError
+from app.shared.exceptions import (
+    ObsidianIndexWriteError,
+    ObsidianNotFoundError,
+    ObsidianValidationError,
+)
 from app.shared.infrastructure.database import Database
 from app.shared.serialization.orjson_codec import loads_json
 from dependency_injector import providers
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests.shared.provider_overrides import override_library_provider
 
 _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
 
@@ -275,6 +281,7 @@ def test_obsidian_search_filters_stale_notes_before_fts_limit(
                     body="# Durable context kept\n\ncrowdouttoken",
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_durable_crowdout",
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             stale_chat_dir = (
@@ -496,6 +503,226 @@ def test_obsidian_reindex_reads_existing_embeddings_before_file_row_flush(
     assert statements.index("select_chunks") < statements.index("update_file")
 
 
+def test_obsidian_reindex_reports_malformed_notes_and_continues(tmp_path: Path) -> None:
+    """Malformed managed files must be observable without blocking valid notes."""
+
+    async def scenario() -> tuple[int, list[str]]:
+        database, session, service = await _service(tmp_path)
+        root = tmp_path / "vault" / "Alexandria" / "Contexts" / "Projects"
+        root.mkdir(parents=True)
+        (root / "A Unterminated.md").write_text(
+            "---\nid: ctx_unterminated\nalexandria_type: context\n",
+            encoding="utf-8",
+        )
+        (root / "B Missing Id.md").write_text(
+            "---\nalexandria_type: context\nscope: PROJECT\nproject: project-a\n"
+            "---\n\n# Missing Id",
+            encoding="utf-8",
+        )
+        (root / "C Valid.md").write_text(
+            "---\nid: ctx_valid\nalexandria_type: context\nscope: PROJECT\n"
+            "project: project-a\nstatus: current\n---\n\n# Valid",
+            encoding="utf-8",
+        )
+        try:
+            result = await service.reindex()
+        finally:
+            await session.close()
+            await database.shutdown()
+        return result.files_indexed, [item.error_code for item in result.error_details]
+
+    files_indexed, error_codes = anyio.run(scenario)
+
+    assert files_indexed == 1
+    assert error_codes == ["FRONTMATTER_PARSE_ERROR", "FRONTMATTER_PARSE_ERROR"]
+
+
+def test_obsidian_reindex_rejects_duplicate_context_content(tmp_path: Path) -> None:
+    """Rebuild must apply the same canonical body-signature dedupe as save."""
+
+    async def scenario() -> tuple[int, list[str]]:
+        database, session, service = await _service(tmp_path)
+        root = tmp_path / "vault" / "Alexandria" / "Contexts" / "Projects"
+        root.mkdir(parents=True)
+        for note_id, title in (("ctx_first", "A First"), ("ctx_second", "B Second")):
+            (root / f"{title}.md").write_text(
+                "---\n"
+                f"id: {note_id}\n"
+                "alexandria_type: context\n"
+                f"title: {title}\n"
+                "scope: PROJECT\nproject: project-a\nstatus: current\n"
+                "---\n\n# Shared\n\nidentical canonical body",
+                encoding="utf-8",
+            )
+        try:
+            result = await service.reindex()
+        finally:
+            await session.close()
+            await database.shutdown()
+        return result.files_indexed, [item.error_code for item in result.error_details]
+
+    files_indexed, error_codes = anyio.run(scenario)
+
+    assert files_indexed == 1
+    assert error_codes == ["DUPLICATE_CONTEXT_CONTENT"]
+
+
+def test_obsidian_reindex_rejects_missing_supersede_target(tmp_path: Path) -> None:
+    """Rebuild must not expose a replacement whose target is absent."""
+
+    async def scenario() -> tuple[int, list[str]]:
+        database, session, service = await _service(tmp_path)
+        root = tmp_path / "vault" / "Alexandria" / "Contexts" / "Projects"
+        root.mkdir(parents=True)
+        (root / "Replacement.md").write_text(
+            "---\nid: ctx_replacement\nalexandria_type: context\n"
+            "scope: PROJECT\nproject: project-a\nstatus: current\n"
+            "supersedes_context_id: ctx_absent\n---\n\n# Replacement",
+            encoding="utf-8",
+        )
+        try:
+            result = await service.reindex()
+        finally:
+            await session.close()
+            await database.shutdown()
+        return result.files_indexed, [item.error_code for item in result.error_details]
+
+    files_indexed, error_codes = anyio.run(scenario)
+
+    assert files_indexed == 0
+    assert error_codes == ["INVALID_SUPERSEDE"]
+
+
+def test_obsidian_reindex_continues_after_one_index_write_failure(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """One SQLite write failure must not hide later valid canonical notes."""
+
+    async def scenario() -> tuple[int, list[str], str]:
+        database = Database(
+            database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
+        )
+        await database.initialize()
+        session = database.session()
+        repository = SqlAlchemyObsidianIndexRepository(session=session)
+        service = ObsidianService(
+            repository=repository,
+            vault_path=str(tmp_path / "vault"),
+            alexandria_root="Alexandria",
+        )
+        root = tmp_path / "vault" / "Alexandria" / "Contexts" / "Projects"
+        root.mkdir(parents=True)
+        for note_id, title in (("ctx_fail", "A Fail"), ("ctx_valid", "B Valid")):
+            (root / f"{title}.md").write_text(
+                "---\n"
+                f"id: {note_id}\n"
+                "alexandria_type: context\n"
+                "scope: PROJECT\nproject: project-a\nstatus: current\n"
+                f"---\n\n# {title}",
+                encoding="utf-8",
+            )
+        original_upsert = repository.upsert_note
+
+        async def fail_one(payload: ObsidianNoteIndex):
+            if payload.note_id == "ctx_fail":
+                raise ObsidianIndexWriteError("synthetic per-note failure")
+            return await original_upsert(payload)
+
+        monkeypatch.setattr(repository, "upsert_note", fail_one)
+        try:
+            result = await service.reindex()
+            valid = await service.read_note("ctx_valid")
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            result.files_indexed,
+            [item.error_code for item in result.error_details],
+            valid.note_id,
+        )
+
+    files_indexed, error_codes, valid_id = anyio.run(scenario)
+
+    assert files_indexed == 1
+    assert error_codes == ["INDEX_WRITE_FAILED"]
+    assert valid_id == "ctx_valid"
+
+
+def test_obsidian_reindex_heals_interrupted_supersede(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Canonical replacement survives a failed backlink write and heals on rebuild."""
+
+    async def scenario() -> tuple[str, int, list[str], str, str]:
+        database, session, service = await _service(tmp_path)
+        try:
+            original = await service.save_note(
+                ObsidianSaveNote(
+                    title="Original",
+                    body="# Original\n\ninterrupted lifecycle original",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_interrupted_original",
+                    status="current",
+                    project="project-a",
+                    frontmatter={"scope": "PROJECT"},
+                )
+            )
+
+            async def fail_backlink(
+                *,
+                superseded_context_id: str,
+                replacement_context_id: str,
+            ) -> None:
+                assert superseded_context_id == original.note_id
+                assert replacement_context_id == "ctx_interrupted_replacement"
+                raise OSError("synthetic canonical backlink failure")
+
+            monkeypatch.setattr(service, "_mark_context_superseded", fail_backlink)
+            error = ""
+            try:
+                await service.save_note(
+                    ObsidianSaveNote(
+                        title="Replacement",
+                        body="# Replacement\n\ninterrupted lifecycle replacement",
+                        alexandria_type=AlexandriaNoteType.CONTEXT,
+                        note_id="ctx_interrupted_replacement",
+                        status="current",
+                        project="project-a",
+                        frontmatter={
+                            "scope": "PROJECT",
+                            "supersedes_context_id": original.note_id,
+                        },
+                    )
+                )
+            except ObsidianValidationError as exc:
+                error = str(exc)
+            failed_status = await service.status()
+            monkeypatch.undo()
+            rebuilt = await service.reindex()
+            original_after = await service.read_note(original.note_id)
+            replacement_after = await service.read_note("ctx_interrupted_replacement")
+        finally:
+            await session.close()
+            await database.shutdown()
+        return (
+            error,
+            failed_status.error_notes,
+            rebuilt.errors,
+            original_after.status,
+            replacement_after.status,
+        )
+
+    error, failed_errors, rebuild_errors, old_status, new_status = anyio.run(scenario)
+
+    assert "INDEX_WRITE_FAILED" in error
+    assert failed_errors == 1
+    assert rebuild_errors == []
+    assert old_status == "superseded"
+    assert new_status == "current"
+
+
 def test_obsidian_save_note_writes_markdown_and_reindexes(tmp_path: Path) -> None:
     """Saving a note should write canonical Markdown and make it searchable."""
 
@@ -530,6 +757,129 @@ def test_obsidian_save_note_writes_markdown_and_reindexes(tmp_path: Path) -> Non
         assert hits[0].note.note_id == "skill_web_research"
 
     anyio.run(scenario)
+
+
+def test_obsidian_save_rejects_cross_type_note_id_collision(tmp_path: Path) -> None:
+    """A non-Context save must never replace an indexed canonical Context ID."""
+
+    async def scenario() -> tuple[str, str, bool]:
+        database, session, service = await _service(tmp_path)
+        try:
+            original = await service.save_note(
+                ObsidianSaveNote(
+                    title="Stable Context",
+                    body="# Stable\n\ncross-type collision guard",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="shared_stable_id",
+                    project="project-a",
+                    frontmatter={"scope": "PROJECT"},
+                )
+            )
+            error = ""
+            try:
+                await service.save_note(
+                    ObsidianSaveNote(
+                        title="Colliding Skill",
+                        body="# Skill\n\nmust not replace Context",
+                        alexandria_type=AlexandriaNoteType.SKILL,
+                        note_id=original.note_id,
+                    )
+                )
+            except ObsidianValidationError as exc:
+                error = str(exc)
+            retained = await service.read_note(original.note_id)
+            skill_path = (
+                tmp_path
+                / "vault"
+                / "Alexandria"
+                / "Skills"
+                / "Drafts"
+                / "Colliding Skill.md"
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return error, retained.alexandria_type.value, skill_path.exists()
+
+    error, retained_type, skill_file_exists = anyio.run(scenario)
+
+    assert "DUPLICATE_CONTEXT_ID" in error
+    assert retained_type == "context"
+    assert skill_file_exists is False
+
+
+def test_obsidian_save_rejects_dangling_superseded_by_reference(
+    tmp_path: Path,
+) -> None:
+    """A canonical backlink must reference a reciprocal replacement Context."""
+
+    async def scenario() -> tuple[str, bool]:
+        database, session, service = await _service(tmp_path)
+        try:
+            error = ""
+            try:
+                await service.save_note(
+                    ObsidianSaveNote(
+                        title="Dangling Backlink",
+                        body="# Dangling\n\ninvalid replacement backlink",
+                        alexandria_type=AlexandriaNoteType.CONTEXT,
+                        note_id="ctx_dangling_backlink",
+                        status="superseded",
+                        project="project-a",
+                        frontmatter={
+                            "scope": "PROJECT",
+                            "superseded_by_context_id": "ctx_missing_replacement",
+                        },
+                    )
+                )
+            except ObsidianValidationError as exc:
+                error = str(exc)
+            path = (
+                tmp_path
+                / "vault"
+                / "Alexandria"
+                / "Contexts"
+                / "Projects"
+                / "Dangling Backlink.md"
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+        return error, path.exists()
+
+    error, file_exists = anyio.run(scenario)
+
+    assert "INVALID_SUPERSEDE" in error
+    assert file_exists is False
+
+
+def test_obsidian_context_save_scope_validation_returns_422(tmp_path: Path) -> None:
+    """Context identity violations must use the API validation status contract."""
+    database, session, service = anyio.run(_service, tmp_path)
+
+    async def close_resources() -> None:
+        await session.close()
+        await database.shutdown()
+
+    try:
+        with (
+            override_library_provider("obsidian_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            response = client.post(
+                "/obsidian/notes",
+                json={
+                    "title": "Invalid Agent Context",
+                    "body": "# Invalid\n\nagent_id is intentionally absent",
+                    "alexandria_type": "context",
+                    "project": "project-a",
+                    "frontmatter": {"scope": "AGENT"},
+                },
+            )
+    finally:
+        anyio.run(close_resources)
+
+    assert response.status_code == 422
 
 
 def test_obsidian_vault_settings_update_redirects_future_writes(
@@ -569,6 +919,7 @@ def test_obsidian_vault_settings_update_redirects_future_writes(
                     body="# Configured Vault Note\n\nSaved from plugin settings.",
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_configured_vault_note",
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             persisted = loads_json(config_path.read_bytes())
@@ -796,6 +1147,7 @@ def test_obsidian_read_rejects_indexed_note_missing_frontmatter(tmp_path: Path) 
                     body="# Canonical Note\n\nOriginal source.",
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_canonical",
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             note_path = tmp_path / "vault" / saved.relative_path
@@ -847,8 +1199,8 @@ def test_obsidian_save_note_redacts_secret_like_frontmatter_values(
             encoding="utf-8"
         )
         assert "sk-" + ("x" * 60) not in note_text
-        assert "<REDACTED_LONG_VALUE>" in note_text
-        assert "potential secret-like content was redacted" in note_text
+        assert "api_key" not in note_text
+        assert "potential secret-like frontmatter field was redacted" in note_text
 
     anyio.run(scenario)
 
@@ -879,6 +1231,7 @@ def test_obsidian_librarian_ask_delegates_with_auto_provider(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_delegate_source",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             response = await service.ask_librarian(
@@ -1003,6 +1356,7 @@ def test_obsidian_librarian_ask_uses_active_note_as_source(tmp_path: Path) -> No
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_active_source",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             response = await service.ask_librarian(
@@ -1077,10 +1431,14 @@ def test_obsidian_librarian_ask_respects_max_source_refs(tmp_path: Path) -> None
                 await service.save_note(
                     ObsidianSaveNote(
                         title=f"Vault Scope Source {index}",
-                        body="# Vault Scope\n\nwhole vault librarian scope marker",
+                        body=(
+                            "# Vault Scope\n\n"
+                            f"whole vault librarian scope marker {index}"
+                        ),
                         alexandria_type=AlexandriaNoteType.CONTEXT,
                         note_id=f"ctx_vault_scope_{index}",
                         project="alexandria-hermes",
+                        frontmatter={"scope": "PROJECT"},
                     )
                 )
             response = await service.ask_librarian(
@@ -1117,6 +1475,7 @@ def test_obsidian_librarian_vault_inventory_and_path_search(
                         "Alexandria/Contexts/Projects/Loose Project Context.md"
                     ),
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             inventory = await service.inventory_vault(
@@ -1231,6 +1590,7 @@ def test_obsidian_librarian_review_queue_prioritizes_curation_candidates(
                     note_id="ctx_captured_context",
                     relative_path="Alexandria/_Inbox/Captures/Captured Context.md",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             await service.save_note(
@@ -1252,6 +1612,7 @@ def test_obsidian_librarian_review_queue_prioritizes_curation_candidates(
                     relative_path="Alexandria/_Inbox/Captures/Archived Draft.md",
                     status="archived",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             await service.save_note(
@@ -1495,6 +1856,7 @@ def test_obsidian_librarian_review_queue_generates_safe_move_plan(
                         "Alexandria/_Inbox/Captures/Captured Move Candidate.md"
                     ),
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             plan = await service.plan_librarian_review_moves(
@@ -1555,6 +1917,7 @@ def test_obsidian_librarian_review_queue_excludes_manual_review_from_move_plan(
                     ),
                     status="review",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             queue = await service.librarian_review_queue(
@@ -1600,6 +1963,7 @@ def test_obsidian_librarian_review_queue_apply_moves_writes_report_and_reindexes
                         "Alexandria/_Inbox/Captures/Captured Apply Candidate.md"
                     ),
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             report = await service.apply_librarian_review_moves(
@@ -1661,6 +2025,7 @@ def test_obsidian_librarian_review_queue_apply_empty_queue_is_no_op(
                     note_id="ctx_already_organized",
                     relative_path="Alexandria/Contexts/Projects/Already Organized.md",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             report = await service.apply_librarian_review_moves(
@@ -1711,6 +2076,7 @@ def test_obsidian_librarian_vault_move_plan_blocks_overwrite(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_move_source",
                     relative_path="Alexandria/Contexts/Projects/Move Source.md",
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             destination = await service.save_note(
@@ -1722,6 +2088,7 @@ def test_obsidian_librarian_vault_move_plan_blocks_overwrite(
                     relative_path=(
                         "Alexandria/Contexts/Projects/organized/Move Source.md"
                     ),
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             plan = await service.plan_vault_moves(
@@ -1764,6 +2131,7 @@ def test_obsidian_librarian_vault_apply_moves_writes_reports_and_reindexes(
                     note_id="ctx_apply_source",
                     relative_path="Alexandria/Contexts/Projects/Apply Source.md",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             report = await service.apply_vault_moves(
@@ -1835,6 +2203,7 @@ def test_obsidian_librarian_vault_apply_preflights_report_before_moves(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_preflight_source",
                     relative_path=("Alexandria/Contexts/Projects/Preflight Source.md"),
+                    frontmatter={"scope": "GLOBAL"},
                 )
             )
             report_path = (
@@ -1919,6 +2288,7 @@ def test_obsidian_librarian_job_routes_run_vault_move_and_expose_report(
                     note_id="ctx_async_job_source",
                     relative_path=("Alexandria/Contexts/Projects/Async Job Source.md"),
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             await session.commit()
@@ -2088,6 +2458,7 @@ def test_obsidian_librarian_ask_recovers_multi_topic_sources_without_chat_echo(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_company_run_macro",
                     project="omx-agent-adapter",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             await service.save_note(
@@ -2151,6 +2522,7 @@ def test_obsidian_librarian_ask_can_save_transcript(tmp_path: Path) -> None:
                     note_id="ctx_obsidian_storage",
                     tags=["obsidian"],
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             response = await service.ask_librarian(

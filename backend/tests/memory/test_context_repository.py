@@ -17,7 +17,9 @@ from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
     ContextKind,
+    ContextScope,
     ContextSourceType,
+    ContextStorageStatus,
     RagHealthState,
     RagStrategy,
 )
@@ -195,7 +197,11 @@ def test_context_repository_searches_accesses_and_archives_seeded_contexts(
 
             listed, total = await service.list_contexts(project="alexandria-hermes")
             chunks = await service.chunks(saved.id)
-            pack = await service.search(query="local searchable memory", limit=3)
+            pack = await service.search(
+                query="local searchable memory",
+                limit=3,
+                project="alexandria-hermes",
+            )
             accessed = await service.access(
                 saved.id,
                 actor_name="Alexandria UI",
@@ -216,7 +222,9 @@ def test_context_repository_searches_accesses_and_archives_seeded_contexts(
             archived = await service.archive(saved.id)
             await session.commit()
             after_archive = await service.search(
-                query="local searchable memory", limit=3
+                query="local searchable memory",
+                limit=3,
+                project="alexandria-hermes",
             )
 
         assert total == 1
@@ -389,6 +397,122 @@ distractor should rank behind the semantic target.
         assert hybrid_pack.matches[0].vector_score is not None
 
     anyio.run(scenario)
+
+
+def test_context_recall_filters_each_requested_scope_by_its_own_identity(
+    tmp_path: Path,
+) -> None:
+    """All strategies should preserve each requested scope identity lane."""
+
+    async def scenario() -> tuple[set[str], dict[RagStrategy, set[str]]]:
+        async with (
+            _temporary_database(tmp_path / "rag-scope-boundary.db") as database,
+            database.session() as session,
+        ):
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                embedding_provider=KeywordEmbeddingProvider(),
+                vector_retrieval_enabled=True,
+            )
+            shared_content = "# Scope Boundary\n\nscope-boundary-token durable memory."
+            agent_a = await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="Agent A",
+                summary="Agent A scoped.",
+                content=shared_content,
+                project="agent-platform",
+                scope=ContextScope.AGENT,
+                agent_id="hermes-coding",
+                embedding_provider=KeywordEmbeddingProvider(),
+            )
+            await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="Agent B",
+                summary="Agent B scoped.",
+                content=shared_content,
+                project="agent-platform",
+                scope=ContextScope.AGENT,
+                agent_id="hermes-research",
+                embedding_provider=KeywordEmbeddingProvider(),
+            )
+            await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="Session A",
+                summary="Session scoped.",
+                content=shared_content,
+                project="agent-platform",
+                scope=ContextScope.SESSION,
+                session_id="session-a",
+                embedding_provider=KeywordEmbeddingProvider(),
+            )
+            await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="Session B",
+                summary="Different session scoped.",
+                content=shared_content,
+                project="agent-platform",
+                scope=ContextScope.SESSION,
+                session_id="session-b",
+                embedding_provider=KeywordEmbeddingProvider(),
+            )
+            project_context = await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="Project Shared",
+                summary="Project scoped.",
+                content=shared_content,
+                project="agent-platform",
+                scope=ContextScope.PROJECT,
+                embedding_provider=KeywordEmbeddingProvider(),
+            )
+            await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="Other Project",
+                summary="Different project scoped.",
+                content=shared_content,
+                project="other-platform",
+                scope=ContextScope.PROJECT,
+                embedding_provider=KeywordEmbeddingProvider(),
+            )
+            await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="Pending Agent A",
+                summary="Pending review should not be recalled.",
+                content=shared_content,
+                project="agent-platform",
+                scope=ContextScope.AGENT,
+                agent_id="hermes-coding",
+                status=ContextStorageStatus.PENDING_REVIEW,
+                embedding_provider=KeywordEmbeddingProvider(),
+            )
+            await session.commit()
+
+            results: dict[RagStrategy, set[str]] = {}
+            for strategy in RagStrategy:
+                pack = await service.search(
+                    query="scope-boundary-token",
+                    strategy=strategy,
+                    limit=10,
+                    project="agent-platform",
+                    agent_id="hermes-coding",
+                    include_scopes=[ContextScope.AGENT, ContextScope.PROJECT],
+                )
+                results[strategy] = {match.context.id for match in pack.matches}
+        return {agent_a.id, project_context.id}, results
+
+    expected_ids, results = anyio.run(scenario)
+
+    assert results == {
+        RagStrategy.FTS_ONLY: expected_ids,
+        RagStrategy.VECTOR_ONLY: expected_ids,
+        RagStrategy.HYBRID: expected_ids,
+    }
 
 
 def test_context_vector_search_offloads_blocking_query_embedding_from_event_loop(
@@ -1079,3 +1203,63 @@ def test_context_list_filters_created_and_updated_date_ranges(tmp_path: Path) ->
         assert [item.id for item in updated_listed] == [inside.id]
 
     anyio.run(scenario)
+
+
+def test_context_recall_isolates_legacy_and_named_workspaces(tmp_path: Path) -> None:
+    """Every recall strategy must treat workspace identity as fail-closed."""
+
+    async def scenario() -> tuple[
+        dict[str | None, str],
+        dict[tuple[RagStrategy, str | None], set[str]],
+    ]:
+        async with (
+            _temporary_database(tmp_path / "workspace-recall-boundary.db") as database,
+            database.session() as session,
+        ):
+            provider = KeywordEmbeddingProvider()
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                embedding_provider=provider,
+                vector_retrieval_enabled=True,
+            )
+            contexts = {
+                workspace_id: await seed_context(
+                    session,
+                    kind=ContextKind.RESEARCH,
+                    title=f"Workspace {workspace_id or 'legacy'}",
+                    summary="workspace-boundary-token",
+                    content="# Workspace\n\nworkspace-boundary-token",
+                    project="alexandria-hermes",
+                    workspace_id=workspace_id,
+                    embedding_provider=provider,
+                )
+                for workspace_id in (None, "workspace-a", "workspace-b")
+            }
+            await session.commit()
+
+            results: dict[tuple[RagStrategy, str | None], set[str]] = {}
+            for strategy in RagStrategy:
+                for workspace_id in contexts:
+                    pack = await service.search(
+                        query="workspace-boundary-token",
+                        strategy=strategy,
+                        limit=10,
+                        project="alexandria-hermes",
+                        workspace_id=workspace_id,
+                    )
+                    results[(strategy, workspace_id)] = {
+                        match.context.id for match in pack.matches
+                    }
+        return (
+            {workspace_id: context.id for workspace_id, context in contexts.items()},
+            results,
+        )
+
+    expected_ids, results = anyio.run(scenario)
+
+    for (strategy, workspace_id), context_ids in results.items():
+        assert context_ids == {expected_ids[workspace_id]}, (
+            strategy,
+            workspace_id,
+            context_ids,
+        )

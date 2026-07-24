@@ -8,6 +8,10 @@ from app.memory.domain.contracts.context_contracts import (
     ContextAccessCreate,
     ContextChunkEmbeddingUpdate,
 )
+from app.memory.domain.contracts.context_recall_contracts import (
+    ContextFtsRecall,
+    ContextVectorRecall,
+)
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,
@@ -42,7 +46,6 @@ from app.memory.infrastructure.repositories.contexts.fts import (
 from app.memory.infrastructure.repositories.contexts.fts_search import (
     search_context_fts,
 )
-from app.memory.infrastructure.repositories.contexts.fts_sync import remove_context_fts
 from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
@@ -184,7 +187,6 @@ class SqlAlchemyContextRepository(IContextRepository):
         model.archived_at = archived_at
         model.updated_at = archived_at
         await self._session.flush()
-        await remove_context_fts(session=self._session, context_id=context_id)
         context = map_context_row(model)
         return context
 
@@ -231,100 +233,31 @@ class SqlAlchemyContextRepository(IContextRepository):
         )
         return events
 
-    async def search_fts(
-        self,
-        *,
-        query: str,
-        limit: int,
-        project: str | None = None,
-        kind: ContextKind | None = None,
-        include_scopes: list[ContextScope] | None = None,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-    ) -> list[ContextSearchMatch]:
+    async def search_fts(self, recall: ContextFtsRecall) -> list[ContextSearchMatch]:
         """Search context chunks with SQLite FTS5.
 
         Args:
-            query: Search query text.
-            limit: Maximum returned matches.
-            project: Optional project filter.
-            kind: Optional context kind filter.
-            include_scopes: Optional scope filters.
-            workspace_id: Optional workspace filter.
-            agent_id: Optional agent filter.
-            user_id: Optional user filter.
-            session_id: Optional session filter.
+            recall: Validated FTS query and recall filters.
 
         Returns:
             Ranked context matches.
         """
         await self.ensure_search_tables()
-        matches = await search_context_fts(
-            session=self._session,
-            query=query,
-            limit=limit,
-            project=project,
-            kind=kind,
-            include_scopes=include_scopes,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-        )
+        matches = await search_context_fts(self._session, recall)
         return matches
 
     async def search_vector(
-        self,
-        *,
-        query_embedding: list[float],
-        model_name: str,
-        dimensions: int,
-        fingerprint_key: str,
-        limit: int,
-        project: str | None = None,
-        kind: ContextKind | None = None,
-        include_scopes: list[ContextScope] | None = None,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
+        self, recall: ContextVectorRecall
     ) -> list[ContextSearchMatch]:
         """Search context chunks by sqlite-vec cosine distance.
 
         Args:
-            query_embedding: Query embedding vector.
-            model_name: Embedding model that produced the query vector.
-            dimensions: Expected embedding dimensions.
-            fingerprint_key: Current embedding generation fingerprint key.
-            limit: Maximum returned matches.
-            project: Optional project filter.
-            kind: Optional context kind filter.
-            include_scopes: Optional scope filters.
-            workspace_id: Optional workspace filter.
-            agent_id: Optional agent filter.
-            user_id: Optional user filter.
-            session_id: Optional session filter.
+            recall: Validated vector query and recall filters.
 
         Returns:
             Ranked vector matches.
         """
-        matches = await search_context_vectors(
-            session=self._session,
-            query_embedding=query_embedding,
-            model_name=model_name,
-            dimensions=dimensions,
-            fingerprint_key=fingerprint_key,
-            limit=limit,
-            project=project,
-            kind=kind,
-            include_scopes=include_scopes,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-        )
+        matches = await search_context_vectors(self._session, recall)
         return matches
 
     async def chunks_missing_embeddings(

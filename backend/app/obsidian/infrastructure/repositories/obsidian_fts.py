@@ -49,6 +49,8 @@ OBSIDIAN_FILES_TABLE = table(
     "obsidian_files",
     column("note_id"),
     column("index_status"),
+    column("project"),
+    column("frontmatter_json"),
 )
 
 type ObsidianFtsRow = tuple[str, str, float]
@@ -110,6 +112,7 @@ def build_obsidian_fts_query(
     alexandria_type: AlexandriaNoteType | None = None,
     excluded_alexandria_types: list[AlexandriaNoteType] | None = None,
     excluded_statuses: list[str] | None = None,
+    included_statuses: list[str] | None = None,
     excluded_path_prefixes: list[str] | None = None,
     project: str | None = None,
     tags: list[str] | None = None,
@@ -122,6 +125,7 @@ def build_obsidian_fts_query(
         alexandria_type: Optional note type filter.
         excluded_alexandria_types: Optional note types to omit.
         excluded_statuses: Optional lifecycle statuses to omit.
+        included_statuses: Optional lifecycle statuses to include exclusively.
         excluded_path_prefixes: Optional relative path prefixes to omit.
         project: Optional project filter.
         tags: Optional required tags.
@@ -169,6 +173,17 @@ def build_obsidian_fts_query(
         )
         parameters["excluded_statuses"] = [
             status.strip().lower() for status in excluded_statuses
+        ]
+    if included_statuses:
+        normalized_status = func.coalesce(
+            func.nullif(func.lower(func.trim(fts_table.c.status)), ""),
+            "active",
+        )
+        statement = statement.where(
+            normalized_status.in_(bindparam("included_statuses", expanding=True))
+        )
+        parameters["included_statuses"] = [
+            status.strip().lower() for status in included_statuses
         ]
     if excluded_path_prefixes:
         for index, prefix in enumerate(excluded_path_prefixes):

@@ -166,6 +166,7 @@ def test_librarian_workflow_pauses_then_resumes_approved_writes(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_storage_source",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             workflow = await workflow_service.start_workflow(
@@ -229,6 +230,7 @@ def test_librarian_workflow_applies_approved_graph_links_to_active_note(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_storage_source",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             active = await obsidian.save_note(
@@ -238,6 +240,7 @@ def test_librarian_workflow_applies_approved_graph_links_to_active_note(
                     alexandria_type=AlexandriaNoteType.CONTEXT,
                     note_id="ctx_active_work_note",
                     project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
                 )
             )
             workflow = await workflow_service.start_workflow(

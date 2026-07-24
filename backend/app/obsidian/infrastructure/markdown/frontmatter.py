@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -34,7 +35,7 @@ def parse_markdown_document(text: str) -> MarkdownDocument:
         return MarkdownDocument(frontmatter={}, body=text)
     end_index = _frontmatter_end_index(lines)
     if end_index is None:
-        return MarkdownDocument(frontmatter={}, body=text)
+        raise ValueError("FRONTMATTER_PARSE_ERROR: unterminated frontmatter")
     frontmatter = _parse_frontmatter_lines(lines[1:end_index])
     body = "\n".join(lines[end_index + 1 :])
     if text.endswith("\n") and body:
@@ -58,6 +59,60 @@ def render_markdown_document(frontmatter: JSONObject, body: str) -> str:
     lines.append(FRONTMATTER_DELIMITER)
     normalized_body = body.rstrip("\n")
     return "\n".join(lines) + f"\n\n{normalized_body}\n"
+
+
+def update_frontmatter_scalars(
+    text: str,
+    replacements: Mapping[str, str],
+) -> str:
+    """Update top-level scalar fields without rewriting unknown YAML structure.
+
+    Args:
+        text: Complete Markdown document with frontmatter.
+        replacements: Top-level scalar values to replace or append.
+
+    Returns:
+        Markdown with all unrelated frontmatter bytes and body lines preserved.
+
+    Raises:
+        ValueError: If the document has no complete frontmatter block.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].rstrip("\r\n").strip() != FRONTMATTER_DELIMITER:
+        raise ValueError("FRONTMATTER_PARSE_ERROR: frontmatter is required")
+    end_index = next(
+        (
+            index
+            for index, line in enumerate(lines[1:], start=1)
+            if line.rstrip("\r\n").strip() == FRONTMATTER_DELIMITER
+        ),
+        None,
+    )
+    if end_index is None:
+        raise ValueError("FRONTMATTER_PARSE_ERROR: unterminated frontmatter")
+    matched_keys: set[str] = set()
+    for index in range(1, end_index):
+        raw_line = lines[index].rstrip("\r\n")
+        if raw_line != raw_line.lstrip() or ":" not in raw_line:
+            continue
+        key = raw_line.split(":", maxsplit=1)[0].strip()
+        value = replacements.get(key)
+        if value is None:
+            continue
+        matched_keys.add(key)
+        line_ending = lines[index][len(raw_line) :]
+        lines[index] = f"{key}: {_yaml_scalar(value)}{line_ending}"
+    remaining = {
+        key: value for key, value in replacements.items() if key not in matched_keys
+    }
+    if remaining:
+        default_ending = "\r\n" if lines[0].endswith("\r\n") else "\n"
+        additions = [
+            f"{key}: {_yaml_scalar(value)}{default_ending}"
+            for key, value in remaining.items()
+        ]
+        lines[end_index:end_index] = additions
+    return "".join(lines)
 
 
 def frontmatter_json(frontmatter: dict[str, FrontmatterValue]) -> JSONObject:
@@ -129,6 +184,8 @@ def _parse_frontmatter_lines(lines: list[str]) -> dict[str, FrontmatterValue]:
             if isinstance(current, list):
                 current.append(_parse_scalar(raw_item) or "")
             continue
+        if line != line.lstrip():
+            continue
         active_list_key = None
         if ":" not in line:
             continue
@@ -137,6 +194,8 @@ def _parse_frontmatter_lines(lines: list[str]) -> dict[str, FrontmatterValue]:
         value = raw_value.strip()
         if not key:
             continue
+        if key in frontmatter:
+            raise ValueError(f"FRONTMATTER_PARSE_ERROR: duplicate top-level key: {key}")
         if value == "":
             frontmatter[key] = []
             active_list_key = key

@@ -5,9 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
-from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from app.memory.domain.contracts.context_recall_contracts import (
+    ContextVectorRecall,
+)
+from app.memory.domain.event_enum.context_enums import ContextRecallLifecycleStatus
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
-from sqlalchemy import Select, bindparam, func, select
+from app.memory.infrastructure.repositories.contexts.scope_recall_filter import (
+    ScopeRecallColumns,
+    scope_recall_clause,
+)
+from sqlalchemy import Select, bindparam, false, func, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 type ContextVectorRow = tuple[str, str, float]
@@ -24,35 +31,13 @@ class ContextVectorQuery:
 
 
 def build_context_vector_query(
-    *,
-    query_embedding: str,
-    model_name: str,
-    dimensions: int,
-    fingerprint_key: str,
-    limit: int,
-    project: str | None = None,
-    kind: ContextKind | None = None,
-    include_scopes: list[ContextScope] | None = None,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
+    recall: ContextVectorRecall, query_embedding: str
 ) -> ContextVectorQuery:
     """Build a safe vector query from precomputed embedding text.
 
     Args:
-        query_embedding: JSON-compatible embedding vector text for sqlite-vec.
-        model_name: Embedding model that produced the query vector.
-        dimensions: Expected embedding dimensions.
-        fingerprint_key: Current embedding generation fingerprint key.
-        limit: Maximum returned matches.
-        project: Optional project filter.
-        kind: Optional context kind filter.
-        include_scopes: Optional recall scope filters.
-        workspace_id: Optional workspace filter.
-        agent_id: Optional agent filter.
-        user_id: Optional user filter.
-        session_id: Optional session filter.
+        recall: Validated vector query and recall filters.
+        query_embedding: JSON-compatible vector text for sqlite-vec.
 
     Returns:
         ContextVectorQuery: SQL query contract.
@@ -64,13 +49,27 @@ def build_context_vector_query(
             bindparam("query_embedding"),
         ).label("distance"),
     )
+    recall_filter = recall.recall_filter
     parameters: dict[str, ContextVectorParameter] = {
         "query_embedding": query_embedding,
-        "model_name": model_name,
-        "dimensions": dimensions,
-        "fingerprint_key": fingerprint_key,
-        "limit": limit,
+        "model_name": recall.model_name,
+        "dimensions": recall.dimensions,
+        "fingerprint_key": recall.fingerprint_key,
+        "limit": recall_filter.limit,
     }
+    storage_statuses = ContextRecallLifecycleStatus.context_storage_values(
+        recall_filter.lifecycle_statuses
+    )
+    lifecycle_conditions: list[ColumnElement[bool]] = []
+    if storage_statuses:
+        lifecycle_conditions.append(
+            ContextORM.is_archived.is_(False) & ContextORM.status.in_(storage_statuses)
+        )
+    if (
+        recall_filter.lifecycle_statuses is not None
+        and ContextRecallLifecycleStatus.ARCHIVED in recall_filter.lifecycle_statuses
+    ):
+        lifecycle_conditions.append(ContextORM.is_archived.is_(True))
 
     statement = (
         select(
@@ -84,32 +83,28 @@ def build_context_vector_query(
             ContextChunkORM.embedding_model == bindparam("model_name"),
             ContextChunkORM.embedding_dimensions == bindparam("dimensions"),
             ContextChunkORM.embedding_fingerprint_key == bindparam("fingerprint_key"),
-            ContextORM.is_archived.is_(False),
+            or_(*lifecycle_conditions) if lifecycle_conditions else false(),
         )
     )
-    if project is not None:
-        statement = statement.where(ContextORM.project == bindparam("project"))
-        parameters["project"] = project
-    if kind is not None:
-        statement = statement.where(ContextORM.kind == bindparam("kind"))
-        parameters["kind"] = kind.value
-    if include_scopes:
-        scope_values = [scope.value for scope in include_scopes]
-        statement = statement.where(ContextORM.scope.in_(scope_values))
-    if workspace_id is not None:
-        statement = statement.where(
-            ContextORM.workspace_id == bindparam("workspace_id")
+    identity_filter = recall_filter.scope_identity
+    context_table = ContextORM.__table__
+    statement = statement.where(
+        scope_recall_clause(
+            ScopeRecallColumns(
+                scope=context_table.c.scope,
+                project=context_table.c.project,
+                agent_id=context_table.c.agent_id,
+                user_id=context_table.c.user_id,
+                session_id=context_table.c.session_id,
+                workspace_id=context_table.c.workspace_id,
+            ),
+            identity_filter,
         )
-        parameters["workspace_id"] = workspace_id
-    if agent_id is not None:
-        statement = statement.where(ContextORM.agent_id == bindparam("agent_id"))
-        parameters["agent_id"] = agent_id
-    if user_id is not None:
-        statement = statement.where(ContextORM.user_id == bindparam("user_id"))
-        parameters["user_id"] = user_id
-    if session_id is not None:
-        statement = statement.where(ContextORM.session_id == bindparam("session_id"))
-        parameters["session_id"] = session_id
+    )
+    parameters.update(identity_filter.sql_parameters())
+    if recall_filter.kind is not None:
+        statement = statement.where(ContextORM.kind == bindparam("kind"))
+        parameters["kind"] = recall_filter.kind.value
 
     statement = statement.order_by(distance.asc()).limit(bindparam("limit"))
     vector_query = ContextVectorQuery(

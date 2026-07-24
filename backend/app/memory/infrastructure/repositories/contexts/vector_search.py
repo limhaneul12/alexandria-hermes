@@ -6,8 +6,8 @@ from app.memory.application.retrieval.vector_serialization import (
     cosine_distance_to_score,
     vector_to_sqlite_json,
 )
+from app.memory.domain.contracts.context_recall_contracts import ContextVectorRecall
 from app.memory.domain.entities.context_read_models import ContextSearchMatch
-from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
 from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
@@ -24,55 +24,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def search_context_vectors(
-    *,
-    session: AsyncSession,
-    query_embedding: list[float],
-    model_name: str,
-    dimensions: int,
-    fingerprint_key: str,
-    limit: int,
-    project: str | None = None,
-    kind: ContextKind | None = None,
-    include_scopes: list[ContextScope] | None = None,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
+    session: AsyncSession, recall: ContextVectorRecall
 ) -> list[ContextSearchMatch]:
     """Search context chunks by sqlite-vec cosine distance.
 
     Args:
         session: Active async database session.
-        query_embedding: Query embedding vector.
-        model_name: Embedding model that produced the query vector.
-        dimensions: Expected embedding dimensions.
-        fingerprint_key: Current embedding generation fingerprint key.
-        limit: Maximum returned matches.
-        project: Optional project filter.
-        kind: Optional context kind filter.
-        include_scopes: Optional scope filters.
-        workspace_id: Optional workspace filter.
-        agent_id: Optional agent filter.
-        user_id: Optional user filter.
-        session_id: Optional session filter.
+        recall: Validated vector query and recall filters.
 
     Returns:
         Ranked vector matches.
     """
     await load_sqlite_vec_for_session(session)
     vector_query = build_context_vector_query(
-        query_embedding=vector_to_sqlite_json(query_embedding),
-        model_name=model_name,
-        dimensions=dimensions,
-        fingerprint_key=fingerprint_key,
-        limit=limit,
-        project=project,
-        kind=kind,
-        include_scopes=include_scopes,
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        user_id=user_id,
-        session_id=session_id,
+        recall,
+        vector_to_sqlite_json(recall.query_embedding),
     )
     rows = await session.execute(vector_query.statement, vector_query.parameters)
     ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
@@ -94,7 +60,7 @@ async def search_context_vectors(
     for chunk_id, context_id, distance in ranked:
         chunk_row = chunks_by_id.get(chunk_id)
         context_row = contexts_by_id.get(context_id)
-        if chunk_row is None or context_row is None or context_row.is_archived:
+        if chunk_row is None or context_row is None:
             continue
         vector_score = cosine_distance_to_score(distance)
         matches.append(

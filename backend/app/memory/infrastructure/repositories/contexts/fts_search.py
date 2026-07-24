@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from app.memory.domain.contracts.context_recall_contracts import ContextFtsRecall
 from app.memory.domain.entities.context_read_models import ContextSearchMatch
-from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
 from app.memory.infrastructure.repositories.contexts.fts import build_context_fts_query
 from app.memory.infrastructure.repositories.contexts.mapping import (
@@ -15,46 +15,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def search_context_fts(
-    *,
-    session: AsyncSession,
-    query: str,
-    limit: int,
-    project: str | None = None,
-    kind: ContextKind | None = None,
-    include_scopes: list[ContextScope] | None = None,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
+    session: AsyncSession, recall: ContextFtsRecall
 ) -> list[ContextSearchMatch]:
     """Search context chunks with SQLite FTS5.
 
     Args:
         session: Active async database session.
-        query: Search query text.
-        limit: Maximum returned matches.
-        project: Optional project filter.
-        kind: Optional context kind filter.
-        include_scopes: Optional scope filters.
-        workspace_id: Optional workspace filter.
-        agent_id: Optional agent filter.
-        user_id: Optional user filter.
-        session_id: Optional session filter.
+        recall: Validated FTS query and recall filters.
 
     Returns:
         Ranked context matches.
     """
-    fts_query = build_context_fts_query(
-        query,
-        limit=limit,
-        project=project,
-        kind=kind,
-        include_scopes=include_scopes,
-        workspace_id=workspace_id,
-        agent_id=agent_id,
-        user_id=user_id,
-        session_id=session_id,
-    )
+    fts_query = build_context_fts_query(recall)
     if fts_query is None:
         return []
     rows = await session.execute(fts_query.statement, fts_query.parameters)
@@ -77,7 +49,7 @@ async def search_context_fts(
     for chunk_id, context_id, rank in ranked:
         chunk_row = chunks_by_id.get(chunk_id)
         context_row = contexts_by_id.get(context_id)
-        if chunk_row is None or context_row is None or context_row.is_archived:
+        if chunk_row is None or context_row is None:
             continue
         fts_score = 1.0 / (1.0 + abs(rank))
         matches.append(

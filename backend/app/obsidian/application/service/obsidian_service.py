@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -26,6 +26,17 @@ from app.obsidian.application.librarian.obsidian_librarian_retrieval import (
 )
 from app.obsidian.application.notes.obsidian_authoritative_read import (
     authoritative_note_from_path,
+)
+from app.obsidian.application.notes.obsidian_context_lifecycle import (
+    ObsidianContextLifecycleCoordinator,
+)
+from app.obsidian.application.notes.obsidian_context_reindex_manifest import (
+    ContextReindexCandidate,
+    supersedes_context_id,
+    validate_context_reindex_manifest,
+)
+from app.obsidian.application.notes.obsidian_context_save_policy import (
+    apply_context_save_policy,
 )
 from app.obsidian.application.notes.obsidian_frontmatter_redaction import (
     redacted_frontmatter,
@@ -55,6 +66,7 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianVaultSettingsUpdate,
 )
 from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianIndexError,
     ObsidianLibrarianReviewQueueItem,
     ObsidianNote,
     ObsidianReindexResult,
@@ -68,9 +80,15 @@ from app.obsidian.domain.entities.obsidian_note import (
     ObsidianVaultMoveVerification,
     ObsidianVaultStatus,
 )
-from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
+from app.obsidian.domain.event_enum.obsidian_enums import (
+    AlexandriaNoteType,
+    ObsidianIndexErrorCode,
+)
 from app.obsidian.domain.repositories.obsidian_repository import (
     IObsidianIndexRepository,
+)
+from app.obsidian.infrastructure.markdown.atomic_markdown_write import (
+    atomic_write_markdown,
 )
 from app.obsidian.infrastructure.markdown.frontmatter import (
     frontmatter_text,
@@ -81,18 +99,21 @@ from app.obsidian.infrastructure.markdown.paths import (
     NOTE_SUFFIX,
     resolve_note_path,
     safe_relative_path,
+    validate_discovered_note_path,
 )
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfig,
     ObsidianVaultConfigStore,
 )
 from app.shared.exceptions.obsidian_exceptions import (
+    ObsidianIndexWriteError,
     ObsidianNotFoundError,
     ObsidianValidationError,
 )
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.serialization.orjson_codec import dumps_pretty_json
 from app.shared.types.extra_types import JSONObject
+from app.shared.types.types_convert_utils import now_utc
 from app.shared.utils.secret_redaction import redact_secret_text
 
 SELECTION_CONTEXT_MAX_CHARS = 4_000
@@ -112,6 +133,14 @@ REVIEW_QUEUE_STATUS_MARKERS = frozenset(
     marker.value for marker in ReviewQueueStatusMarker
 )
 SKILL_CURATION_STATUSES = frozenset({"deprecated", "stale", "superseded"})
+
+
+@dataclass(slots=True)
+class _ReindexDiagnostics:
+    """Mutable accumulator for per-note errors collected during one reindex run."""
+
+    errors: list[str] = field(default_factory=list)
+    details: list[ObsidianIndexError] = field(default_factory=list)
 
 
 class ObsidianService:
@@ -164,6 +193,7 @@ class ObsidianService:
             Current vault/index status.
         """
         indexed, stale, errors = await self._repository.count_by_status()
+        index_errors = await self._repository.list_index_errors()
         root = self._root_path()
         return ObsidianVaultStatus(
             vault_path=str(self._vault_path),
@@ -173,6 +203,7 @@ class ObsidianService:
             indexed_notes=indexed,
             stale_notes=stale,
             error_notes=errors,
+            index_errors=index_errors,
         )
 
     async def configure_vault_settings(
@@ -223,7 +254,7 @@ class ObsidianService:
                     tags=["alexandria", "start-here"],
                     status="active",
                     source="alexandria-hermes",
-                    frontmatter={"kind": "project_context", "scope": "project"},
+                    frontmatter={"kind": "project_context", "scope": "global"},
                 )
             )
             return note
@@ -250,15 +281,20 @@ class ObsidianService:
                 errors=["Alexandria Obsidian root does not exist"],
             )
         files_seen = 0
-        files_indexed = 0
         files_skipped = 0
-        errors: list[str] = []
+        diagnostics = _ReindexDiagnostics()
         seen_paths: set[str] = set()
+        candidates: list[ContextReindexCandidate] = []
         for path in sorted(root.rglob(f"*{NOTE_SUFFIX}")):
             files_seen += 1
             relative_path = str(path.relative_to(self._vault_path))
             seen_paths.add(relative_path)
             try:
+                path = validate_discovered_note_path(
+                    self._vault_path,
+                    self._alexandria_root,
+                    path,
+                )
                 payload = note_index_from_path(
                     path,
                     relative_path,
@@ -267,20 +303,92 @@ class ObsidianService:
                 if payload is None:
                     files_skipped += 1
                     continue
-                await self._repository.upsert_note(payload)
-                files_indexed += 1
-            except (OSError, ValueError) as exc:
-                errors.append(f"{relative_path}: {exc}")
+                candidates.append(ContextReindexCandidate(path=path, payload=payload))
+            except (
+                OSError,
+                ValueError,
+                ObsidianIndexWriteError,
+                ObsidianValidationError,
+            ) as exc:
+                await self._record_reindex_error(
+                    relative_path,
+                    self._note_id_from_existing_file(path),
+                    exc,
+                    diagnostics,
+                )
+        manifest = validate_context_reindex_manifest(candidates)
+        for issue in manifest.issues:
+            await self._record_reindex_error(
+                issue.relative_path,
+                issue.context_id,
+                ValueError(issue.message),
+                diagnostics,
+            )
+        indexed_candidates: list[ContextReindexCandidate] = []
+        for candidate in manifest.candidates:
+            try:
+                await self._repository.upsert_note(candidate.payload)
+                indexed_candidates.append(candidate)
+            except ObsidianIndexWriteError as exc:
+                await self._record_reindex_error(
+                    candidate.payload.relative_path,
+                    candidate.payload.note_id,
+                    exc,
+                    diagnostics,
+                )
+        successfully_reconciled: list[ContextReindexCandidate] = []
+        for candidate in indexed_candidates:
+            superseded_context_id = supersedes_context_id(candidate.payload)
+            if superseded_context_id is None:
+                successfully_reconciled.append(candidate)
+                continue
+            try:
+                await self._mark_context_superseded(
+                    superseded_context_id=superseded_context_id,
+                    replacement_context_id=candidate.payload.note_id,
+                )
+                successfully_reconciled.append(candidate)
+            except (OSError, ObsidianValidationError) as exc:
+                await self._record_reindex_error(
+                    candidate.payload.relative_path,
+                    candidate.payload.note_id,
+                    exc,
+                    diagnostics,
+                )
         stale_marked = await self._repository.mark_missing_stale(seen_paths)
         await self._repository.resolve_edge_targets()
         if self._context_reindex_hook is not None:
             await self._context_reindex_hook()
         return ObsidianReindexResult(
             files_seen=files_seen,
-            files_indexed=files_indexed,
+            files_indexed=len(successfully_reconciled),
             files_skipped=files_skipped,
             stale_marked=stale_marked,
-            errors=errors,
+            errors=diagnostics.errors,
+            error_details=diagnostics.details,
+        )
+
+    async def _record_reindex_error(
+        self,
+        relative_path: str,
+        context_id: str | None,
+        error: OSError | ValueError | ObsidianIndexWriteError | ObsidianValidationError,
+        diagnostics: _ReindexDiagnostics,
+    ) -> None:
+        """Persist and append one structured per-note reindex failure."""
+        error_code = _index_error_code(error)
+        safe_message = _safe_index_error_message(error_code)
+        detail = ObsidianIndexError(
+            note_path=relative_path,
+            context_id=context_id,
+            error_code=error_code,
+            error_message=safe_message,
+            detected_at=now_utc(),
+        )
+        await self._repository.record_index_error(detail)
+        diagnostics.details.append(detail)
+        diagnostics.errors.append(
+            f"{relative_path}: {detail.error_code.value}: {safe_message}"
         )
 
     async def inventory_vault(
@@ -703,6 +811,12 @@ class ObsidianService:
             or self._note_id_from_existing_file(absolute)
             or new_uuid()
         )
+        id_match = await self._repository.get_by_id(note_id)
+        if id_match is not None and id_match.relative_path != safe_path:
+            raise ObsidianValidationError(
+                f"DUPLICATE_CONTEXT_ID: {note_id} is already used by "
+                f"{id_match.relative_path}"
+            )
         absolute.parent.mkdir(parents=True, exist_ok=True)
         frontmatter = frontmatter_for_save(
             payload,
@@ -713,10 +827,21 @@ class ObsidianService:
         body = add_or_update_alexandria_links_section(
             redaction.redacted_content, frontmatter
         )
+        supersedes_context_id: str | None = None
+        if payload.alexandria_type is AlexandriaNoteType.CONTEXT:
+            policy = await apply_context_save_policy(
+                payload,
+                note_id,
+                frontmatter,
+                body,
+                self._repository,
+            )
+            if policy.duplicate is not None:
+                return policy.duplicate
+            frontmatter = policy.frontmatter
+            supersedes_context_id = policy.supersedes_context_id
         document = render_markdown_document(frontmatter, body)
-        temp_path = absolute.with_suffix(f"{NOTE_SUFFIX}.tmp")
-        temp_path.write_text(document, encoding="utf-8")
-        temp_path.replace(absolute)
+        atomic_write_markdown(absolute, document)
         index_payload = note_index_from_path(
             absolute,
             safe_path,
@@ -726,8 +851,72 @@ class ObsidianService:
             raise ObsidianValidationError(
                 "saved note is missing Alexandria frontmatter"
             )
-        note = await self._repository.upsert_note(index_payload)
+        try:
+            note = await self._repository.upsert_note(index_payload)
+        except ObsidianIndexWriteError as exc:
+            index_error = ObsidianIndexError(
+                note_path=safe_path,
+                context_id=note_id,
+                error_code=ObsidianIndexErrorCode.INDEX_WRITE_FAILED,
+                error_message=str(exc),
+                detected_at=now_utc(),
+            )
+            await self._repository.record_index_error(index_error)
+            raise ObsidianValidationError(
+                "INDEX_WRITE_FAILED: canonical Markdown was preserved for reindex"
+            ) from exc
+        if (
+            payload.alexandria_type is AlexandriaNoteType.CONTEXT
+            and supersedes_context_id is not None
+        ):
+            try:
+                await self._mark_context_superseded(
+                    superseded_context_id=supersedes_context_id,
+                    replacement_context_id=note.note_id,
+                )
+            except (OSError, ObsidianValidationError) as exc:
+                index_error = ObsidianIndexError(
+                    note_path=safe_path,
+                    context_id=note.note_id,
+                    error_code=_index_error_code(exc),
+                    error_message=str(exc),
+                    detected_at=now_utc(),
+                )
+                await self._repository.record_index_error(index_error)
+                raise ObsidianValidationError(
+                    "INDEX_WRITE_FAILED: replacement Markdown was preserved for "
+                    "reindex reconciliation"
+                ) from exc
         return note
+
+    async def archive_context(self, note_id: str) -> ObsidianNote:
+        """Archive one canonical Context while preserving its Markdown content.
+
+        Args:
+            note_id: Canonical Obsidian note identifier.
+
+        Returns:
+            Reindexed archived Context note.
+        """
+        note = await self.read_note(note_id)
+        return await self._context_lifecycle().archive(note)
+
+    async def _mark_context_superseded(
+        self,
+        superseded_context_id: str,
+        replacement_context_id: str,
+    ) -> None:
+        await self._context_lifecycle().mark_superseded(
+            superseded_context_id,
+            replacement_context_id,
+        )
+
+    def _context_lifecycle(self) -> ObsidianContextLifecycleCoordinator:
+        return ObsidianContextLifecycleCoordinator(
+            self._repository,
+            self._vault_path,
+            self._alexandria_root,
+        )
 
     async def apply_librarian_graph_links(
         self,
@@ -750,13 +939,16 @@ class ObsidianService:
         )
 
     def _note_id_from_existing_file(self, path: Path) -> str | None:
-        if not path.exists():
+        if not path.exists() or path.is_symlink():
             return None
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
             return None
-        document = parse_markdown_document(text)
+        try:
+            document = parse_markdown_document(text)
+        except ValueError:
+            return None
         return frontmatter_text(document.frontmatter, "id")
 
     async def ask_librarian(self, payload: ObsidianLibrarianAsk) -> JSONObject:
@@ -1102,6 +1294,39 @@ def _review_queue_item(
             requires_human_review=False,
         )
     return None
+
+
+def _index_error_code(
+    error: OSError | ValueError | ObsidianIndexWriteError | ObsidianValidationError,
+) -> ObsidianIndexErrorCode:
+    message = str(error)
+    message_prefix = message.partition(":")[0]
+    try:
+        return ObsidianIndexErrorCode(message_prefix)
+    except ValueError:
+        for error_code in ObsidianIndexErrorCode:
+            if error_code.value in message:
+                return error_code
+        if isinstance(error, OSError | ObsidianIndexWriteError):
+            return ObsidianIndexErrorCode.INDEX_WRITE_FAILED
+        return ObsidianIndexErrorCode.FRONTMATTER_PARSE_ERROR
+
+
+def _safe_index_error_message(error_code: ObsidianIndexErrorCode) -> str:
+    if error_code is ObsidianIndexErrorCode.INDEX_WRITE_FAILED:
+        return "Rebuildable index write failed"
+    if error_code is ObsidianIndexErrorCode.FRONTMATTER_SECRET_DETECTED:
+        return "Frontmatter contains a secret-like field"
+    if error_code is ObsidianIndexErrorCode.PATH_SECURITY_VIOLATION:
+        return "Managed note path failed security validation"
+    if error_code in (
+        ObsidianIndexErrorCode.DUPLICATE_CONTEXT_ID,
+        ObsidianIndexErrorCode.DUPLICATE_CONTEXT_CONTENT,
+    ):
+        return "Context identity conflicts with another managed note"
+    if error_code is ObsidianIndexErrorCode.FRONTMATTER_PARSE_ERROR:
+        return "Markdown frontmatter could not be validated"
+    return "Context frontmatter failed validation"
 
 
 def _duplicate_skill_note_ids(

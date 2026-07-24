@@ -88,6 +88,20 @@ class ObsidianSaveNote:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianContextDuplicateQuery:
+    """Canonical identity and content signature used for duplicate detection."""
+
+    excluded_note_id: str
+    scope: str
+    project: str | None
+    workspace_id: str | None
+    agent_id: str | None
+    user_id: str | None
+    session_id: str | None
+    content_hash: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianVaultSettingsUpdate:
     """Payload for changing the runtime Obsidian vault destination."""
 

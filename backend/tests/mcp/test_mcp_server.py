@@ -60,9 +60,11 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_start_skill_acquisition,
 )
 from app.mcp_server.server_runtime import build_mcp_server
+from app.memory.domain.event_enum.context_enums import ContextRecallLifecycleStatus
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
+from app.memory.interface.schemas.context.context_schema import ContextSearchRequest
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
@@ -196,7 +198,10 @@ def test_mcp_client_sends_backend_http_without_custom_auth_headers() -> None:
     client, calls = _client()
 
     payload = _run_json(
-        alexandria_search(client, "context recall", limit=3, strategy="FTS_ONLY")
+        alexandria_search(
+            client,
+            ContextSearchRequest(query="context recall", limit=3, strategy="FTS_ONLY"),
+        )
     )
 
     request = calls[0]
@@ -212,6 +217,31 @@ def test_mcp_client_sends_backend_http_without_custom_auth_headers() -> None:
         "query": "context recall",
         "strategy": "FTS_ONLY",
         "limit": 3,
+    }
+
+
+def test_mcp_search_forwards_explicit_lifecycle_statuses() -> None:
+    client, calls = _client()
+
+    _run_json(
+        alexandria_search(
+            client,
+            ContextSearchRequest(
+                query="administrative recall",
+                include_lifecycle_statuses=[
+                    ContextRecallLifecycleStatus.SUPERSEDED,
+                    ContextRecallLifecycleStatus.ARCHIVED,
+                ],
+            ),
+        )
+    )
+
+    request_body = loads_json(calls[0].content or b"{}")
+    assert request_body == {
+        "query": "administrative recall",
+        "strategy": "HYBRID",
+        "limit": 5,
+        "include_lifecycle_statuses": ["SUPERSEDED", "ARCHIVED"],
     }
 
 
