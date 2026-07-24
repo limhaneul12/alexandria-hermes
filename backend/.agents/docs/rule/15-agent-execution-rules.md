@@ -9,8 +9,8 @@ GPT-5.5 Reasoning High를 기본 개발 모델로 사용할 수 있다.
 ## 시작 순서
 
 1. `AGENTS.md`
-2. `.agent/docs/rule/규칙.md`
-3. `.agent/docs/rule/README.md`
+2. `backend/.agents/docs/rule/규칙.md`
+3. `backend/.agents/docs/rule/README.md`
 4. 관련 세부 규칙
 5. 사용자가 명시적으로 지정한 PRD 또는 작업 문서
 6. 관련 코드와 Test
