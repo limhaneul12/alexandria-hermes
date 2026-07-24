@@ -8,7 +8,7 @@ from app.memory.domain.entities.context_read_models import ContextRecord
 
 
 class ICanonicalContextRepository(ABC):
-    """Read and archive source-qualified Context records in canonical storage."""
+    """Read and mutate source-qualified Context records in canonical storage."""
 
     @abstractmethod
     def owns(self, context_id: str) -> bool:
@@ -41,4 +41,20 @@ class ICanonicalContextRepository(ABC):
 
         Returns:
             Archived canonical Context read model.
+        """
+
+    @abstractmethod
+    async def supersede(
+        self,
+        context_id: str,
+        replacement_context_id: str,
+    ) -> tuple[ContextRecord, ContextRecord]:
+        """Link an owned Context to its canonical replacement.
+
+        Args:
+            context_id: Source-qualified superseded Context identifier.
+            replacement_context_id: Source-qualified replacement Context identifier.
+
+        Returns:
+            Superseded and replacement canonical Context read models.
         """

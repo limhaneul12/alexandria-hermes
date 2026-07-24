@@ -55,12 +55,15 @@ class ObsidianContextLifecycleCoordinator:
         self,
         superseded_context_id: str,
         replacement_context_id: str,
-    ) -> None:
+    ) -> ObsidianNote:
         """Record one idempotent supersede backlink on canonical Markdown.
 
         Args:
             superseded_context_id: Prior canonical Context identifier.
             replacement_context_id: Replacement canonical Context identifier.
+
+        Returns:
+            Existing or updated superseded canonical Context note.
         """
         superseded = await self._repository.get_by_id(superseded_context_id)
         if superseded is None:
@@ -76,10 +79,10 @@ class ObsidianContextLifecycleCoordinator:
             existing_replacement == replacement_context_id
             and superseded.status == "superseded"
         ):
-            return
+            return superseded
         version = superseded.frontmatter.get("version")
         next_version = version + 1 if isinstance(version, int) else 2
-        await self.update_scalars(
+        return await self.update_scalars(
             superseded,
             {
                 "status": "superseded",
@@ -87,6 +90,72 @@ class ObsidianContextLifecycleCoordinator:
                 "superseded_by_context_id": replacement_context_id,
             },
         )
+
+    async def supersede(
+        self,
+        superseded: ObsidianNote,
+        replacement: ObsidianNote,
+    ) -> tuple[ObsidianNote, ObsidianNote]:
+        """Link two canonical Context notes without rewriting their bodies.
+
+        The replacement forward link is written first so a failed backlink write can
+        be reconciled by the existing reindex repair path.
+
+        Args:
+            superseded: Prior canonical Context note.
+            replacement: Replacement canonical Context note.
+
+        Returns:
+            Superseded and replacement notes after the relation is indexed.
+        """
+        if superseded.alexandria_type is not AlexandriaNoteType.CONTEXT:
+            raise ObsidianValidationError(
+                f"INVALID_SUPERSEDE: not a Context note: {superseded.note_id}"
+            )
+        if replacement.alexandria_type is not AlexandriaNoteType.CONTEXT:
+            raise ObsidianValidationError(
+                f"INVALID_SUPERSEDE: not a Context note: {replacement.note_id}"
+            )
+        if superseded.note_id == replacement.note_id:
+            raise ObsidianValidationError(
+                "INVALID_SUPERSEDE: Context cannot supersede itself"
+            )
+
+        existing_replacement = superseded.frontmatter.get("superseded_by_context_id")
+        if existing_replacement not in (None, replacement.note_id):
+            raise ObsidianValidationError(
+                "INVALID_SUPERSEDE: Context already has a different replacement"
+            )
+        existing_target = replacement.frontmatter.get("supersedes_context_id")
+        if existing_target not in (None, superseded.note_id):
+            raise ObsidianValidationError(
+                "INVALID_SUPERSEDE: replacement already supersedes a different Context"
+            )
+
+        relation_complete = (
+            existing_replacement == replacement.note_id
+            and existing_target == superseded.note_id
+            and superseded.status == "superseded"
+        )
+        if relation_complete:
+            return superseded, replacement
+
+        if existing_target is None:
+            version = replacement.frontmatter.get("version")
+            next_version = version + 1 if isinstance(version, int) else 2
+            replacements = {
+                "version": str(next_version),
+                "supersedes_context_id": superseded.note_id,
+            }
+            if replacement.frontmatter.get("superseded_by_context_id") is None:
+                replacements["status"] = "current"
+            replacement = await self.update_scalars(replacement, replacements)
+
+        superseded = await self.mark_superseded(
+            superseded.note_id,
+            replacement.note_id,
+        )
+        return superseded, replacement
 
     async def update_scalars(
         self,

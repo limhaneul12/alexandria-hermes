@@ -58,6 +58,7 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_search_vault,
     alexandria_skill_acquisition_job_status,
     alexandria_start_skill_acquisition,
+    alexandria_supersede_context,
 )
 from app.mcp_server.server_runtime import build_mcp_server
 from app.memory.domain.event_enum.context_enums import ContextRecallLifecycleStatus
@@ -1890,6 +1891,27 @@ def test_mcp_context_delete_tool_maps_to_hard_delete_endpoint() -> None:
     assert str(calls[0].url) == "http://backend:8000/memory/contexts/ctx%2F1"
 
 
+def test_mcp_context_supersede_tool_maps_to_canonical_endpoint() -> None:
+    """Context supersede MCP tool should preserve source-qualified IDs."""
+    client, calls = _client()
+
+    _run_json(
+        alexandria_supersede_context(
+            client,
+            "obsidian:old/1",
+            "obsidian:new/1",
+        )
+    )
+
+    assert calls[0].method == "POST"
+    assert str(calls[0].url) == (
+        "http://backend:8000/memory/contexts/obsidian%3Aold%2F1/supersede"
+    )
+    assert loads_json(calls[0].content or b"{}") == {
+        "replacement_context_id": "obsidian:new/1"
+    }
+
+
 def test_mcp_librarian_brief_preview_uses_budgeted_packet_contract() -> None:
     """MCP brief preview should call the compact/source-ref preview endpoint."""
     client, calls = _client()
@@ -2087,6 +2109,7 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_librarian_readiness",
         "alexandria_librarian_refresh_current_compact",
         "alexandria_archive_context",
+        "alexandria_supersede_context",
         "alexandria_delete_context",
         "alexandria_rag_status",
         "alexandria_operational_readiness",

@@ -13,6 +13,8 @@ from app.memory.interface.schemas.context.context_schema import (
     ContextChunkResponseList,
     ContextListResponse,
     ContextResponse,
+    ContextSupersedeRequest,
+    ContextSupersedeResponse,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import CONTEXT_ROUTE_EXCEPTION_MAPPING
@@ -244,3 +246,41 @@ async def archive_context(
     context = await service.archive(context_id)
     response = ContextResponse.model_validate(context_payload(context))
     return response
+
+
+@router.post(
+    "/{context_id}/supersede",
+    response_model=ContextSupersedeResponse,
+    status_code=status.HTTP_200_OK,
+    description="Link one canonical Context to an existing replacement Context.",
+    summary="Supersede context",
+)
+@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def supersede_context(
+    context_id: str,
+    request: ContextSupersedeRequest,
+    service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
+) -> ContextSupersedeResponse:
+    """Link a canonical Context to its replacement.
+
+    Args:
+        context_id: Context identifier to supersede.
+        request: Replacement Context request.
+        service: Context application service.
+
+    Returns:
+        Superseded and replacement Context responses.
+    """
+    superseded, replacement = await service.supersede(
+        context_id,
+        request.replacement_context_id,
+    )
+    return ContextSupersedeResponse.model_validate(
+        {
+            "superseded": context_payload(superseded),
+            "replacement": context_payload(replacement),
+        }
+    )

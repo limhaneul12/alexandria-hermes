@@ -901,6 +901,24 @@ class ObsidianService:
         note = await self.read_note(note_id)
         return await self._context_lifecycle().archive(note)
 
+    async def supersede_context(
+        self,
+        note_id: str,
+        replacement_note_id: str,
+    ) -> tuple[ObsidianNote, ObsidianNote]:
+        """Link an existing canonical Context to an existing replacement.
+
+        Args:
+            note_id: Canonical Context identifier to supersede.
+            replacement_note_id: Canonical replacement Context identifier.
+
+        Returns:
+            Superseded and replacement canonical notes.
+        """
+        superseded = await self.read_note(note_id)
+        replacement = await self.read_note(replacement_note_id)
+        return await self._context_lifecycle().supersede(superseded, replacement)
+
     async def _mark_context_superseded(
         self,
         superseded_context_id: str,

@@ -272,6 +272,38 @@ class ContextService:
             return await canonical_repository.archive(context_id)
         return await self._repository.archive(context_id)
 
+    async def supersede(
+        self,
+        context_id: str,
+        replacement_context_id: str,
+    ) -> tuple[ContextRecord, ContextRecord]:
+        """Link one canonical Context to an existing canonical replacement.
+
+        Args:
+            context_id: Source-qualified Context identifier to supersede.
+            replacement_context_id: Source-qualified replacement Context identifier.
+
+        Returns:
+            Superseded and replacement canonical Context read models.
+        """
+        canonical_repository = self._canonical_context_repository
+        if (
+            canonical_repository is None
+            or not canonical_repository.owns(context_id)
+            or not canonical_repository.owns(replacement_context_id)
+        ):
+            raise MemoryContextValidationError(
+                "Supersede requires source-qualified canonical Context identifiers"
+            )
+        if context_id == replacement_context_id:
+            raise MemoryContextValidationError(
+                "INVALID_SUPERSEDE: Context cannot supersede itself"
+            )
+        return await canonical_repository.supersede(
+            context_id,
+            replacement_context_id,
+        )
+
     async def delete(self, context_id: str) -> None:
         """Hard delete one context.
 

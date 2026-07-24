@@ -446,6 +446,103 @@ def test_context_api_gets_and_archives_source_qualified_obsidian_context(
     assert canonical.status == "archived"
 
 
+def test_context_api_supersedes_existing_canonical_contexts(tmp_path: Path) -> None:
+    """Context API must expose idempotent bidirectional canonical supersede."""
+
+    async def open_service() -> tuple[
+        Database,
+        Any,
+        AsyncSession,
+        ContextService,
+        ObsidianService,
+    ]:
+        database = Database(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'supersede-api.db'}",
+            create_schema=True,
+        )
+        await database.initialize()
+        session_context = database.session()
+        session = await session_context.__aenter__()
+        obsidian_service = ObsidianService(
+            repository=SqlAlchemyObsidianIndexRepository(session=session),
+            vault_path=str(tmp_path / "vault"),
+            alexandria_root="Alexandria",
+        )
+        for note_id, title, body in (
+            ("ctx_api_old", "API Old", "# Old\n\nold body remains"),
+            ("ctx_api_new", "API New", "# New\n\nnew body remains"),
+        ):
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title=title,
+                    body=body,
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id=note_id,
+                    status="current",
+                    project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
+                )
+            )
+        service = ContextService(
+            repository=SqlAlchemyContextRepository(session=session),
+            canonical_context_repository=ObsidianCanonicalContextGateway(
+                obsidian_service
+            ),
+        )
+        return database, session_context, session, service, obsidian_service
+
+    database, session_context, session, service, obsidian_service = anyio.run(
+        open_service
+    )
+    try:
+        with (
+            override_library_provider("context_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            first = client.post(
+                "/memory/contexts/obsidian:ctx_api_old/supersede",
+                json={"replacement_context_id": "obsidian:ctx_api_new"},
+            )
+            retry = client.post(
+                "/memory/contexts/obsidian:ctx_api_old/supersede",
+                json={"replacement_context_id": "obsidian:ctx_api_new"},
+            )
+            self_response = client.post(
+                "/memory/contexts/obsidian:ctx_api_old/supersede",
+                json={"replacement_context_id": "obsidian:ctx_api_old"},
+            )
+            missing = client.post(
+                "/memory/contexts/obsidian:ctx_api_old/supersede",
+                json={"replacement_context_id": "obsidian:ctx_missing"},
+            )
+            sql_id = client.post(
+                "/memory/contexts/sql-context/supersede",
+                json={"replacement_context_id": "obsidian:ctx_api_new"},
+            )
+        old_note = anyio.run(obsidian_service.read_note, "ctx_api_old")
+        new_note = anyio.run(obsidian_service.read_note, "ctx_api_new")
+    finally:
+        anyio.run(_close_context_service, database, session_context, session)
+
+    assert first.status_code == 200
+    payload = first.json()
+    assert payload["superseded"]["lifecycle_status"] == "SUPERSEDED"
+    assert (
+        payload["superseded"]["lifecycle"]["superseded_by_context_id"] == "ctx_api_new"
+    )
+    assert payload["replacement"]["lifecycle_status"] == "CURRENT"
+    assert payload["replacement"]["lifecycle"]["supersedes_context_id"] == "ctx_api_old"
+    assert retry.status_code == 200
+    assert retry.json()["superseded"]["lifecycle"]["version"] == 2
+    assert retry.json()["replacement"]["lifecycle"]["version"] == 2
+    assert self_response.status_code == 400
+    assert "INVALID_SUPERSEDE" in self_response.text
+    assert missing.status_code == 404
+    assert sql_id.status_code == 400
+    assert "old body remains" in old_note.body
+    assert "new body remains" in new_note.body
+
+
 def test_context_api_filters_recall_by_memory_scope(tmp_path: Path) -> None:
     """Scoped recall should return only contexts from requested memory lanes."""
 

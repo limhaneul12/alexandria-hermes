@@ -24,7 +24,7 @@ from app.shared.exceptions import (
 
 
 class ObsidianCanonicalContextGateway(ICanonicalContextRepository):
-    """Expose source-qualified Obsidian Context read and archive operations."""
+    """Expose source-qualified Obsidian Context lifecycle operations."""
 
     def __init__(self, service: ObsidianService) -> None:
         self._service = service
@@ -84,6 +84,42 @@ class ObsidianCanonicalContextGateway(ICanonicalContextRepository):
         except ObsidianValidationError as exc:
             raise MemoryContextValidationError(str(exc)) from exc
         return context_record_from_obsidian_note(note)
+
+    async def supersede(
+        self,
+        context_id: str,
+        replacement_context_id: str,
+    ) -> tuple[ContextRecord, ContextRecord]:
+        """Link two owned canonical Context records.
+
+        Args:
+            context_id: Source-qualified Context identifier to supersede.
+            replacement_context_id: Source-qualified replacement Context identifier.
+
+        Returns:
+            Superseded and replacement canonical Context read models.
+        """
+        note_id = _obsidian_note_id(context_id)
+        replacement_note_id = _obsidian_note_id(replacement_context_id)
+        if note_id is None or replacement_note_id is None:
+            raise MemoryContextValidationError(
+                "Supersede requires source-qualified Obsidian Context identifiers"
+            )
+        try:
+            superseded, replacement = await self._service.supersede_context(
+                note_id,
+                replacement_note_id,
+            )
+        except ObsidianNotFoundError as exc:
+            raise MemoryContextNotFoundError(
+                "Superseded or replacement Context was not found"
+            ) from exc
+        except ObsidianValidationError as exc:
+            raise MemoryContextValidationError(str(exc)) from exc
+        return (
+            context_record_from_obsidian_note(superseded),
+            context_record_from_obsidian_note(replacement),
+        )
 
 
 def _obsidian_note_id(context_id: str) -> str | None:

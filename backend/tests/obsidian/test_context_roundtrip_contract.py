@@ -255,6 +255,110 @@ def test_supersede_preserves_nested_unknown_yaml_bytes(tmp_path: Path) -> None:
     assert NESTED_METADATA in superseded_document
 
 
+def test_explicit_supersede_links_existing_contexts_idempotently(
+    tmp_path: Path,
+) -> None:
+    """Explicit lifecycle linking must preserve content and be retry-safe."""
+
+    async def scenario() -> tuple[
+        ObsidianNote,
+        ObsidianNote,
+        ObsidianNote,
+        ObsidianNote,
+        list[str],
+    ]:
+        database, session, service = await _service(tmp_path)
+        try:
+            original = await service.save_note(
+                _context_save(
+                    "ctx_explicit_original",
+                    "Explicit Original",
+                    "# Original\n\noriginal body must remain durable",
+                    {},
+                )
+            )
+            replacement = await service.save_note(
+                _context_save(
+                    "ctx_explicit_replacement",
+                    "Explicit Replacement",
+                    "# Replacement\n\nreplacement body must remain durable",
+                    {},
+                )
+            )
+            first_old, first_new = await service.supersede_context(
+                original.note_id,
+                replacement.note_id,
+            )
+            second_old, second_new = await service.supersede_context(
+                original.note_id,
+                replacement.note_id,
+            )
+            rebuilt = await service.reindex()
+            return first_old, first_new, second_old, second_new, rebuilt.errors
+        finally:
+            await session.close()
+            await database.shutdown()
+
+    first_old, first_new, second_old, second_new, errors = anyio.run(scenario)
+
+    assert errors == []
+    assert first_old.status == "superseded"
+    assert first_old.frontmatter["superseded_by_context_id"] == first_new.note_id
+    assert first_new.status == "current"
+    assert first_new.frontmatter["supersedes_context_id"] == first_old.note_id
+    assert "original body must remain durable" in first_old.body
+    assert "replacement body must remain durable" in first_new.body
+    assert first_old.frontmatter["version"] == 2
+    assert first_new.frontmatter["version"] == 2
+    assert second_old.frontmatter["version"] == first_old.frontmatter["version"]
+    assert second_new.frontmatter["version"] == first_new.frontmatter["version"]
+
+
+def test_explicit_supersede_rejects_conflicting_existing_relation(
+    tmp_path: Path,
+) -> None:
+    """An explicit second replacement must not alter the completed relation."""
+
+    async def scenario() -> tuple[str, ObsidianNote, ObsidianNote]:
+        database, session, service = await _service(tmp_path)
+        try:
+            for note_id, title in (
+                ("ctx_conflict_old", "Conflict Old"),
+                ("ctx_conflict_first", "Conflict First"),
+                ("ctx_conflict_second", "Conflict Second"),
+            ):
+                await service.save_note(
+                    _context_save(note_id, title, f"# {title}\n\ndurable body", {})
+                )
+            await service.supersede_context(
+                "ctx_conflict_old",
+                "ctx_conflict_first",
+            )
+            error = ""
+            try:
+                await service.supersede_context(
+                    "ctx_conflict_old",
+                    "ctx_conflict_second",
+                )
+            except ObsidianValidationError as exc:
+                error = str(exc)
+            return (
+                error,
+                await service.read_note("ctx_conflict_old"),
+                await service.read_note("ctx_conflict_second"),
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+    error, old, rejected_replacement = anyio.run(scenario)
+
+    assert "INVALID_SUPERSEDE" in error
+    assert old.frontmatter["superseded_by_context_id"] == "ctx_conflict_first"
+    assert rejected_replacement.frontmatter.get("supersedes_context_id") is None
+    assert rejected_replacement.status == "current"
+
+
 def test_context_kind_and_aware_timestamps_survive_save_reindex_read(
     tmp_path: Path,
 ) -> None:

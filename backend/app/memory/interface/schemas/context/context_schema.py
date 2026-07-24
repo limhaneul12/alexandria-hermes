@@ -89,6 +89,35 @@ class ContextListResponse(StrictSchemaModel):
     total: int
 
 
+class ContextSupersedeRequest(StrictSchemaModel):
+    """Request to link one canonical Context to its replacement."""
+
+    replacement_context_id: str = Field(min_length=1)
+
+    @field_validator("replacement_context_id")
+    @classmethod
+    def normalize_replacement_context_id(cls, value: str) -> str:
+        """Normalize and reject a blank replacement identifier.
+
+        Args:
+            value: Raw replacement Context identifier.
+
+        Returns:
+            Trimmed replacement Context identifier.
+        """
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("replacement_context_id must not be blank")
+        return normalized
+
+
+class ContextSupersedeResponse(StrictSchemaModel):
+    """Bidirectional canonical Context supersede result."""
+
+    superseded: ContextResponse
+    replacement: ContextResponse
+
+
 class ContextChunkResponse(StrictSchemaModel):
     """Stored context chunk response."""
 

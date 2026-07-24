@@ -264,6 +264,7 @@ docs/*
 # downloaded model cache files are machine-local state and must not be committed.
 backend/data/
 .comx-agent/
+.chatgpt2codex/
 .playwright-mcp/
 # Local Obsidian plugin settings may include the operator API key.
 integrations/obsidian/alexandria-librarian/data.json

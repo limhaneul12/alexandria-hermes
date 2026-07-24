@@ -8,6 +8,9 @@ from pathlib import Path
 
 import anyio
 from app.memory.application.context_service import ContextService
+from app.memory.application.integration.obsidian_canonical_context_gateway import (
+    ObsidianCanonicalContextGateway,
+)
 from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
@@ -21,9 +24,6 @@ from app.memory.infrastructure.repositories.context_repository import (
 )
 from app.memory.infrastructure.repositories.contexts.obsidian_search_source import (
     SqlAlchemyObsidianContextSearchSource,
-)
-from app.memory.application.integration.obsidian_canonical_context_gateway import (
-    ObsidianCanonicalContextGateway,
 )
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianSaveNote
@@ -1035,6 +1035,67 @@ def test_obsidian_context_duplicate_and_supersede_lifecycle(
     assert "original content" in old_body
     assert recall_ids == ["obsidian:ctx_replacement"]
     assert lifecycle == ["False", "superseded"]
+
+
+def test_explicit_supersede_excludes_old_context_from_default_recall(
+    tmp_path: Path,
+) -> None:
+    """Explicit supersede must immediately enforce the default recall boundary."""
+
+    async def scenario() -> list[str]:
+        async with (
+            _temporary_database(tmp_path / "explicit-supersede-recall.db") as database,
+            database.session() as session,
+        ):
+            obsidian_service = ObsidianService(
+                repository=SqlAlchemyObsidianIndexRepository(session=session),
+                vault_path=str(tmp_path / "vault"),
+                alexandria_root="Alexandria",
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Explicit Recall Old",
+                    body="# Old\n\nexplicit-recall-token old decision",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_explicit_recall_old",
+                    status="current",
+                    project="agent-platform",
+                    frontmatter={"scope": "PROJECT"},
+                )
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Explicit Recall New",
+                    body="# New\n\nexplicit-recall-token replacement decision",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_explicit_recall_new",
+                    status="current",
+                    project="agent-platform",
+                    frontmatter={"scope": "PROJECT"},
+                )
+            )
+            await obsidian_service.supersede_context(
+                "ctx_explicit_recall_old",
+                "ctx_explicit_recall_new",
+            )
+            context_service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                extra_search_sources=[
+                    SqlAlchemyObsidianContextSearchSource(session=session)
+                ],
+            )
+            recall = await context_service.search(
+                query="explicit-recall-token",
+                strategy=RagStrategy.FTS_ONLY,
+                limit=10,
+                project="agent-platform",
+                include_scopes=[ContextScope.PROJECT],
+            )
+            return [match.context.id for match in recall.matches]
+
+    recall_ids = anyio.run(scenario)
+
+    assert recall_ids == ["obsidian:ctx_explicit_recall_new"]
 
 
 def test_obsidian_context_supersede_rejects_self_and_missing_target(

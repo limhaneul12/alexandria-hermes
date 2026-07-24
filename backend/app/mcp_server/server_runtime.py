@@ -590,6 +590,26 @@ def build_mcp_server(
             api_client, context_id
         )
 
+    @server.tool(name="alexandria_supersede_context")
+    async def _tool_supersede_context(
+        context_id: str,
+        replacement_context_id: str,
+    ) -> JSONValue:
+        """Link a canonical Context to an existing replacement.
+
+        Args:
+            context_id: Context identifier to supersede.
+            replacement_context_id: Replacement Context identifier.
+
+        Returns:
+            Superseded and replacement Context response.
+        """
+        return await backend_tool_gateway.alexandria_supersede_context(
+            api_client,
+            context_id,
+            replacement_context_id,
+        )
+
     @server.tool(name="alexandria_delete_context")
     async def _tool_delete_context(context_id: str) -> JSONValue:
         """Hard delete one Context Vault entry.

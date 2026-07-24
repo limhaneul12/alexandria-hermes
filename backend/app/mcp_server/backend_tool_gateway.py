@@ -43,7 +43,10 @@ from app.memory.domain.event_enum.context_enums import (
     ContextScope,
     RagStrategy,
 )
-from app.memory.interface.schemas.context.context_schema import ContextSearchRequest
+from app.memory.interface.schemas.context.context_schema import (
+    ContextSearchRequest,
+    ContextSupersedeRequest,
+)
 from app.shared.serialization.model_codec import schema_payload
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.oauth_redaction import without_oauth_sensitive_fields
@@ -179,6 +182,31 @@ async def alexandria_archive_context(
     """
     response = await client.post(
         f"/memory/contexts/{_path_segment(context_id)}/archive", {}
+    )
+    return response
+
+
+async def alexandria_supersede_context(
+    client: AlexandriaApiClient,
+    context_id: str,
+    replacement_context_id: str,
+) -> JSONValue:
+    """Link one canonical context to an existing replacement.
+
+    Args:
+        client: Backend HTTP client.
+        context_id: Context identifier to supersede.
+        replacement_context_id: Replacement Context identifier.
+
+    Returns:
+        Superseded and replacement context response.
+    """
+    request = ContextSupersedeRequest(
+        replacement_context_id=replacement_context_id,
+    )
+    response = await client.post(
+        f"/memory/contexts/{_path_segment(context_id)}/supersede",
+        schema_payload(request),
     )
     return response
 
