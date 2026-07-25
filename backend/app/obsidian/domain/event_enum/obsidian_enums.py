@@ -122,6 +122,10 @@ class ObsidianRelationType(StrEnum):
     PROMOTES_TO = "promotes_to"
     BLOCKS = "blocks"
     RESOLVES = "resolves"
+    DUPLICATES = "duplicates"
+    SUPPORTS = "supports"
+    EXTENDS = "extends"
+    CONTRADICTS = "contradicts"
     WIKILINK = "wikilink"
 
 

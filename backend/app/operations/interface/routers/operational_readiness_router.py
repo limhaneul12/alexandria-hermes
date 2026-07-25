@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, status
 
 from app.container import ApplicationContainer
 from app.memory.application.context_service import ContextService
+from app.memory.application.reconciliation.memory_reconciliation_readiness_service import (
+    MemoryReconciliationReadinessService,
+)
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.operations.application.operational_readiness_service import (
     OperationalReadinessService,
@@ -35,6 +40,12 @@ async def operational_readiness(
     obsidian_service: ObsidianService = Depends(
         Provide[ApplicationContainer.obsidian.obsidian_service]
     ),
+    reconciliation_service: Annotated[
+        MemoryReconciliationReadinessService | None,
+        Depends(
+            Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
+        ),
+    ] = None,
 ) -> OperationalReadinessSnapshotResponse:
     """Return operational readiness snapshot.
 
@@ -42,6 +53,7 @@ async def operational_readiness(
         database: Shared database coordinator.
         context_service: Context/RAG service.
         obsidian_service: Obsidian vault service.
+        reconciliation_service: Memory reconciliation diagnostics service.
 
     Returns:
         Read-only operational readiness response.
@@ -50,6 +62,7 @@ async def operational_readiness(
         database=database,
         context_service=context_service,
         obsidian_service=obsidian_service,
+        reconciliation_service=reconciliation_service,
     )
     snapshot = await service.snapshot()
     return OperationalReadinessSnapshotResponse.from_entity(snapshot)

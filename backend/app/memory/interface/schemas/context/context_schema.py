@@ -18,7 +18,7 @@ from app.memory.domain.event_enum.context_enums import (
 from app.memory.domain.types.context_payload_types import ContextRetrievalSource
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
-from app.shared.types.extra_types import JSONObject
+from app.shared.types.extra_types import JSONObject, JSONValue
 from pydantic import Field, field_validator, model_validator
 
 
@@ -182,9 +182,7 @@ class ContextSearchRequest(StrictSchemaModel):
 
     @field_validator("include_scopes", "include_lifecycle_statuses", mode="before")
     @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input
-    # when normalizing legacy null scope filters to the default empty list.
-    def default_include_scopes(cls, value: object) -> object:
+    def default_include_scopes(cls, value: JSONValue) -> JSONValue:
         """Normalize legacy null scope filters to an empty list.
 
         Args:

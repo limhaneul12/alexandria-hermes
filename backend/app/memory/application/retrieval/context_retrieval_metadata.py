@@ -15,6 +15,7 @@ from app.memory.domain.event_enum.context_enums import (
     RagStrategy,
 )
 from app.memory.domain.types.context_payload_types import ContextRetrievalSource
+from app.shared.types.extra_types import JSONValue
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -200,14 +201,14 @@ def source_actor_id(context: ContextRecord) -> str:
     return context.source_agent
 
 
-def _optional_text(value: object) -> str | None:
+def _optional_text(value: JSONValue) -> str | None:
     if not isinstance(value, str):
         return None
     normalized = value.strip()
     return normalized or None
 
 
-def _text_tuple(value: object) -> tuple[str, ...]:
+def _text_tuple(value: JSONValue) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         return ()
     return tuple(
@@ -215,14 +216,14 @@ def _text_tuple(value: object) -> tuple[str, ...]:
     )
 
 
-def _positive_int(value: object) -> int | None:
+def _positive_int(value: JSONValue) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         return None
     return value
 
 
 def _optional_enum[EnumType: ContextSourceType | ContextImportance](
-    value: object, enum_type: type[EnumType]
+    value: JSONValue, enum_type: type[EnumType]
 ) -> EnumType | None:
     text = _optional_text(value)
     if text is None:

@@ -16,7 +16,7 @@ class AgentProfile:
     name: str
     provider: str
     description: str | None
-    capabilities: list[str]
+    capabilities: tuple[str, ...]
     preferred_librarian_provider: str | None
     preferred_librarian_model: str | None
     max_librarian_agents: int
@@ -24,7 +24,7 @@ class AgentProfile:
     created_at: datetime
     updated_at: datetime
     librarian_role: LibrarianProfileRole = LibrarianProfileRole.DEFAULT_SEARCH
-    librarian_specialties: list[str] | None = None
+    librarian_specialties: tuple[str, ...] | None = None
     librarian_routing_priority: int = 100
     librarian_enabled: bool = True
 
@@ -35,3 +35,10 @@ class AgentProfile:
             "librarian_role",
             LibrarianProfileRole(self.librarian_role),
         )
+        object.__setattr__(self, "capabilities", tuple(self.capabilities))
+        if self.librarian_specialties is not None:
+            object.__setattr__(
+                self,
+                "librarian_specialties",
+                tuple(self.librarian_specialties),
+            )

@@ -62,9 +62,9 @@ class ObsidianLibrarianAskRequest(StrictSchemaModel):
             active_note_path=self.active_note_path,
             selection=self.selection,
             project=self.project,
-            preferred_alexandria_types=[
+            preferred_alexandria_types=tuple(
                 _note_type(note_type) for note_type in self.preferred_alexandria_types
-            ],
+            ),
             max_source_refs=self.max_source_refs,
             save_transcript=self.save_transcript,
             delegate_to_librarian=self.delegate_to_librarian,

@@ -24,7 +24,7 @@ def _to_read_model(row: AgentProfileORM) -> AgentProfile:
         name=row.name,
         provider=row.provider,
         description=row.description,
-        capabilities=list(row.capabilities),
+        capabilities=tuple(row.capabilities),
         preferred_librarian_provider=row.preferred_librarian_provider,
         preferred_librarian_model=row.preferred_librarian_model,
         max_librarian_agents=row.max_librarian_agents,
@@ -32,7 +32,7 @@ def _to_read_model(row: AgentProfileORM) -> AgentProfile:
         created_at=aware_utc_datetime(row.created_at),
         updated_at=aware_utc_datetime(row.updated_at),
         librarian_role=LibrarianProfileRole(row.librarian_role),
-        librarian_specialties=list(row.librarian_specialties or []),
+        librarian_specialties=tuple(row.librarian_specialties or []),
         librarian_routing_priority=row.librarian_routing_priority,
         librarian_enabled=row.librarian_enabled,
     )

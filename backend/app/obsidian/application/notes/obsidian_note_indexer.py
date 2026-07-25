@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from app.obsidian.domain.obsidian_note_type_aliases import (
     normalized_alexandria_note_type,
 )
 from app.obsidian.infrastructure.markdown.frontmatter import (
+    FrontmatterValue,
     frontmatter_json,
     frontmatter_list,
     frontmatter_text,
@@ -87,7 +89,7 @@ def note_index_from_path(
         alexandria_type=note_type,
         title=title_from_document(document.frontmatter, body, path),
         status=status,
-        tags=frontmatter_list(document.frontmatter, "tags"),
+        tags=tuple(frontmatter_list(document.frontmatter, "tags")),
         project=project,
         source=frontmatter_text(document.frontmatter, "source"),
         content_hash=note_content_hash,
@@ -95,19 +97,21 @@ def note_index_from_path(
         body=body,
         size_bytes=stat.st_size,
         modified_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
-        chunks=chunks_for_body(body),
-        edges=relation_edges_from_note(
-            note_id=note_id,
-            relative_path=relative_path,
-            alexandria_root=alexandria_root,
-            frontmatter=frontmatter,
-            body=body,
+        chunks=tuple(chunks_for_body(body)),
+        edges=tuple(
+            relation_edges_from_note(
+                note_id=note_id,
+                relative_path=relative_path,
+                alexandria_root=alexandria_root,
+                frontmatter=frontmatter,
+                body=body,
+            )
         ),
     )
 
 
 def _note_type_from_frontmatter(
-    frontmatter: dict[str, str | list[str] | None],
+    frontmatter: Mapping[str, FrontmatterValue],
 ) -> AlexandriaNoteType | None:
     explicit_value = frontmatter_text(frontmatter, "alexandria_type")
     if explicit_value:

@@ -65,10 +65,10 @@ def context_record_from_obsidian_note(note: ObsidianNote) -> ContextRecord:
         source_agent=note.source or OBSIDIAN_SOURCE_AGENT,
         source_type=ContextSourceType.IMPORTED,
         importance=ContextImportance.MEDIUM,
-        tags=list(note.tags),
+        tags=tuple(note.tags),
         status=ContextStorageStatus.SAVED,
         quality_score=100,
-        warnings=[],
+        warnings=(),
         restore_prompt=f"Open [[{note.relative_path.removesuffix('.md')}]]",
         context_metadata=_context_metadata(note, identity),
         created_at=(

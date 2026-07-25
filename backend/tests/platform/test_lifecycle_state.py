@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from app.platform.lifecycle.dependency_health import (
     DependencyHealthStatus,
+    PlatformDependency,
     dependency_status_when_lifecycle_drains,
     dependency_status_when_marked_healthy,
 )
@@ -59,7 +60,7 @@ def test_dependency_health_policy_returns_draining_when_lifecycle_rejects_traffi
 def test_lifecycle_running_transition_does_not_recover_from_draining() -> None:
     """Running transition preserves active drain state until process restart."""
     lifecycle = LifecycleState()
-    lifecycle.mark_database_healthy()
+    lifecycle.dependencies.mark_healthy(PlatformDependency.DATABASE)
     lifecycle.mark_running()
     lifecycle.start_draining(reason="deploy")
 
@@ -77,7 +78,7 @@ def test_lifecycle_stopping_transition_rejects_healthy_dependency_readiness() ->
     lifecycle.mark_running()
     lifecycle.mark_stopping()
 
-    lifecycle.mark_redis_healthy()
+    lifecycle.dependencies.mark_healthy(PlatformDependency.REDIS)
 
     snapshot = lifecycle.snapshot()
     assert snapshot.status is LifecycleStatus.STOPPING

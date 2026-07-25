@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.shared.types.extra_types import JSONValue
+from app.shared.types.extra_types import JSONObject, JSONValue
 
 
 class CliPayloadSchema(BaseModel):
@@ -40,7 +38,7 @@ class ReviewQueuePayload(CliPayloadSchema):
 
     @field_validator("items", mode="before")
     @classmethod
-    def _filter_item_objects(cls, value: object) -> object:
+    def _filter_item_objects(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
         return value
@@ -103,7 +101,7 @@ class ReadinessPayload(CliPayloadSchema):
 
     @field_validator("next_actions", mode="before")
     @classmethod
-    def _filter_next_action_objects(cls, value: object) -> object:
+    def _filter_next_action_objects(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
         return value
@@ -205,7 +203,7 @@ def validate_combined_check_payload(payload: JSONValue) -> CombinedCheckPayload:
     return CombinedCheckPayload.model_validate(_object_or_empty(payload))
 
 
-def _object_or_empty(payload: JSONValue) -> dict[str, Any]:
+def _object_or_empty(payload: JSONValue) -> JSONObject:
     if isinstance(payload, dict):
         return payload
     return {}

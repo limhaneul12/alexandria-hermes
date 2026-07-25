@@ -189,7 +189,7 @@ class ObsidianSearchRequest(StrictSchemaModel):
             limit=self.limit,
             alexandria_type=_optional_note_type(self.alexandria_type),
             project=self.project,
-            tags=self.tags,
+            tags=tuple(self.tags),
         )
 
 
@@ -291,7 +291,7 @@ class ObsidianSaveNoteRequest(StrictSchemaModel):
             alexandria_type=_note_type(self.alexandria_type),
             note_id=self.id,
             relative_path=self.path,
-            tags=self.tags,
+            tags=tuple(self.tags),
             status=self.status,
             project=self.project,
             source=self.source,

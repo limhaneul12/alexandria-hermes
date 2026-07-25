@@ -42,17 +42,17 @@ def skill_acquisition_artifact_from_provider_text(
         content=_required_text(payload, "content"),
         summary=_optional_text(payload, "summary"),
         category_id=_optional_text(payload, "category_id", strip=False),
-        tags=_string_list(payload, "tags"),
-        required_tools=_string_list(payload, "required_tools"),
-        evidence_urls=_string_list(payload, "evidence_urls"),
-        evidence_items=_evidence_items(payload),
+        tags=tuple(_string_list(payload, "tags")),
+        required_tools=tuple(_string_list(payload, "required_tools")),
+        evidence_urls=tuple(_string_list(payload, "evidence_urls")),
+        evidence_items=tuple(_evidence_items(payload)),
         risk_level=_risk_level(payload.get("risk_level")),
         version=_optional_text(payload, "version") or "1.0.0",
         created_by_name=_optional_text(payload, "created_by_name", strip=False),
         activate=_coerce_bool(payload.get("activate")),
         status=_item_status(payload.get("status")),
         source_summary=_optional_text(payload, "source_summary"),
-        next_steps=_string_list(payload, "next_steps"),
+        next_steps=tuple(_string_list(payload, "next_steps")),
     )
 
 
@@ -95,7 +95,7 @@ def _evidence_items(
             source_kind=_optional_text(entry, "source_kind"),
             publisher_or_repository=_optional_text(entry, "publisher_or_repository"),
             accessed_at=_optional_text(entry, "accessed_at"),
-            supports_claims=_string_list(entry, "supports_claims"),
+            supports_claims=tuple(_string_list(entry, "supports_claims")),
             freshness=_optional_text(entry, "freshness"),
             notes=_optional_text(entry, "notes"),
         )

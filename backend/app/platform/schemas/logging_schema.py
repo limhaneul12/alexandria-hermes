@@ -7,7 +7,8 @@ no single model becomes overloaded.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr
+from app.shared.types.extra_types import JSONObject
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 
 class JsonLoggingModel(BaseModel):
@@ -73,6 +74,7 @@ class JsonLogPayload(JsonLoggingModel):
     msg: StrictStr
     func: StrictStr | None
     duration_ms: float | None
+    attributes: JSONObject = Field(default_factory=dict)
     service: JsonLogServiceContext
     trace: JsonLogTraceContext
     http: JsonLogHttpContext

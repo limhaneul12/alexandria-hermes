@@ -5,13 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )
-from app.librarian.application.provider_execution_policy import (
-    provider_can_execute,
+from app.librarian.application.agent_provider_assignment_policy import (
+    AgentProviderAssignmentPolicy,
 )
 from app.librarian.domain.contracts.agent_contracts import AgentCreate, AgentUpdate
 from app.librarian.domain.entities.read_models import AgentProfile
@@ -23,7 +22,6 @@ from app.librarian.domain.types.agent_payload_types import (
     AgentUpdateValues,
 )
 from app.shared.exceptions import (
-    LibrarianProviderUnsupportedError,
     LibrarianResourceNotFoundError,
 )
 from app.shared.types.types_convert_utils import (
@@ -149,6 +147,11 @@ class AgentService:
         self.provider_repo = provider_repo
         self.secret_repo = secret_repo
         self.now_provider = now_provider
+        self._provider_assignment_policy = AgentProviderAssignmentPolicy(
+            provider_repository=provider_repo,
+            credential_repository=secret_repo,
+            now_provider=now_provider,
+        )
 
     async def list_agents(self) -> list[AgentProfile]:
         """List all agent profiles.
@@ -182,19 +185,19 @@ class AgentService:
             AgentProfile: Persisted agent profile.
         """
         preferred_provider_id = payload["preferred_librarian_provider"]
-        await self._ensure_executable_provider(preferred_provider_id)
+        await self._provider_assignment_policy.ensure_executable(preferred_provider_id)
         return await self.repository.create(
             AgentCreate(
                 name=payload["name"],
                 provider=payload["provider"],
                 description=payload["description"],
-                capabilities=payload["capabilities"],
+                capabilities=tuple(payload["capabilities"]),
                 preferred_librarian_provider=preferred_provider_id,
                 preferred_librarian_model=payload["preferred_librarian_model"],
                 max_librarian_agents=payload["max_librarian_agents"],
                 librarian_role_prompt=payload["librarian_role_prompt"],
                 librarian_role=_profile_role_value(payload["librarian_role"]),
-                librarian_specialties=payload["librarian_specialties"],
+                librarian_specialties=tuple(payload["librarian_specialties"]),
                 librarian_routing_priority=payload["librarian_routing_priority"],
                 librarian_enabled=payload["librarian_enabled"],
                 created_at=payload["created_at"],
@@ -216,7 +219,7 @@ class AgentService:
         """
         values = _agent_update_values(payload)
         if "preferred_librarian_provider" in values:
-            await self._ensure_executable_provider(
+            await self._provider_assignment_policy.ensure_executable(
                 values["preferred_librarian_provider"]
             )
         return await self.repository.update(agent_id, AgentUpdate(values=values))
@@ -228,36 +231,3 @@ class AgentService:
             agent_id: Target agent identifier.
         """
         await self.repository.delete(agent_id)
-
-    async def _ensure_executable_provider(self, provider_id: str | None) -> None:
-        """Reject profile assignments to non-executable providers.
-
-        Args:
-            provider_id: Preferred librarian provider id from an agent profile.
-
-        Returns:
-            None.
-        """
-        if provider_id is None:
-            return
-        provider = await self.provider_repo.get(provider_id)
-        if provider is None:
-            provider = await self._provider_by_name(provider_id)
-        if provider is None:
-            raise LibrarianResourceNotFoundError(f"Provider not found: {provider_id}")
-        executable = await provider_can_execute(
-            provider,
-            self.secret_repo,
-            self.now_provider,
-        )
-        if not executable:
-            raise LibrarianProviderUnsupportedError(
-                f"Provider is not authorized for librarian execution: {provider_id}"
-            )
-
-    async def _provider_by_name(self, provider_name: str) -> LibrarianProvider | None:
-        providers = await self.provider_repo.list_all()
-        for provider in providers:
-            if provider.name == provider_name:
-                return provider
-        return None

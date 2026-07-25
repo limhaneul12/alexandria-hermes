@@ -86,7 +86,7 @@ class AskLibrarianRequest(StrictSchemaModel):
             librarian_model=self.librarian_model,
             librarian_role_prompt=self.librarian_role_prompt,
             max_librarian_agents=self.max_librarian_agents,
-            routing_specialties=self.routing_specialties,
+            routing_specialties=tuple(self.routing_specialties),
             source_refs=source_refs,
             librarian_brief=librarian_brief,
         )

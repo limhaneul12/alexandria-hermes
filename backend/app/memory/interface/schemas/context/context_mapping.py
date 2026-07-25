@@ -80,13 +80,13 @@ def context_payload(context: ContextRecord) -> ContextPayload:
         "source_agent": context.source_agent,
         "source_type": context.source_type,
         "importance": context.importance,
-        "tags": context.tags,
+        "tags": list(context.tags),
         "status": context.status,
         "lifecycle_status": lifecycle_status(context),
         "provenance": provenance_payload,
         "lifecycle": lifecycle_payload,
         "quality_score": context.quality_score,
-        "warnings": context.warnings,
+        "warnings": list(context.warnings),
         "restore_prompt": context.restore_prompt,
         "metadata": context.context_metadata,
         "created_at": context.created_at,
@@ -184,8 +184,8 @@ def pack_payload(pack: ContextPack) -> ContextPackPayload:
         "query": pack.query,
         "strategy": pack.strategy,
         "effective_strategy": pack.effective_strategy,
-        "warnings": pack.warnings,
-        "recall_scopes": pack.recall_scopes,
+        "warnings": list(pack.warnings),
+        "recall_scopes": list(pack.recall_scopes),
         "matches": [match_payload(match) for match in pack.matches],
         "context_pack": pack.context_pack,
     }
@@ -209,7 +209,7 @@ def health_payload(health: RagDependencyHealth) -> RagHealthPayload:
         "model_name": health.model_name,
         "dimensions": health.dimensions,
         "fingerprint": health.fingerprint,
-        "warnings": health.warnings,
+        "warnings": list(health.warnings),
         "source_statuses": [
             source_status_payload(status) for status in health.source_statuses
         ],
@@ -230,7 +230,7 @@ def reindex_payload(result: ContextReindexResult) -> ContextReindexPayload:
         scanned=result.scanned,
         updated=result.updated,
         skipped=result.skipped,
-        warnings=result.warnings,
+        warnings=list(result.warnings),
     )
     return payload
 
@@ -254,7 +254,7 @@ def source_status_payload(
         "stale_rows": status.stale_rows,
         "missing_rows": status.missing_rows,
         "current_fingerprint": status.current_fingerprint,
-        "stored_fingerprints": status.stored_fingerprints,
+        "stored_fingerprints": list(status.stored_fingerprints),
     }
     return payload
 
@@ -285,8 +285,8 @@ def soft_rebuild_payload(
         ],
         "verification_query": result.verification_query,
         "verification_matches": result.verification_matches,
-        "verification_context_ids": result.verification_context_ids,
-        "verification_warnings": result.verification_warnings,
-        "warnings": result.warnings,
+        "verification_context_ids": list(result.verification_context_ids),
+        "verification_warnings": list(result.verification_warnings),
+        "warnings": list(result.warnings),
     }
     return payload

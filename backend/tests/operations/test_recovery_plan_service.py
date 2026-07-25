@@ -5,9 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import anyio
-import pytest
 import app.operations.application.recovery_plan_service as recovery_plan_module
+import pytest
 from app.memory.domain.entities.context_read_models import RagDependencyHealth
+from app.memory.domain.entities.memory_reconciliation_diagnostics import (
+    MemoryReconciliationDiagnostics,
+)
 from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
 from app.obsidian.domain.entities.obsidian_note import ObsidianVaultStatus
 from app.operations.application.recovery_plan_service import (
@@ -52,6 +55,26 @@ class _FakeObsidianService:
         )
 
 
+class _FakeReconciliationService:
+    async def snapshot(self) -> MemoryReconciliationDiagnostics:
+        return MemoryReconciliationDiagnostics(
+            reachable=True,
+            total_contexts=10,
+            temporal_state_count=7,
+            missing_temporal_states=3,
+            total_plans=2,
+            pending_review_plans=1,
+            total_results=1,
+            partial_apply_results=1,
+            failed_results=0,
+            open_conflicts=1,
+            reviewing_conflicts=0,
+            hard_delete_results=0,
+            latest_failure_code="PARTIAL_APPLY",
+            latest_failure_at=None,
+        )
+
+
 def _write_vault_note(tmp_path: Path) -> tuple[Path, bytes]:
     note = tmp_path / "vault" / "Alexandria" / "Contexts" / "Projects" / "note.md"
     note.parent.mkdir(parents=True)
@@ -75,7 +98,7 @@ def test_recovery_plan_for_sqlite_corruption_is_read_only_and_actionable(
         shm_path = tmp_path / "corrupt.db-shm"
         wal_path.write_bytes(b"wal")
         shm_path.write_bytes(b"shm")
-        note, note_before = _write_vault_note(tmp_path)
+        note, _note_before = _write_vault_note(tmp_path)
         database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
         service = RecoveryPlanService(
             database=database,
@@ -107,7 +130,7 @@ def test_recovery_plan_for_sqlite_corruption_is_read_only_and_actionable(
 
     assert status == OperationalReadinessStatus.RECOVERY_REQUIRED
     assert automatic is True
-    assert blocked == []
+    assert blocked == ()
     assert source_paths == [
         str(tmp_path / "corrupt.db"),
         str(tmp_path / "corrupt.db-wal"),
@@ -153,8 +176,8 @@ def test_recovery_plan_blocks_without_readable_vault_source(tmp_path: Path) -> N
 
     assert status == OperationalReadinessStatus.BLOCKED
     assert automatic is False
-    assert blocked == ["alexandria_root_not_found", "managed_markdown_not_found"]
-    assert next_actions == ["inspect_vault_configuration"]
+    assert blocked == ("alexandria_root_not_found", "managed_markdown_not_found")
+    assert next_actions == ("inspect_vault_configuration",)
 
 
 def test_recovery_plan_blocks_when_source_snapshot_access_fails(
@@ -219,8 +242,8 @@ def test_recovery_plan_blocks_when_source_snapshot_access_fails(
 
     assert status == OperationalReadinessStatus.BLOCKED
     assert automatic is False
-    assert blocked == ["source_snapshot_unreadable"]
-    assert next_actions == ["inspect_vault_configuration"]
+    assert blocked == ("source_snapshot_unreadable",)
+    assert next_actions == ("inspect_vault_configuration",)
     assert access_error == "source_snapshot_unreadable"
     assert db_after == b"not a sqlite database"
     assert note_after == note_before
@@ -260,5 +283,55 @@ def test_recovery_plan_does_not_rebuild_for_non_corruption_database_error(
 
     assert status == OperationalReadinessStatus.BLOCKED
     assert automatic is False
-    assert diagnosis == ["database_unreachable"]
-    assert next_actions == ["inspect_database"]
+    assert diagnosis == ("database_unreachable",)
+    assert next_actions == ("inspect_database",)
+
+
+def test_recovery_plan_never_maps_reconciliation_only_issues_to_database_rebuild(
+    tmp_path: Path,
+) -> None:
+    """Reconciliation blockers require manual diagnosis, not destructive recovery."""
+
+    async def scenario() -> tuple[str, bool, list[str], list[str], list[str]]:
+        database = Database(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'healthy.db'}",
+            create_schema=True,
+        )
+        await database.initialize()
+        _write_vault_note(tmp_path)
+        try:
+            service = RecoveryPlanService(
+                database=database,
+                context_service=_FakeContextService(),
+                obsidian_service=_FakeObsidianService(tmp_path / "vault"),
+                reconciliation_service=_FakeReconciliationService(),
+            )
+
+            plan = await service.plan(
+                RecoveryPlanRequest(
+                    trigger="manual",
+                    actor="pytest",
+                    idempotency_key="reconciliation-only-issue",
+                )
+            )
+            return (
+                plan.status,
+                plan.automatic_execution_allowed,
+                [step.code for step in plan.steps],
+                plan.next_actions,
+                plan.blocked_reasons,
+            )
+        finally:
+            await database.shutdown()
+
+    status, automatic, steps, next_actions, blocked_reasons = anyio.run(scenario)
+
+    assert status == OperationalReadinessStatus.BLOCKED
+    assert automatic is False
+    assert steps == ["inspect_memory_reconciliation"]
+    assert next_actions == (
+        "inspect_memory_reconciliation_failures",
+        "preview_existing_memory_reconciliation",
+        "review_memory_reconciliation",
+    )
+    assert blocked_reasons == ()

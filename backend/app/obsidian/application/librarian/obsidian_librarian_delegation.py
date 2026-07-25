@@ -87,7 +87,7 @@ def _delegate_command(
         librarian_model=None,
         librarian_role_prompt=None,
         max_librarian_agents=1,
-        routing_specialties=["obsidian", "graph", "oauth", "gpt"],
+        routing_specialties=("obsidian", "graph", "oauth", "gpt"),
         source_refs=_delegate_source_refs(response),
         librarian_brief=_delegate_brief(payload, response),
     )

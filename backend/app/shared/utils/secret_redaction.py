@@ -26,7 +26,7 @@ class SecretRedactionResult:
     blocked: bool
     redacted_content: str
     redaction_count: int
-    warnings: list[str]
+    warnings: tuple[str, ...]
 
 
 def redact_secret_text(content: str) -> SecretRedactionResult:
@@ -44,7 +44,7 @@ def redact_secret_text(content: str) -> SecretRedactionResult:
             blocked=True,
             redacted_content=BLOCKED_SECRET_PLACEHOLDER,
             redaction_count=1,
-            warnings=["high-risk secret content cannot be saved raw"],
+            warnings=("high-risk secret content cannot be saved raw",),
         )
 
     redacted, assignment_count = TOKEN_ASSIGNMENT_PATTERN.subn(
@@ -59,7 +59,7 @@ def redact_secret_text(content: str) -> SecretRedactionResult:
         blocked=False,
         redacted_content=redacted,
         redaction_count=redaction_count,
-        warnings=warnings,
+        warnings=tuple(warnings),
     )
 
 

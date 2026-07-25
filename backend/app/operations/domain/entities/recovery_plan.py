@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
+from types import MappingProxyType
 
 from app.operations.domain.entities.operational_readiness import (
     OperationalReadinessSnapshot,
@@ -24,7 +26,15 @@ class RecoverySourceSnapshot:
     representative_sha256: str | None
     disk_free_bytes: int | None
     access_error: str | None = None
-    markdown_manifest: dict[str, str] = field(default_factory=dict)
+    markdown_manifest: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Freeze the source manifest mapping."""
+        object.__setattr__(
+            self,
+            "markdown_manifest",
+            MappingProxyType(dict(self.markdown_manifest)),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,13 +72,30 @@ class RecoveryPlan:
     dry_run: bool
     deletion_performed: bool
     automatic_execution_allowed: bool
-    diagnosis: list[str]
-    blocked_reasons: list[str]
+    diagnosis: tuple[str, ...]
+    blocked_reasons: tuple[str, ...]
     source_snapshot: RecoverySourceSnapshot
-    quarantine_artifacts: list[RecoveryQuarantineArtifactPlan]
-    steps: list[RecoveryPlanStep]
-    estimated_reindex_scope: dict[str, int | str | None]
-    service_impact: list[str]
-    next_actions: list[str]
+    quarantine_artifacts: tuple[RecoveryQuarantineArtifactPlan, ...]
+    steps: tuple[RecoveryPlanStep, ...]
+    estimated_reindex_scope: Mapping[str, int | str | None]
+    service_impact: tuple[str, ...]
+    next_actions: tuple[str, ...]
     readiness: OperationalReadinessSnapshot
-    warnings: list[str] = field(default_factory=list)
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize recovery plan collections to immutable values."""
+        object.__setattr__(self, "diagnosis", tuple(self.diagnosis))
+        object.__setattr__(self, "blocked_reasons", tuple(self.blocked_reasons))
+        object.__setattr__(
+            self, "quarantine_artifacts", tuple(self.quarantine_artifacts)
+        )
+        object.__setattr__(self, "steps", tuple(self.steps))
+        object.__setattr__(
+            self,
+            "estimated_reindex_scope",
+            MappingProxyType(dict(self.estimated_reindex_scope)),
+        )
+        object.__setattr__(self, "service_impact", tuple(self.service_impact))
+        object.__setattr__(self, "next_actions", tuple(self.next_actions))
+        object.__setattr__(self, "warnings", tuple(self.warnings))

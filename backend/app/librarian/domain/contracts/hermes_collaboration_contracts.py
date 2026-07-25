@@ -27,9 +27,13 @@ class HermesLibrarianAskCommand:
     librarian_model: str | None
     librarian_role_prompt: str | None
     max_librarian_agents: int | None
-    routing_specialties: list[str]
+    routing_specialties: tuple[str, ...]
     source_refs: tuple[SourceRef, ...] = ()
     librarian_brief: str | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize routing specialties to an immutable sequence."""
+        object.__setattr__(self, "routing_specialties", tuple(self.routing_specialties))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -41,7 +45,11 @@ class LibrarianDelegateResult:
     status: LibrarianDelegateStatus
     delegate_type: LibrarianDelegateKind
     summary: str
-    matched_specialties: list[str]
+    matched_specialties: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Normalize delegate specialty matches to an immutable sequence."""
+        object.__setattr__(self, "matched_specialties", tuple(self.matched_specialties))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -60,12 +68,19 @@ class HermesLibrarianAskResult:
     librarian_model: str | None
     librarian_role_prompt: str | None
     max_librarian_agents: int | None
-    route_preview: list[str]
-    selected_profiles: list[str]
-    matched_specialties: list[str]
+    route_preview: tuple[str, ...]
+    selected_profiles: tuple[str, ...]
+    matched_specialties: tuple[str, ...]
     quality_review_added: bool
     routing_reason: str
-    delegates: list[LibrarianDelegateResult]
+    delegates: tuple[LibrarianDelegateResult, ...]
+
+    def __post_init__(self) -> None:
+        """Normalize collaboration route and delegate collections."""
+        object.__setattr__(self, "route_preview", tuple(self.route_preview))
+        object.__setattr__(self, "selected_profiles", tuple(self.selected_profiles))
+        object.__setattr__(self, "matched_specialties", tuple(self.matched_specialties))
+        object.__setattr__(self, "delegates", tuple(self.delegates))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

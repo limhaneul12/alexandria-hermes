@@ -47,7 +47,7 @@ class ObsidianNoteIndex:
     alexandria_type: AlexandriaNoteType
     title: str
     status: str
-    tags: list[str]
+    tags: tuple[str, ...]
     project: str | None
     source: str | None
     content_hash: str
@@ -55,8 +55,14 @@ class ObsidianNoteIndex:
     body: str
     size_bytes: int
     modified_at: datetime
-    chunks: list[ObsidianChunkIndex]
-    edges: list[ObsidianEdgeIndex] = field(default_factory=list)
+    chunks: tuple[ObsidianChunkIndex, ...]
+    edges: tuple[ObsidianEdgeIndex, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize indexed-note collections to immutable values."""
+        object.__setattr__(self, "tags", tuple(self.tags))
+        object.__setattr__(self, "chunks", tuple(self.chunks))
+        object.__setattr__(self, "edges", tuple(self.edges))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -66,9 +72,20 @@ class ObsidianSearchQuery:
     query: str
     limit: int = 10
     alexandria_type: AlexandriaNoteType | None = None
-    excluded_alexandria_types: list[AlexandriaNoteType] = field(default_factory=list)
+    excluded_alexandria_types: tuple[AlexandriaNoteType, ...] = field(
+        default_factory=tuple
+    )
     project: str | None = None
-    tags: list[str] = field(default_factory=list)
+    tags: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize search filters to immutable values."""
+        object.__setattr__(
+            self,
+            "excluded_alexandria_types",
+            tuple(self.excluded_alexandria_types),
+        )
+        object.__setattr__(self, "tags", tuple(self.tags))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -80,11 +97,15 @@ class ObsidianSaveNote:
     alexandria_type: AlexandriaNoteType
     note_id: str | None = None
     relative_path: str | None = None
-    tags: list[str] = field(default_factory=list)
+    tags: tuple[str, ...] = field(default_factory=tuple)
     status: str = "active"
     project: str | None = None
     source: str = "mcp"
     frontmatter: JSONObject = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Normalize note tags to an immutable sequence."""
+        object.__setattr__(self, "tags", tuple(self.tags))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -152,17 +173,25 @@ class ObsidianVaultMoveRequest:
 class ObsidianVaultMovePlanRequest:
     """Dry-run safe move planning request."""
 
-    moves: list[ObsidianVaultMoveRequest]
+    moves: tuple[ObsidianVaultMoveRequest, ...]
+
+    def __post_init__(self) -> None:
+        """Normalize planned moves to an immutable sequence."""
+        object.__setattr__(self, "moves", tuple(self.moves))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianVaultMoveApplyRequest:
     """Safe move application request."""
 
-    moves: list[ObsidianVaultMoveRequest]
+    moves: tuple[ObsidianVaultMoveRequest, ...]
     report_path: str | None = None
     reindex: bool = True
     verification_query: str | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize applied moves to an immutable sequence."""
+        object.__setattr__(self, "moves", tuple(self.moves))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -173,12 +202,22 @@ class ObsidianLibrarianAsk:
     active_note_path: str | None = None
     selection: str | None = None
     project: str | None = None
-    preferred_alexandria_types: list[AlexandriaNoteType] = field(default_factory=list)
+    preferred_alexandria_types: tuple[AlexandriaNoteType, ...] = field(
+        default_factory=tuple
+    )
     max_source_refs: int = 12
     save_transcript: bool = False
     delegate_to_librarian: bool = False
     provider_id: str | None = None
     profile_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize preferred note types to an immutable sequence."""
+        object.__setattr__(
+            self,
+            "preferred_alexandria_types",
+            tuple(self.preferred_alexandria_types),
+        )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -193,4 +232,8 @@ class ObsidianLibrarianWorkflowResume:
     """Resume request with approved workflow action ids."""
 
     thread_id: str
-    approved_actions: list[str] = field(default_factory=list)
+    approved_actions: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize approved action identifiers to an immutable sequence."""
+        object.__setattr__(self, "approved_actions", tuple(self.approved_actions))

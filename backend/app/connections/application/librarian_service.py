@@ -9,6 +9,12 @@ from app.connections.application.librarians.credential_policy import (
     ensure_provider_config_has_no_credentials,
     openai_codex_oauth_config_has_protected_change,
 )
+from app.connections.application.librarians.provider_connection_test_service import (
+    ProviderConnectionTestService,
+)
+from app.connections.application.librarians.provider_credential_lifecycle import (
+    ProviderCredentialLifecycle,
+)
 from app.connections.application.librarians.provider_payload_mapper import (
     build_provider_payload,
 )
@@ -43,18 +49,6 @@ from app.shared.exceptions import (
 )
 from app.shared.types.extra_types import JSONObject
 from app.shared.types.types_convert_utils import enum_value, now_utc
-
-_ALL_PROVIDER_SECRET_KEYS = tuple(ProviderSecretKey)
-_OAUTH_PROVIDER_SECRET_KEYS = (
-    ProviderSecretKey.OAUTH_ACCESS_TOKEN,
-    ProviderSecretKey.OAUTH_REFRESH_TOKEN,
-    ProviderSecretKey.OAUTH_EXPIRES_AT,
-    ProviderSecretKey.OAUTH_TOKEN_TYPE,
-    ProviderSecretKey.OAUTH_SCOPE,
-    ProviderSecretKey.OAUTH_DEVICE_CODE,
-    ProviderSecretKey.OAUTH_DEVICE_EXPIRES_AT,
-    ProviderSecretKey.OAUTH_POLL_INTERVAL_SECONDS,
-)
 
 
 def _provider_identity(row: LibrarianProvider) -> tuple[ProviderType, AuthType]:
@@ -104,7 +98,7 @@ def _provider_update_values(
 
 
 class LibrarianService:
-    """Service to orchestrate librarian provider settings and usage."""
+    """Expose provider CRUD over focused credential and test collaborators."""
 
     def __init__(
         self,
@@ -122,6 +116,12 @@ class LibrarianService:
         self.provider_repo = provider_repo
         self.secret_repo = secret_repo
         self.client_factory = client_factory
+        self._credential_lifecycle = ProviderCredentialLifecycle(secret_repo)
+        self._connection_test_service = ProviderConnectionTestService(
+            provider_repository=provider_repo,
+            credential_repository=secret_repo,
+            client_factory=client_factory,
+        )
 
     async def create_provider(
         self,
@@ -289,7 +289,7 @@ class LibrarianService:
                 row.config,
                 payload["config"],
             )
-            and await self._oauth_secret_exists(provider_id)
+            and await self._credential_lifecycle.oauth_credentials_exist(provider_id)
         ):
             raise ConnectionsProviderUnsupportedError(
                 "OAuth endpoint config cannot change while OAuth tokens are stored"
@@ -301,7 +301,7 @@ class LibrarianService:
         )
 
         if identity_changed:
-            await self._delete_all_provider_secrets(provider_id)
+            await self._credential_lifecycle.delete_all(provider_id)
 
         if auth_type is AuthType.API_KEY and api_key is not None:
             await self.secret_repo.set_secret(
@@ -318,17 +318,6 @@ class LibrarianService:
 
         return build_provider_payload(updated)
 
-    async def _oauth_secret_exists(self, provider_id: str) -> bool:
-        for key in _OAUTH_PROVIDER_SECRET_KEYS:
-            secret = await self.secret_repo.resolve(provider_id, key.value)
-            if secret:
-                return True
-        return False
-
-    async def _delete_all_provider_secrets(self, provider_id: str) -> None:
-        for key in _ALL_PROVIDER_SECRET_KEYS:
-            await self.secret_repo.delete_for_provider(provider_id, key.value)
-
     async def delete_provider(self, provider_id: str) -> None:
         """Delete provider and all secrets.
 
@@ -341,7 +330,7 @@ class LibrarianService:
         row = await self.provider_repo.get(provider_id)
         if row is None:
             raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
-        await self._delete_all_provider_secrets(provider_id)
+        await self._credential_lifecycle.delete_all(provider_id)
         await self.provider_repo.delete(provider_id)
 
     async def test_provider(
@@ -358,12 +347,4 @@ class LibrarianService:
         Returns:
             Test result map.
         """
-        model = await self.provider_repo.get(provider_id)
-        if model is None:
-            raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
-        result = await self.client_factory.test_connection(
-            provider=model,
-            secret_resolver=self.secret_repo,
-            test_query=test_query,
-        )
-        return result.as_public_dict()
+        return await self._connection_test_service.test(provider_id, test_query)

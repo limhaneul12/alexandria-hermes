@@ -11,6 +11,7 @@ from app.librarian.domain.types.agent_payload_types import AgentUpdatePayload
 from app.shared.schemas.common_schemas import StrictRootSchemaModel, StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
 from app.shared.serialization.model_codec import schema_payload
+from app.shared.types.extra_types import JSONValue
 
 _NON_NULLABLE_PATCH_FIELDS: Final[tuple[str, ...]] = (
     "name",
@@ -167,8 +168,7 @@ class AgentResponse(StrictSchemaModel):
 
     @field_validator("librarian_specialties", mode="before")
     @classmethod
-    # Broad type justified: Pydantic before validators receive raw boundary input.
-    def parse_librarian_specialties(cls, value: object) -> object:
+    def parse_librarian_specialties(cls, value: JSONValue) -> JSONValue:
         """Normalize legacy null specialties to an empty list.
 
         Args:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import cast
 
 from app.obsidian.domain.entities.obsidian_note import (
@@ -29,7 +30,7 @@ def note_from_model(model: ObsidianFileORM) -> ObsidianNote:
         alexandria_type=AlexandriaNoteType(model.alexandria_type),
         title=model.title,
         status=model.status,
-        tags=list(model.tags),
+        tags=tuple(model.tags),
         project=model.project,
         source=model.source,
         content_hash=model.content_hash,
@@ -96,7 +97,7 @@ def _relation_weight(relation: ObsidianRelationType) -> float:
     }[relation]
 
 
-def matches_tags(tags: list[str], required: list[str]) -> bool:
+def matches_tags(tags: Sequence[str], required: Sequence[str]) -> bool:
     if not required:
         return True
     tag_set = set(tags)

@@ -243,7 +243,7 @@ def test_context_repository_searches_accesses_and_archives_seeded_contexts(
         assert recent_events[0].access_method is ContextAccessMethod.RECALL
         assert recent_events[1].source_surface == "context-detail"
         assert archived.is_archived is True
-        assert after_archive.matches == []
+        assert after_archive.matches == ()
 
     anyio.run(scenario)
 
@@ -780,11 +780,11 @@ semantic-target was stored without an embedding.
                 limit=1,
             )
 
-        assert before.matches == []
+        assert before.matches == ()
         assert result.scanned >= 1
         assert result.updated >= 1
         assert result.skipped == 0
-        assert result.warnings == []
+        assert result.warnings == ()
         assert [match.context.id for match in after.matches] == [target.id]
         assert after.matches[0].vector_score is not None
 

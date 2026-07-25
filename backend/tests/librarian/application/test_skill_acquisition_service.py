@@ -1069,7 +1069,7 @@ def test_skill_acquisition_completion_records_artifact_without_context_write(
     assert result_available is True
     assert skill_id is None
     assert context_id is None
-    assert evidence_urls == ["https://example.com/http-fake"]
+    assert evidence_urls == ("https://example.com/http-fake",)
 
 
 def _fake_skill_note(
@@ -1217,7 +1217,7 @@ def test_obsidian_skill_artifact_publisher_saves_draft_skill_note() -> None:
     assert payload.status == "draft"
     assert payload.project == "alexandria-hermes"
     assert payload.source == "skill_acquisition"
-    assert payload.tags == ["skill-acquisition", "testing"]
+    assert payload.tags == ("skill-acquisition", "testing")
     expected_sections = [
         "## 목적",
         "## 언제 사용해야 하는가",
@@ -1334,9 +1334,9 @@ def test_completed_skill_artifact_is_rediscovered_by_search_first_for_reuse() ->
         "Open and apply existing skill note: Alexandria/Skills/Drafts/HTTP Boundary Fake.md",
         "Do not start librarian acquisition for this capability unless reuse fails.",
     ]
-    assert result.gaps == [
-        "skill status is draft; human review is required before reuse"
-    ]
+    assert result.gaps == (
+        "skill status is draft; human review is required before reuse",
+    )
 
 
 def test_obsidian_skill_artifact_publisher_requires_evidence_for_source_summary() -> (

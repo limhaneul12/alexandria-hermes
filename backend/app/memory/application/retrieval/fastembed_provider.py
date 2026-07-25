@@ -17,7 +17,11 @@ if TYPE_CHECKING:
 
 
 class FastEmbedEmbeddingProvider(EmbeddingProvider):
-    """Lazy FastEmbed wrapper that does not download models until used."""
+    """Lazy FastEmbed wrapper that does not download models until used.
+
+    Provider metadata is exposed through read-only properties; the only behavioral
+    operations are document and query embedding over one lazily initialized model.
+    """
 
     def __init__(
         self,

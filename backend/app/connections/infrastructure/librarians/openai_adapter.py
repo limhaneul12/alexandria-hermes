@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from app.connections.domain.event_enum.provider_enums import ProviderType
 from app.connections.infrastructure.librarians.contracts import (
@@ -21,8 +22,17 @@ class OpenAIClientConfig:
 
     api_key: str
     base_url: str | None = None
-    default_headers: dict[str, str] | None = None
+    default_headers: Mapping[str, str] | None = None
     timeout: float | None = None
+
+    def __post_init__(self) -> None:
+        """Freeze optional SDK headers after config construction."""
+        if self.default_headers is not None:
+            object.__setattr__(
+                self,
+                "default_headers",
+                MappingProxyType(dict(self.default_headers)),
+            )
 
 
 OpenAIClientBuilder = Callable[[OpenAIClientConfig], OpenAI]
@@ -98,7 +108,9 @@ def build_openai_client(config: OpenAIClientConfig) -> OpenAI:
     client = OpenAI(
         api_key=config.api_key,
         base_url=config.base_url,
-        default_headers=config.default_headers,
+        default_headers=(
+            None if config.default_headers is None else dict(config.default_headers)
+        ),
         timeout=config.timeout,
     )
     return client

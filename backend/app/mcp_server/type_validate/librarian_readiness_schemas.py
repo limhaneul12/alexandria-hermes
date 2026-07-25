@@ -30,7 +30,7 @@ class RagStatusPayload(LibrarianReadinessPayload):
 
     @field_validator("warnings", mode="before")
     @classmethod
-    def _filter_warning_strings(cls, value: object) -> object:
+    def _filter_warning_strings(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, str)]
         return value
@@ -73,14 +73,14 @@ class CurrentCompactPayload(LibrarianReadinessPayload):
 
     @field_validator("warnings", mode="before")
     @classmethod
-    def _filter_warning_strings(cls, value: object) -> object:
+    def _filter_warning_strings(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, str)]
         return value
 
     @field_validator("source_refs", mode="before")
     @classmethod
-    def _filter_source_ref_objects(cls, value: object) -> object:
+    def _filter_source_ref_objects(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
         return value
@@ -123,7 +123,7 @@ class CurrentCompactReviewScorePayload(LibrarianReadinessPayload):
 
     @field_validator("reasons", mode="before")
     @classmethod
-    def _filter_reason_strings(cls, value: object) -> object:
+    def _filter_reason_strings(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, str)]
         return value
@@ -150,14 +150,14 @@ class CurrentCompactReviewPayload(LibrarianReadinessPayload):
         mode="before",
     )
     @classmethod
-    def _filter_strings(cls, value: object) -> object:
+    def _filter_strings(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, str)]
         return value
 
     @field_validator("scores", mode="before")
     @classmethod
-    def _filter_score_objects(cls, value: object) -> object:
+    def _filter_score_objects(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
         return value
@@ -178,7 +178,7 @@ class ReviewQueuePayload(LibrarianReadinessPayload):
 
     @field_validator("items", mode="before")
     @classmethod
-    def _filter_item_objects(cls, value: object) -> object:
+    def _filter_item_objects(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
         return value
@@ -248,14 +248,14 @@ class ReadinessSummaryPayload(LibrarianReadinessPayload):
 
     @field_validator("warnings", mode="before")
     @classmethod
-    def _filter_warning_strings(cls, value: object) -> object:
+    def _filter_warning_strings(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, str)]
         return value
 
     @field_validator("next_actions", mode="before")
     @classmethod
-    def _filter_next_action_objects(cls, value: object) -> object:
+    def _filter_next_action_objects(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
         return value

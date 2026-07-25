@@ -15,6 +15,13 @@ class DependencyHealthStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class PlatformDependency(StrEnum):
+    """Platform dependency identifiers managed by lifecycle state."""
+
+    REDIS = "redis"
+    DATABASE = "database"
+
+
 def dependency_is_ready(status: DependencyHealthStatus) -> bool:
     """Check if a dependency status permits readiness.
 

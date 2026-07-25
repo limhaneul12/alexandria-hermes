@@ -2,11 +2,59 @@
 
 from __future__ import annotations
 
+from app.connections.infrastructure.librarians.memory_relation_proposal_provider import (
+    ConfiguredMemoryRelationProposalProvider,
+)
 from app.memory.application.context_service import ContextService
 from app.memory.application.integration.obsidian_canonical_context_gateway import (
     ObsidianCanonicalContextGateway,
 )
 from app.memory.application.memory_compact_service import MemoryCompactService
+from app.memory.application.reconciliation.context_memory_candidate_recall_source import (
+    ContextMemoryCandidateRecallSource,
+)
+from app.memory.application.reconciliation.memory_candidate_recall_service import (
+    MemoryCandidateRecallService,
+)
+from app.memory.application.reconciliation.memory_candidate_service import (
+    MemoryCandidateService,
+)
+from app.memory.application.reconciliation.memory_compact_reconciliation_policy import (
+    MemoryCompactReconciliationPolicy,
+)
+from app.memory.application.reconciliation.memory_compact_reconciliation_service import (
+    MemoryCompactReconciliationService,
+)
+from app.memory.application.reconciliation.memory_conflict_service import (
+    MemoryConflictService,
+)
+from app.memory.application.reconciliation.memory_existing_reconciliation_service import (
+    MemoryExistingReconciliationService,
+)
+from app.memory.application.reconciliation.memory_reconciliation_apply_service import (
+    MemoryReconciliationApplyService,
+)
+from app.memory.application.reconciliation.memory_reconciliation_plan_service import (
+    MemoryReconciliationPlanService,
+)
+from app.memory.application.reconciliation.memory_reconciliation_preview_service import (
+    MemoryReconciliationPreviewService,
+)
+from app.memory.application.reconciliation.memory_reconciliation_query_service import (
+    MemoryReconciliationQueryService,
+)
+from app.memory.application.reconciliation.memory_reconciliation_readiness_service import (
+    MemoryReconciliationReadinessService,
+)
+from app.memory.application.reconciliation.memory_relation_classifier import (
+    MemoryRelationClassifier,
+)
+from app.memory.application.reconciliation.memory_temporal_recall_service import (
+    MemoryTemporalRecallService,
+)
+from app.memory.application.reconciliation.obsidian_memory_canonical_mutation_gateway import (
+    ObsidianMemoryCanonicalMutationGateway,
+)
 from app.memory.application.retrieval.embedding_factory import create_embedding_provider
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
@@ -16,6 +64,12 @@ from app.memory.infrastructure.repositories.contexts.obsidian_search_source impo
 )
 from app.memory.infrastructure.repositories.memory_compact_repository import (
     ObsidianMemoryCompactRepository,
+)
+from app.memory.infrastructure.repositories.memory_reconciliation_readiness_repository import (
+    SqlAlchemyMemoryReconciliationReadinessRepository,
+)
+from app.memory.infrastructure.repositories.memory_reconciliation_repository import (
+    SqlAlchemyMemoryReconciliationRepository,
 )
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
@@ -34,6 +88,8 @@ class MemoryContainer(containers.DeclarativeContainer):
 
     db_session = providers.Dependency(instance_of=AsyncSession)
     app_config = providers.Dependency(instance_of=AppConfig)
+    librarian_provider_repo = providers.Dependency()
+    provider_secret_repo = providers.Dependency()
     embedding_provider = providers.Factory(
         create_embedding_provider,
         vector_enabled=app_config.provided.rag_vector_enabled,
@@ -82,4 +138,89 @@ class MemoryContainer(containers.DeclarativeContainer):
     memory_compact_service = providers.Factory(
         MemoryCompactService,
         repository=memory_compact_repo,
+    )
+    reconciliation_readiness_repo = providers.Factory(
+        SqlAlchemyMemoryReconciliationReadinessRepository,
+        session=db_session,
+    )
+    reconciliation_repo = providers.Factory(
+        SqlAlchemyMemoryReconciliationRepository,
+        session=db_session,
+    )
+    reconciliation_candidate_service = providers.Factory(MemoryCandidateService)
+    reconciliation_recall_source = providers.Factory(
+        ContextMemoryCandidateRecallSource,
+        search_service=context_service,
+    )
+    reconciliation_recall_service = providers.Factory(
+        MemoryCandidateRecallService,
+        recall_source=reconciliation_recall_source,
+        repository=reconciliation_repo,
+    )
+    reconciliation_model_proposal_provider = providers.Factory(
+        ConfiguredMemoryRelationProposalProvider,
+        provider_repo=librarian_provider_repo,
+        secret_repo=provider_secret_repo,
+        provider_id=app_config.provided.memory_reconciliation_provider_id,
+        default_model=app_config.provided.memory_reconciliation_model,
+        timeout_seconds=(
+            app_config.provided.memory_reconciliation_provider_timeout_seconds
+        ),
+    )
+    reconciliation_classifier = providers.Factory(
+        MemoryRelationClassifier,
+        proposal_provider=reconciliation_model_proposal_provider,
+    )
+    reconciliation_plan_service = providers.Factory(MemoryReconciliationPlanService)
+    reconciliation_preview_service = providers.Factory(
+        MemoryReconciliationPreviewService,
+        candidate_service=reconciliation_candidate_service,
+        recall_service=reconciliation_recall_service,
+        classifier=reconciliation_classifier,
+        plan_service=reconciliation_plan_service,
+        repository=reconciliation_repo,
+    )
+    reconciliation_canonical_gateway = providers.Factory(
+        ObsidianMemoryCanonicalMutationGateway,
+        service=obsidian_service,
+    )
+    reconciliation_apply_service = providers.Factory(
+        MemoryReconciliationApplyService,
+        repository=reconciliation_repo,
+        canonical_gateway=reconciliation_canonical_gateway,
+    )
+    reconciliation_query_service = providers.Factory(
+        MemoryReconciliationQueryService,
+        repository=reconciliation_repo,
+    )
+    memory_temporal_recall_service = providers.Factory(
+        MemoryTemporalRecallService,
+        context_service=context_service,
+        repository=reconciliation_repo,
+    )
+    memory_compact_reconciliation_policy = providers.Factory(
+        MemoryCompactReconciliationPolicy
+    )
+    memory_compact_reconciliation_service = providers.Factory(
+        MemoryCompactReconciliationService,
+        temporal_recall_service=memory_temporal_recall_service,
+        policy=memory_compact_reconciliation_policy,
+    )
+    memory_existing_reconciliation_service = providers.Factory(
+        MemoryExistingReconciliationService,
+        context_service=context_service,
+        candidate_service=reconciliation_candidate_service,
+        recall_service=reconciliation_recall_service,
+        classifier=reconciliation_classifier,
+        plan_service=reconciliation_plan_service,
+        repository=reconciliation_repo,
+    )
+    memory_reconciliation_readiness_service = providers.Factory(
+        MemoryReconciliationReadinessService,
+        repository=reconciliation_readiness_repo,
+        context_service=context_service,
+    )
+    memory_conflict_service = providers.Factory(
+        MemoryConflictService,
+        repository=reconciliation_repo,
     )

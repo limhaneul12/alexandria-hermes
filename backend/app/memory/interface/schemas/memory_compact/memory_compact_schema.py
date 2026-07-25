@@ -75,7 +75,9 @@ class MemoryCompactCreateRequest(StrictSchemaModel):
             covered_to=self.covered_to,
             markdown_body=self.markdown_body,
             status=MemoryCompactStatus(self.status),
-            source_refs=[source_ref.to_create() for source_ref in self.source_refs],
+            source_refs=tuple(
+                source_ref.to_create() for source_ref in self.source_refs
+            ),
         )
 
 

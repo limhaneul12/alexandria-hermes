@@ -72,6 +72,29 @@ def test_app_config_defaults_mcp_auth_to_no_auth() -> None:
     assert config.mcp_oauth_required_scopes() == ("alexandria:mcp",)
 
 
+def test_app_config_keeps_memory_relation_model_provider_opt_in() -> None:
+    """Memory relation model execution must remain disabled until configured."""
+    config = AppConfig(_env_file=None)
+
+    assert config.memory_reconciliation_provider_id is None
+    assert config.memory_reconciliation_model == "gpt-5.5"
+    assert config.memory_reconciliation_provider_timeout_seconds == 30.0
+
+
+def test_app_config_normalizes_memory_relation_provider_settings() -> None:
+    """Only non-secret provider selection settings belong in AppConfig."""
+    config = AppConfig(
+        _env_file=None,
+        memory_reconciliation_provider_id=" openai-memory ",
+        memory_reconciliation_model=" provider-fallback ",
+        memory_reconciliation_provider_timeout_seconds=15.5,
+    )
+
+    assert config.memory_reconciliation_provider_id == "openai-memory"
+    assert config.memory_reconciliation_model == "provider-fallback"
+    assert config.memory_reconciliation_provider_timeout_seconds == 15.5
+
+
 def test_app_config_rejects_incomplete_mcp_oauth_config() -> None:
     """OAuth mode should fail closed when issuer metadata is missing."""
     with pytest.raises(ValueError, match="MCP OAuth mode requires"):

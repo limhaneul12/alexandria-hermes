@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timedelta
-from typing import Final
+from datetime import datetime
 
 from app.connections.application.librarians.oauth_client import OAuthProviderClient
+from app.connections.application.librarians.oauth_connection_status_service import (
+    LibrarianOAuthConnectionStatusService,
+)
+from app.connections.application.librarians.oauth_poll_result_handler import (
+    LibrarianOAuthPollResultHandler,
+)
+from app.connections.application.librarians.oauth_secret_store import (
+    DEVICE_FLOW_SECRET_KEYS,
+    LibrarianOAuthSecretStore,
+)
+from app.connections.application.librarians.oauth_status_evaluator import (
+    LibrarianOAuthStatusEvaluator,
+)
 from app.connections.domain.contracts.librarian_oauth_contracts import (
-    OAuthDeviceAuthorization,
     OAuthPollResult,
-    OAuthTokenSet,
 )
 from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.event_enum.provider_enums import (
@@ -37,22 +47,17 @@ from app.shared.types.types_convert_utils import (
     aware_utc_datetime,
     enum_value,
     now_utc,
-    optional_iso_utc_datetime,
-)
-
-OAUTH_REFRESH_SKEW: Final[timedelta] = timedelta(seconds=120)
-_DEVICE_FLOW_SECRET_KEYS: Final[tuple[ProviderSecretKey, ...]] = (
-    ProviderSecretKey.OAUTH_DEVICE_CODE,
-    ProviderSecretKey.OAUTH_DEVICE_EXPIRES_AT,
-    ProviderSecretKey.OAUTH_POLL_INTERVAL_SECONDS,
-)
-_ALL_PROVIDER_SECRET_KEYS: Final[tuple[ProviderSecretKey, ...]] = tuple(
-    ProviderSecretKey
 )
 
 
 class LibrarianOAuthService:
-    """Orchestrate OAuth lifecycle for Codex/GPT librarian providers."""
+    """Orchestrate OAuth lifecycle for Codex/GPT librarian providers.
+
+    The five public use cases, provider eligibility check, and poll error guard
+    remain together because they form one external OAuth state machine. Secret
+    persistence, status policy, status queries, and poll result application are
+    delegated to focused collaborators.
+    """
 
     def __init__(
         self,
@@ -71,6 +76,17 @@ class LibrarianOAuthService:
         """
         self.provider_repo = provider_repo
         self.secret_repo = secret_repo
+        self._secret_store = LibrarianOAuthSecretStore(secret_repo)
+        self._status_evaluator = LibrarianOAuthStatusEvaluator()
+        self._connection_status_service = LibrarianOAuthConnectionStatusService(
+            secret_store=self._secret_store,
+            evaluator=self._status_evaluator,
+            now_provider=now_provider,
+        )
+        self._poll_result_handler = LibrarianOAuthPollResultHandler(
+            secret_store=self._secret_store,
+            evaluator=self._status_evaluator,
+        )
         self.oauth_client = oauth_client
         self.now_provider = now_provider
 
@@ -85,7 +101,7 @@ class LibrarianOAuthService:
         """
         provider = await self._load_codex_oauth_provider(provider_id)
         authorization = await self.oauth_client.start_device_authorization(provider)
-        await self._store_device_authorization(provider.id, authorization)
+        await self._secret_store.store_device_authorization(provider.id, authorization)
         payload = LibrarianOAuthStartPayload(
             provider_id=provider.id,
             status=OAuthPollStatus.PENDING,
@@ -107,7 +123,7 @@ class LibrarianOAuthService:
             LibrarianOAuthStatusPayload: Public connection status.
         """
         provider = await self._load_codex_oauth_provider(provider_id)
-        device_code = await self._resolve_secret(
+        device_code = await self._secret_store.resolve(
             provider.id,
             ProviderSecretKey.OAUTH_DEVICE_CODE,
         )
@@ -116,10 +132,14 @@ class LibrarianOAuthService:
                 "OAuth device flow has not been started"
             )
 
-        device_expires_at = await self._device_expires_at(provider.id)
-        if device_expires_at is not None and device_expires_at <= self._now():
-            await self._delete_secrets(provider.id, _DEVICE_FLOW_SECRET_KEYS)
-            return self._status_payload(
+        device_expires_at = await self._secret_store.expires_at(
+            provider.id, ProviderSecretKey.OAUTH_DEVICE_EXPIRES_AT
+        )
+        if device_expires_at is not None and device_expires_at <= aware_utc_datetime(
+            self.now_provider()
+        ):
+            await self._secret_store.delete(provider.id, DEVICE_FLOW_SECRET_KEYS)
+            return self._status_evaluator.payload(
                 provider_id=provider.id,
                 status=OAuthConnectionStatus.EXPIRED,
                 connected=False,
@@ -145,7 +165,7 @@ class LibrarianOAuthService:
             LibrarianOAuthStatusPayload: Public connection status.
         """
         provider = await self._load_codex_oauth_provider(provider_id)
-        payload = await self._current_status(provider.id)
+        payload = await self._connection_status_service.current_status(provider.id)
         return payload
 
     async def refresh_if_needed(
@@ -161,7 +181,9 @@ class LibrarianOAuthService:
             LibrarianOAuthStatusPayload: Public status after refresh evaluation.
         """
         provider = await self._load_codex_oauth_provider(provider_id)
-        current_status = await self._current_status(provider.id)
+        current_status = await self._connection_status_service.current_status(
+            provider.id
+        )
         if current_status["status"] is OAuthConnectionStatus.CONNECTED:
             return current_status
 
@@ -172,12 +194,12 @@ class LibrarianOAuthService:
         }:
             return current_status
 
-        refresh_token = await self._resolve_secret(
+        refresh_token = await self._secret_store.resolve(
             provider.id,
             ProviderSecretKey.OAUTH_REFRESH_TOKEN,
         )
         if refresh_token is None:
-            return self._status_payload(
+            return self._status_evaluator.payload(
                 provider_id=provider.id,
                 status=OAuthConnectionStatus.MISSING_REFRESH_TOKEN,
                 connected=False,
@@ -187,8 +209,8 @@ class LibrarianOAuthService:
             )
 
         token_set = await self.oauth_client.refresh_token(provider, refresh_token)
-        await self._store_token_set(provider.id, token_set)
-        payload = self._status_payload(
+        await self._secret_store.store_token_set(provider.id, token_set)
+        payload = self._status_evaluator.payload(
             provider_id=provider.id,
             status=OAuthConnectionStatus.CONNECTED,
             connected=True,
@@ -207,12 +229,16 @@ class LibrarianOAuthService:
         Returns:
             None.
         """
-        await self._delete_secrets(provider_id, _ALL_PROVIDER_SECRET_KEYS)
+        await self._secret_store.delete_all(provider_id)
 
     async def _load_codex_oauth_provider(self, provider_id: str) -> LibrarianProvider:
         row = await self.provider_repo.get(provider_id)
         if row is None:
-            row = await self._provider_by_name(provider_id)
+            providers = await self.provider_repo.list_all()
+            row = next(
+                (provider for provider in providers if provider.name == provider_id),
+                None,
+            )
         if row is None:
             raise ConnectionsResourceNotFoundError(f"Provider not found: {provider_id}")
 
@@ -236,288 +262,18 @@ class LibrarianOAuthService:
             )
         return row
 
-    async def _provider_by_name(self, provider_name: str) -> LibrarianProvider | None:
-        providers = await self.provider_repo.list_all()
-        for provider in providers:
-            if provider.name == provider_name:
-                return provider
-        return None
-
-    async def _store_device_authorization(
-        self,
-        provider_id: str,
-        authorization: OAuthDeviceAuthorization,
-    ) -> None:
-        await self._set_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_DEVICE_CODE,
-            authorization.device_code,
-        )
-        await self._set_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_DEVICE_EXPIRES_AT,
-            self._format_datetime(authorization.expires_at),
-        )
-        await self._set_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_POLL_INTERVAL_SECONDS,
-            str(authorization.interval_seconds),
-        )
-
     async def _handle_poll_result(
         self,
         provider: LibrarianProvider,
         poll_result: OAuthPollResult,
     ) -> LibrarianOAuthStatusPayload:
         if poll_result.status is OAuthPollStatus.CONNECTED:
-            if poll_result.token_set is None:
+            token_set = poll_result.token_set
+            if token_set is None:
                 raise ConnectionsProviderUnsupportedError(
                     "OAuth provider did not return tokens"
                 )
-            await self._store_token_set(provider.id, poll_result.token_set)
-            await self._delete_secrets(provider.id, _DEVICE_FLOW_SECRET_KEYS)
-            return self._status_payload(
-                provider_id=provider.id,
-                status=OAuthConnectionStatus.CONNECTED,
-                connected=True,
-                expires_at=poll_result.token_set.expires_at,
-                refresh_required=False,
-                message=None,
-            )
-
-        if poll_result.status is OAuthPollStatus.EXPIRED:
-            await self._delete_secrets(provider.id, _DEVICE_FLOW_SECRET_KEYS)
-            return self._status_payload(
-                provider_id=provider.id,
-                status=OAuthConnectionStatus.EXPIRED,
-                connected=False,
-                expires_at=None,
-                refresh_required=False,
-                message=poll_result.message,
-            )
-
-        if poll_result.status is OAuthPollStatus.FAILED:
-            return self._status_payload(
-                provider_id=provider.id,
-                status=OAuthConnectionStatus.FAILED,
-                connected=False,
-                expires_at=None,
-                refresh_required=False,
-                message=poll_result.message,
-            )
-
-        return self._status_payload(
+        return await self._poll_result_handler.handle(
             provider_id=provider.id,
-            status=OAuthConnectionStatus.PENDING,
-            connected=False,
-            expires_at=None,
-            refresh_required=False,
-            message=poll_result.message,
-        )
-
-    async def _current_status(self, provider_id: str) -> LibrarianOAuthStatusPayload:
-        device_code = await self._resolve_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_DEVICE_CODE,
-        )
-        if device_code is not None:
-            device_expires_at = await self._device_expires_at(provider_id)
-            if device_expires_at is None or device_expires_at > self._now():
-                return self._status_payload(
-                    provider_id=provider_id,
-                    status=OAuthConnectionStatus.PENDING,
-                    connected=False,
-                    expires_at=None,
-                    refresh_required=False,
-                    message=None,
-                )
-            await self._delete_secrets(provider_id, _DEVICE_FLOW_SECRET_KEYS)
-            return self._status_payload(
-                provider_id=provider_id,
-                status=OAuthConnectionStatus.EXPIRED,
-                connected=False,
-                expires_at=None,
-                refresh_required=False,
-                message="OAuth device flow expired",
-            )
-
-        access_token = await self._resolve_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_ACCESS_TOKEN,
-        )
-        expires_at = await self._token_expires_at(provider_id)
-        refresh_token = await self._resolve_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_REFRESH_TOKEN,
-        )
-        if access_token is None:
-            return self._status_payload(
-                provider_id=provider_id,
-                status=OAuthConnectionStatus.NOT_CONNECTED,
-                connected=False,
-                expires_at=expires_at,
-                refresh_required=False,
-                message=None,
-            )
-        if expires_at is None:
-            return self._missing_expiry_payload(provider_id, refresh_token)
-        if expires_at <= self._now():
-            if refresh_token is None:
-                return self._status_payload(
-                    provider_id=provider_id,
-                    status=OAuthConnectionStatus.EXPIRED,
-                    connected=False,
-                    expires_at=expires_at,
-                    refresh_required=False,
-                    message="OAuth access token expired",
-                )
-            return self._refresh_required_payload(provider_id, expires_at)
-        if expires_at <= self._now() + OAUTH_REFRESH_SKEW:
-            if refresh_token is None:
-                return self._status_payload(
-                    provider_id=provider_id,
-                    status=OAuthConnectionStatus.MISSING_REFRESH_TOKEN,
-                    connected=False,
-                    expires_at=expires_at,
-                    refresh_required=False,
-                    message="OAuth refresh token is missing",
-                )
-            return self._refresh_required_payload(provider_id, expires_at)
-        return self._status_payload(
-            provider_id=provider_id,
-            status=OAuthConnectionStatus.CONNECTED,
-            connected=True,
-            expires_at=expires_at,
-            refresh_required=False,
-            message=None,
-        )
-
-    def _missing_expiry_payload(
-        self,
-        provider_id: str,
-        refresh_token: str | None,
-    ) -> LibrarianOAuthStatusPayload:
-        if refresh_token is None:
-            return self._status_payload(
-                provider_id=provider_id,
-                status=OAuthConnectionStatus.EXPIRED,
-                connected=False,
-                expires_at=None,
-                refresh_required=False,
-                message="OAuth token expiry is missing",
-            )
-        return self._refresh_required_payload(provider_id, None)
-
-    def _refresh_required_payload(
-        self,
-        provider_id: str,
-        expires_at: datetime | None,
-    ) -> LibrarianOAuthStatusPayload:
-        return self._status_payload(
-            provider_id=provider_id,
-            status=OAuthConnectionStatus.REFRESH_REQUIRED,
-            connected=True,
-            expires_at=expires_at,
-            refresh_required=True,
-            message=None,
-        )
-
-    async def _store_token_set(
-        self,
-        provider_id: str,
-        token_set: OAuthTokenSet,
-    ) -> None:
-        await self._set_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_ACCESS_TOKEN,
-            token_set.access_token,
-        )
-        if token_set.refresh_token is not None:
-            await self._set_secret(
-                provider_id,
-                ProviderSecretKey.OAUTH_REFRESH_TOKEN,
-                token_set.refresh_token,
-            )
-        await self._set_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_EXPIRES_AT,
-            self._format_datetime(token_set.expires_at),
-        )
-        await self._set_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_TOKEN_TYPE,
-            token_set.token_type,
-        )
-        if token_set.scope is not None:
-            await self._set_secret(
-                provider_id,
-                ProviderSecretKey.OAUTH_SCOPE,
-                token_set.scope,
-            )
-
-    async def _token_expires_at(self, provider_id: str) -> datetime | None:
-        value = await self._resolve_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_EXPIRES_AT,
-        )
-        return optional_iso_utc_datetime(value)
-
-    async def _device_expires_at(self, provider_id: str) -> datetime | None:
-        value = await self._resolve_secret(
-            provider_id,
-            ProviderSecretKey.OAUTH_DEVICE_EXPIRES_AT,
-        )
-        return optional_iso_utc_datetime(value)
-
-    async def _resolve_secret(
-        self,
-        provider_id: str,
-        key: ProviderSecretKey,
-    ) -> str | None:
-        value = await self.secret_repo.resolve(provider_id, key.value)
-        return value
-
-    async def _set_secret(
-        self,
-        provider_id: str,
-        key: ProviderSecretKey,
-        value: str,
-    ) -> None:
-        await self.secret_repo.set_secret(
-            provider_id=provider_id,
-            key_name=key.value,
-            value=value,
-        )
-
-    async def _delete_secrets(
-        self,
-        provider_id: str,
-        keys: tuple[ProviderSecretKey, ...],
-    ) -> None:
-        for key in keys:
-            await self.secret_repo.delete_for_provider(provider_id, key.value)
-
-    def _now(self) -> datetime:
-        current = self.now_provider()
-        return aware_utc_datetime(current)
-
-    def _format_datetime(self, value: datetime) -> str:
-        return aware_utc_datetime(value).isoformat()
-
-    def _status_payload(
-        self,
-        provider_id: str,
-        status: OAuthConnectionStatus,
-        connected: bool,
-        expires_at: datetime | None,
-        refresh_required: bool,
-        message: str | None,
-    ) -> LibrarianOAuthStatusPayload:
-        return LibrarianOAuthStatusPayload(
-            provider_id=provider_id,
-            status=status,
-            connected=connected,
-            expires_at=expires_at,
-            refresh_required=refresh_required,
-            message=message,
+            poll_result=poll_result,
         )

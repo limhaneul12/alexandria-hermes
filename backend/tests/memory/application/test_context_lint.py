@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from app.memory.application.context_lint import ContextLintInput, lint_context
-from app.shared.utils.secret_redaction import BLOCKED_SECRET_PLACEHOLDER
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextStorageStatus,
 )
+from app.shared.utils.secret_redaction import BLOCKED_SECRET_PLACEHOLDER
 
 
 def test_context_lint_returns_saved_when_required_handoff_headings_exist() -> None:
@@ -40,8 +40,8 @@ Continue from here.
     assert result.ok is True
     assert result.status is ContextStorageStatus.SAVED
     assert result.score == 100
-    assert result.errors == []
-    assert result.warnings == []
+    assert result.errors == ()
+    assert result.warnings == ()
 
 
 def test_context_lint_marks_low_quality_context_for_review() -> None:

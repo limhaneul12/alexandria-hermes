@@ -148,7 +148,7 @@ class RecoveryRunResponse(StrictSchemaModel):
             source_snapshot=RecoverySourceSnapshotResponse.from_entity(
                 run.source_snapshot
             ),
-            diagnosis=run.diagnosis,
+            diagnosis=list(run.diagnosis),
             quarantine_artifacts=[
                 RecoveryQuarantineArtifactPlanResponse.from_entity(artifact)
                 for artifact in run.quarantine_artifacts
@@ -164,7 +164,7 @@ class RecoveryRunResponse(StrictSchemaModel):
             verification_results=run.verification_results,
             error_code=run.error_code,
             error_summary=run.error_summary,
-            next_actions=run.next_actions,
+            next_actions=list(run.next_actions),
             manifest_path=run.manifest_path,
         )
 

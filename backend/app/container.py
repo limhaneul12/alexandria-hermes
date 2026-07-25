@@ -88,15 +88,17 @@ class ApplicationContainer(containers.DeclarativeContainer):
     )
     db_session = providers.Factory(create_session, database=database)
 
-    memory = providers.Container(
-        MemoryContainer,
-        db_session=db_session,
-        app_config=app_config,
-    )
     connections = providers.Container(
         ConnectionsContainer,
         db_session=db_session,
         secret_cipher=secret_cipher,
+    )
+    memory = providers.Container(
+        MemoryContainer,
+        db_session=db_session,
+        app_config=app_config,
+        librarian_provider_repo=connections.librarian_provider_repo,
+        provider_secret_repo=connections.provider_secret_repo,
     )
     librarian = providers.Container(
         LibrarianContainer,

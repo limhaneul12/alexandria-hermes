@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from app.mcp_server.type_validate.librarian_readiness_schemas import (
     CompactRefreshDraftPayload,
     CurrentCompactPayload,
@@ -90,7 +88,7 @@ def source_ref_dicts(draft: CompactRefreshDraftPayload) -> list[dict[str, str]]:
     return [ref.model_dump(mode="json") for ref in draft.source_refs]
 
 
-def _object_or_empty(payload: JSONValue) -> dict[str, Any]:
+def _object_or_empty(payload: JSONValue) -> JSONObject:
     if isinstance(payload, dict):
         return payload
     return {}

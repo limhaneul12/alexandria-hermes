@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.shared.serialization.orjson_codec import loads_json
-from app.shared.types.extra_types import JSONValue
+from app.shared.types.extra_types import JSONObject, JSONValue
 
 
 class McpProtocolPayloadSchema(BaseModel):
@@ -34,7 +32,7 @@ class McpToolsResultPayload(McpProtocolPayloadSchema):
 
     @field_validator("tools", mode="before")
     @classmethod
-    def _filter_tool_objects(cls, value: object) -> object:
+    def _filter_tool_objects(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
         return value
@@ -97,7 +95,7 @@ def mcp_smoke_ok(payload: JSONValue) -> bool:
     return McpSmokeStatusPayload.model_validate(_object_or_empty(payload)).ok is True
 
 
-def _object_or_empty(payload: JSONValue) -> dict[str, Any]:
+def _object_or_empty(payload: JSONValue) -> JSONObject:
     if isinstance(payload, dict):
         return payload
     return {}

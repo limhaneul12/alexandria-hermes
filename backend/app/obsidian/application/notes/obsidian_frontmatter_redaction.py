@@ -55,7 +55,7 @@ def _redacted_json(value: JSONValue) -> tuple[JSONValue, list[str]]:
             raise ObsidianValidationError(
                 "high-risk secret content cannot be saved in frontmatter"
             )
-        return redaction.redacted_content, redaction.warnings
+        return redaction.redacted_content, list(redaction.warnings)
     if isinstance(value, list | tuple):
         return _redacted_sequence(value)
     if isinstance(value, dict):

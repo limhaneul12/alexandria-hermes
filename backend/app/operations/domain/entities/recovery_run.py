@@ -45,16 +45,26 @@ class RecoveryRun:
     updated_at: datetime
     finished_at: datetime | None
     source_snapshot: RecoverySourceSnapshot
-    diagnosis: list[str]
-    quarantine_artifacts: list[RecoveryQuarantineArtifactPlan]
-    planned_steps: list[RecoveryPlanStep]
-    step_results: list[RecoveryRunStepResult]
+    diagnosis: tuple[str, ...]
+    quarantine_artifacts: tuple[RecoveryQuarantineArtifactPlan, ...]
+    planned_steps: tuple[RecoveryPlanStep, ...]
+    step_results: tuple[RecoveryRunStepResult, ...]
     rebuild_results: JSONObject
     verification_results: JSONObject
     error_code: str | None
     error_summary: str | None
-    next_actions: list[str]
+    next_actions: tuple[str, ...]
     manifest_path: str
+
+    def __post_init__(self) -> None:
+        """Normalize recovery run collections to immutable values."""
+        object.__setattr__(self, "diagnosis", tuple(self.diagnosis))
+        object.__setattr__(
+            self, "quarantine_artifacts", tuple(self.quarantine_artifacts)
+        )
+        object.__setattr__(self, "planned_steps", tuple(self.planned_steps))
+        object.__setattr__(self, "step_results", tuple(self.step_results))
+        object.__setattr__(self, "next_actions", tuple(self.next_actions))
 
 
 @dataclass(frozen=True, slots=True)

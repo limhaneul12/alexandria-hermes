@@ -5,6 +5,10 @@ from __future__ import annotations
 import logging
 import re
 
+from app.shared.types.extra_types import JSONObject, JSONValue
+from pydantic import TypeAdapter, ValidationError
+
+_JSON_OBJECT_ADAPTER = TypeAdapter(JSONObject)
 _SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"(?P<prefix>[\"']?"
     r"(?:api[_-]?key|oauth[_-]?access[_-]?token|access[_-]?token|"
@@ -40,6 +44,28 @@ def redact_sensitive_text(value: str | None) -> str | None:
         lambda match: f"{match.group('prefix')}<redacted>",
         redacted,
     )
+
+
+def redact_sensitive_json_object(value: JSONObject) -> JSONObject:
+    """Recursively redact credential-like strings in structured log attributes.
+
+    Args:
+        value: Value.
+
+    Returns:
+        JSONObject: Operation result.
+    """
+    return {key: _redact_json_value(item) for key, item in value.items()}
+
+
+def _redact_json_value(value: JSONValue) -> JSONValue:
+    if isinstance(value, str):
+        return redact_sensitive_text(value) or ""
+    if isinstance(value, dict):
+        return redact_sensitive_json_object(value)
+    if isinstance(value, list | tuple):
+        return [_redact_json_value(item) for item in value]
+    return value
 
 
 class LogRecordExtraReader:
@@ -119,3 +145,24 @@ class LogRecordExtraReader:
         if isinstance(value, int) and not isinstance(value, bool):
             return value
         return default
+
+    def json_object(
+        self,
+        key: str,
+        *,
+        default: JSONObject | None = None,
+    ) -> JSONObject | None:
+        """Read and validate one JSON-compatible structured extra object.
+
+        Args:
+            key: Key.
+            default: Default.
+
+        Returns:
+            JSONObject | None: Operation result.
+        """
+        value = self._record.__dict__.get(key)
+        try:
+            return _JSON_OBJECT_ADAPTER.validate_python(value)
+        except ValidationError:
+            return default

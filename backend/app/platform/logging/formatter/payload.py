@@ -16,7 +16,11 @@ from app.platform.schemas.logging_schema import (
 )
 from app.shared.serialization.model_codec import model_to_dict
 from app.shared.types.extra_types import JSONObject
-from app.shared.utils.logging import LogRecordExtraReader, redact_sensitive_text
+from app.shared.utils.logging import (
+    LogRecordExtraReader,
+    redact_sensitive_json_object,
+    redact_sensitive_text,
+)
 
 
 def should_include_error_stack(app_env: str) -> bool:
@@ -162,6 +166,9 @@ def build_log_payload(
         msg=redact_sensitive_text(record.getMessage()) or "",
         func=extra_reader.string("func", default=record.funcName),
         duration_ms=extra_reader.float_value("duration_ms"),
+        attributes=redact_sensitive_json_object(
+            extra_reader.json_object("attributes", default={}) or {}
+        ),
         service=service_context,
         trace=build_trace_context(extra_reader),
         http=build_http_context(extra_reader),

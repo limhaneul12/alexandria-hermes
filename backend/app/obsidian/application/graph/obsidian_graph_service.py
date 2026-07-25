@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.entities.obsidian_note import ObsidianRelatedNote
-from app.obsidian.domain.repositories.obsidian_repository import (
-    IObsidianIndexRepository,
+from app.obsidian.domain.repositories.obsidian_index_query_repository import (
+    IObsidianIndexQueryRepository,
 )
 from app.obsidian.infrastructure.markdown.paths import safe_relative_path
 from app.shared.exceptions.obsidian_exceptions import ObsidianNotFoundError
@@ -17,7 +17,7 @@ class ObsidianGraphService:
     def __init__(
         self,
         *,
-        repository: IObsidianIndexRepository,
+        repository: IObsidianIndexQueryRepository,
         obsidian_service: ObsidianService,
     ) -> None:
         self._repository = repository

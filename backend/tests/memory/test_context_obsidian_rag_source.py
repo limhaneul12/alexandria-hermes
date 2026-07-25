@@ -402,7 +402,7 @@ def test_obsidian_context_scope_identity_round_trip_filters_recall(
                 include_scopes=[ContextScope.AGENT, ContextScope.PROJECT],
             )
 
-        assert reindex.errors == []
+        assert reindex.errors == ()
         assert "scope: AGENT" in markdown
         assert "agent_id: hermes-coding" in markdown
         assert frontmatter_by_id["ctx_agent_a"]["scope"] == "AGENT"
@@ -762,9 +762,9 @@ def test_obsidian_reindex_persists_structured_error_and_clears_it_after_repair(
     assert failed_reindex.error_details[0].context_id == "ctx_repairable_session"
     assert failed_reindex.error_details[0].error_code == "MISSING_SESSION_ID"
     assert failed_reindex.error_details[0].note_path.endswith("Repairable Session.md")
-    assert repaired_reindex.errors == []
+    assert repaired_reindex.errors == ()
     assert repaired_status.error_notes == 0
-    assert repaired_status.index_errors == []
+    assert repaired_status.index_errors == ()
 
 
 def test_obsidian_index_error_does_not_overwrite_valid_duplicate_context_id(
@@ -1390,7 +1390,7 @@ def test_context_embedding_reindex_backfills_obsidian_chunks_for_vector_search(
                 project="omx-agent-adapter",
             )
 
-        assert before.matches == []
+        assert before.matches == ()
         return (
             result.scanned,
             result.updated,

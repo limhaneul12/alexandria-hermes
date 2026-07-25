@@ -101,7 +101,7 @@ def test_skill_library_search_returns_sufficient_active_skill() -> None:
     result, queries = anyio.run(run_case)
 
     assert result.decision is SkillSearchDecision.FOUND_SUFFICIENT
-    assert result.gaps == []
+    assert result.gaps == ()
     assert result.candidates[0].sufficiency_score == 10
     assert result.candidates[0].recommended_action == (
         "Reuse this skill for the current task."
@@ -140,7 +140,7 @@ def test_skill_library_search_returns_sufficient_active_skill() -> None:
             "skill_http_boundary_fake": result.candidates[0].hard_gates,
         },
         "match_reasons": {
-            "skill_http_boundary_fake": result.candidates[0].why_match,
+            "skill_http_boundary_fake": list(result.candidates[0].why_match),
         },
         "gaps": [],
         "limitations": {
@@ -195,9 +195,9 @@ def test_skill_library_search_marks_draft_skill_partial() -> None:
         "actual": "draft",
         "required": "active",
     }
-    assert result.gaps == [
-        "skill status is draft; human review is required before reuse"
-    ]
+    assert result.gaps == (
+        "skill status is draft; human review is required before reuse",
+    )
 
 
 def test_skill_library_search_rediscovers_completed_draft_skill_for_reuse_handoff() -> (
@@ -252,9 +252,9 @@ def test_skill_library_search_reports_unavailable_index_distinct_from_not_found(
     result = anyio.run(run_case)
 
     assert result.decision is SkillSearchDecision.SEARCH_UNAVAILABLE
-    assert result.candidates == []
+    assert result.candidates == ()
     assert result.search_error == "index unavailable"
-    assert result.gaps == ["Skill library search failed"]
+    assert result.gaps == ("Skill library search failed",)
     assert result.decision_explanation == {
         "candidate_count": 0,
         "candidate_ids": [],

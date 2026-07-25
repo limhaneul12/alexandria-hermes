@@ -46,7 +46,7 @@ def authoritative_note_from_path(
         alexandria_type=payload.alexandria_type,
         title=payload.title,
         status=payload.status,
-        tags=payload.tags,
+        tags=tuple(payload.tags),
         project=payload.project,
         source=payload.source,
         content_hash=payload.content_hash,

@@ -29,7 +29,7 @@ async def search_context_fts(
     fts_query = build_context_fts_query(recall)
     if fts_query is None:
         return []
-    rows = await session.execute(fts_query.statement, fts_query.parameters)
+    rows = await session.execute(fts_query.statement, dict(fts_query.parameters))
     ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
     if not ranked:
         return []

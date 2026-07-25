@@ -135,7 +135,7 @@ def test_operational_readiness_reports_ready_when_all_dependencies_are_healthy(
     assert status == OperationalReadinessStatus.READY
     assert ready is True
     assert strategy == RagStrategy.HYBRID
-    assert warnings == []
+    assert warnings == ()
 
 
 def test_operational_readiness_blocks_when_rag_strategy_is_not_hybrid(
@@ -172,8 +172,8 @@ def test_operational_readiness_blocks_when_rag_strategy_is_not_hybrid(
     assert status == OperationalReadinessStatus.BLOCKED
     assert ready is False
     assert strategy == RagStrategy.FTS_ONLY
-    assert warnings == ["rag_default_strategy_not_hybrid"]
-    assert blockers == ["rag_default_strategy_not_hybrid"]
+    assert warnings == ("rag_default_strategy_not_hybrid",)
+    assert blockers == ("rag_default_strategy_not_hybrid",)
 
 
 def test_operational_readiness_blocks_when_rag_health_reports_warnings(
@@ -203,8 +203,8 @@ def test_operational_readiness_blocks_when_rag_health_reports_warnings(
 
     assert status == OperationalReadinessStatus.BLOCKED
     assert ready is False
-    assert warnings == ["rag_status_warnings_present"]
-    assert blockers == ["rag_status_warnings_present"]
+    assert warnings == ("rag_status_warnings_present",)
+    assert blockers == ("rag_status_warnings_present",)
 
 
 def test_operational_readiness_degrades_to_fts_only_when_embedding_reindex_required(
@@ -279,7 +279,7 @@ def test_operational_readiness_blocks_when_vault_has_index_errors(
 
     assert status == OperationalReadinessStatus.BLOCKED
     assert ready is False
-    assert warnings == ["obsidian_stale_notes_present", "obsidian_error_notes_present"]
+    assert warnings == ("obsidian_stale_notes_present", "obsidian_error_notes_present")
     assert "reindex_vault" in next_actions
 
 
@@ -311,7 +311,7 @@ def test_operational_readiness_marks_sqlite_corruption_as_recovery_required(
     assert status == OperationalReadinessStatus.RECOVERY_REQUIRED
     assert ready is False
     assert integrity == "CORRUPTION_DETECTED"
-    assert warnings == ["sqlite_corruption_detected"]
+    assert warnings == ("sqlite_corruption_detected",)
 
 
 def test_operational_readiness_reports_active_recovery_lock(tmp_path: Path) -> None:

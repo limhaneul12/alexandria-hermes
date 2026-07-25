@@ -3,36 +3,25 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import replace
 from datetime import datetime
 
-from app.memory.application.context_lint import (
-    ContextLintInput,
-    ContextLintResult,
-    lint_context,
+from app.memory.application.context_embedding_service import (
+    ContextEmbeddingService,
 )
-from app.memory.application.retrieval.context_pack import build_context_pack
-from app.memory.application.retrieval.context_ranking import (
-    merge_hybrid_matches,
-    rank_best_matches_per_context,
+from app.memory.application.context_lint import ContextLintResult
+from app.memory.application.context_lint_service import ContextLintService
+from app.memory.application.context_record_lifecycle_service import (
+    ContextRecordLifecycleService,
 )
-from app.memory.application.retrieval.context_scope_filter import (
-    filter_context_matches,
+from app.memory.application.context_record_query_service import (
+    ContextRecordQueryService,
+)
+from app.memory.application.context_search_service import ContextSearchService
+from app.memory.application.context_soft_rebuild_service import (
+    ContextSoftRebuildService,
 )
 from app.memory.application.retrieval.embedding_provider import (
     EmbeddingProvider,
-)
-from app.memory.application.retrieval.rag_health import build_rag_dependency_health
-from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
-from app.memory.domain.contracts.context_contracts import (
-    ContextAccessCreate,
-    ContextChunkEmbeddingUpdate,
-)
-from app.memory.domain.contracts.context_recall_contracts import (
-    ContextFtsRecall,
-    ContextRecallFilter,
-    ContextVectorRecall,
-    validated_scope_identity,
 )
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
@@ -41,7 +30,6 @@ from app.memory.domain.entities.context_read_models import (
     ContextPack,
     ContextRecord,
     ContextReindexResult,
-    ContextSearchMatch,
     ContextSoftRebuildResult,
     RagDependencyHealth,
 )
@@ -51,7 +39,6 @@ from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextRecallLifecycleStatus,
     ContextScope,
-    RagHealthState,
     RagStrategy,
 )
 from app.memory.domain.repositories.canonical_context_repository import (
@@ -59,17 +46,16 @@ from app.memory.domain.repositories.canonical_context_repository import (
 )
 from app.memory.domain.repositories.context_repository import IContextRepository
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
-from app.shared.exceptions import (
-    MemoryContextNotFoundError,
-    MemoryContextValidationError,
-)
-from app.shared.types.types_convert_utils import enum_value, now_utc
-from asyncer import asyncify
-from sqlalchemy.exc import SQLAlchemyError
 
 
 class ContextService:
-    """Use cases for Context Vault linting and retrieval."""
+    """Stable Context application facade over focused use-case services.
+
+    The facade intentionally retains the public Context API surface used by HTTP,
+    MCP, operations, and tests. Validation, record routing, lifecycle mutations,
+    recall strategy, embedding lifecycle, and soft rebuild reporting are delegated
+    to focused collaborators.
+    """
 
     def __init__(
         self,
@@ -87,15 +73,30 @@ class ContextService:
             vector_retrieval_enabled: Whether vector indexing and query paths are wired.
             extra_search_sources: Optional additional Context RAG sources.
             canonical_context_repository: Optional canonical Markdown context adapter.
-
-        Returns:
-            None.
         """
-        self._repository = repository
-        self._embedding_provider = embedding_provider
-        self._vector_retrieval_enabled = vector_retrieval_enabled
-        self._search_sources = [repository, *(extra_search_sources or ())]
-        self._canonical_context_repository = canonical_context_repository
+        search_sources = [repository, *(extra_search_sources or ())]
+        self._lint_service = ContextLintService()
+        self._embedding_service = ContextEmbeddingService(
+            provider=embedding_provider,
+            vector_retrieval_enabled=vector_retrieval_enabled,
+            search_sources=search_sources,
+        )
+        self._search_service = ContextSearchService(
+            search_sources=search_sources,
+            embedding_service=self._embedding_service,
+        )
+        self._soft_rebuild_service = ContextSoftRebuildService(
+            embedding_service=self._embedding_service,
+            search_service=self._search_service,
+        )
+        self._record_query_service = ContextRecordQueryService(
+            repository=repository,
+            canonical_repository=canonical_context_repository,
+        )
+        self._record_lifecycle_service = ContextRecordLifecycleService(
+            repository=repository,
+            canonical_repository=canonical_context_repository,
+        )
 
     def lint(
         self,
@@ -133,47 +134,32 @@ class ContextService:
         Returns:
             Context lint result with redaction and quality details.
         """
-        kind = enum_value(kind, ContextKind, "kind")
-        scope = enum_value(scope, ContextScope, "scope")
-        visibility = enum_value(visibility, ContextScope, "visibility")
-        result = lint_context(
-            ContextLintInput(
-                kind=kind,
-                title=title,
-                content=content,
-                summary=summary,
-                project=project,
-                scope=scope,
-                workspace_id=workspace_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                session_id=session_id,
-                visibility=visibility,
-                source_agent=source_agent,
-                tags=[] if tags is None else tags,
-            )
+        return self._lint_service.lint(
+            kind=kind,
+            title=title,
+            content=content,
+            summary=summary,
+            project=project,
+            scope=scope,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            session_id=session_id,
+            visibility=visibility,
+            source_agent=source_agent,
+            tags=tags,
         )
-        return result
 
     async def get(self, context_id: str) -> ContextRecord:
-        """Return one context or raise not-found.
+        """Return one Context or raise not-found.
 
         Args:
             context_id: Context identifier.
 
         Returns:
-            Stored context read model.
+            Stored Context read model.
         """
-        canonical_repository = self._canonical_context_repository
-        if canonical_repository is not None and canonical_repository.owns(context_id):
-            context = await canonical_repository.get(context_id)
-            if context is None:
-                raise MemoryContextNotFoundError(f"Context not found: {context_id}")
-            return context
-        context = await self._repository.get(context_id)
-        if context is None:
-            raise MemoryContextNotFoundError(f"Context not found: {context_id}")
-        return context
+        return await self._record_query_service.get(context_id)
 
     async def list_contexts(
         self,
@@ -194,12 +180,12 @@ class ContextService:
         updated_before: datetime | None = None,
         include_archived: bool = False,
     ) -> tuple[list[ContextRecord], int]:
-        """List contexts with filters.
+        """List Contexts with filters.
 
         Args:
             limit: Maximum returned entries.
             offset: Pagination offset.
-            kind: Optional context kind filter.
+            kind: Optional Context kind filter.
             project: Optional project filter.
             scope: Optional scope filter.
             workspace_id: Optional workspace filter.
@@ -215,13 +201,9 @@ class ContextService:
             include_archived: Whether archived entries are included.
 
         Returns:
-            Matching context rows and total count before pagination.
+            Matching Context rows and total count before pagination.
         """
-        if kind is not None:
-            kind = enum_value(kind, ContextKind, "kind")
-        if scope is not None:
-            scope = enum_value(scope, ContextScope, "scope")
-        result = await self._repository.list_all(
+        return await self._record_query_service.list_contexts(
             limit=limit,
             offset=offset,
             kind=kind,
@@ -239,38 +221,28 @@ class ContextService:
             updated_before=updated_before,
             include_archived=include_archived,
         )
-        return result
 
     async def chunks(self, context_id: str) -> list[ContextChunkRecord]:
-        """Return chunks for one context.
+        """Return chunks for one Context.
 
         Args:
             context_id: Context identifier.
 
         Returns:
-            Stored chunks for the context.
+            Stored chunks for the Context.
         """
-        if self._is_canonical_context_id(context_id):
-            raise MemoryContextValidationError(
-                "Canonical Markdown contexts do not expose SQL chunk operations"
-            )
-        await self.get(context_id)
-        chunks = await self._repository.chunks(context_id)
-        return chunks
+        return await self._record_query_service.chunks(context_id)
 
     async def archive(self, context_id: str) -> ContextRecord:
-        """Archive one context.
+        """Archive one Context.
 
         Args:
             context_id: Context identifier.
 
         Returns:
-            Archived context read model.
+            Archived Context read model.
         """
-        canonical_repository = self._canonical_context_repository
-        if canonical_repository is not None and canonical_repository.owns(context_id):
-            return await canonical_repository.archive(context_id)
-        return await self._repository.archive(context_id)
+        return await self._record_lifecycle_service.archive(context_id)
 
     async def supersede(
         self,
@@ -286,38 +258,18 @@ class ContextService:
         Returns:
             Superseded and replacement canonical Context read models.
         """
-        canonical_repository = self._canonical_context_repository
-        if (
-            canonical_repository is None
-            or not canonical_repository.owns(context_id)
-            or not canonical_repository.owns(replacement_context_id)
-        ):
-            raise MemoryContextValidationError(
-                "Supersede requires source-qualified canonical Context identifiers"
-            )
-        if context_id == replacement_context_id:
-            raise MemoryContextValidationError(
-                "INVALID_SUPERSEDE: Context cannot supersede itself"
-            )
-        return await canonical_repository.supersede(
+        return await self._record_lifecycle_service.supersede(
             context_id,
             replacement_context_id,
         )
 
     async def delete(self, context_id: str) -> None:
-        """Hard delete one context.
+        """Hard-delete one SQL-backed Context.
 
         Args:
             context_id: Context identifier.
-
-        Returns:
-            None.
         """
-        if self._is_canonical_context_id(context_id):
-            raise MemoryContextValidationError(
-                "Canonical Markdown contexts cannot be hard-deleted through SQL"
-            )
-        await self._repository.delete(context_id)
+        await self._record_lifecycle_service.delete(context_id)
 
     async def access(
         self,
@@ -335,33 +287,25 @@ class ContextService:
             actor_name: Actor label to store with the access event.
             actor_type: Actor category.
             access_method: Access method category.
-            source_surface: Optional UI/tool surface that caused access.
+            source_surface: Optional UI or tool surface that caused access.
 
         Returns:
-            Updated context read model.
+            Updated Context read model.
         """
-        if self._is_canonical_context_id(context_id):
-            raise MemoryContextValidationError(
-                "Canonical Markdown context access events are not stored in SQL"
-            )
-        actor_type = enum_value(actor_type, ContextAccessActorType, "actor_type")
-        access_method = enum_value(access_method, ContextAccessMethod, "access_method")
-        context = await self._repository.record_access(
-            ContextAccessCreate(
-                context_id=context_id,
-                accessed_at=now_utc(),
-                actor_name=actor_name,
-                actor_type=actor_type,
-                access_method=access_method,
-                source_surface=source_surface,
-            )
+        return await self._record_lifecycle_service.record_access(
+            context_id,
+            actor_name=actor_name,
+            actor_type=actor_type,
+            access_method=access_method,
+            source_surface=source_surface,
         )
-        return context
 
     async def access_events(
-        self, context_id: str, limit: int = 5
+        self,
+        context_id: str,
+        limit: int = 5,
     ) -> list[ContextAccessEventRecord]:
-        """Return recent access events for one context.
+        """Return recent access events for one Context.
 
         Args:
             context_id: Context identifier.
@@ -370,19 +314,9 @@ class ContextService:
         Returns:
             Recent access events ordered newest first.
         """
-        if self._is_canonical_context_id(context_id):
-            raise MemoryContextValidationError(
-                "Canonical Markdown context access events are not stored in SQL"
-            )
-        events = await self._repository.access_events(
-            context_id=context_id, limit=limit
-        )
-        return events
-
-    def _is_canonical_context_id(self, context_id: str) -> bool:
-        canonical_repository = self._canonical_context_repository
-        return canonical_repository is not None and canonical_repository.owns(
-            context_id
+        return await self._record_query_service.access_events(
+            context_id,
+            limit=limit,
         )
 
     def rag_health(self) -> RagDependencyHealth:
@@ -391,51 +325,15 @@ class ContextService:
         Returns:
             Health state for FTS, vector, and embedding dependencies.
         """
-        health = build_rag_dependency_health(
-            embedding_provider=self._embedding_provider,
-            vector_retrieval_enabled=self._vector_retrieval_enabled,
-        )
-        return health
+        return self._embedding_service.health()
 
     async def rag_health_with_index_status(self) -> RagDependencyHealth:
         """Return RAG health including persisted embedding fingerprint status.
 
         Returns:
-            Health state that marks vector recall REINDEX_REQUIRED on mismatch.
+            Health state that marks vector recall unavailable on mismatch.
         """
-        health = self.rag_health()
-        provider = self._embedding_provider
-        if (
-            provider is None
-            or not self._vector_retrieval_enabled
-            or health.vector is not RagHealthState.HEALTHY
-            or health.embedding is not RagHealthState.HEALTHY
-        ):
-            return health
-
-        try:
-            index_status = await self._embedding_index_status(provider)
-            source_statuses = await self._embedding_source_statuses(provider)
-        except SQLAlchemyError as exc:
-            return _embedding_index_status_probe_failed_health(health, exc)
-        if index_status is not RagHealthState.REINDEX_REQUIRED:
-            return replace(health, source_statuses=source_statuses)
-
-        warnings = [
-            *health.warnings,
-            (
-                "Embedding index status is REINDEX_REQUIRED; vector recall "
-                "is disabled across configured sources until all source "
-                "fingerprints match; run retrieval reindex before vector recall."
-            ),
-        ]
-        return replace(
-            health,
-            embedding=RagHealthState.REINDEX_REQUIRED,
-            default_strategy=RagStrategy.FTS_ONLY,
-            warnings=warnings,
-            source_statuses=source_statuses,
-        )
+        return await self._embedding_service.health_with_index_status()
 
     async def search(
         self,
@@ -451,14 +349,14 @@ class ContextService:
         session_id: str | None = None,
         include_lifecycle_statuses: list[ContextRecallLifecycleStatus] | None = None,
     ) -> ContextPack:
-        """Return a context pack for a query.
+        """Return a Context pack for one query.
 
         Args:
             query: Search query text.
             strategy: Requested retrieval strategy.
             limit: Maximum matches.
             project: Optional project filter.
-            kind: Optional context kind filter.
+            kind: Optional Context kind filter.
             include_scopes: Optional recall scope filters.
             workspace_id: Optional workspace filter.
             agent_id: Optional agent filter.
@@ -469,171 +367,36 @@ class ContextService:
         Returns:
             Context pack containing retrieved matches and warnings.
         """
-        if not query.strip():
-            raise MemoryContextValidationError("query is required")
-        strategy = enum_value(strategy, RagStrategy, "strategy")
-        if kind is not None:
-            kind = enum_value(kind, ContextKind, "kind")
-        include_scopes = [
-            enum_value(scope, ContextScope, "include_scopes")
-            for scope in (include_scopes or [])
-        ]
-        if not include_scopes:
-            include_scopes = (
-                [ContextScope.GLOBAL]
-                if project is None
-                else [ContextScope.PROJECT, ContextScope.GLOBAL]
-            )
-        if include_lifecycle_statuses is not None:
-            include_lifecycle_statuses = [
-                enum_value(
-                    lifecycle_status,
-                    ContextRecallLifecycleStatus,
-                    "include_lifecycle_statuses",
-                )
-                for lifecycle_status in include_lifecycle_statuses
-            ]
-            if not include_lifecycle_statuses:
-                include_lifecycle_statuses = None
-        try:
-            scope_filter = validated_scope_identity(
-                tuple(include_scopes),
-                project,
-                workspace_id,
-                agent_id,
-                user_id,
-                session_id,
-            )
-        except ValueError as exc:
-            raise MemoryContextValidationError(str(exc)) from exc
-        recall_filter = ContextRecallFilter(
-            limit=limit,
-            kind=kind,
-            scope_identity=scope_filter,
-            lifecycle_statuses=(
-                None
-                if include_lifecycle_statuses is None
-                else tuple(include_lifecycle_statuses)
-            ),
-        )
-        health = await self.rag_health_with_index_status()
-        effective = strategy
-        warnings = list(health.warnings)
-        if (
-            strategy is RagStrategy.HYBRID
-            and health.default_strategy is RagStrategy.FTS_ONLY
-        ):
-            effective = RagStrategy.FTS_ONLY
-            warnings.append("Vector retrieval degraded; using FTS_ONLY.")
-        if strategy is RagStrategy.VECTOR_ONLY and (
-            health.vector is not RagHealthState.HEALTHY
-            or health.embedding is not RagHealthState.HEALTHY
-        ):
-            effective = RagStrategy.FTS_ONLY
-            warnings.append(
-                "VECTOR_ONLY requested but vector dependencies are degraded; "
-                "using FTS_ONLY."
-            )
-        if effective is RagStrategy.FTS_ONLY:
-            matches = await self._search_fts_sources(
-                ContextFtsRecall(
-                    query=query,
-                    recall_filter=recall_filter,
-                )
-            )
-        elif effective is RagStrategy.VECTOR_ONLY:
-            matches = await self._search_vector_sources(
-                query,
-                recall_filter,
-            )
-        else:
-            fts_matches = await self._search_fts_sources(
-                ContextFtsRecall(
-                    query=query,
-                    recall_filter=recall_filter,
-                )
-            )
-            vector_matches = await self._search_vector_sources(
-                query,
-                recall_filter,
-            )
-            matches = merge_hybrid_matches(
-                fts_matches=fts_matches,
-                vector_matches=vector_matches,
-                limit=limit,
-            )
-        matches = filter_context_matches(matches, scope_filter)
-        context_pack = ContextPack(
+        return await self._search_service.search(
             query=query,
             strategy=strategy,
-            effective_strategy=effective,
-            warnings=warnings,
-            recall_scopes=include_scopes,
-            matches=matches,
-            context_pack=build_context_pack(query=query, matches=matches),
+            limit=limit,
+            project=project,
+            kind=kind,
+            include_scopes=include_scopes,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            session_id=session_id,
+            include_lifecycle_statuses=include_lifecycle_statuses,
         )
-        return context_pack
 
     async def reindex_embeddings(
-        self, limit: int = 100, *, force: bool = False
+        self,
+        limit: int = 100,
+        *,
+        force: bool = False,
     ) -> ContextReindexResult:
         """Backfill or rebuild embeddings for stored context chunks.
 
         Args:
             limit: Maximum chunks to reindex in this batch.
-            force: Whether to rebuild existing embeddings even if model metadata matches.
+            force: Whether matching embeddings should be rebuilt.
 
         Returns:
-            Context reindex result.
+            Context embedding reindex result.
         """
-        if limit < 1:
-            raise MemoryContextValidationError("limit must be at least 1")
-        provider = self._embedding_provider
-        fingerprint = None if provider is None else provider.fingerprint()
-        health = self.rag_health()
-        warnings = list(health.warnings)
-        if (
-            provider is None
-            or fingerprint is None
-            or health.vector is not RagHealthState.HEALTHY
-            or health.embedding is not RagHealthState.HEALTHY
-        ):
-            warnings.append("Vector dependencies are not healthy; reindex skipped.")
-            return ContextReindexResult(
-                scanned=0,
-                updated=0,
-                skipped=0,
-                warnings=warnings,
-            )
-
-        processed_by_source: dict[int, set[str]] = {}
-        fingerprint_key = fingerprint.key()
-        scanned, updated = await _reindex_embedding_sources(
-            sources=self._search_sources,
-            provider=provider,
-            fingerprint_key=fingerprint_key,
-            limit=limit,
-            force=False,
-            processed_by_source=processed_by_source,
-        )
-        if force and scanned < limit:
-            forced_scanned, forced_updated = await _reindex_embedding_sources(
-                sources=self._search_sources,
-                provider=provider,
-                fingerprint_key=fingerprint_key,
-                limit=limit - scanned,
-                force=True,
-                processed_by_source=processed_by_source,
-            )
-            scanned += forced_scanned
-            updated += forced_updated
-        result = ContextReindexResult(
-            scanned=scanned,
-            updated=updated,
-            skipped=scanned - updated,
-            warnings=warnings,
-        )
-        return result
+        return await self._embedding_service.reindex(limit=limit, force=force)
 
     async def soft_rebuild_embeddings(
         self,
@@ -642,7 +405,7 @@ class ContextService:
         verification_query: str | None = None,
         project: str | None = None,
     ) -> ContextSoftRebuildResult:
-        """Rebuild embeddings without deleting source context/note/memory rows.
+        """Rebuild embeddings without deleting source Context or note records.
 
         Args:
             limit: Maximum chunks to rebuild in this batch.
@@ -652,49 +415,11 @@ class ContextService:
         Returns:
             Operator-facing soft rebuild report.
         """
-        before = await self.rag_health_with_index_status()
-        source_status_before = await self.embedding_source_statuses()
-        reindex = await self.reindex_embeddings(limit=limit, force=True)
-        after = await self.rag_health_with_index_status()
-        source_status_after = await self.embedding_source_statuses()
-        verification_context_ids: list[str] = []
-        verification_warnings: list[str] = []
-        if verification_query is not None and verification_query.strip():
-            verification = await self.search(
-                query=verification_query,
-                strategy=RagStrategy.HYBRID,
-                limit=min(limit, 10),
-                project=project,
-            )
-            verification_context_ids = list(
-                dict.fromkeys(match.context.id for match in verification.matches)
-            )
-            verification_warnings = verification.warnings
-        warnings = list(reindex.warnings)
-        if after.embedding is RagHealthState.REINDEX_REQUIRED:
-            warnings.append(
-                "Soft rebuild batch incomplete; rerun with a higher limit or repeat "
-                "until after.embedding is HEALTHY."
-            )
-        result = ContextSoftRebuildResult(
-            mode="soft_embedding_vector_rebuild",
-            source_preservation=(
-                "Source contexts, Obsidian notes, and memory records are preserved; "
-                "only chunk embedding metadata/vector fields are rewritten."
-            ),
-            hard_delete_performed=False,
-            before=before,
-            source_status_before=source_status_before,
-            reindex=reindex,
-            after=after,
-            source_status_after=source_status_after,
+        return await self._soft_rebuild_service.rebuild(
+            limit=limit,
             verification_query=verification_query,
-            verification_matches=len(verification_context_ids),
-            verification_context_ids=verification_context_ids,
-            verification_warnings=verification_warnings,
-            warnings=warnings,
+            project=project,
         )
-        return result
 
     async def embedding_source_statuses(self) -> list[ContextEmbeddingSourceStatus]:
         """Return source-level embedding fingerprint diagnostics.
@@ -702,198 +427,4 @@ class ContextService:
         Returns:
             One status object per configured Context RAG source.
         """
-        provider = self._embedding_provider
-        health = self.rag_health()
-        if (
-            provider is None
-            or not self._vector_retrieval_enabled
-            or health.vector is not RagHealthState.HEALTHY
-            or health.embedding is not RagHealthState.HEALTHY
-        ):
-            return []
-
-        return await self._embedding_source_statuses(provider)
-
-    async def _embedding_source_statuses(
-        self,
-        provider: EmbeddingProvider,
-    ) -> list[ContextEmbeddingSourceStatus]:
-        fingerprint = provider.fingerprint()
-        statuses = [
-            await source.embedding_source_status(
-                model_name=provider.model_name,
-                dimensions=provider.dimensions,
-                fingerprint_key=fingerprint.key(),
-                current_fingerprint=fingerprint.identity_payload(),
-            )
-            for source in self._search_sources
-        ]
-        return statuses
-
-    async def _search_fts_sources(
-        self, recall: ContextFtsRecall
-    ) -> list[ContextSearchMatch]:
-        matches: list[ContextSearchMatch] = []
-        for source in self._search_sources:
-            source_matches = await source.search_fts(recall)
-            matches.extend(source_matches)
-        return _rank_matches(matches, recall.recall_filter.limit)
-
-    async def _search_vector_sources(
-        self,
-        query: str,
-        recall_filter: ContextRecallFilter,
-    ) -> list[ContextSearchMatch]:
-        provider = self._embedding_provider
-        if provider is None:
-            return []
-        fingerprint = provider.fingerprint()
-        query_embedding = await _embed_query(provider, query)
-        if len(query_embedding) != provider.dimensions:
-            raise MemoryContextValidationError(
-                "Embedding provider returned an unexpected dimension"
-            )
-        matches: list[ContextSearchMatch] = []
-        recall = ContextVectorRecall(
-            query_embedding=tuple(query_embedding),
-            model_name=provider.model_name,
-            dimensions=provider.dimensions,
-            fingerprint_key=fingerprint.key(),
-            recall_filter=recall_filter,
-        )
-        for source in self._search_sources:
-            source_matches = await source.search_vector(recall)
-            matches.extend(source_matches)
-        return _rank_matches(matches, recall_filter.limit)
-
-    async def _embedding_index_status(
-        self,
-        provider: EmbeddingProvider,
-    ) -> RagHealthState:
-        fingerprint = provider.fingerprint()
-        for source in self._search_sources:
-            source_status = await source.embedding_index_status(
-                model_name=provider.model_name,
-                dimensions=provider.dimensions,
-                fingerprint_key=fingerprint.key(),
-            )
-            if source_status is RagHealthState.REINDEX_REQUIRED:
-                return source_status
-        return RagHealthState.HEALTHY
-
-
-def _embedding_index_status_probe_failed_health(
-    health: RagDependencyHealth,
-    error: SQLAlchemyError,
-) -> RagDependencyHealth:
-    warning = (
-        "Embedding index status check failed; vector recall is disabled until "
-        f"the storage probe succeeds: {error.__class__.__name__}"
-    )
-    return replace(
-        health,
-        embedding=RagHealthState.DEGRADED,
-        default_strategy=RagStrategy.FTS_ONLY,
-        warnings=[*health.warnings, warning],
-    )
-
-
-async def _reindex_embedding_sources(
-    *,
-    sources: list[IContextSearchSource],
-    provider: EmbeddingProvider,
-    fingerprint_key: str,
-    limit: int,
-    force: bool,
-    processed_by_source: dict[int, set[str]],
-) -> tuple[int, int]:
-    scanned = 0
-    updated = 0
-    for source_index, source in enumerate(sources):
-        remaining = limit - scanned
-        if remaining < 1:
-            break
-        processed_ids = processed_by_source.setdefault(source_index, set())
-        chunks = await source.chunks_missing_embeddings(
-            model_name=provider.model_name,
-            dimensions=provider.dimensions,
-            fingerprint_key=fingerprint_key,
-            limit=remaining + len(processed_ids),
-            force=force,
-        )
-        selected = [chunk for chunk in chunks if chunk.id not in processed_ids][
-            :remaining
-        ]
-        if not selected:
-            continue
-        processed_ids.update(chunk.id for chunk in selected)
-        scanned += len(selected)
-        updates = await _embedding_updates(provider=provider, chunks=selected)
-        updated += await source.update_chunk_embeddings(updates)
-    return scanned, updated
-
-
-async def _embed_documents(
-    provider: EmbeddingProvider,
-    texts: list[str],
-) -> list[list[float]]:
-    return await asyncify(provider.embed_documents, abandon_on_cancel=True)(texts)
-
-
-async def _embed_query(provider: EmbeddingProvider, text: str) -> list[float]:
-    return await asyncify(provider.embed_query, abandon_on_cancel=True)(text)
-
-
-async def _embedding_updates(
-    *,
-    provider: EmbeddingProvider,
-    chunks: list[ContextChunkRecord],
-) -> list[ContextChunkEmbeddingUpdate]:
-    if not chunks:
-        return []
-    embeddings = await _embed_documents(
-        provider,
-        [chunk.content for chunk in chunks],
-    )
-    if len(embeddings) != len(chunks):
-        raise MemoryContextValidationError(
-            "Embedding provider returned an unexpected vector count"
-        )
-
-    updates: list[ContextChunkEmbeddingUpdate] = []
-    fingerprint = provider.fingerprint()
-    indexed_at = now_utc()
-    for chunk, embedding in zip(chunks, embeddings, strict=True):
-        if len(embedding) != provider.dimensions:
-            raise MemoryContextValidationError(
-                "Embedding provider returned an unexpected dimension"
-            )
-        try:
-            serialized = vector_to_sqlite_json(embedding)
-        except ValueError as exc:
-            raise MemoryContextValidationError(str(exc)) from exc
-        updates.append(
-            ContextChunkEmbeddingUpdate(
-                chunk_id=chunk.id,
-                embedding=serialized,
-                embedding_model=provider.model_name,
-                embedding_dimensions=provider.dimensions,
-                embedding_provider=fingerprint.provider,
-                embedding_provider_version=fingerprint.provider_version,
-                embedding_pooling_mode=fingerprint.pooling_mode,
-                embedding_normalize=fingerprint.normalize,
-                embedding_fingerprint_key=fingerprint.key(),
-                embedding_fingerprint=fingerprint.snapshot_payload(
-                    indexed_at=indexed_at
-                ),
-                embedding_indexed_at=indexed_at,
-            )
-        )
-    return updates
-
-
-def _rank_matches(
-    matches: list[ContextSearchMatch],
-    limit: int,
-) -> list[ContextSearchMatch]:
-    return rank_best_matches_per_context(matches, limit)
+        return await self._embedding_service.source_statuses()

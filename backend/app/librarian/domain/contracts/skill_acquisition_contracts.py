@@ -36,7 +36,7 @@ class SkillAcquisitionJobCreate:
     provider_id: str | None
     librarian_profile_id: str | None
     result_summary: str | None
-    evidence_urls: list[str] = field(default_factory=list)
+    evidence_urls: tuple[str, ...] = field(default_factory=tuple)
     error_message: str | None = None
     skill_id: str | None = None
     context_id: str | None = None
@@ -55,6 +55,10 @@ class SkillAcquisitionJobCreate:
     prompt_reference: str | None = None
     prompt_reference_hash: str | None = None
 
+    def __post_init__(self) -> None:
+        """Normalize job evidence URLs to an immutable sequence."""
+        object.__setattr__(self, "evidence_urls", tuple(self.evidence_urls))
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SkillAcquisitionJobUpdate:
@@ -62,7 +66,7 @@ class SkillAcquisitionJobUpdate:
 
     status: SkillAcquisitionJobStatus
     result_summary: str | None = None
-    evidence_urls: list[str] = field(default_factory=list)
+    evidence_urls: tuple[str, ...] = field(default_factory=tuple)
     error_message: str | None = None
     skill_id: str | None = None
     context_id: str | None = None
@@ -80,6 +84,10 @@ class SkillAcquisitionJobUpdate:
     prompt_reference: str | None = None
     prompt_reference_hash: str | None = None
 
+    def __post_init__(self) -> None:
+        """Normalize updated evidence URLs to an immutable sequence."""
+        object.__setattr__(self, "evidence_urls", tuple(self.evidence_urls))
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SkillAcquisitionEvidenceItem:
@@ -90,9 +98,13 @@ class SkillAcquisitionEvidenceItem:
     source_kind: str | None = None
     publisher_or_repository: str | None = None
     accessed_at: str | None = None
-    supports_claims: list[str] = field(default_factory=list)
+    supports_claims: tuple[str, ...] = field(default_factory=tuple)
     freshness: str | None = None
     notes: str | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize supported claims to an immutable sequence."""
+        object.__setattr__(self, "supports_claims", tuple(self.supports_claims))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -104,17 +116,27 @@ class SkillAcquisitionArtifact:
     content: str
     summary: str | None = None
     category_id: str | None = None
-    tags: list[str] = field(default_factory=list)
+    tags: tuple[str, ...] = field(default_factory=tuple)
     input_schema: SkillSchemaPayload = field(default_factory=_empty_skill_schema)
     output_schema: SkillSchemaPayload = field(default_factory=_empty_skill_schema)
     usage_example: str | None = None
-    required_tools: list[str] = field(default_factory=list)
+    required_tools: tuple[str, ...] = field(default_factory=tuple)
     risk_level: RiskLevel = RiskLevel.LOW
     version: str = "1.0.0"
     created_by_name: str | None = None
     activate: bool = False
     status: ItemStatus = ItemStatus.DRAFT
-    evidence_urls: list[str] = field(default_factory=list)
-    evidence_items: list[SkillAcquisitionEvidenceItem] = field(default_factory=list)
+    evidence_urls: tuple[str, ...] = field(default_factory=tuple)
+    evidence_items: tuple[SkillAcquisitionEvidenceItem, ...] = field(
+        default_factory=tuple
+    )
     source_summary: str | None = None
-    next_steps: list[str] = field(default_factory=list)
+    next_steps: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize artifact collections to immutable values."""
+        object.__setattr__(self, "tags", tuple(self.tags))
+        object.__setattr__(self, "required_tools", tuple(self.required_tools))
+        object.__setattr__(self, "evidence_urls", tuple(self.evidence_urls))
+        object.__setattr__(self, "evidence_items", tuple(self.evidence_items))
+        object.__setattr__(self, "next_steps", tuple(self.next_steps))

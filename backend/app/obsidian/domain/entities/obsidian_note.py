@@ -39,7 +39,7 @@ class ObsidianNote:
     alexandria_type: AlexandriaNoteType
     title: str
     status: str
-    tags: list[str]
+    tags: tuple[str, ...]
     project: str | None
     source: str | None
     content_hash: str
@@ -50,6 +50,10 @@ class ObsidianNote:
     size_bytes: int
     modified_at: datetime
     indexed_at: datetime
+
+    def __post_init__(self) -> None:
+        """Normalize note tags to an immutable sequence."""
+        object.__setattr__(self, "tags", tuple(self.tags))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -116,8 +120,13 @@ class ObsidianReindexResult:
     files_indexed: int
     files_skipped: int
     stale_marked: int
-    errors: list[str] = field(default_factory=list)
-    error_details: list[ObsidianIndexError] = field(default_factory=list)
+    errors: tuple[str, ...] = field(default_factory=tuple)
+    error_details: tuple[ObsidianIndexError, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize reindex diagnostics to immutable sequences."""
+        object.__setattr__(self, "errors", tuple(self.errors))
+        object.__setattr__(self, "error_details", tuple(self.error_details))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -142,7 +151,11 @@ class ObsidianVaultStatus:
     indexed_notes: int
     stale_notes: int
     error_notes: int
-    index_errors: list[ObsidianIndexError] = field(default_factory=list)
+    index_errors: tuple[ObsidianIndexError, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize index errors to an immutable sequence."""
+        object.__setattr__(self, "index_errors", tuple(self.index_errors))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -154,7 +167,7 @@ class ObsidianVaultInventoryItem:
     alexandria_type: AlexandriaNoteType
     title: str
     status: str
-    tags: list[str]
+    tags: tuple[str, ...]
     project: str | None
     size_bytes: int
     modified_at: datetime
@@ -169,7 +182,7 @@ class ObsidianLibrarianReviewQueueItem:
     alexandria_type: AlexandriaNoteType
     title: str
     status: str
-    tags: list[str]
+    tags: tuple[str, ...]
     project: str | None
     reason: str
     recommended_action: str
@@ -178,6 +191,10 @@ class ObsidianLibrarianReviewQueueItem:
     confidence: float
     requires_human_review: bool
     verification_query: str | None
+
+    def __post_init__(self) -> None:
+        """Normalize curation tags to an immutable sequence."""
+        object.__setattr__(self, "tags", tuple(self.tags))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -204,9 +221,15 @@ class ObsidianVaultMovePlan:
 
     status: str
     hard_delete_performed: bool
-    moves: list[ObsidianVaultMoveCandidate]
-    skipped: list[ObsidianVaultMoveSkip]
-    ambiguous: list[ObsidianVaultMoveSkip]
+    moves: tuple[ObsidianVaultMoveCandidate, ...]
+    skipped: tuple[ObsidianVaultMoveSkip, ...]
+    ambiguous: tuple[ObsidianVaultMoveSkip, ...]
+
+    def __post_init__(self) -> None:
+        """Normalize planned move groups to immutable sequences."""
+        object.__setattr__(self, "moves", tuple(self.moves))
+        object.__setattr__(self, "skipped", tuple(self.skipped))
+        object.__setattr__(self, "ambiguous", tuple(self.ambiguous))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -233,12 +256,18 @@ class ObsidianVaultMoveReport:
 
     status: str
     hard_delete_performed: bool
-    moved: list[ObsidianVaultMoveApplied]
-    skipped: list[ObsidianVaultMoveSkip]
-    ambiguous: list[ObsidianVaultMoveSkip]
+    moved: tuple[ObsidianVaultMoveApplied, ...]
+    skipped: tuple[ObsidianVaultMoveSkip, ...]
+    ambiguous: tuple[ObsidianVaultMoveSkip, ...]
     verification: ObsidianVaultMoveVerification
     report_markdown_path: str
     report_json_path: str
+
+    def __post_init__(self) -> None:
+        """Normalize applied move groups to immutable sequences."""
+        object.__setattr__(self, "moved", tuple(self.moved))
+        object.__setattr__(self, "skipped", tuple(self.skipped))
+        object.__setattr__(self, "ambiguous", tuple(self.ambiguous))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

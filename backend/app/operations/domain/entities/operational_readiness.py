@@ -48,8 +48,32 @@ class OperationalRagSnapshot:
     model_name: str
     dimensions: int
     fingerprint: JSONObject | None
-    source_statuses: list[ContextEmbeddingSourceStatus] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    source_statuses: tuple[ContextEmbeddingSourceStatus, ...] = field(
+        default_factory=tuple
+    )
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class OperationalReconciliationSnapshot:
+    """Memory reconciliation state used by operational readiness."""
+
+    configured: bool
+    reachable: bool
+    total_contexts: int
+    temporal_state_count: int
+    missing_temporal_states: int
+    backfill_complete: bool
+    total_plans: int
+    pending_review_plans: int
+    total_results: int
+    partial_apply_results: int
+    failed_results: int
+    open_conflicts: int
+    reviewing_conflicts: int
+    hard_delete_results: int
+    latest_failure_code: str | None
+    latest_failure_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,8 +87,15 @@ class OperationalReadinessSnapshot:
     vault: OperationalVaultSnapshot
     database: OperationalDatabaseSnapshot
     rag: OperationalRagSnapshot
+    reconciliation: OperationalReconciliationSnapshot
     active_recovery_run_id: str | None
     last_successful_recovery_run_id: str | None
-    warnings: list[str]
-    blockers: list[str]
-    next_actions: list[str]
+    warnings: tuple[str, ...]
+    blockers: tuple[str, ...]
+    next_actions: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Normalize readiness findings and actions to immutable values."""
+        object.__setattr__(self, "warnings", tuple(self.warnings))
+        object.__setattr__(self, "blockers", tuple(self.blockers))
+        object.__setattr__(self, "next_actions", tuple(self.next_actions))

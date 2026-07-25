@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from app.cli.type_validate.command_options import (
     CompactRefreshOptions,
     LibrarianReadinessOptions,
@@ -14,16 +12,174 @@ from app.mcp_server.backend_api_client import AlexandriaApiClient
 from app.shared.types.extra_types import JSONValue
 
 
-class _BackendToolGatewayProxy:
-    """Lazily resolve backend MCP tool gateway functions for command execution."""
+class _BackendToolGatewayAdapter:
+    """Expose only librarian CLI operations while preserving deferred imports."""
 
-    def __getattr__(self, name: str) -> Any:
-        from app.mcp_server import backend_tool_gateway as real_gateway
+    async def alexandria_librarian_readiness(
+        self,
+        client: AlexandriaApiClient,
+        project: str | None = None,
+        max_compact_age_days: int = 30,
+    ) -> JSONValue:
+        """Call the librarian readiness backend operation.
 
-        return getattr(real_gateway, name)
+        Args:
+            client: Backend HTTP client.
+            project: Optional project filter.
+            max_compact_age_days: Maximum acceptable compact age.
+
+        Returns:
+            JSON-compatible readiness payload.
+        """
+        # local import justified: CLI help must not import the broad MCP gateway.
+        from app.mcp_server.backend_tool_gateway import alexandria_librarian_readiness
+
+        return await alexandria_librarian_readiness(
+            client,
+            project=project,
+            max_compact_age_days=max_compact_age_days,
+        )
+
+    async def alexandria_librarian_review_queue(
+        self,
+        client: AlexandriaApiClient,
+        project: str | None = None,
+        scope_path: str | None = None,
+        limit: int = 20,
+    ) -> JSONValue:
+        """Call the librarian review queue backend operation.
+
+        Args:
+            client: Backend HTTP client.
+            project: Optional project filter.
+            scope_path: Optional vault-relative scope.
+            limit: Maximum candidates.
+
+        Returns:
+            JSON-compatible review queue payload.
+        """
+        # local import justified: CLI help must not import the broad MCP gateway.
+        from app.mcp_server.backend_tool_gateway import (
+            alexandria_librarian_review_queue,
+        )
+
+        return await alexandria_librarian_review_queue(
+            client,
+            project=project,
+            scope_path=scope_path,
+            limit=limit,
+        )
+
+    async def alexandria_librarian_review_move_plan(
+        self,
+        client: AlexandriaApiClient,
+        project: str | None = None,
+        scope_path: str | None = None,
+        limit: int = 20,
+    ) -> JSONValue:
+        """Call the librarian review move-plan backend operation.
+
+        Args:
+            client: Backend HTTP client.
+            project: Optional project filter.
+            scope_path: Optional vault-relative scope.
+            limit: Maximum candidates.
+
+        Returns:
+            JSON-compatible move-plan payload.
+        """
+        # local import justified: CLI help must not import the broad MCP gateway.
+        from app.mcp_server.backend_tool_gateway import (
+            alexandria_librarian_review_move_plan,
+        )
+
+        return await alexandria_librarian_review_move_plan(
+            client,
+            project=project,
+            scope_path=scope_path,
+            limit=limit,
+        )
+
+    async def alexandria_librarian_review_apply_moves(
+        self,
+        client: AlexandriaApiClient,
+        project: str | None = None,
+        scope_path: str | None = None,
+        limit: int = 20,
+        report_path: str | None = None,
+        reindex: bool = True,
+        verification_query: str | None = None,
+        confirm_apply: bool = False,
+    ) -> JSONValue:
+        """Call the librarian review apply backend operation.
+
+        Args:
+            client: Backend HTTP client.
+            project: Optional project filter.
+            scope_path: Optional vault-relative scope.
+            limit: Maximum candidates.
+            report_path: Optional report path.
+            reindex: Whether to rebuild the index after moving.
+            verification_query: Optional post-move verification query.
+            confirm_apply: Whether the caller confirmed mutation.
+
+        Returns:
+            JSON-compatible move application payload.
+        """
+        # local import justified: CLI help must not import the broad MCP gateway.
+        from app.mcp_server.backend_tool_gateway import (
+            alexandria_librarian_review_apply_moves,
+        )
+
+        return await alexandria_librarian_review_apply_moves(
+            client,
+            project=project,
+            scope_path=scope_path,
+            limit=limit,
+            report_path=report_path,
+            reindex=reindex,
+            verification_query=verification_query,
+            confirm_apply=confirm_apply,
+        )
+
+    async def alexandria_librarian_refresh_current_compact(
+        self,
+        client: AlexandriaApiClient,
+        project: str | None = None,
+        max_compact_age_days: int = 30,
+        apply: bool = False,
+        force: bool = False,
+        covered_to: str | None = None,
+    ) -> JSONValue:
+        """Call the librarian compact refresh backend operation.
+
+        Args:
+            client: Backend HTTP client.
+            project: Optional project filter.
+            max_compact_age_days: Maximum acceptable compact age.
+            apply: Whether to create a replacement compact.
+            force: Whether to refresh despite fresh readiness.
+            covered_to: Optional deterministic coverage end.
+
+        Returns:
+            JSON-compatible compact refresh payload.
+        """
+        # local import justified: CLI help must not import the broad MCP gateway.
+        from app.mcp_server.backend_tool_gateway import (
+            alexandria_librarian_refresh_current_compact,
+        )
+
+        return await alexandria_librarian_refresh_current_compact(
+            client,
+            project=project,
+            max_compact_age_days=max_compact_age_days,
+            apply=apply,
+            force=force,
+            covered_to=covered_to,
+        )
 
 
-backend_tool_gateway = _BackendToolGatewayProxy()
+backend_tool_gateway = _BackendToolGatewayAdapter()
 
 
 class LibrarianGateway:

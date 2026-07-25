@@ -227,7 +227,7 @@ async def embedding_source_status(
         stale_rows=stale,
         missing_rows=missing,
         current_fingerprint=current_fingerprint,
-        stored_fingerprints=[
+        stored_fingerprints=tuple(
             _fingerprint_payload(
                 provider=provider,
                 model=model,
@@ -244,7 +244,7 @@ async def embedding_source_status(
                 normalize,
                 stored_dimensions,
             ) in fingerprint_rows.all()
-        ],
+        ),
     )
 
 

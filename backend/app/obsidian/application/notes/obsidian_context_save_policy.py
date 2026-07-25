@@ -16,8 +16,8 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
 )
 from app.obsidian.domain.entities.obsidian_note import ObsidianNote
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
-from app.obsidian.domain.repositories.obsidian_repository import (
-    IObsidianIndexRepository,
+from app.obsidian.domain.repositories.obsidian_index_query_repository import (
+    IObsidianIndexQueryRepository,
 )
 from app.shared.exceptions import ObsidianValidationError
 from app.shared.types.extra_types import JSONObject
@@ -37,7 +37,7 @@ async def apply_context_save_policy(
     note_id: str,
     frontmatter: JSONObject,
     body: str,
-    repository: IObsidianIndexRepository,
+    repository: IObsidianIndexQueryRepository,
 ) -> ContextSavePolicyResult:
     """Validate Context identity, relations, and duplicate content.
 
@@ -92,7 +92,7 @@ async def apply_context_save_policy(
 async def _validate_supersede_relations(
     identity: ObsidianContextIdentity,
     note_id: str,
-    repository: IObsidianIndexRepository,
+    repository: IObsidianIndexQueryRepository,
 ) -> None:
     supersedes_context_id = identity.supersedes_context_id
     if supersedes_context_id is not None:

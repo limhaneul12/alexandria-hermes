@@ -620,7 +620,7 @@ def test_recovery_run_fails_closed_when_post_recovery_rag_has_warnings(
     assert status == RecoveryRunStatus.FAILED
     assert error_code == "READINESS_VERIFICATION_FAILED"
     assert warnings == ["rag_status_warnings_present"]
-    assert next_actions == ["inspect_recovery_run"]
+    assert next_actions == ("inspect_recovery_run",)
 
 
 def test_recovery_run_fails_closed_when_post_recovery_strategy_is_not_hybrid(
@@ -703,7 +703,7 @@ def test_recovery_run_fails_closed_when_representative_search_is_missing(
     assert status == RecoveryRunStatus.FAILED
     assert representative_search["matched"] is False
     assert error_code == "READINESS_VERIFICATION_FAILED"
-    assert next_actions == ["inspect_recovery_run"]
+    assert next_actions == ("inspect_recovery_run",)
 
 
 def test_recovery_run_fails_closed_when_representative_readback_differs(
@@ -748,7 +748,7 @@ def test_recovery_run_fails_closed_when_representative_readback_differs(
     assert representative_search["matched"] is False
     assert representative_search["readback"]["matched"] is False
     assert error_code == "READINESS_VERIFICATION_FAILED"
-    assert next_actions == ["inspect_recovery_run"]
+    assert next_actions == ("inspect_recovery_run",)
 
 
 def test_recovery_run_is_idempotent_for_existing_manifest(tmp_path: Path) -> None:

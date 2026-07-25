@@ -27,7 +27,7 @@ class SkillAcquisitionJob:
     skill_id: str | None
     context_id: str | None
     result_summary: str | None
-    evidence_urls: list[str]
+    evidence_urls: tuple[str, ...]
     error_message: str | None
     created_at: datetime
     updated_at: datetime
@@ -43,6 +43,10 @@ class SkillAcquisitionJob:
     acquisition_override_reason: str | None = None
     prompt_reference: str | None = None
     prompt_reference_hash: str | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize evidence URLs to an immutable sequence."""
+        object.__setattr__(self, "evidence_urls", tuple(self.evidence_urls))
 
     @property
     def result_available(self) -> bool:

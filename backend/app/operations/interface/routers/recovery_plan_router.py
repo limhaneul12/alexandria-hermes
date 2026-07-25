@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, status
 
 from app.container import ApplicationContainer
 from app.memory.application.context_service import ContextService
+from app.memory.application.reconciliation.memory_reconciliation_readiness_service import (
+    MemoryReconciliationReadinessService,
+)
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.operations.application.recovery_plan_service import RecoveryPlanService
 from app.operations.interface.schemas.operations.recovery_plan_schema import (
@@ -35,6 +40,12 @@ async def recovery_plan(
     obsidian_service: ObsidianService = Depends(
         Provide[ApplicationContainer.obsidian.obsidian_service]
     ),
+    reconciliation_service: Annotated[
+        MemoryReconciliationReadinessService | None,
+        Depends(
+            Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
+        ),
+    ] = None,
 ) -> RecoveryPlanResponse:
     """Return recovery dry-run plan.
 
@@ -43,6 +54,7 @@ async def recovery_plan(
         database: Shared database coordinator.
         context_service: Context/RAG service.
         obsidian_service: Obsidian vault service.
+        reconciliation_service: Memory reconciliation diagnostics service.
 
     Returns:
         Recovery dry-run plan response.
@@ -51,6 +63,7 @@ async def recovery_plan(
         database=database,
         context_service=context_service,
         obsidian_service=obsidian_service,
+        reconciliation_service=reconciliation_service,
     )
     plan = await service.plan(request.to_contract())
     return RecoveryPlanResponse.from_entity(plan)

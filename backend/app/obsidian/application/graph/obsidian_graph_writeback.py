@@ -44,7 +44,7 @@ def graph_link_save_payload(
         alexandria_type=note.alexandria_type,
         note_id=note.note_id,
         relative_path=note.relative_path,
-        tags=list(note.tags),
+        tags=tuple(note.tags),
         status=note.status,
         project=note.project,
         source=note.source or "obsidian-librarian-langgraph",

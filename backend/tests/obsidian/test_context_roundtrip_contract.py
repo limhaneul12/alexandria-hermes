@@ -138,7 +138,7 @@ def test_three_node_supersede_chain_survives_reindex_with_bidirectional_links(
 
     first, middle, current, errors = anyio.run(scenario)
 
-    assert errors == []
+    assert errors == ()
     assert first.status == "superseded"
     assert first.frontmatter["superseded_by_context_id"] == "ctx_b"
     assert middle.status == "superseded"
@@ -301,7 +301,7 @@ def test_explicit_supersede_links_existing_contexts_idempotently(
 
     first_old, first_new, second_old, second_new, errors = anyio.run(scenario)
 
-    assert errors == []
+    assert errors == ()
     assert first_old.status == "superseded"
     assert first_old.frontmatter["superseded_by_context_id"] == first_new.note_id
     assert first_new.status == "current"
@@ -390,7 +390,7 @@ def test_context_kind_and_aware_timestamps_survive_save_reindex_read(
 
     record, errors = anyio.run(scenario)
 
-    assert errors == []
+    assert errors == ()
     assert record.kind is ContextKind.HANDOFF
     assert record.created_at == created_at
     assert record.updated_at == updated_at

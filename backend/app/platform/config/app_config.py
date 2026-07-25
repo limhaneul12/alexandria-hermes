@@ -15,13 +15,15 @@ from app.memory.application.retrieval.embedding_provider import (
     DEFAULT_EMBEDDING_MODEL,
 )
 from app.shared.utils.config import settings_model_config
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 DEFAULT_CODEX_OAUTH_ISSUER: Final[str] = "https://auth.openai.com"
 DEFAULT_CODEX_OAUTH_CLIENT_ID: Final[str] = "app_EMoamEEZ73f0CkXaXp7hrann"
 DEFAULT_CODEX_OAUTH_DEVICE_EXPIRES_IN_SECONDS: Final[int] = 900
 DEFAULT_CODEX_OAUTH_MIN_POLL_INTERVAL_SECONDS: Final[int] = 3
+DEFAULT_MEMORY_RECONCILIATION_MODEL: Final[str] = "gpt-5.5"
+DEFAULT_MEMORY_RECONCILIATION_PROVIDER_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 class AppConfig(BaseSettings):
@@ -82,6 +84,19 @@ class AppConfig(BaseSettings):
         ge=1,
         le=60,
     )
+    # Optional encrypted Connections provider used only for UNKNOWN relations.
+    memory_reconciliation_provider_id: str | None = Field(default=None)
+    # Fallback model when the selected provider has no explicit model config.
+    memory_reconciliation_model: str = Field(
+        default=DEFAULT_MEMORY_RECONCILIATION_MODEL,
+        min_length=1,
+    )
+    # Provider execution timeout for one relation proposal.
+    memory_reconciliation_provider_timeout_seconds: float = Field(
+        default=DEFAULT_MEMORY_RECONCILIATION_PROVIDER_TIMEOUT_SECONDS,
+        gt=0,
+        le=300,
+    )
     # Enable local context vector retrieval. FastEmbed remains lazy until embeddings are needed.
     rag_vector_enabled: bool = Field(default=True)
     # Local embedding provider used by context RAG.
@@ -110,6 +125,38 @@ class AppConfig(BaseSettings):
         default="./data/obsidian_librarian_langgraph.sqlite",
         min_length=1,
     )
+
+    @field_validator("memory_reconciliation_provider_id")
+    @classmethod
+    def normalize_memory_reconciliation_provider_id(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        """Normalize the optional provider id without enabling one implicitly.
+
+        Args:
+            value: Value.
+
+        Returns:
+            str | None: Operation result.
+        """
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("memory_reconciliation_model")
+    @classmethod
+    def normalize_memory_reconciliation_model(cls, value: str) -> str:
+        """Normalize the configured fallback model name.
+
+        Args:
+            value: Value.
+
+        Returns:
+            str: Operation result.
+        """
+        return value.strip()
 
     @model_validator(mode="after")
     def validate_mcp_oauth_configuration(self) -> AppConfig:

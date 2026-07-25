@@ -5,19 +5,25 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from types import MappingProxyType
 
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 FRONTMATTER_DELIMITER = "---"
-type FrontmatterValue = str | list[str] | None
+type FrontmatterValue = str | tuple[str, ...] | None
+type MutableFrontmatterValue = str | list[str] | None
 
 
 @dataclass(frozen=True, slots=True)
 class MarkdownDocument:
     """A Markdown file split into frontmatter and body."""
 
-    frontmatter: dict[str, FrontmatterValue]
+    frontmatter: Mapping[str, FrontmatterValue]
     body: str
+
+    def __post_init__(self) -> None:
+        """Freeze parsed frontmatter and nested sequence values."""
+        object.__setattr__(self, "frontmatter", _freeze_frontmatter(self.frontmatter))
 
 
 def parse_markdown_document(text: str) -> MarkdownDocument:
@@ -32,11 +38,11 @@ def parse_markdown_document(text: str) -> MarkdownDocument:
     """
     lines = text.splitlines()
     if not lines or lines[0].strip() != FRONTMATTER_DELIMITER:
-        return MarkdownDocument(frontmatter={}, body=text)
+        return MarkdownDocument(frontmatter=MappingProxyType({}), body=text)
     end_index = _frontmatter_end_index(lines)
     if end_index is None:
         raise ValueError("FRONTMATTER_PARSE_ERROR: unterminated frontmatter")
-    frontmatter = _parse_frontmatter_lines(lines[1:end_index])
+    frontmatter = _freeze_frontmatter(_parse_frontmatter_lines(lines[1:end_index]))
     body = "\n".join(lines[end_index + 1 :])
     if text.endswith("\n") and body:
         body = f"{body}\n"
@@ -115,7 +121,7 @@ def update_frontmatter_scalars(
     return "".join(lines)
 
 
-def frontmatter_json(frontmatter: dict[str, FrontmatterValue]) -> JSONObject:
+def frontmatter_json(frontmatter: Mapping[str, FrontmatterValue]) -> JSONObject:
     """Convert parsed frontmatter values into a JSON payload.
 
     Args:
@@ -130,7 +136,10 @@ def frontmatter_json(frontmatter: dict[str, FrontmatterValue]) -> JSONObject:
     return payload
 
 
-def frontmatter_text(frontmatter: dict[str, FrontmatterValue], key: str) -> str | None:
+def frontmatter_text(
+    frontmatter: Mapping[str, FrontmatterValue],
+    key: str,
+) -> str | None:
     """Read one scalar frontmatter value.
 
     Args:
@@ -146,7 +155,10 @@ def frontmatter_text(frontmatter: dict[str, FrontmatterValue], key: str) -> str 
     return None
 
 
-def frontmatter_list(frontmatter: dict[str, FrontmatterValue], key: str) -> list[str]:
+def frontmatter_list(
+    frontmatter: Mapping[str, FrontmatterValue],
+    key: str,
+) -> list[str]:
     """Read one list frontmatter value.
 
     Args:
@@ -157,11 +169,28 @@ def frontmatter_list(frontmatter: dict[str, FrontmatterValue], key: str) -> list
         List of string values.
     """
     value = frontmatter.get(key)
-    if isinstance(value, list):
-        return value
+    if isinstance(value, tuple):
+        return list(value)
     if isinstance(value, str) and value:
         return [value]
     return []
+
+
+def _freeze_frontmatter(
+    frontmatter: Mapping[str, FrontmatterValue | MutableFrontmatterValue],
+) -> Mapping[str, FrontmatterValue]:
+    """Deep-freeze parsed frontmatter values.
+
+    Args:
+        frontmatter: Parsed scalar and sequence values.
+
+    Returns:
+        Read-only mapping with tuple sequence values.
+    """
+    frozen: dict[str, FrontmatterValue] = {}
+    for key, value in frontmatter.items():
+        frozen[key] = tuple(value) if isinstance(value, list | tuple) else value
+    return MappingProxyType(frozen)
 
 
 def _frontmatter_end_index(lines: list[str]) -> int | None:
@@ -171,8 +200,10 @@ def _frontmatter_end_index(lines: list[str]) -> int | None:
     return None
 
 
-def _parse_frontmatter_lines(lines: list[str]) -> dict[str, FrontmatterValue]:
-    frontmatter: dict[str, FrontmatterValue] = {}
+def _parse_frontmatter_lines(
+    lines: list[str],
+) -> dict[str, MutableFrontmatterValue]:
+    frontmatter: dict[str, MutableFrontmatterValue] = {}
     active_list_key: str | None = None
     for line in lines:
         stripped = line.strip()
@@ -268,7 +299,7 @@ def _can_render_plain(value: str) -> bool:
 def _json_value(value: FrontmatterValue) -> JSONValue:
     if value is None:
         return None
-    if isinstance(value, list):
+    if isinstance(value, tuple):
         return list(value)
     return value
 

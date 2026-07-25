@@ -18,29 +18,18 @@ from app.memory.domain.repositories.memory_compact_repository import (
     IMemoryCompactRepository,
     MemoryCompactCreate,
 )
-from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown import (
-    NOTE_SUFFIX,
-    is_safe_note_id,
-    read_compact_file,
-    resolve_base_dir,
-    serialize_compact,
+from app.memory.infrastructure.repositories.memory_compacts.note_store import (
+    MemoryCompactNoteStore,
 )
 from app.shared.exceptions import MemoryCompactNotFoundError
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.types_convert_utils import aware_utc_datetime
 
 
-class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
-    """Persist Memory Compact artifacts as Markdown notes in an Obsidian vault."""
+class MemoryCompactCreateRepositoryDelegate:
+    """Create Memory Compact notes over a shared Obsidian note store."""
 
-    def __init__(self, *, vault_path: str | Path, relative_dir: str | Path) -> None:
-        """Initialize repository.
-
-        Args:
-            vault_path: Obsidian vault root path.
-            relative_dir: Relative folder for Memory Compact notes.
-        """
-        self._base_dir = resolve_base_dir(vault_path, relative_dir)
+    _store: MemoryCompactNoteStore
 
     async def create(self, payload: MemoryCompactCreate) -> MemoryCompact:
         """Create one Memory Compact note and source-reference frontmatter.
@@ -70,9 +59,19 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
             reviewed_at=payload.reviewed_at,
         )
         if payload.status is MemoryCompactStatus.CURRENT:
-            await self._supersede_current_project(payload.project, excluded_id=None)
-        self._write_compact(compact)
+            _supersede_current_project(
+                self._store,
+                payload.project,
+                excluded_id=None,
+            )
+        self._store.write(compact)
         return compact
+
+
+class MemoryCompactQueryRepositoryDelegate:
+    """Read and page Memory Compact notes over a shared Obsidian note store."""
+
+    _store: MemoryCompactNoteStore
 
     async def get(self, compact_id: str) -> MemoryCompact | None:
         """Read one compact by id.
@@ -83,10 +82,7 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Matching compact, or None when absent.
         """
-        for compact in self._read_all_compacts():
-            if compact.id == compact_id:
-                return compact
-        return None
+        return self._store.get(compact_id)
 
     async def list_compacts(
         self,
@@ -111,7 +107,8 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Page of compacts and total matching count.
         """
-        compacts = self._filter_compacts(
+        compacts = _filter_compacts(
+            self._store.read_all(),
             project=project,
             status=status,
             covered_after=covered_after,
@@ -132,11 +129,17 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
         """
         compacts = [
             item
-            for item in self._read_all_compacts()
+            for item in self._store.read_all()
             if item.status is MemoryCompactStatus.CURRENT and item.project == project
         ]
         compacts.sort(key=lambda item: item.updated_at, reverse=True)
         return compacts[0] if compacts else None
+
+
+class MemoryCompactLifecycleRepositoryDelegate:
+    """Mutate Memory Compact lifecycle over a shared Obsidian note store."""
+
+    _store: MemoryCompactNoteStore
 
     async def mark_current(
         self,
@@ -159,10 +162,12 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Updated current compact.
         """
-        compact = await self.get(compact_id)
-        if compact is None:
-            raise MemoryCompactNotFoundError(f"Memory compact not found: {compact_id}")
-        await self._supersede_current_project(compact.project, excluded_id=compact.id)
+        compact = _require_compact(self._store, compact_id)
+        _supersede_current_project(
+            self._store,
+            compact.project,
+            excluded_id=compact.id,
+        )
         updated = replace(
             compact,
             status=MemoryCompactStatus.CURRENT,
@@ -173,7 +178,7 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
             review_max_score=review_max_score,
             reviewed_at=reviewed_at,
         )
-        self._write_compact(updated)
+        self._store.write(updated)
         return updated
 
     async def archive(self, compact_id: str) -> MemoryCompact:
@@ -185,9 +190,7 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
         Returns:
             Archived compact.
         """
-        compact = await self.get(compact_id)
-        if compact is None:
-            raise MemoryCompactNotFoundError(f"Memory compact not found: {compact_id}")
+        compact = _require_compact(self._store, compact_id)
         now = datetime.now(UTC)
         updated = replace(
             compact,
@@ -195,7 +198,7 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
             updated_at=now,
             archived_at=now,
         )
-        self._write_compact(updated)
+        self._store.write(updated)
         return updated
 
     async def delete(self, compact_id: str) -> None:
@@ -203,101 +206,88 @@ class ObsidianMemoryCompactRepository(IMemoryCompactRepository):
 
         Args:
             compact_id: Memory Compact identifier.
-
-        Returns:
-            None.
         """
-        compact = await self.get(compact_id)
-        if compact is None:
-            raise MemoryCompactNotFoundError(f"Memory compact not found: {compact_id}")
-        path = self._compact_path(compact.id)
-        if path is not None and path.exists():
-            path.unlink()
-            return
-        self._delete_scanned_note(compact.id)
+        _require_compact(self._store, compact_id)
+        self._store.delete(compact_id)
 
-    async def _supersede_current_project(
-        self,
-        project: str | None,
-        excluded_id: str | None,
-    ) -> None:
-        now = datetime.now(UTC)
-        for compact in self._read_all_compacts():
-            if (
-                compact.status is MemoryCompactStatus.CURRENT
-                and compact.project == project
-                and compact.id != excluded_id
-            ):
-                self._write_compact(
-                    replace(
-                        compact,
-                        status=MemoryCompactStatus.SUPERSEDED,
-                        updated_at=now,
-                    )
+
+class ObsidianMemoryCompactRepository(
+    MemoryCompactCreateRepositoryDelegate,
+    MemoryCompactQueryRepositoryDelegate,
+    MemoryCompactLifecycleRepositoryDelegate,
+    IMemoryCompactRepository,
+):
+    """Assemble focused Memory Compact responsibilities over one note store."""
+
+    def __init__(self, *, vault_path: str | Path, relative_dir: str | Path) -> None:
+        """Initialize repository.
+
+        Args:
+            vault_path: Obsidian vault root path.
+            relative_dir: Relative folder for Memory Compact notes.
+        """
+        self._store = MemoryCompactNoteStore(
+            vault_path=vault_path,
+            relative_dir=relative_dir,
+        )
+
+
+def _require_compact(
+    store: MemoryCompactNoteStore,
+    compact_id: str,
+) -> MemoryCompact:
+    compact = store.get(compact_id)
+    if compact is None:
+        raise MemoryCompactNotFoundError(f"Memory compact not found: {compact_id}")
+    return compact
+
+
+def _supersede_current_project(
+    store: MemoryCompactNoteStore,
+    project: str | None,
+    *,
+    excluded_id: str | None,
+) -> None:
+    now = datetime.now(UTC)
+    for compact in store.read_all():
+        if (
+            compact.status is MemoryCompactStatus.CURRENT
+            and compact.project == project
+            and compact.id != excluded_id
+        ):
+            store.write(
+                replace(
+                    compact,
+                    status=MemoryCompactStatus.SUPERSEDED,
+                    updated_at=now,
                 )
+            )
 
-    def _filter_compacts(
-        self,
-        *,
-        project: str | None,
-        status: MemoryCompactStatus | None,
-        covered_after: datetime | None,
-        covered_before: datetime | None,
-    ) -> list[MemoryCompact]:
-        compacts = self._read_all_compacts()
-        if project is not None:
-            compacts = [item for item in compacts if item.project == project]
-        if status is not None:
-            compacts = [item for item in compacts if item.status is status]
-        if covered_after is not None:
-            lower_bound = aware_utc_datetime(covered_after)
-            compacts = [item for item in compacts if item.covered_to >= lower_bound]
-        if covered_before is not None:
-            upper_bound = aware_utc_datetime(covered_before)
-            compacts = [item for item in compacts if item.covered_from <= upper_bound]
-        return compacts
 
-    def _read_all_compacts(self) -> list[MemoryCompact]:
-        compacts_by_id: dict[str, MemoryCompact] = {}
-        for path in self._note_paths():
-            compact = read_compact_file(path)
-            if compact is not None:
-                existing = compacts_by_id.get(compact.id)
-                if existing is None or _compact_sort_key(compact) > _compact_sort_key(
-                    existing
-                ):
-                    compacts_by_id[compact.id] = compact
-        return list(compacts_by_id.values())
-
-    def _delete_scanned_note(self, compact_id: str) -> None:
-        for candidate in self._note_paths():
-            compact = read_compact_file(candidate)
-            if compact is not None and compact.id == compact_id:
-                candidate.unlink()
-                return
-
-    def _note_paths(self) -> list[Path]:
-        if not self._base_dir.exists():
-            return []
-        return sorted(self._base_dir.glob(f"*{NOTE_SUFFIX}"))
-
-    def _compact_path(self, compact_id: str) -> Path | None:
-        if not is_safe_note_id(compact_id):
-            return None
-        return self._base_dir / f"{compact_id}{NOTE_SUFFIX}"
-
-    def _write_compact(self, compact: MemoryCompact) -> None:
-        self._base_dir.mkdir(parents=True, exist_ok=True)
-        path = self._compact_path(compact.id)
-        if path is None:
-            raise ValueError("Memory Compact id cannot be used as a note filename")
-        temp_path = path.with_suffix(f"{NOTE_SUFFIX}.tmp")
-        temp_path.write_text(serialize_compact(compact), encoding="utf-8")
-        temp_path.replace(path)
+def _filter_compacts(
+    compacts: list[MemoryCompact],
+    *,
+    project: str | None,
+    status: MemoryCompactStatus | None,
+    covered_after: datetime | None,
+    covered_before: datetime | None,
+) -> list[MemoryCompact]:
+    if project is not None:
+        compacts = [item for item in compacts if item.project == project]
+    if status is not None:
+        compacts = [item for item in compacts if item.status is status]
+    if covered_after is not None:
+        lower_bound = aware_utc_datetime(covered_after)
+        compacts = [item for item in compacts if item.covered_to >= lower_bound]
+    if covered_before is not None:
+        upper_bound = aware_utc_datetime(covered_before)
+        compacts = [item for item in compacts if item.covered_from <= upper_bound]
+    return compacts
 
 
 def _source_refs(
-    compact_id: str, payload: MemoryCompactCreate
+    compact_id: str,
+    payload: MemoryCompactCreate,
 ) -> tuple[MemoryCompactSourceRef, ...]:
     return tuple(
         MemoryCompactSourceRef(
@@ -311,7 +301,3 @@ def _source_refs(
         )
         for source_ref in payload.source_refs
     )
-
-
-def _compact_sort_key(compact: MemoryCompact) -> tuple[datetime, datetime]:
-    return compact.updated_at, compact.created_at

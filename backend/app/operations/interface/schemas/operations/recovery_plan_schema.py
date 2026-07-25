@@ -76,7 +76,7 @@ class RecoverySourceSnapshotResponse(StrictSchemaModel):
             representative_sha256=snapshot.representative_sha256,
             disk_free_bytes=snapshot.disk_free_bytes,
             access_error=snapshot.access_error,
-            markdown_manifest=snapshot.markdown_manifest,
+            markdown_manifest=dict(snapshot.markdown_manifest),
         )
 
 
@@ -180,8 +180,8 @@ class RecoveryPlanResponse(StrictSchemaModel):
             dry_run=plan.dry_run,
             deletion_performed=plan.deletion_performed,
             automatic_execution_allowed=plan.automatic_execution_allowed,
-            diagnosis=plan.diagnosis,
-            blocked_reasons=plan.blocked_reasons,
+            diagnosis=list(plan.diagnosis),
+            blocked_reasons=list(plan.blocked_reasons),
             source_snapshot=RecoverySourceSnapshotResponse.from_entity(
                 plan.source_snapshot
             ),
@@ -190,9 +190,9 @@ class RecoveryPlanResponse(StrictSchemaModel):
                 for artifact in plan.quarantine_artifacts
             ],
             steps=[RecoveryPlanStepResponse.from_entity(step) for step in plan.steps],
-            estimated_reindex_scope=plan.estimated_reindex_scope,
-            service_impact=plan.service_impact,
-            next_actions=plan.next_actions,
+            estimated_reindex_scope=dict(plan.estimated_reindex_scope),
+            service_impact=list(plan.service_impact),
+            next_actions=list(plan.next_actions),
             readiness=OperationalReadinessSnapshotResponse.from_entity(plan.readiness),
-            warnings=plan.warnings,
+            warnings=list(plan.warnings),
         )

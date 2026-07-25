@@ -47,7 +47,7 @@ def _to_read_model(row: SkillAcquisitionJobORM) -> SkillAcquisitionJob:
         skill_id=row.skill_id,
         context_id=row.context_id,
         result_summary=row.result_summary,
-        evidence_urls=list(row.evidence_urls),
+        evidence_urls=tuple(row.evidence_urls),
         error_message=row.error_message,
         created_at=aware_utc_datetime(row.created_at),
         updated_at=aware_utc_datetime(row.updated_at),

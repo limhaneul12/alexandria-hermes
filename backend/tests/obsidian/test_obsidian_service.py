@@ -718,7 +718,7 @@ def test_obsidian_reindex_heals_interrupted_supersede(
 
     assert "INDEX_WRITE_FAILED" in error
     assert failed_errors == 1
-    assert rebuild_errors == []
+    assert rebuild_errors == ()
     assert old_status == "superseded"
     assert new_status == "current"
 
@@ -2402,7 +2402,7 @@ def test_obsidian_reindex_accepts_legacy_project_context_type(
             await session.close()
             await database.shutdown()
 
-        assert result.errors == []
+        assert result.errors == ()
         assert [hit.note.note_id for hit in response] == ["ctx_legacy_project_context"]
         assert response[0].note.alexandria_type is AlexandriaNoteType.CONTEXT
         assert response[0].note.frontmatter["alexandria_type"] == "context"

@@ -28,10 +28,10 @@ def test_obsidian_request_schemas_restore_enum_contracts() -> None:
     assert search.to_query().alexandria_type is AlexandriaNoteType.CONTEXT
     assert ObsidianSearchRequest(query="cache").to_query().alexandria_type is None
     assert save.to_command().alexandria_type is AlexandriaNoteType.JOB_PLAN
-    assert ask.to_command().preferred_alexandria_types == [
+    assert ask.to_command().preferred_alexandria_types == (
         AlexandriaNoteType.CONTEXT,
         AlexandriaNoteType.SKILL,
-    ]
+    )
 
 
 def test_obsidian_librarian_request_accepts_agent_type_aliases() -> None:
@@ -41,7 +41,7 @@ def test_obsidian_librarian_request_accepts_agent_type_aliases() -> None:
         preferred_alexandria_types=["index", "memory"],
     )
 
-    assert ask.to_command().preferred_alexandria_types == [
+    assert ask.to_command().preferred_alexandria_types == (
         AlexandriaNoteType.CONTEXT,
         AlexandriaNoteType.MEMORY_COMPACT,
-    ]
+    )

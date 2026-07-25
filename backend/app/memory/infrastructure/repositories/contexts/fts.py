@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import cast
 
 from app.memory.domain.contracts.context_recall_contracts import (
@@ -90,7 +92,15 @@ class ContextFtsQuery:
     """SQLAlchemy statement and bind parameters for a context FTS query."""
 
     statement: ContextFtsStatement
-    parameters: dict[str, ContextFtsParameter]
+    parameters: Mapping[str, ContextFtsParameter]
+
+    def __post_init__(self) -> None:
+        """Freeze SQL bind parameters after query construction."""
+        object.__setattr__(
+            self,
+            "parameters",
+            MappingProxyType(dict(self.parameters)),
+        )
 
 
 def normalize_fts_query(raw_query: str) -> str | None:

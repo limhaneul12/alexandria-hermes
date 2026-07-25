@@ -40,6 +40,12 @@ from app.memory.interface.routers.context_router import router as context_router
 from app.memory.interface.routers.memory_compact_router import (
     router as memory_compact_router,
 )
+from app.memory.interface.routers.memory_existing_reconciliation_router import (
+    router as memory_existing_reconciliation_router,
+)
+from app.memory.interface.routers.memory_reconciliation_router import (
+    router as memory_reconciliation_router,
+)
 from app.obsidian.interface.routers.obsidian_librarian_execution_router import (
     router as obsidian_librarian_execution_router,
 )
@@ -58,6 +64,7 @@ from app.operations.interface.routers.recovery_run_router import (
 )
 from app.platform.config.app_config import AppConfig
 from app.platform.health_router import install_health_routes
+from app.platform.lifecycle.dependency_health import PlatformDependency
 from app.platform.lifecycle.state import LifecycleState
 from app.platform.logging.formatter.config import configure_logging
 from app.platform.middleware.database_session import install_database_session_middleware
@@ -107,9 +114,9 @@ def create_app(app_config: AppConfig) -> FastAPI:
         """
         database = await cast(Awaitable[Database], container.database())
         if await database.ping():
-            lifecycle.mark_database_healthy()
+            lifecycle.dependencies.mark_healthy(PlatformDependency.DATABASE)
         else:
-            lifecycle.mark_database_unavailable()
+            lifecycle.dependencies.mark_unavailable(PlatformDependency.DATABASE)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -124,11 +131,11 @@ def create_app(app_config: AppConfig) -> FastAPI:
         configure_logging()
         await cast(Awaitable[None], container.init_resources())
         database = await cast(Awaitable[Database], container.database())
-        lifecycle.mark_database_starting()
+        lifecycle.dependencies.mark_starting(PlatformDependency.DATABASE)
         if await database.ping():
-            lifecycle.mark_database_healthy()
+            lifecycle.dependencies.mark_healthy(PlatformDependency.DATABASE)
         else:
-            lifecycle.mark_database_unavailable()
+            lifecycle.dependencies.mark_unavailable(PlatformDependency.DATABASE)
         lifecycle.mark_running()
         try:
             async with mcp_streamable_http_lifespan(
@@ -190,6 +197,8 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(context_router)
     app.include_router(context_retrieval_router)
     app.include_router(memory_compact_router)
+    app.include_router(memory_existing_reconciliation_router)
+    app.include_router(memory_reconciliation_router)
     app.include_router(obsidian_router)
     app.include_router(obsidian_librarian_execution_router)
     app.include_router(obsidian_settings_router)

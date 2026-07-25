@@ -16,7 +16,11 @@ _DYNAMIC_IMPORT_CALLS = {"__import__"}
 
 
 class LazyImportVisitor(ast.NodeVisitor):
-    """Collects improper in-scope imports and dynamic import calls."""
+    """Collect improper in-scope imports and dynamic import calls.
+
+    The seven public methods are required ``ast.NodeVisitor`` hooks rather than
+    independent application responsibilities.
+    """
 
     def __init__(self, *, path: Path, lines: list[str]) -> None:
         """Initialize the lazy import visitor.

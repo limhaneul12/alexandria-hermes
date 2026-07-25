@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
 from app.obsidian.domain.entities.obsidian_note import ObsidianNote, ObsidianSearchHit
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 from app.obsidian.infrastructure.markdown.frontmatter import (
+    FrontmatterValue,
     frontmatter_text,
     timestamp_text,
 )
@@ -94,7 +96,7 @@ def _chunk(
 
 
 def title_from_document(
-    frontmatter: dict[str, str | list[str] | None],
+    frontmatter: Mapping[str, FrontmatterValue],
     body: str,
     path: Path,
 ) -> str:

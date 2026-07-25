@@ -67,6 +67,6 @@ def build_rag_dependency_health(
             if embedding_provider is not None
             else None
         ),
-        warnings=warnings,
+        warnings=tuple(warnings),
     )
     return health

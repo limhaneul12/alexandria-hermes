@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import cast
 
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
@@ -63,7 +65,15 @@ class ObsidianFtsQuery:
     """SQL statement and parameters for one Obsidian FTS query."""
 
     statement: ObsidianFtsStatement
-    parameters: dict[str, ObsidianFtsParameter]
+    parameters: Mapping[str, ObsidianFtsParameter]
+
+    def __post_init__(self) -> None:
+        """Freeze SQL bind parameters after query construction."""
+        object.__setattr__(
+            self,
+            "parameters",
+            MappingProxyType(dict(self.parameters)),
+        )
 
 
 def normalize_fts_query(raw_query: str) -> str | None:
@@ -110,12 +120,12 @@ def build_obsidian_fts_query(
     *,
     limit: int,
     alexandria_type: AlexandriaNoteType | None = None,
-    excluded_alexandria_types: list[AlexandriaNoteType] | None = None,
+    excluded_alexandria_types: Sequence[AlexandriaNoteType] | None = None,
     excluded_statuses: list[str] | None = None,
     included_statuses: list[str] | None = None,
     excluded_path_prefixes: list[str] | None = None,
     project: str | None = None,
-    tags: list[str] | None = None,
+    tags: Sequence[str] | None = None,
 ) -> ObsidianFtsQuery | None:
     """Build a safe Obsidian FTS query from user input.
 

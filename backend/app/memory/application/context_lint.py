@@ -46,7 +46,11 @@ class ContextLintInput:
     session_id: str | None = None
     visibility: ContextScope = ContextScope.PROJECT
     source_agent: str = "Hermes"
-    tags: list[str] = field(default_factory=list)
+    tags: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize caller-provided tags to an immutable sequence."""
+        object.__setattr__(self, "tags", tuple(self.tags))
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,13 +60,20 @@ class ContextLintResult:
     ok: bool
     status: ContextStorageStatus
     score: int
-    errors: list[str]
-    warnings: list[str]
-    suggestions: list[str]
+    errors: tuple[str, ...]
+    warnings: tuple[str, ...]
+    suggestions: tuple[str, ...]
     redacted_content: str
-    redaction_report: list[str]
+    redaction_report: tuple[str, ...]
     save_suggestion: SaveSuggestionPayload
     normalized: ContextLintNormalizedPayload
+
+    def __post_init__(self) -> None:
+        """Normalize lint findings to immutable sequences."""
+        object.__setattr__(self, "errors", tuple(self.errors))
+        object.__setattr__(self, "warnings", tuple(self.warnings))
+        object.__setattr__(self, "suggestions", tuple(self.suggestions))
+        object.__setattr__(self, "redaction_report", tuple(self.redaction_report))
 
 
 def lint_context(payload: ContextLintInput) -> ContextLintResult:
@@ -133,11 +144,11 @@ def lint_context(payload: ContextLintInput) -> ContextLintResult:
         ok=not errors,
         status=status,
         score=score,
-        errors=errors,
-        warnings=warnings,
-        suggestions=suggestions,
+        errors=tuple(errors),
+        warnings=tuple(warnings),
+        suggestions=tuple(suggestions),
         redacted_content=redaction.redacted_content,
-        redaction_report=redaction.warnings,
+        redaction_report=tuple(redaction.warnings),
         save_suggestion=save_suggestion,
         normalized=normalized,
     )

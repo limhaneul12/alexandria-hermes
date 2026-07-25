@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from app.platform.lifecycle.dependency_health import (
     DependencyHealthStatus,
+    PlatformDependency,
     dependency_status_when_lifecycle_drains,
     dependency_status_when_marked_healthy,
 )
@@ -19,131 +20,84 @@ class DependencyStatusStore:
     database_status: DependencyHealthStatus = DependencyHealthStatus.DISABLED
 
     def mark_all_draining(self) -> None:
-        """Move all healthy dependencies to draining state.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
+        """Move all healthy dependencies to draining state."""
         self.redis_status = dependency_status_when_lifecycle_drains(self.redis_status)
         self.database_status = dependency_status_when_lifecycle_drains(
-            self.database_status,
+            self.database_status
         )
 
-    def mark_redis_starting(self) -> None:
-        """Set Redis dependency status to starting.
+    def mark_starting(self, dependency: PlatformDependency) -> None:
+        """Set one dependency status to starting.
 
         Args:
-            None.
-
-        Returns:
-            None.
+            dependency: Dependency to update.
         """
-        self.redis_status = DependencyHealthStatus.STARTING
+        _set_status(self, dependency, DependencyHealthStatus.STARTING)
 
-    def mark_redis_healthy(self, *, lifecycle_accepts_traffic: bool) -> None:
-        """Set Redis dependency status from a healthy report.
+    def mark_healthy(
+        self,
+        dependency: PlatformDependency,
+        *,
+        lifecycle_accepts_traffic: bool,
+    ) -> None:
+        """Set one dependency status from a healthy report.
 
         Args:
+            dependency: Dependency to update.
             lifecycle_accepts_traffic: Whether lifecycle may accept traffic.
-
-        Returns:
-            None.
         """
-        self.redis_status = dependency_status_when_marked_healthy(
-            lifecycle_accepts_traffic=lifecycle_accepts_traffic,
+        _set_status(
+            self,
+            dependency,
+            dependency_status_when_marked_healthy(
+                lifecycle_accepts_traffic=lifecycle_accepts_traffic
+            ),
         )
 
-    def mark_redis_unavailable(self) -> None:
-        """Set Redis dependency status to unavailable.
+    def mark_unavailable(self, dependency: PlatformDependency) -> None:
+        """Set one dependency status to unavailable.
 
         Args:
-            None.
-
-        Returns:
-            None.
+            dependency: Dependency to update.
         """
-        self.redis_status = DependencyHealthStatus.UNAVAILABLE
+        _set_status(self, dependency, DependencyHealthStatus.UNAVAILABLE)
 
-    def mark_redis_draining(self) -> None:
-        """Move healthy Redis status to draining state.
+    def mark_draining(self, dependency: PlatformDependency) -> None:
+        """Move one healthy dependency to draining state.
 
         Args:
-            None.
-
-        Returns:
-            None.
+            dependency: Dependency to update.
         """
-        self.redis_status = dependency_status_when_lifecycle_drains(self.redis_status)
-
-    def mark_redis_disabled(self) -> None:
-        """Set Redis dependency status to disabled.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        self.redis_status = DependencyHealthStatus.DISABLED
-
-    def mark_database_starting(self) -> None:
-        """Set Database dependency status to starting.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        self.database_status = DependencyHealthStatus.STARTING
-
-    def mark_database_healthy(self, *, lifecycle_accepts_traffic: bool) -> None:
-        """Set Database dependency status from a healthy report.
-
-        Args:
-            lifecycle_accepts_traffic: Whether lifecycle may accept traffic.
-
-        Returns:
-            None.
-        """
-        self.database_status = dependency_status_when_marked_healthy(
-            lifecycle_accepts_traffic=lifecycle_accepts_traffic,
+        _set_status(
+            self,
+            dependency,
+            dependency_status_when_lifecycle_drains(_status_for(self, dependency)),
         )
 
-    def mark_database_unavailable(self) -> None:
-        """Set Database dependency status to unavailable.
+    def mark_disabled(self, dependency: PlatformDependency) -> None:
+        """Set one dependency status to disabled.
 
         Args:
-            None.
-
-        Returns:
-            None.
+            dependency: Dependency to update.
         """
-        self.database_status = DependencyHealthStatus.UNAVAILABLE
+        _set_status(self, dependency, DependencyHealthStatus.DISABLED)
 
-    def mark_database_draining(self) -> None:
-        """Move healthy Database status to draining state.
 
-        Args:
-            None.
+def _status_for(
+    store: DependencyStatusStore,
+    dependency: PlatformDependency,
+) -> DependencyHealthStatus:
+    if dependency is PlatformDependency.REDIS:
+        return store.redis_status
+    return store.database_status
 
-        Returns:
-            None.
-        """
-        self.database_status = dependency_status_when_lifecycle_drains(
-            self.database_status,
-        )
 
-    def mark_database_disabled(self) -> None:
-        """Set Database dependency status to disabled.
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        """
-        self.database_status = DependencyHealthStatus.DISABLED
+def _set_status(
+    store: DependencyStatusStore,
+    dependency: PlatformDependency,
+    status: DependencyHealthStatus,
+) -> None:
+    if dependency is PlatformDependency.REDIS:
+        store.redis_status = status
+        return
+    store.database_status = status

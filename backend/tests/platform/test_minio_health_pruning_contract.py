@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.platform.lifecycle.dependency_health import PlatformDependency
 from app.platform.lifecycle.state import LifecycleState
 from app.platform.schemas.health_schema import (
     heartbeat_payload_from_snapshot,
@@ -12,7 +13,7 @@ from app.platform.schemas.health_schema import (
 def test_health_payloads_do_not_expose_minio_dependency() -> None:
     """Readiness/heartbeat should describe core runtime dependencies only."""
     lifecycle = LifecycleState()
-    lifecycle.mark_database_healthy()
+    lifecycle.dependencies.mark_healthy(PlatformDependency.DATABASE)
     lifecycle.mark_running()
     snapshot = lifecycle.snapshot()
 

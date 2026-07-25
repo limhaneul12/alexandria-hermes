@@ -64,3 +64,41 @@ def test_json_formatter_redacts_secret_values_in_messages_and_exceptions() -> No
         "Authorization: Bearer <redacted>"
     )
     assert "api_key=<redacted>" in payload["error"]["stack"]
+
+
+def test_json_formatter_preserves_and_redacts_structured_attributes() -> None:
+    """Structured attributes should remain queryable without leaking credentials."""
+    logger_name = "tests.platform.logging_attributes"
+    logger = logging.getLogger(logger_name)
+    record = logger.makeRecord(
+        logger_name,
+        logging.INFO,
+        __file__,
+        1,
+        "reconciliation completed",
+        args=(),
+        exc_info=None,
+        extra={
+            "event": "memory_reconciliation_apply_completed",
+            "duration_ms": 12.5,
+            "attributes": {
+                "plan_id": "plan-1",
+                "status": "APPLIED",
+                "nested": {
+                    "authorization": "Bearer do-not-log-bearer",
+                    "api_key": "api_key=do-not-log-api-key",
+                },
+            },
+        },
+    )
+
+    encoded = _formatter().format(record)
+    payload = loads_json(encoded)
+
+    assert payload["event"] == "memory_reconciliation_apply_completed"
+    assert payload["duration_ms"] == 12.5
+    assert payload["attributes"]["plan_id"] == "plan-1"
+    assert payload["attributes"]["status"] == "APPLIED"
+    assert payload["attributes"]["nested"]["authorization"] == ("Bearer <redacted>")
+    assert payload["attributes"]["nested"]["api_key"] == "api_key=<redacted>"
+    assert "do-not-log" not in encoded

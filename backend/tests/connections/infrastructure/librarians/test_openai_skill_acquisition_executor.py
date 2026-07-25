@@ -345,16 +345,16 @@ def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None
         assert artifact.purpose == "Drive browser interactions deterministically."
         assert artifact.content == "Use Playwright with stable selectors."
         assert artifact.summary == "Automate stable browser interactions."
-        assert artifact.tags == ["automation", "browser"]
-        assert artifact.required_tools == ["playwright", "pytest"]
-        assert artifact.evidence_urls == ["https://example.com/skill"]
+        assert artifact.tags == ("automation", "browser")
+        assert artifact.required_tools == ("playwright", "pytest")
+        assert artifact.evidence_urls == ("https://example.com/skill",)
         assert len(artifact.evidence_items) == 1
-        assert artifact.evidence_items[0].supports_claims == [
-            "stable selector procedure"
-        ]
+        assert artifact.evidence_items[0].supports_claims == (
+            "stable selector procedure",
+        )
         assert artifact.evidence_items[0].publisher_or_repository == "example/browser"
         assert artifact.source_summary == "Test evidence summary."
-        assert artifact.next_steps == ["Wrap into a route test.", "Persist the skill."]
+        assert artifact.next_steps == ("Wrap into a route test.", "Persist the skill.")
         assert artifact.activate is True
         assert artifact.version == "1.1.0"
         assert artifact.status.value == "ACTIVE"

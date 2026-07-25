@@ -20,17 +20,26 @@ class AgentCreate:
     name: str
     provider: str
     description: str | None
-    capabilities: list[str]
+    capabilities: tuple[str, ...]
     preferred_librarian_provider: str | None
     preferred_librarian_model: str | None
     max_librarian_agents: int
     librarian_role_prompt: str | None
     librarian_role: LibrarianProfileRole
-    librarian_specialties: list[str]
+    librarian_specialties: tuple[str, ...]
     librarian_routing_priority: int
     librarian_enabled: bool
     created_at: datetime
     updated_at: datetime
+
+    def __post_init__(self) -> None:
+        """Normalize profile collections to immutable values."""
+        object.__setattr__(self, "capabilities", tuple(self.capabilities))
+        object.__setattr__(
+            self,
+            "librarian_specialties",
+            tuple(self.librarian_specialties),
+        )
 
     def to_record(self) -> AgentCreateRecord:
         """Return persistence fields for SQLAlchemy model construction.
@@ -42,13 +51,13 @@ class AgentCreate:
             name=self.name,
             provider=self.provider,
             description=self.description,
-            capabilities=self.capabilities,
+            capabilities=list(self.capabilities),
             preferred_librarian_provider=self.preferred_librarian_provider,
             preferred_librarian_model=self.preferred_librarian_model,
             max_librarian_agents=self.max_librarian_agents,
             librarian_role_prompt=self.librarian_role_prompt,
             librarian_role=self.librarian_role.value,
-            librarian_specialties=self.librarian_specialties,
+            librarian_specialties=list(self.librarian_specialties),
             librarian_routing_priority=self.librarian_routing_priority,
             librarian_enabled=self.librarian_enabled,
             created_at=self.created_at,

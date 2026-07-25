@@ -81,7 +81,7 @@ def test_execute_delegates_uses_injected_provider_executor() -> None:
         assert delegates[0].summary == (
             "provider answered: Need OpenAI OAuth executor evidence"
         )
-        assert delegates[0].matched_specialties == ["oauth"]
+        assert delegates[0].matched_specialties == ("oauth",)
 
     anyio.run(scenario)
 

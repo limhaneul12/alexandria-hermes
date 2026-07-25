@@ -40,7 +40,7 @@ async def search_context_vectors(
         recall,
         vector_to_sqlite_json(recall.query_embedding),
     )
-    rows = await session.execute(vector_query.statement, vector_query.parameters)
+    rows = await session.execute(vector_query.statement, dict(vector_query.parameters))
     ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
     if not ranked:
         return []

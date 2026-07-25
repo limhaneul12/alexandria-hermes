@@ -12,6 +12,7 @@ from app.operations.domain.entities.operational_readiness import (
     OperationalDatabaseSnapshot,
     OperationalRagSnapshot,
     OperationalReadinessSnapshot,
+    OperationalReconciliationSnapshot,
     OperationalVaultSnapshot,
 )
 from app.operations.domain.event_enum.operational_readiness_enums import (
@@ -130,7 +131,60 @@ class OperationalRagSnapshotResponse(StrictSchemaModel):
                 )
                 for status in snapshot.source_statuses
             ],
-            warnings=snapshot.warnings,
+            warnings=list(snapshot.warnings),
+        )
+
+
+class OperationalReconciliationSnapshotResponse(StrictSchemaModel):
+    """Memory reconciliation state in the operational readiness response."""
+
+    configured: bool
+    reachable: bool
+    total_contexts: int
+    temporal_state_count: int
+    missing_temporal_states: int
+    backfill_complete: bool
+    total_plans: int
+    pending_review_plans: int
+    total_results: int
+    partial_apply_results: int
+    failed_results: int
+    open_conflicts: int
+    reviewing_conflicts: int
+    hard_delete_results: int
+    latest_failure_code: str | None
+    latest_failure_at: AwareTimestamp | None
+
+    @classmethod
+    def from_entity(
+        cls,
+        snapshot: OperationalReconciliationSnapshot,
+    ) -> OperationalReconciliationSnapshotResponse:
+        """Create response schema from reconciliation readiness state.
+
+        Args:
+            snapshot: Snapshot.
+
+        Returns:
+            OperationalReconciliationSnapshotResponse: Operation result.
+        """
+        return cls(
+            configured=snapshot.configured,
+            reachable=snapshot.reachable,
+            total_contexts=snapshot.total_contexts,
+            temporal_state_count=snapshot.temporal_state_count,
+            missing_temporal_states=snapshot.missing_temporal_states,
+            backfill_complete=snapshot.backfill_complete,
+            total_plans=snapshot.total_plans,
+            pending_review_plans=snapshot.pending_review_plans,
+            total_results=snapshot.total_results,
+            partial_apply_results=snapshot.partial_apply_results,
+            failed_results=snapshot.failed_results,
+            open_conflicts=snapshot.open_conflicts,
+            reviewing_conflicts=snapshot.reviewing_conflicts,
+            hard_delete_results=snapshot.hard_delete_results,
+            latest_failure_code=snapshot.latest_failure_code,
+            latest_failure_at=snapshot.latest_failure_at,
         )
 
 
@@ -144,6 +198,7 @@ class OperationalReadinessSnapshotResponse(StrictSchemaModel):
     vault: OperationalVaultSnapshotResponse
     database: OperationalDatabaseSnapshotResponse
     rag: OperationalRagSnapshotResponse
+    reconciliation: OperationalReconciliationSnapshotResponse
     active_recovery_run_id: str | None = None
     last_successful_recovery_run_id: str | None = None
     warnings: list[str] = Field(default_factory=list)
@@ -171,9 +226,12 @@ class OperationalReadinessSnapshotResponse(StrictSchemaModel):
             vault=OperationalVaultSnapshotResponse.from_entity(snapshot.vault),
             database=OperationalDatabaseSnapshotResponse.from_entity(snapshot.database),
             rag=OperationalRagSnapshotResponse.from_entity(snapshot.rag),
+            reconciliation=OperationalReconciliationSnapshotResponse.from_entity(
+                snapshot.reconciliation
+            ),
             active_recovery_run_id=snapshot.active_recovery_run_id,
             last_successful_recovery_run_id=snapshot.last_successful_recovery_run_id,
-            warnings=snapshot.warnings,
-            blockers=snapshot.blockers,
-            next_actions=snapshot.next_actions,
+            warnings=list(snapshot.warnings),
+            blockers=list(snapshot.blockers),
+            next_actions=list(snapshot.next_actions),
         )

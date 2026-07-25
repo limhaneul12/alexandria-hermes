@@ -316,9 +316,9 @@ def test_skill_acquisition_completion_route_returns_resume_handles() -> None:
         "verification_status": "verified",
         "handoff_decision": "new_skill_acquired",
     }
-    assert service.completed_artifacts[0].evidence_items[0].supports_claims == [
-        "selector stability guidance"
-    ]
+    assert service.completed_artifacts[0].evidence_items[0].supports_claims == (
+        "selector stability guidance",
+    )
     assert body["handoff"]["evidence"][0]["url_or_path"] == (
         "https://docs.example.com/browser"
     )

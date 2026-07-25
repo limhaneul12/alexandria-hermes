@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.shared.types.extra_types import JSONValue
+from app.shared.types.extra_types import JSONObject, JSONValue
 
 
 class LibrarianReviewGatewayPayload(BaseModel):
@@ -27,7 +27,7 @@ class ReviewMovePlanPayload(LibrarianReviewGatewayPayload):
 
     @field_validator("moves", mode="before")
     @classmethod
-    def _list_or_empty(cls, value: object) -> object:
+    def _list_or_empty(cls, value: JSONValue) -> JSONValue:
         if isinstance(value, list):
             return value
         return []
@@ -99,7 +99,7 @@ def review_apply_confirmation_required_payload(move_plan: JSONValue) -> JSONValu
     return payload.model_dump(mode="json")
 
 
-def _object_or_empty(payload: JSONValue) -> dict[str, Any]:
+def _object_or_empty(payload: JSONValue) -> JSONObject:
     if isinstance(payload, dict):
         return payload
     return {}
