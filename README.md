@@ -103,17 +103,55 @@ operation without reading a long diagnostic body.
 
 ## MCP endpoint
 
-The FastAPI app mounts the MCP server at `/mcp/`. Requests must include the operator API key header:
-
-```text
-X-Alexandria-Operator-Key: <ALEXANDRIA_OPERATOR_API_KEY>
-```
-
-MCP clients that support Streamable HTTP should connect to:
+The FastAPI app exposes the Streamable HTTP MCP endpoint at:
 
 ```text
 http://127.0.0.1:8000/mcp/
 ```
+
+Alexandria-Hermes supports three explicit MCP authentication modes:
+
+- `none`: default localhost-only mode; no bearer token is required.
+- `local_oauth2`: Alexandria runs its own Authorization Code + PKCE server,
+  issues rotating access/refresh tokens, and asks the local operator to approve
+  each connection in the browser.
+- `oauth2`: Alexandria only verifies JWT bearer tokens issued by an external
+  authorization server through issuer/audience/JWKS configuration.
+
+The OpenAI Codex OAuth routes under `/settings/connections/{provider_id}/oauth/*`
+serve a different direction: they authorize Alexandria to call a provider. MCP
+OAuth authorizes ChatGPT or another MCP client to call Alexandria.
+
+For the default `none` mode, keep the backend bound to `127.0.0.1` and connect
+an MCP client directly to the URL above. No custom operator header is required.
+
+To enable Alexandria-issued OAuth for a public HTTPS endpoint, configure:
+
+```bash
+export ALEXANDRIA_OPERATOR_API_KEY="$(openssl rand -base64 32)"
+export SERVICE_SECRET_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+export SERVICE_MCP_AUTH_MODE="local_oauth2"
+export SERVICE_MCP_OAUTH_ISSUER="https://your-mcp-host.example"
+export SERVICE_MCP_OAUTH_RESOURCE="https://your-mcp-host.example/mcp"
+```
+
+Then connect ChatGPT to:
+
+```text
+https://your-mcp-host.example/mcp
+```
+
+The client discovers `/register`, `/authorize`, `/token`, `/revoke`, and the
+OAuth metadata automatically. During connection, Alexandria opens `/approve`;
+enter `ALEXANDRIA_OPERATOR_API_KEY` there to approve or deny the request. The
+operator key is used only for that browser approval and is not added to MCP
+backend REST calls. Authorization codes and access/refresh tokens are stored
+only as SHA-256 lookup hashes; dynamic client secrets are encrypted with the
+configured `SERVICE_SECRET_ENCRYPTION_KEY`.
+
+For an external OAuth/JWKS issuer instead, use `SERVICE_MCP_AUTH_MODE=oauth2`
+and configure `SERVICE_MCP_OAUTH_ISSUER`, `SERVICE_MCP_OAUTH_AUDIENCE`, and
+`SERVICE_MCP_OAUTH_JWKS_URL`.
 
 After changing or reinstalling the backend, an MCP `tools/list` smoke check should
 include the librarian readiness and curation tools:
@@ -163,13 +201,12 @@ uv run --no-sync --no-editable alexandria-hermes librarian check \
   --summary
 ```
 
-A minimal JSON-RPC initialize smoke request is:
+A minimal JSON-RPC initialize request for localhost `none` mode is:
 
 ```bash
 curl -sS http://127.0.0.1:8000/mcp/ \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "X-Alexandria-Operator-Key: $ALEXANDRIA_OPERATOR_API_KEY" \
   -d '{
     "jsonrpc":"2.0",
     "id":1,

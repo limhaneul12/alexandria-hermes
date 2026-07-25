@@ -14,6 +14,7 @@ class McpAuthMode(StrEnum):
 
     NONE = "none"
     OAUTH2 = "oauth2"
+    LOCAL_OAUTH2 = "local_oauth2"
 
 
 class JwtAlgorithm(StrEnum):

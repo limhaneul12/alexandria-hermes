@@ -33,6 +33,8 @@ from app.mcp_server.http_mount import (
 from app.mcp_server.interface.routers.protected_resource_metadata_router import (
     router as protected_resource_metadata_router,
 )
+from app.mcp_server.local_oauth.runtime import build_local_mcp_oauth_runtime
+from app.mcp_server.type_validate.auth_contracts import McpAuthMode
 from app.memory.interface.routers.context_retrieval_router import (
     router as context_retrieval_router,
 )
@@ -70,6 +72,7 @@ from app.platform.logging.formatter.config import configure_logging
 from app.platform.middleware.database_session import install_database_session_middleware
 from app.platform.middleware.request_logging import install_request_logging_middleware
 from app.shared.infrastructure.database import Database
+from app.shared.security.secret_cipher import SecretCipher
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +134,14 @@ def create_app(app_config: AppConfig) -> FastAPI:
         configure_logging()
         await cast(Awaitable[None], container.init_resources())
         database = await cast(Awaitable[Database], container.database())
+        local_oauth_runtime = None
+        if app_config.mcp_auth_mode is McpAuthMode.LOCAL_OAUTH2:
+            secret_cipher = cast(SecretCipher, container.secret_cipher())
+            local_oauth_runtime = build_local_mcp_oauth_runtime(
+                config=app_config,
+                database=database,
+                secret_cipher=secret_cipher,
+            )
         lifecycle.dependencies.mark_starting(PlatformDependency.DATABASE)
         if await database.ping():
             lifecycle.dependencies.mark_healthy(PlatformDependency.DATABASE)
@@ -141,6 +152,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
             async with mcp_streamable_http_lifespan(
                 client=mcp_api_client,
                 transport_host=app_config.mcp_transport_host,
+                local_oauth_runtime=local_oauth_runtime,
             ) as mcp_app:
                 mcp_mount.set_app(mcp_app)
                 try:
@@ -192,8 +204,6 @@ def create_app(app_config: AppConfig) -> FastAPI:
         refresh_dependency_health=refresh_dependency_health,
     )
     app.include_router(protected_resource_metadata_router)
-    app.mount(MCP_HTTP_MOUNT_PATH, mcp_mount)
-
     app.include_router(context_router)
     app.include_router(context_retrieval_router)
     app.include_router(memory_compact_router)
@@ -227,6 +237,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
             "status": "ok",
         }
 
+    app.mount(MCP_HTTP_MOUNT_PATH, mcp_mount)
     return app
 
 

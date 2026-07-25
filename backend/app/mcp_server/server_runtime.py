@@ -8,6 +8,8 @@ from collections.abc import Sequence
 from mcp.server.fastmcp import FastMCP
 
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
+from app.mcp_server.local_oauth.approval import register_local_oauth_approval_route
+from app.mcp_server.local_oauth.runtime import LocalMcpOAuthRuntime
 from app.mcp_server.tools.context_lifecycle_registration import (
     register_context_lifecycle_tools,
 )
@@ -36,6 +38,7 @@ def build_mcp_server(
     client: AlexandriaApiClient | None = None,
     streamable_http_path: str = "/mcp",
     transport_host: str = DEFAULT_MCP_TRANSPORT_HOST,
+    local_oauth_runtime: LocalMcpOAuthRuntime | None = None,
 ) -> FastMCP:
     """Build the Alexandria-Hermes FastMCP server.
 
@@ -43,25 +46,43 @@ def build_mcp_server(
         client: Optional backend API client for tests.
         streamable_http_path: FastMCP Streamable HTTP route path.
         transport_host: Host value used by FastMCP transport security.
+        local_oauth_runtime: Optional self-hosted OAuth provider and settings.
 
     Returns:
         FastMCP server with async tool callbacks registered.
     """
-    if client is None:
-        api_client = AlexandriaApiClient(AlexandriaApiSettings.from_env())
-    else:
-        api_client = client
-    server = FastMCP(
-        "Alexandria-Hermes",
-        instructions=(
-            "Use these tools for Context Vault, Memory Compact, and librarian "
-            "workflows through the backend HTTP API. Do not hard delete unless "
-            "a tool name explicitly says delete."
-        ),
-        json_response=True,
-        host=transport_host,
-        streamable_http_path=streamable_http_path,
+    api_client = (
+        AlexandriaApiClient(AlexandriaApiSettings.from_env())
+        if client is None
+        else client
     )
+    instructions = (
+        "Use these tools for Context Vault, Memory Compact, and librarian "
+        "workflows through the backend HTTP API. Do not hard delete unless "
+        "a tool name explicitly says delete."
+    )
+    if local_oauth_runtime is None:
+        server = FastMCP(
+            "Alexandria-Hermes",
+            instructions=instructions,
+            json_response=True,
+            host=transport_host,
+            streamable_http_path=streamable_http_path,
+        )
+    else:
+        server = FastMCP(
+            "Alexandria-Hermes",
+            instructions=instructions,
+            json_response=True,
+            host=transport_host,
+            streamable_http_path=streamable_http_path,
+            auth_server_provider=local_oauth_runtime.provider,
+            auth=local_oauth_runtime.auth_settings,
+        )
+        register_local_oauth_approval_route(
+            server,
+            local_oauth_runtime.provider,
+        )
     register_memory_reconciliation_tools(server, api_client)
     register_context_recall_tools(server, api_client)
     register_memory_compact_tools(server, api_client)

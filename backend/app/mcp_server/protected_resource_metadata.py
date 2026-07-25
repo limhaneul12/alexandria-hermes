@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from starlette.requests import Request
 
-from app.mcp_server.http_mount import MCP_HTTP_MOUNT_PATH
+from app.mcp_server.http_mount import MCP_PUBLIC_PATH
 from app.mcp_server.interface.schemas.protected_resource_schemas import (
     McpProtectedResourceMetadata,
 )
@@ -37,7 +37,7 @@ def mcp_resource_url(request: Request) -> str:
     Returns:
         Public MCP endpoint URL.
     """
-    return f"{request_origin(request)}{MCP_HTTP_MOUNT_PATH}"
+    return f"{request_origin(request)}{MCP_PUBLIC_PATH}"
 
 
 def protected_resource_metadata(request: Request, config: AppConfig) -> JSONObject:

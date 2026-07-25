@@ -9,6 +9,7 @@ from logging.config import fileConfig
 import app.connections.infrastructure.models.librarian_provider_models as _librarian_provider_models  # noqa: F401
 import app.librarian.infrastructure.models.agent_models as _agent_models  # noqa: F401
 import app.librarian.infrastructure.models.skill_acquisition_job_models as _skill_acquisition_job_models  # noqa: F401
+import app.mcp_server.local_oauth.orm as _mcp_local_oauth_models  # noqa: F401
 import app.memory.infrastructure.models.context_models as _context_models  # noqa: F401
 import app.memory.infrastructure.models.reconciliation_models as _reconciliation_models  # noqa: F401
 import app.obsidian.infrastructure.models.obsidian_index_models as _obsidian_index_models  # noqa: F401
