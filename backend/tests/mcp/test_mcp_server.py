@@ -7,7 +7,7 @@ from inspect import iscoroutinefunction
 
 import anyio
 import httpx
-from app.main import app
+from app.main import app as default_app, create_app
 from app.mcp_server.backend_api_client import (
     AlexandriaApiClient,
     AlexandriaApiSettings,
@@ -82,11 +82,19 @@ from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )
 from app.memory.interface.schemas.context.context_schema import ContextSearchRequest
+from app.platform.config.app_config import AppConfig
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONValue
 from fastapi.testclient import TestClient
 
 RecordedCall = httpx.Request
+_ROUTER_PACKAGES = [
+    "app.connections.interface.routers",
+    "app.librarian.interface.routers",
+    "app.memory.interface.routers",
+    "app.obsidian.interface.routers",
+    "app.operations.interface.routers",
+]
 
 
 def _client() -> tuple[AlexandriaApiClient, list[RecordedCall]]:
@@ -2057,6 +2065,7 @@ def test_mcp_librarian_oauth_tools_map_to_safe_backend_lifecycle() -> None:
 
 def test_fastapi_app_accepts_tunnel_host_for_streamable_http_mcp() -> None:
     """FastAPI should expose MCP to reverse-tunnel hosts without 421."""
+    app = create_app(AppConfig(_env_file=None, mcp_auth_mode="none"))
     initialize_request = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -2068,14 +2077,17 @@ def test_fastapi_app_accepts_tunnel_host_for_streamable_http_mcp() -> None:
         },
     }
 
-    with TestClient(
-        app, base_url="https://b973-121-135-181-35.ngrok-free.app"
-    ) as client:
-        response = client.post(
-            "/mcp/",
-            json=initialize_request,
-            headers={"Accept": "application/json, text/event-stream"},
-        )
+    try:
+        with TestClient(
+            app, base_url="https://b973-121-135-181-35.ngrok-free.app"
+        ) as client:
+            response = client.post(
+                "/mcp/",
+                json=initialize_request,
+                headers={"Accept": "application/json, text/event-stream"},
+            )
+    finally:
+        default_app.state.container.wire(packages=_ROUTER_PACKAGES)
 
     assert response.status_code == 200
     assert response.json()["result"]["serverInfo"]["name"] == "Alexandria-Hermes"
