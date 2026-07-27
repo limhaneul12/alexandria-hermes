@@ -6,11 +6,17 @@ from datetime import datetime
 from pathlib import Path
 
 from app.memory.domain.entities.memory_compact import MemoryCompact
-from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown import (
+from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown_contracts import (
     NOTE_SUFFIX,
-    is_safe_note_id,
+)
+from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown_parser import (
     read_compact_file,
+)
+from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown_path_policy import (
+    is_safe_note_id,
     resolve_base_dir,
+)
+from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown_serializer import (
     serialize_compact,
 )
 

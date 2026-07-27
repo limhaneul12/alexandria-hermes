@@ -6,12 +6,10 @@ from pathlib import Path
 
 import anyio
 import pytest
-from fastapi.testclient import TestClient
-
-from app.main import app as default_app
-from app.main import create_app
+from app.main import app as default_app, create_app
 from app.platform.config.app_config import AppConfig
 from app.shared.infrastructure.database import Database
+from fastapi.testclient import TestClient
 
 ISSUER = "http://localhost"
 RESOURCE = "http://localhost/mcp"
@@ -66,6 +64,7 @@ def test_create_app_exposes_local_oauth_routes_without_shadowing_rest_routes(
                     "client_name": "ChatGPT",
                 },
             )
+            pairing = client.post("/connect/mcp/pairing-code")
     finally:
         default_app.state.container.wire(packages=_ROUTER_PACKAGES)
 
@@ -78,3 +77,6 @@ def test_create_app_exposes_local_oauth_routes_without_shadowing_rest_routes(
     assert protected_metadata.status_code == 200
     assert protected_metadata.json()["resource"] == RESOURCE
     assert registration.status_code == 201
+    assert pairing.status_code == 201
+    assert len(pairing.json()["code"]) == 9
+    assert "token" not in pairing.text.lower()

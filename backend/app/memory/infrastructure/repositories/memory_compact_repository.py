@@ -16,12 +16,14 @@ from app.memory.domain.event_enum.memory_compact_enums import (
 )
 from app.memory.domain.repositories.memory_compact_repository import (
     IMemoryCompactRepository,
+)
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
     MemoryCompactCreate,
 )
 from app.memory.infrastructure.repositories.memory_compacts.note_store import (
     MemoryCompactNoteStore,
 )
-from app.shared.exceptions import MemoryCompactNotFoundError
+from app.shared.exceptions.memory_compact_exceptions import MemoryCompactNotFoundError
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.types_convert_utils import aware_utc_datetime
 

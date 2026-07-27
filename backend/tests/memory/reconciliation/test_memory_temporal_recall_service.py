@@ -35,7 +35,7 @@ from app.memory.domain.event_enum.reconciliation_enums import MemoryTemporalReca
 from app.memory.infrastructure.repositories.memory_reconciliation_repository import (
     SqlAlchemyMemoryReconciliationRepository,
 )
-from app.shared.exceptions import MemoryContextValidationError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from app.shared.infrastructure.database import Database
 
 JULY_1 = datetime(2026, 7, 1, tzinfo=UTC)

@@ -27,9 +27,11 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     ObsidianContextLifecycleStatus,
     ObsidianIndexStatus,
 )
-from app.shared.exceptions import (
+from app.shared.exceptions.memory_context_exceptions import (
     MemoryContextNotFoundError,
     MemoryContextValidationError,
+)
+from app.shared.exceptions.obsidian_exceptions import (
     ObsidianNotFoundError,
     ObsidianValidationError,
 )

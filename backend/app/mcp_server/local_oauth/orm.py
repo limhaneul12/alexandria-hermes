@@ -47,6 +47,17 @@ class McpOAuthAuthorizationRequestORM(Base):
     consumed_at: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
 
+class McpOAuthPairingCodeORM(Base):
+    """Hashed, short-lived, single-use local approval code."""
+
+    __tablename__ = "mcp_oauth_pairing_codes"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    expires_at: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    consumed_at: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 class McpOAuthAuthorizationCodeORM(Base):
     """Hashed one-time authorization code state."""
 

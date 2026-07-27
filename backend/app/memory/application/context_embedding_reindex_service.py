@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.memory.application.context_embedding_health_service import (
     ContextEmbeddingHealthService,
 )
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
 from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.memory.domain.contracts.context_contracts import (
     ContextChunkEmbeddingUpdate,
@@ -16,7 +16,7 @@ from app.memory.domain.entities.context_read_models import (
 )
 from app.memory.domain.event_enum.context_enums import RagHealthState
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
-from app.shared.exceptions import MemoryContextValidationError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from app.shared.types.types_convert_utils import now_utc
 from asyncer import asyncify
 

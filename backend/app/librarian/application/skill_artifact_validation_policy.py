@@ -9,7 +9,7 @@ from app.librarian.domain.contracts.skill_acquisition_contracts import (
     SkillAcquisitionArtifact,
 )
 from app.librarian.domain.event_enum.skill_acquisition_enums import RiskLevel
-from app.shared.exceptions import LibrarianValidationError
+from app.shared.exceptions.librarian_exceptions import LibrarianValidationError
 from app.shared.types.extra_types import JSONObject
 
 _REQUIRED_SKILL_SECTIONS: tuple[str, ...] = (

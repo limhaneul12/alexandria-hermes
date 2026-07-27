@@ -6,10 +6,10 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.obsidian.application.graph.obsidian_graph_relations import (
+from app.obsidian.application.graph.obsidian_graph_edge_builder import (
     relation_edges_from_note,
 )
-from app.obsidian.application.notes.obsidian_context_frontmatter import (
+from app.obsidian.application.notes.obsidian_context_frontmatter_mapper import (
     context_content_hash,
     context_identity_from_frontmatter,
     normalized_context_frontmatter,

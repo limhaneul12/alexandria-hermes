@@ -64,6 +64,7 @@ def build_local_mcp_oauth_runtime(
                 config.mcp_local_authorization_code_ttl_seconds
             ),
             approval_ttl_seconds=config.mcp_local_approval_ttl_seconds,
+            pairing_code_ttl_seconds=config.mcp_local_pairing_code_ttl_seconds,
             max_approval_attempts=config.mcp_local_max_approval_attempts,
             approval_key=approval_key,
         ),

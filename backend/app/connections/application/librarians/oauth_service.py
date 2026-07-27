@@ -38,8 +38,8 @@ from app.connections.domain.types.librarian_oauth_payload_types import (
     LibrarianOAuthStartPayload,
     LibrarianOAuthStatusPayload,
 )
-from app.shared.exceptions import (
-    BoundaryValidationError,
+from app.shared.exceptions.common_exceptions import BoundaryValidationError
+from app.shared.exceptions.connections_exceptions import (
     ConnectionsProviderUnsupportedError,
     ConnectionsResourceNotFoundError,
 )

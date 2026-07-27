@@ -1,6 +1,6 @@
 ---
 name: operational-sync
-description: Use when Alexandria-Hermes needs SQLite/Obsidian index synchronization, embedding soft rebuild, RAG status repair, operational readiness recovery, stale cache cleanup, or verification that the library is READY/HYBRID after Obsidian Markdown changes.
+description: Use when Alexandria-Hermes needs encrypted operational backup, isolated restore verification, SQLite/Obsidian index synchronization, embedding soft rebuild, RAG status repair, stale cache cleanup, or proof that the library is READY/HYBRID.
 ---
 
 # Operational Sync
@@ -12,8 +12,10 @@ Use this skill to restore Alexandria-Hermes retrieval health without modifying O
 - Treat Obsidian Markdown as the source of truth.
 - Treat SQLite, FTS, vector, and embedding rows as rebuildable cache/index state.
 - Prefer non-destructive sync first: status check → Obsidian reindex → embedding soft rebuild → readiness verification.
-- Back up `backend/data/alexandria_hermes.db` before manual SQLite cache cleanup.
+- Create a verified operational backup before manual SQLite cleanup or recovery.
+- Restore into an isolated drill directory before considering maintenance recovery.
 - Never hard-delete Obsidian Markdown as part of this procedure.
+- Never overwrite the live Vault directly from a browser request.
 - Stop only when `/operations/readiness` is `READY` or the remaining blocker is explicitly explained.
 
 ## Fast path
@@ -42,17 +44,66 @@ curl -sS -X POST \
 
 After every reindex, re-check RAG status. Vault reindex can create new missing embedding rows, so run soft rebuild again if needed.
 
+## Encrypted backup and restore drill
+
+Create a local encrypted backup:
+
+```bash
+backup_json="$(
+  curl -fsS -X POST http://127.0.0.1:8000/operations/backups
+)"
+printf '%s\n' "$backup_json" | jq
+backup_id="$(printf '%s' "$backup_json" | jq -r '.backup_id')"
+```
+
+The published manifest must report schema version `2` and encryption `fernet`.
+The local key is stored separately under the configured backup root and must
+never be copied into Obsidian, logs, reports, or a portable backup bundle.
+
+Run a non-destructive restore drill:
+
+```bash
+curl -fsS -X POST \
+  "http://127.0.0.1:8000/operations/backups/${backup_id}/restore-drill" | jq
+```
+
+Require:
+
+- all manifest artifacts verified;
+- `sqlite_integrity=HEALTHY` when SQLite artifacts exist;
+- restored files remain under `.restore-drills`;
+- live Vault and live SQLite files remain unchanged.
+
+`SERVICE_OPERATIONAL_BACKUP_RETENTION_COUNT` controls how many successfully
+published backups are retained. Pruning occurs only after a new backup has been
+verified and published.
+
+## Maintenance recovery boundary
+
+Use the existing recovery plan/run workflow for live maintenance. Do not turn a
+restore drill into an unguarded live copy.
+
+1. Create and verify an encrypted backup.
+2. Run the restore drill and inspect its report.
+3. Inspect the recovery dry-run plan.
+4. Start maintenance recovery only when the plan allows automatic execution.
+5. Let the recovery lock serialize mutation, quarantine existing SQLite state,
+   rebuild schema/indexes, and verify readiness.
+6. Stop only after `READY/HYBRID`, or preserve the failed run manifest and report
+   the exact blocker.
+
 ## Manual stale cache cleanup
 
 Only use this when all remaining `obsidian_files.index_status='stale'` rows refer to Markdown files that no longer exist in the vault.
 
 1. Inspect stale rows and related derived rows.
-2. Back up the DB.
+2. Create and verify an encrypted operational backup.
 3. Delete stale `obsidian_files` rows and related `obsidian_edges`; `obsidian_chunks` should cascade from `obsidian_files`.
 4. Run `PRAGMA foreign_key_check`.
 5. Verify `/obsidian/status`, `/memory/contexts/rag/status`, and `/operations/readiness`.
 
-Backup:
+The direct file copy below is only a secondary same-host safety snapshot after
+the operational backup succeeds:
 
 ```bash
 backup="backend/data/alexandria_hermes.pre-stale-cache-clean-$(date -u +%Y%m%dT%H%M%SZ).db"

@@ -32,7 +32,9 @@ from app.connections.infrastructure.librarians.openai_codex_oauth_payloads impor
     _slow_down_poll_result,
     _token_set_from_payload,
 )
-from app.shared.exceptions import ConnectionsProviderUnsupportedError
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsProviderUnsupportedError,
+)
 
 _AUTHORIZATION_CODE_GRANT_TYPE = "authorization_code"
 _REFRESH_TOKEN_GRANT_TYPE = "refresh_token"

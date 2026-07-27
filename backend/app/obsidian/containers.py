@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
+from app.memory.application.context_embedding_recovery_service import (
+    ContextEmbeddingRecoveryService,
+)
 from app.memory.application.context_service import ContextService
 from app.obsidian.application.graph.obsidian_graph_service import ObsidianGraphService
 from app.obsidian.application.librarian.obsidian_librarian_job_service import (
@@ -30,13 +33,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 def _build_context_reindex_hook(
     context_service: ContextService | None,
+    recovery_service: ContextEmbeddingRecoveryService | None,
 ) -> Callable[[], Awaitable[None]] | None:
     """Build an async hook that backfills context embeddings after vault reindex."""
-    if context_service is None:
+    if context_service is None or recovery_service is None:
         return None
 
     async def _hook() -> None:
-        await context_service.reindex_embeddings(limit=1000, force=True)
+        await recovery_service.recover(context_service)
 
     return _hook
 
@@ -50,6 +54,10 @@ class ObsidianContainer(containers.DeclarativeContainer):
     librarian_delegate_service = providers.Dependency(default=None)
     memory_context_service = providers.Dependency(
         instance_of=ContextService,
+        default=None,
+    )
+    memory_embedding_recovery_service = providers.Dependency(
+        instance_of=ContextEmbeddingRecoveryService,
         default=None,
     )
     index_repo = providers.Factory(
@@ -69,6 +77,7 @@ class ObsidianContainer(containers.DeclarativeContainer):
         context_reindex_hook=providers.Factory(
             _build_context_reindex_hook,
             context_service=memory_context_service,
+            recovery_service=memory_embedding_recovery_service,
         ),
     )
     graph_service = providers.Factory(

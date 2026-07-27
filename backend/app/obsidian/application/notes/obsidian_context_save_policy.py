@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.obsidian.application.notes.obsidian_context_frontmatter import (
-    ObsidianContextIdentity,
+from app.obsidian.application.notes.obsidian_context_frontmatter_mapper import (
     context_content_hash,
     context_identity_from_frontmatter,
     normalized_context_frontmatter,
+)
+from app.obsidian.application.notes.obsidian_context_identity import (
+    ObsidianContextIdentity,
 )
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianContextDuplicateQuery,
@@ -19,7 +21,7 @@ from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 from app.obsidian.domain.repositories.obsidian_index_query_repository import (
     IObsidianIndexQueryRepository,
 )
-from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.types.extra_types import JSONObject
 
 

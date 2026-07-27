@@ -7,7 +7,7 @@ from enum import StrEnum
 
 import pytest
 
-from app.shared.exceptions import BoundaryValidationError
+from app.shared.exceptions.common_exceptions import BoundaryValidationError
 from app.shared.types.types_convert_utils import (
     optional_iso_utc_datetime,
     bool_value,

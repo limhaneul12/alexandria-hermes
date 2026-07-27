@@ -4,17 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.connections.domain.contracts.librarian_client_contracts import (
+    ApiKeyCredential,
+    LibrarianProviderClientFactory,
+    ProviderClientTestResult,
+)
 from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.event_enum.provider_enums import (
     AuthType,
     ProviderSecretKey,
     ProviderType,
 )
-from app.connections.infrastructure.librarians.contracts import (
-    ApiKeyCredential,
-    LibrarianProviderClientFactory,
-    ProviderClientTestResult,
-    SecretResolver,
+from app.connections.domain.repositories.librarian_repository import (
+    IProviderSecretRepository as SecretResolver,
 )
 from app.connections.infrastructure.librarians.openai_adapter import (
     OpenAIClientBuilder,
@@ -27,7 +29,9 @@ from app.connections.infrastructure.librarians.provider_types import (
     parse_auth_type,
     parse_provider_type,
 )
-from app.shared.exceptions import ConnectionsProviderUnsupportedError
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsProviderUnsupportedError,
+)
 from app.shared.types.extra_types import JSONObject
 from app.shared.types.types_convert_utils import now_utc, optional_iso_utc_datetime
 

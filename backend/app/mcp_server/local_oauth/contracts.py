@@ -17,6 +17,14 @@ class LocalOAuthTokenKind(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class LocalOAuthPairingCode:
+    """One-time local approval code returned only at creation time."""
+
+    code: str
+    expires_at: int
+
+
+@dataclass(frozen=True, slots=True)
 class LocalOAuthClientRecord:
     """Persisted dynamic OAuth client registration."""
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.obsidian.application.graph.obsidian_graph_relations import (
+from app.obsidian.application.graph.obsidian_graph_relation_targets import (
     source_refs_from_json,
 )
 from app.obsidian.domain.entities.obsidian_note import ObsidianLibrarianWorkflow

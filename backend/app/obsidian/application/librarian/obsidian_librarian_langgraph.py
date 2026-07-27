@@ -8,13 +8,15 @@ from typing import Any, cast
 from app.obsidian.application.librarian.obsidian_librarian_action_executor import (
     ObsidianLibrarianActionExecutor,
 )
-from app.obsidian.application.librarian.obsidian_librarian_graph_nodes import (
-    ObsidianLibrarianGraphNodes,
-)
-from app.obsidian.application.librarian.obsidian_librarian_langgraph_support import (
+from app.obsidian.application.librarian.obsidian_librarian_graph_contracts import (
     ObsidianLibrarianDelegateService,
     ObsidianLibrarianGraphResult,
     ObsidianLibrarianGraphState,
+)
+from app.obsidian.application.librarian.obsidian_librarian_graph_nodes import (
+    ObsidianLibrarianGraphNodes,
+)
+from app.obsidian.application.librarian.obsidian_librarian_graph_state_codec import (
     _initial_graph_state as initial_graph_state,
     _result_from_graph_output as result_from_graph_output,
 )

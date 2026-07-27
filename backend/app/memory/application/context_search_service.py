@@ -28,7 +28,7 @@ from app.memory.domain.event_enum.context_enums import (
     RagStrategy,
 )
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
-from app.shared.exceptions import MemoryContextValidationError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from app.shared.types.types_convert_utils import enum_value
 
 

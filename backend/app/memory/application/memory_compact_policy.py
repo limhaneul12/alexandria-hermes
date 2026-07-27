@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import re
 
-from app.memory.application.memory_compact_review import MemoryCompactReviewResult
+from app.memory.application.memory_compact_review_contracts import (
+    MemoryCompactReviewResult,
+)
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactReviewVerdict,
 )
-from app.shared.exceptions import MemoryCompactValidationError
+from app.shared.exceptions.memory_compact_exceptions import MemoryCompactValidationError
 
 _CURRENT_REQUIRED_SECTIONS: tuple[tuple[str, str], ...] = (
     ("durable decisions", "Durable Decisions"),

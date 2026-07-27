@@ -27,7 +27,7 @@ from app.connections.infrastructure.librarians.provider_types import (
     parse_auth_type,
     parse_provider_type,
 )
-from app.librarian.application.delegate_execution import (
+from app.librarian.application.delegate_execution_contracts import (
     LibrarianDelegateExecutor,
     LibrarianExecutionPlan,
 )

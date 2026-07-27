@@ -6,7 +6,9 @@ from app.connections.domain.contracts.librarian_client_contracts import (
     ApiKeyCredential,
     LibrarianProviderClientFactory,
     ProviderClientTestResult,
-    SecretResolver,
+)
+from app.connections.domain.repositories.librarian_repository import (
+    IProviderSecretRepository as SecretResolver,
 )
 
 __all__ = [

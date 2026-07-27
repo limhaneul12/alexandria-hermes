@@ -14,7 +14,7 @@ from app.connections.domain.event_enum.provider_enums import (
 from app.connections.domain.repositories.librarian_repository import (
     IProviderSecretRepository,
 )
-from app.shared.exceptions import BoundaryValidationError
+from app.shared.exceptions.common_exceptions import BoundaryValidationError
 from app.shared.types.types_convert_utils import (
     aware_utc_datetime,
     enum_value,

@@ -268,6 +268,8 @@ def test_poll_oauth_success_stores_tokens_and_redacts_response() -> None:
         "connected": True,
         "expires_at": "2026-05-15T13:00:00Z",
         "refresh_required": False,
+        "reconnect_required": False,
+        "next_action": "none",
         "message": None,
     }
     assert oauth_client.poll_calls == ["device-secret-value"]
@@ -333,6 +335,8 @@ def test_refresh_oauth_uses_refresh_skew_without_leaking_tokens(
             else "2026-05-15T14:00:00Z"
         ),
         "refresh_required": False,
+        "reconnect_required": False,
+        "next_action": "none",
         "message": None,
     }
     assert oauth_client.refresh_calls == expected_refresh_calls
@@ -367,6 +371,8 @@ def test_status_oauth_reports_pending_without_leaking_device_code() -> None:
         "connected": False,
         "expires_at": None,
         "refresh_required": False,
+        "reconnect_required": False,
+        "next_action": "poll",
         "message": None,
     }
     assert oauth_client.start_calls == []

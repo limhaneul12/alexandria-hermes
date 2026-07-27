@@ -21,9 +21,7 @@ from app.librarian.domain.types.agent_payload_types import (
     AgentUpdatePayload,
     AgentUpdateValues,
 )
-from app.shared.exceptions import (
-    LibrarianResourceNotFoundError,
-)
+from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 from app.shared.types.types_convert_utils import (
     enum_value,
     now_utc,

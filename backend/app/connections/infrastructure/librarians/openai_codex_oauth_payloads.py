@@ -23,7 +23,9 @@ from app.connections.infrastructure.librarians.openai_codex_oauth_contracts impo
     OpenAICodexOAuthConfig,
     OpenAICodexOAuthSettings,
 )
-from app.shared.exceptions import ConnectionsProviderUnsupportedError
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsProviderUnsupportedError,
+)
 from app.shared.serialization.orjson_codec import dumps_json, loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
 

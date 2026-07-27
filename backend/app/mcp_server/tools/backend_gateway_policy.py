@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from app.librarian.interface.schemas.librarian.skill_acquisition_schemas import (
-    SkillAcquisitionEvidenceItemRequest,
-)
 from app.memory.domain.event_enum.context_enums import RagStrategy
 from app.shared.types.extra_types import JSONObject
 
@@ -63,18 +60,18 @@ def _items_or_empty(items: list[str] | None) -> list[str]:
 
 def _evidence_items_or_empty(
     items: list[JSONObject] | None,
-) -> list[SkillAcquisitionEvidenceItemRequest]:
-    """Normalize optional structured evidence payloads for job completion.
+) -> list[JSONObject]:
+    """Copy optional evidence payloads without importing an HTTP interface schema.
 
     Args:
         items: Caller-provided evidence item dictionaries or omitted value.
 
     Returns:
-        Validated evidence item schemas, or an empty list when omitted.
+        Independent JSON payload copies for backend boundary validation.
     """
     if items is None:
         return []
-    return [SkillAcquisitionEvidenceItemRequest.model_validate(item) for item in items]
+    return [dict(item) for item in items]
 
 
 def _move_payloads(moves: list[dict[str, str]]) -> list[JSONObject]:

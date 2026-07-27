@@ -20,7 +20,7 @@ from app.librarian.domain.event_enum.collaboration_enums import (
     LibrarianProfileRole,
 )
 from app.librarian.domain.repositories.agent_repository import IAgentRepository
-from app.shared.exceptions import LibrarianResourceNotFoundError
+from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 
 __all__ = (
     "LibrarianProfileRouter",

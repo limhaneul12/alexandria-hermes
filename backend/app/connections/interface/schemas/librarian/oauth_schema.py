@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from app.connections.domain.event_enum.provider_enums import (
     OAuthConnectionStatus,
     OAuthPollStatus,
@@ -64,4 +66,6 @@ class LibrarianOAuthStatusResponse(StrictSchemaModel):
     connected: bool
     expires_at: AwareTimestamp | None
     refresh_required: bool
+    reconnect_required: bool
+    next_action: Literal["none", "poll", "refresh", "start_oauth"]
     message: str | None

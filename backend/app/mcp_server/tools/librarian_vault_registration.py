@@ -4,8 +4,23 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.backend_gateway_policy import DEFAULT_CONTEXT_SEARCH_LIMIT
+from app.mcp_server.tools.librarian_readiness_tools import (
+    alexandria_librarian_readiness,
+    alexandria_librarian_refresh_current_compact,
+)
+from app.mcp_server.tools.librarian_vault_backend_gateway import (
+    alexandria_librarian_review_apply_moves,
+    alexandria_librarian_review_move_plan,
+    alexandria_librarian_review_queue,
+    alexandria_librarian_vault_apply_moves,
+    alexandria_librarian_vault_inventory,
+    alexandria_librarian_vault_move_plan,
+    alexandria_librarian_vault_path_search,
+    alexandria_reindex_vault,
+)
+from app.mcp_server.tools.obsidian_backend_gateway import alexandria_search_vault
 from app.shared.types.extra_types import JSONValue
 
 
@@ -22,18 +37,18 @@ def register_librarian_vault_tools(
     @server.tool(name="alexandria_reindex_vault")
     async def _tool_reindex_vault() -> JSONValue:
         """Rebuild the Obsidian vault index cache."""
-        return await backend_tool_gateway.alexandria_reindex_vault(api_client)
+        return await alexandria_reindex_vault(api_client)
 
     @server.tool(name="alexandria_search_vault")
     async def _tool_search_vault(
         query: str,
-        limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
+        limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
         alexandria_type: str | None = None,
         project: str | None = None,
         tags: list[str] | None = None,
     ) -> JSONValue:
         """Search Alexandria-managed Obsidian Markdown notes."""
-        return await backend_tool_gateway.alexandria_search_vault(
+        return await alexandria_search_vault(
             api_client, query, limit, alexandria_type, project, tags
         )
 
@@ -44,7 +59,7 @@ def register_librarian_vault_tools(
         limit: int = 20,
     ) -> JSONValue:
         """List Obsidian notes that need librarian curation."""
-        return await backend_tool_gateway.alexandria_librarian_review_queue(
+        return await alexandria_librarian_review_queue(
             api_client, project, scope_path, limit
         )
 
@@ -55,7 +70,7 @@ def register_librarian_vault_tools(
         limit: int = 20,
     ) -> JSONValue:
         """Build a dry-run safe move plan from librarian review candidates."""
-        return await backend_tool_gateway.alexandria_librarian_review_move_plan(
+        return await alexandria_librarian_review_move_plan(
             api_client, project, scope_path, limit
         )
 
@@ -70,7 +85,7 @@ def register_librarian_vault_tools(
         confirm_apply: bool = False,
     ) -> JSONValue:
         """Apply safe moves generated from librarian review candidates."""
-        return await backend_tool_gateway.alexandria_librarian_review_apply_moves(
+        return await alexandria_librarian_review_apply_moves(
             api_client,
             project,
             scope_path,
@@ -86,9 +101,7 @@ def register_librarian_vault_tools(
         scope_path: str | None = None,
     ) -> JSONValue:
         """Inventory managed Obsidian notes for librarian operations."""
-        return await backend_tool_gateway.alexandria_librarian_vault_inventory(
-            api_client, scope_path
-        )
+        return await alexandria_librarian_vault_inventory(api_client, scope_path)
 
     @server.tool(name="alexandria_librarian_vault_path_search")
     async def _tool_librarian_vault_path_search(
@@ -96,7 +109,7 @@ def register_librarian_vault_tools(
         scope_path: str | None = None,
     ) -> JSONValue:
         """Search managed Obsidian note paths and metadata."""
-        return await backend_tool_gateway.alexandria_librarian_vault_path_search(
+        return await alexandria_librarian_vault_path_search(
             api_client, query, scope_path
         )
 
@@ -105,9 +118,7 @@ def register_librarian_vault_tools(
         moves: list[dict[str, str]],
     ) -> JSONValue:
         """Build a dry-run safe move plan for explicit vault moves."""
-        return await backend_tool_gateway.alexandria_librarian_vault_move_plan(
-            api_client, moves
-        )
+        return await alexandria_librarian_vault_move_plan(api_client, moves)
 
     @server.tool(name="alexandria_librarian_vault_apply_moves")
     async def _tool_librarian_vault_apply_moves(
@@ -117,7 +128,7 @@ def register_librarian_vault_tools(
         verification_query: str | None = None,
     ) -> JSONValue:
         """Apply explicit safe vault moves through the librarian workflow."""
-        return await backend_tool_gateway.alexandria_librarian_vault_apply_moves(
+        return await alexandria_librarian_vault_apply_moves(
             api_client,
             moves,
             report_path,
@@ -131,7 +142,7 @@ def register_librarian_vault_tools(
         max_compact_age_days: int = 30,
     ) -> JSONValue:
         """Return librarian/second-brain readiness in one call."""
-        return await backend_tool_gateway.alexandria_librarian_readiness(
+        return await alexandria_librarian_readiness(
             api_client, project, max_compact_age_days
         )
 
@@ -144,7 +155,7 @@ def register_librarian_vault_tools(
         covered_to: str | None = None,
     ) -> JSONValue:
         """Plan or apply a CURRENT compact refresh from readiness evidence."""
-        return await backend_tool_gateway.alexandria_librarian_refresh_current_compact(
+        return await alexandria_librarian_refresh_current_compact(
             api_client,
             project,
             max_compact_age_days,

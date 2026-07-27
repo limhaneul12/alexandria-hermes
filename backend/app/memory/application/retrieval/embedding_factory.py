@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.memory.application.retrieval.embedding_provider import (
+from app.memory.application.retrieval.embedding_contract import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
     EmbeddingProvider,
+)
+from app.memory.application.retrieval.fake_embedding_provider import (
     FakeEmbeddingProvider,
 )
 from app.memory.application.retrieval.fastembed_provider import (

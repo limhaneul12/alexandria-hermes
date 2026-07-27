@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from app.memory.application.retrieval.scope_identity import validated_scope_identity
+from app.memory.domain.contracts.context_recall_contracts import (
+    validated_scope_identity,
+)
 from app.memory.domain.event_enum.context_enums import ContextScope
 from app.obsidian.application.notes.obsidian_context_frontmatter_boundary import (
     ContextProvenanceBoundary,

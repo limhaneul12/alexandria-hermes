@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.backend_gateway_policy import DEFAULT_SOURCE_AGENT
+from app.mcp_server.tools.operations_backend_gateway import (
+    alexandria_operational_readiness,
+    alexandria_recovery_plan,
+    alexandria_recovery_quarantine,
+    alexandria_recovery_retry,
+    alexandria_recovery_run,
+    alexandria_recovery_run_status,
+)
 from app.shared.types.extra_types import JSONValue
 
 
@@ -24,12 +32,12 @@ def register_operations_tools(server: FastMCP, api_client: AlexandriaApiClient) 
         Returns:
             Backend operational readiness response.
         """
-        return await backend_tool_gateway.alexandria_operational_readiness(api_client)
+        return await alexandria_operational_readiness(api_client)
 
     @server.tool(name="alexandria_recovery_plan")
     async def _tool_recovery_plan(
         trigger: str = "manual",
-        actor: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        actor: str = DEFAULT_SOURCE_AGENT,
         idempotency_key: str | None = None,
         parent_run_id: str | None = None,
     ) -> JSONValue:
@@ -44,7 +52,7 @@ def register_operations_tools(server: FastMCP, api_client: AlexandriaApiClient) 
         Returns:
             Backend recovery dry-run plan response.
         """
-        return await backend_tool_gateway.alexandria_recovery_plan(
+        return await alexandria_recovery_plan(
             api_client,
             trigger,
             actor,
@@ -56,7 +64,7 @@ def register_operations_tools(server: FastMCP, api_client: AlexandriaApiClient) 
     async def _tool_recovery_run(
         idempotency_key: str,
         trigger: str = "manual",
-        actor: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        actor: str = DEFAULT_SOURCE_AGENT,
         parent_run_id: str | None = None,
     ) -> JSONValue:
         """Start or return an idempotent operational recovery run.
@@ -70,7 +78,7 @@ def register_operations_tools(server: FastMCP, api_client: AlexandriaApiClient) 
         Returns:
             Backend recovery run response.
         """
-        return await backend_tool_gateway.alexandria_recovery_run(
+        return await alexandria_recovery_run(
             api_client,
             trigger=trigger,
             actor=actor,
@@ -88,7 +96,7 @@ def register_operations_tools(server: FastMCP, api_client: AlexandriaApiClient) 
         Returns:
             Backend recovery run response.
         """
-        return await backend_tool_gateway.alexandria_recovery_run_status(
+        return await alexandria_recovery_run_status(
             api_client,
             run_id,
         )
@@ -97,7 +105,7 @@ def register_operations_tools(server: FastMCP, api_client: AlexandriaApiClient) 
     async def _tool_recovery_retry(
         run_id: str,
         trigger: str = "retry",
-        actor: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        actor: str = DEFAULT_SOURCE_AGENT,
         idempotency_key: str | None = None,
     ) -> JSONValue:
         """Start or return a parent-linked operational recovery retry.
@@ -111,7 +119,7 @@ def register_operations_tools(server: FastMCP, api_client: AlexandriaApiClient) 
         Returns:
             Backend recovery retry response.
         """
-        return await backend_tool_gateway.alexandria_recovery_retry(
+        return await alexandria_recovery_retry(
             api_client,
             run_id,
             trigger,
@@ -126,4 +134,4 @@ def register_operations_tools(server: FastMCP, api_client: AlexandriaApiClient) 
         Returns:
             Backend recovery quarantine inventory response.
         """
-        return await backend_tool_gateway.alexandria_recovery_quarantine(api_client)
+        return await alexandria_recovery_quarantine(api_client)

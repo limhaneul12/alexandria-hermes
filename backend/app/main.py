@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Awaitable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import cast
 
 from fastapi import FastAPI
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.connections.interface.routers.connection_hub_router import (
+    router as connection_hub_router,
+)
 from app.connections.interface.routers.librarian_oauth_router import (
     router as librarian_oauth_router,
 )
@@ -35,6 +40,10 @@ from app.mcp_server.interface.routers.protected_resource_metadata_router import 
 )
 from app.mcp_server.local_oauth.runtime import build_local_mcp_oauth_runtime
 from app.mcp_server.type_validate.auth_contracts import McpAuthMode
+from app.memory.application.context_embedding_recovery_service import (
+    ContextEmbeddingRecoveryService,
+)
+from app.memory.application.context_service import ContextService
 from app.memory.interface.routers.context_retrieval_router import (
     router as context_retrieval_router,
 )
@@ -54,6 +63,9 @@ from app.obsidian.interface.routers.obsidian_librarian_execution_router import (
 from app.obsidian.interface.routers.obsidian_router import router as obsidian_router
 from app.obsidian.interface.routers.obsidian_settings_router import (
     router as obsidian_settings_router,
+)
+from app.operations.interface.routers.operational_backup_router import (
+    router as operational_backup_router,
 )
 from app.operations.interface.routers.operational_readiness_router import (
     router as operational_readiness_router,
@@ -75,6 +87,42 @@ from app.shared.infrastructure.database import Database
 from app.shared.security.secret_cipher import SecretCipher
 
 logger = logging.getLogger(__name__)
+
+
+async def _recover_embeddings_after_startup(
+    *,
+    container: ApplicationContainer,
+    database: Database,
+) -> None:
+    """Run bounded embedding recovery in an isolated database request scope."""
+    try:
+        async with database.request_session():
+            context_service = await cast(
+                Awaitable[ContextService],
+                container.memory.context_service(),
+            )
+            recovery_service = cast(
+                ContextEmbeddingRecoveryService,
+                container.memory.context_embedding_recovery_service(),
+            )
+            result = await recovery_service.recover(context_service)
+        logger.info(
+            "startup embedding recovery completed",
+            extra={
+                "event": "startup_embedding_recovery_completed",
+                "attributes": {
+                    "scanned": result.scanned,
+                    "updated": result.updated,
+                    "skipped": result.skipped,
+                    "warnings": list(result.warnings),
+                },
+            },
+        )
+    except (OSError, RuntimeError, SQLAlchemyError):
+        logger.exception(
+            "startup embedding recovery failed",
+            extra={"event": "startup_embedding_recovery_failed"},
+        )
 
 
 def _docs_urls(app_env: str) -> tuple[str | None, str | None, str | None]:
@@ -142,6 +190,18 @@ def create_app(app_config: AppConfig) -> FastAPI:
                 database=database,
                 secret_cipher=secret_cipher,
             )
+        app.state.local_mcp_oauth_provider = (
+            None if local_oauth_runtime is None else local_oauth_runtime.provider
+        )
+        embedding_recovery_task: asyncio.Task[None] | None = None
+        if app_config.rag_embedding_recovery_on_startup:
+            embedding_recovery_task = asyncio.create_task(
+                _recover_embeddings_after_startup(
+                    container=container,
+                    database=database,
+                ),
+                name="alexandria-startup-embedding-recovery",
+            )
         lifecycle.dependencies.mark_starting(PlatformDependency.DATABASE)
         if await database.ping():
             lifecycle.dependencies.mark_healthy(PlatformDependency.DATABASE)
@@ -160,6 +220,15 @@ def create_app(app_config: AppConfig) -> FastAPI:
                 finally:
                     mcp_mount.set_app(None)
         finally:
+            app.state.local_mcp_oauth_provider = None
+            if (
+                embedding_recovery_task is not None
+                and not embedding_recovery_task.done()
+            ):
+                embedding_recovery_task.cancel()
+            if embedding_recovery_task is not None:
+                with suppress(asyncio.CancelledError):
+                    await embedding_recovery_task
             await cast(Awaitable[None], container.shutdown_resources())
             lifecycle.mark_stopping()
 
@@ -176,6 +245,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.state.lifecycle = lifecycle
     app.state.container = container
     app.state.app_config = app_config
+    app.state.local_mcp_oauth_provider = None
 
     async def resolve_database() -> Database:
         """Resolve the lifecycle-owned database resource for request middleware.
@@ -204,6 +274,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
         refresh_dependency_health=refresh_dependency_health,
     )
     app.include_router(protected_resource_metadata_router)
+    app.include_router(connection_hub_router)
     app.include_router(context_router)
     app.include_router(context_retrieval_router)
     app.include_router(memory_compact_router)
@@ -213,6 +284,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(obsidian_librarian_execution_router)
     app.include_router(obsidian_settings_router)
     app.include_router(operational_readiness_router)
+    app.include_router(operational_backup_router)
     app.include_router(recovery_plan_router)
     app.include_router(recovery_run_router)
     app.include_router(agent_router)

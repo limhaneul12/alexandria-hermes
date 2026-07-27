@@ -12,7 +12,9 @@ from app.connections.domain.repositories.librarian_repository import (
 from app.connections.domain.types.librarian_provider_payload_types import (
     LibrarianProviderTestPayload,
 )
-from app.shared.exceptions import ConnectionsResourceNotFoundError
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsResourceNotFoundError,
+)
 
 
 class ProviderConnectionTestService:

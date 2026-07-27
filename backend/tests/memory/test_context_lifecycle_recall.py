@@ -9,17 +9,17 @@ from pathlib import Path
 
 import anyio
 from app.memory.application.context_service import ContextService
-from app.memory.domain.event_enum.context_enums import (
-    ContextRecallLifecycleStatus,
-    ContextScope,
-    ContextStorageStatus,
-    RagStrategy,
-)
+from app.memory.domain.event_enum.context_enums import ContextStorageStatus
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
 from app.memory.infrastructure.repositories.contexts.obsidian_context_mapping import (
     is_recall_visible,
+)
+from app.memory.domain.event_enum.context_enums import (
+    ContextRecallLifecycleStatus,
+    ContextScope,
+    RagStrategy,
 )
 from app.memory.interface.schemas.context.context_schema import ContextSearchRequest
 from app.obsidian.domain.event_enum.obsidian_enums import (

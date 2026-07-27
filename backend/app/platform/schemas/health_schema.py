@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from app.platform.lifecycle.state import (
-    DependencyHealthStatus,
-    LifecycleSnapshot,
-    LifecycleStatus,
-)
+from app.platform.lifecycle.dependency_health import DependencyHealthStatus
+from app.platform.lifecycle.snapshot import LifecycleSnapshot
+from app.platform.lifecycle.status import LifecycleStatus
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
 
 

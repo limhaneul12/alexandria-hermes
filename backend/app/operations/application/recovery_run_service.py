@@ -5,10 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.operations.application.recovery_plan_service import (
-    RecoveryPlanRequest,
-    RecoveryPlanService,
-)
+from app.operations.application.recovery_plan_contracts import RecoveryPlanRequest
+from app.operations.application.recovery_plan_service import RecoveryPlanService
 from app.operations.application.recovery_run_contracts import (
     ContextRecoveryService,
     ObsidianRecoveryService,

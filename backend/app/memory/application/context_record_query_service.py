@@ -16,7 +16,7 @@ from app.memory.domain.repositories.canonical_context_repository import (
 from app.memory.domain.repositories.context_record_query_repository import (
     IContextRecordQueryRepository,
 )
-from app.shared.exceptions import (
+from app.shared.exceptions.memory_context_exceptions import (
     MemoryContextNotFoundError,
     MemoryContextValidationError,
 )

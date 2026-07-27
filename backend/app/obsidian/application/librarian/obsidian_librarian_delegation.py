@@ -13,7 +13,7 @@ from app.librarian.domain.types.hermes_collaboration_payload_types import (
 )
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianLibrarianAsk
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
-from app.shared.exceptions import LibrarianResourceNotFoundError
+from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 DELEGATE_SELECTION_MAX_CHARS = 4_000

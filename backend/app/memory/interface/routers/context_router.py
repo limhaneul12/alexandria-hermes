@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from app.container import ApplicationContainer
 from app.memory.application.context_service import ContextService
-from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
+from app.memory.domain.event_enum.context_enums import (
+    ContextKind,
+    ContextScope,
+)
 from app.memory.interface.schemas.context.context_mapping import (
     chunk_payload,
     context_payload,

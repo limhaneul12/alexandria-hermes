@@ -6,7 +6,7 @@ from typing import Annotated, cast
 
 from pydantic import Field, StringConstraints
 
-from app.librarian.application.skill_library_search_service import (
+from app.librarian.application.skill_library_search_contracts import (
     SkillCapabilityBrief,
     SkillSearchCandidate,
     SkillSearchDecision,

@@ -14,17 +14,19 @@ from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )
-from app.librarian.application.skill_acquisition_service import (
+from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
+from app.librarian.application.skill_artifact_publication_contracts import (
     PublishedSkillArtifact,
     SkillArtifactPublicationError,
-    SkillAcquisitionService,
 )
 from app.librarian.application.skill_artifact_publisher import (
     ObsidianSkillArtifactPublisher,
 )
 from app.librarian.application.skill_library_search_service import (
-    SkillCapabilityBrief,
     SkillLibrarySearchService,
+)
+from app.librarian.application.skill_library_search_contracts import (
+    SkillCapabilityBrief,
     SkillSearchDecision,
 )
 from app.librarian.domain.contracts.skill_acquisition_contracts import (
@@ -48,7 +50,8 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianIndexStatus,
 )
-from app.shared.exceptions import LibrarianValidationError, ObsidianValidationError
+from app.shared.exceptions.librarian_exceptions import LibrarianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.infrastructure.database import Database
 from sqlalchemy.ext.asyncio import AsyncSession
 

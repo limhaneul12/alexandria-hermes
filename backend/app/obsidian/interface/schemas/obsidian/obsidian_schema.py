@@ -278,6 +278,12 @@ class ObsidianSaveNoteRequest(StrictSchemaModel):
     project: str | None = None
     source: str = "mcp"
     frontmatter: JSONObject = Field(default_factory=dict)
+    expected_content_hash: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$",
+    )
 
     def to_command(self) -> ObsidianSaveNote:
         """Convert request into application save command.
@@ -296,6 +302,7 @@ class ObsidianSaveNoteRequest(StrictSchemaModel):
             project=self.project,
             source=self.source,
             frontmatter=self.frontmatter,
+            expected_content_hash=self.expected_content_hash,
         )
 
 

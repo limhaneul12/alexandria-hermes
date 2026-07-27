@@ -7,7 +7,9 @@ from datetime import datetime
 from hashlib import sha256
 
 from app.memory.domain.entities.memory_compact import MemoryCompact
-from app.memory.domain.repositories.memory_compact_repository import MemoryCompactCreate
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
+    MemoryCompactCreate,
+)
 from app.shared.types.types_convert_utils import aware_utc_datetime
 
 

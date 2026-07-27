@@ -42,8 +42,8 @@ from app.connections.domain.types.librarian_provider_payload_types import (
     LibrarianProviderTestPayload,
     LibrarianProviderUpdateValues,
 )
-from app.shared.exceptions import (
-    BoundaryValidationError,
+from app.shared.exceptions.common_exceptions import BoundaryValidationError
+from app.shared.exceptions.connections_exceptions import (
     ConnectionsProviderUnsupportedError,
     ConnectionsResourceNotFoundError,
 )

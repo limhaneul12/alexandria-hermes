@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.context_backend_gateway import (
+    alexandria_archive_context,
+    alexandria_delete_context,
+    alexandria_rag_status,
+    alexandria_supersede_context,
+)
 from app.shared.types.extra_types import JSONValue
 
 
@@ -29,9 +34,7 @@ def register_context_lifecycle_tools(
         Returns:
             Archived context response.
         """
-        return await backend_tool_gateway.alexandria_archive_context(
-            api_client, context_id
-        )
+        return await alexandria_archive_context(api_client, context_id)
 
     @server.tool(name="alexandria_supersede_context")
     async def _tool_supersede_context(
@@ -47,7 +50,7 @@ def register_context_lifecycle_tools(
         Returns:
             Superseded and replacement Context response.
         """
-        return await backend_tool_gateway.alexandria_supersede_context(
+        return await alexandria_supersede_context(
             api_client,
             context_id,
             replacement_context_id,
@@ -63,9 +66,7 @@ def register_context_lifecycle_tools(
         Returns:
             Backend delete response, typically null for HTTP 204.
         """
-        return await backend_tool_gateway.alexandria_delete_context(
-            api_client, context_id
-        )
+        return await alexandria_delete_context(api_client, context_id)
 
     @server.tool(name="alexandria_rag_status")
     async def _tool_rag_status() -> JSONValue:
@@ -74,4 +75,4 @@ def register_context_lifecycle_tools(
         Returns:
             Backend RAG health response.
         """
-        return await backend_tool_gateway.alexandria_rag_status(api_client)
+        return await alexandria_rag_status(api_client)

@@ -11,7 +11,7 @@ from threading import Event
 import anyio
 import pytest
 from app.memory.application.context_service import ContextService
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
 from app.memory.domain.entities.context_read_models import ContextPack
 from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
@@ -27,9 +27,7 @@ from app.memory.infrastructure.models.context_models import ContextChunkORM, Con
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
-from app.shared.exceptions import (
-    MemoryContextNotFoundError,
-)
+from app.shared.exceptions.memory_context_exceptions import MemoryContextNotFoundError
 from app.shared.infrastructure.database import Database
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
@@ -513,6 +511,73 @@ def test_context_recall_filters_each_requested_scope_by_its_own_identity(
         RagStrategy.VECTOR_ONLY: expected_ids,
         RagStrategy.HYBRID: expected_ids,
     }
+
+
+def test_concurrent_agents_preserve_scope_isolation_across_all_strategies(
+    tmp_path: Path,
+) -> None:
+    """Parallel agents with separate sessions must never observe each other."""
+
+    async def scenario() -> dict[str, list[set[str]]]:
+        async with _temporary_database(
+            tmp_path / "concurrent-agent-scope.db"
+        ) as database:
+            async with database.session() as seed_session:
+                expected: dict[str, str] = {}
+                for agent_id in ("agent-a", "agent-b", "agent-c"):
+                    context = await seed_context(
+                        seed_session,
+                        kind=ContextKind.RESEARCH,
+                        title=agent_id,
+                        summary=f"{agent_id} private scope.",
+                        content="# Concurrent\n\nconcurrent-scope-token",
+                        project="agent-platform",
+                        scope=ContextScope.AGENT,
+                        agent_id=agent_id,
+                        embedding_provider=KeywordEmbeddingProvider(),
+                    )
+                    expected[agent_id] = context.id
+                await seed_session.commit()
+
+            results: dict[str, list[set[str]]] = {agent_id: [] for agent_id in expected}
+
+            async def recall(agent_id: str, strategy: RagStrategy) -> None:
+                async with database.session() as query_session:
+                    service = ContextService(
+                        repository=SqlAlchemyContextRepository(session=query_session),
+                        embedding_provider=KeywordEmbeddingProvider(),
+                        vector_retrieval_enabled=True,
+                    )
+                    pack = await service.search(
+                        query="concurrent-scope-token",
+                        strategy=strategy,
+                        limit=10,
+                        project="agent-platform",
+                        agent_id=agent_id,
+                        include_scopes=[ContextScope.AGENT],
+                    )
+                    results[agent_id].append(
+                        {match.context.id for match in pack.matches}
+                    )
+
+            async with anyio.create_task_group() as task_group:
+                for agent_id in expected:
+                    for strategy in RagStrategy:
+                        task_group.start_soon(recall, agent_id, strategy)
+        return results
+
+    results = anyio.run(scenario)
+
+    assert all(
+        matches == [{expected_id}, {expected_id}, {expected_id}]
+        for expected_id, matches in (
+            (
+                next(iter(strategy_results[0])),
+                strategy_results,
+            )
+            for strategy_results in results.values()
+        )
+    )
 
 
 def test_context_vector_search_offloads_blocking_query_embedding_from_event_loop(

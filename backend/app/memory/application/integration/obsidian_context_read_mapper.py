@@ -12,10 +12,12 @@ from app.memory.domain.event_enum.context_enums import (
     ContextStorageStatus,
 )
 from app.memory.domain.types.context_payload_types import ContextMetadataPayload
-from app.obsidian.application.notes.obsidian_context_frontmatter import (
-    ObsidianContextIdentity,
+from app.obsidian.application.notes.obsidian_context_frontmatter_mapper import (
     context_content_hash,
     context_identity_from_frontmatter,
+)
+from app.obsidian.application.notes.obsidian_context_identity import (
+    ObsidianContextIdentity,
 )
 from app.obsidian.domain.entities.obsidian_note import ObsidianNote
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType

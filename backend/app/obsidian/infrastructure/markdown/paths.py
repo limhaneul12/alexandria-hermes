@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 
 NOTE_SUFFIX = ".md"
 _SAFE_FILENAME_PATTERN = re.compile(r"[^A-Za-z0-9가-힣._ -]+")

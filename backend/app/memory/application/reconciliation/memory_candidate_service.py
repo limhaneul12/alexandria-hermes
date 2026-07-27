@@ -17,7 +17,7 @@ from app.memory.domain.entities.memory_reconciliation import (
     MemoryCandidate,
     MemorySourceReference,
 )
-from app.shared.exceptions import MemoryContextValidationError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.types_convert_utils import now_utc
 

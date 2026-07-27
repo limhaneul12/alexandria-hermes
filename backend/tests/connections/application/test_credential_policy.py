@@ -7,15 +7,19 @@ from app.connections.application.librarians.credential_policy import (
     OPENAI_CODEX_OAUTH_ALLOWED_HOSTS,
     OPENAI_CODEX_OAUTH_PROTECTED_CONFIG_KEYS,
     OPENAI_CODEX_OAUTH_URL_KEYS,
-    OpenAICodexOAuthAllowedHost,
-    OpenAICodexOAuthAllowedPath,
-    OpenAICodexOAuthConfigKey,
     ensure_openai_codex_oauth_config_is_safe,
     openai_codex_oauth_allowed_paths_for,
     openai_codex_oauth_config_has_protected_change,
 )
+from app.connections.domain.event_enum.credential_policy_enums import (
+    OpenAICodexOAuthAllowedHost,
+    OpenAICodexOAuthAllowedPath,
+    OpenAICodexOAuthConfigKey,
+)
 from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
-from app.shared.exceptions import ConnectionsProviderUnsupportedError
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsProviderUnsupportedError,
+)
 from app.shared.types.extra_types import JSONObject
 
 

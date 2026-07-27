@@ -11,7 +11,7 @@ from app.memory.application.context_service import ContextService
 from app.memory.application.integration.obsidian_canonical_context_gateway import (
     ObsidianCanonicalContextGateway,
 )
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextScope,
@@ -42,7 +42,7 @@ from app.obsidian.infrastructure.models.obsidian_index_models import (
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
-from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.infrastructure.database import Database
 from sqlalchemy import delete, func, select
 from tests.memory.context_seed import seed_context

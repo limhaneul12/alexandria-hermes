@@ -21,7 +21,7 @@ from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
 )
-from app.shared.exceptions import MemoryContextNotFoundError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextNotFoundError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

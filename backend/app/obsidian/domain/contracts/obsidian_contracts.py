@@ -102,6 +102,7 @@ class ObsidianSaveNote:
     project: str | None = None
     source: str = "mcp"
     frontmatter: JSONObject = field(default_factory=dict)
+    expected_content_hash: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize note tags to an immutable sequence."""

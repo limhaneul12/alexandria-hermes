@@ -5,9 +5,7 @@ from __future__ import annotations
 from app.librarian.application.delegate_execution_contracts import (
     LibrarianExecutionPlan,
 )
-from app.librarian.application.profile_routing import (
-    LibrarianRoutingDecision,
-)
+from app.librarian.application.profile_routing_contracts import LibrarianRoutingDecision
 
 
 def build_route_preview(

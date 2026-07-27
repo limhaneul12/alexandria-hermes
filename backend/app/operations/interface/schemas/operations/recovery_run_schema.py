@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from app.operations.application.recovery_plan_service import RecoveryPlanRequest
+from app.operations.application.recovery_plan_contracts import RecoveryPlanRequest
 from app.operations.domain.entities.recovery_run import (
     RecoveryQuarantineInventoryItem,
     RecoveryRun,

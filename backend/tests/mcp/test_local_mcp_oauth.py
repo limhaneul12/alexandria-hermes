@@ -14,6 +14,7 @@ from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApi
 from app.mcp_server.local_oauth.orm import (
     McpOAuthAuthorizationCodeORM,
     McpOAuthClientORM,
+    McpOAuthPairingCodeORM,
     McpOAuthTokenORM,
 )
 from app.mcp_server.local_oauth.provider import (
@@ -54,6 +55,7 @@ def _settings() -> LocalMcpOAuthSettings:
         refresh_token_ttl_seconds=86400,
         authorization_code_ttl_seconds=300,
         approval_ttl_seconds=600,
+        pairing_code_ttl_seconds=300,
         max_approval_attempts=3,
         approval_key=APPROVAL_KEY,
     )
@@ -116,16 +118,37 @@ def test_local_oauth_provider_issues_rotates_and_revokes_hashed_tokens(
             with pytest.raises(LocalOAuthApprovalError, match="invalid"):
                 await provider.approve_authorization(
                     request_id=request_id,
-                    operator_key="wrong-key",
+                    approval_code="wrong-key",
                 )
 
+            pairing = await provider.create_pairing_code()
             redirect_url = await provider.approve_authorization(
                 request_id=request_id,
-                operator_key=APPROVAL_KEY,
+                approval_code=pairing.code,
             )
             redirect_query = parse_qs(urlparse(redirect_url).query)
             code = redirect_query["code"][0]
             assert redirect_query["state"] == ["state-1"]
+
+            second_approval_url = await provider.authorize(
+                client,
+                AuthorizationParams(
+                    state="state-2",
+                    scopes=["alexandria:mcp", "offline_access"],
+                    code_challenge=CHALLENGE,
+                    redirect_uri=AnyUrl("https://chatgpt.com/oauth/callback"),
+                    redirect_uri_provided_explicitly=True,
+                    resource=RESOURCE,
+                ),
+            )
+            second_request_id = parse_qs(urlparse(second_approval_url).query)[
+                "request_id"
+            ][0]
+            with pytest.raises(LocalOAuthApprovalError, match="invalid"):
+                await provider.approve_authorization(
+                    request_id=second_request_id,
+                    approval_code=pairing.code,
+                )
 
             authorization_code = await provider.load_authorization_code(client, code)
             assert authorization_code is not None
@@ -173,6 +196,11 @@ def test_local_oauth_provider_issues_rotates_and_revokes_hashed_tokens(
                 token_rows = tuple(
                     (await session.execute(select(McpOAuthTokenORM))).scalars().all()
                 )
+                pairing_rows = tuple(
+                    (await session.execute(select(McpOAuthPairingCodeORM)))
+                    .scalars()
+                    .all()
+                )
             assert client_row is not None
             assert client_row.client_secret_ciphertext != "dynamic-client-secret"
             assert all(row.code_hash != code for row in code_rows)
@@ -183,6 +211,9 @@ def test_local_oauth_provider_issues_rotates_and_revokes_hashed_tokens(
                 second_refresh,
             }
             assert raw_tokens.isdisjoint(row.token_hash for row in token_rows)
+            assert len(pairing_rows) == 1
+            assert pairing_rows[0].code_hash != pairing.code
+            assert pairing_rows[0].consumed_at is not None
         finally:
             await database.shutdown()
 
@@ -261,18 +292,36 @@ def test_local_oauth_http_flow_enforces_pkce_and_bearer_auth(tmp_path: Path) -> 
             approval_page = client.get(approval_location)
             assert approval_page.status_code == 200
             assert APPROVAL_KEY not in approval_page.text
+            assert 'name="pairing_code"' in approval_page.text
+            assert "form-action" not in approval_page.headers["content-security-policy"]
+            pairing = anyio.run(runtime.provider.create_pairing_code)
 
             approval = client.post(
                 "/approve",
                 data={
                     "request_id": request_id,
-                    "operator_key": APPROVAL_KEY,
+                    "pairing_code": pairing.code,
                     "decision": "approve",
                 },
                 follow_redirects=False,
             )
             assert approval.status_code == 302
+            assert approval.headers["location"].startswith(
+                "https://chatgpt.com/oauth/callback?"
+            )
+            assert "content-security-policy" not in approval.headers
             code = parse_qs(urlparse(approval.headers["location"]).query)["code"][0]
+
+            async def pairing_was_consumed() -> bool:
+                async with database.session() as session:
+                    rows = tuple(
+                        (await session.execute(select(McpOAuthPairingCodeORM)))
+                        .scalars()
+                        .all()
+                    )
+                return len(rows) == 1 and rows[0].consumed_at is not None
+
+            assert anyio.run(pairing_was_consumed) is True
 
             bad_token = client.post(
                 "/token",

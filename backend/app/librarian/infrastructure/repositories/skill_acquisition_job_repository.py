@@ -21,7 +21,7 @@ from app.librarian.domain.repositories.skill_acquisition_job_repository import (
 from app.librarian.infrastructure.models.skill_acquisition_job_models import (
     SkillAcquisitionJobORM,
 )
-from app.shared.exceptions import LibrarianResourceNotFoundError
+from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 from app.shared.types.extra_types import JSONObject
 from app.shared.types.types_convert_utils import aware_utc_datetime
 

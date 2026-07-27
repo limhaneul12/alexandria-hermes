@@ -4,8 +4,17 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.backend_gateway_policy import (
+    DEFAULT_CONTEXT_SEARCH_LIMIT,
+    DEFAULT_CONTEXT_SEARCH_STRATEGY,
+    _bounded_search_limit,
+)
+from app.mcp_server.tools.context_backend_gateway import (
+    alexandria_rag_context,
+    alexandria_recall_context,
+    alexandria_search,
+)
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextRecallLifecycleStatus,
@@ -29,8 +38,8 @@ def register_context_recall_tools(
     @server.tool(name="alexandria_search")
     async def _tool_search(
         query: str,
-        limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
-        strategy: RagStrategy = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_STRATEGY,
+        limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
+        strategy: RagStrategy = DEFAULT_CONTEXT_SEARCH_STRATEGY,
         project: str | None = None,
         kind: ContextKind | None = None,
         include_scopes: list[ContextScope] | None = None,
@@ -58,11 +67,11 @@ def register_context_recall_tools(
         Returns:
             Backend Context Pack response.
         """
-        return await backend_tool_gateway.alexandria_search(
+        return await alexandria_search(
             api_client,
             ContextSearchRequest(
                 query=query,
-                limit=backend_tool_gateway._bounded_search_limit(limit),
+                limit=_bounded_search_limit(limit),
                 strategy=strategy,
                 project=project,
                 kind=kind,
@@ -82,7 +91,7 @@ def register_context_recall_tools(
     @server.tool(name="alexandria_recall_context")
     async def _tool_recall_context(
         query: str,
-        limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
+        limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
         project: str | None = None,
         kind: ContextKind | None = None,
         include_scopes: list[ContextScope] | None = None,
@@ -107,7 +116,7 @@ def register_context_recall_tools(
         Returns:
             Backend Context Pack response.
         """
-        return await backend_tool_gateway.alexandria_recall_context(
+        return await alexandria_recall_context(
             api_client,
             query,
             limit,
@@ -123,8 +132,8 @@ def register_context_recall_tools(
     @server.tool(name="alexandria_rag_context")
     async def _tool_rag_context(
         query: str,
-        strategy: RagStrategy = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_STRATEGY,
-        limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
+        strategy: RagStrategy = DEFAULT_CONTEXT_SEARCH_STRATEGY,
+        limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
         project: str | None = None,
         kind: ContextKind | None = None,
         include_scopes: list[ContextScope] | None = None,
@@ -142,6 +151,6 @@ def register_context_recall_tools(
         Returns:
             Backend Context Pack response.
         """
-        return await backend_tool_gateway.alexandria_rag_context(
+        return await alexandria_rag_context(
             api_client, query, strategy, limit, project, kind, include_scopes
         )

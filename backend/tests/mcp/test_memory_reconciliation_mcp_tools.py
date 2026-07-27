@@ -5,7 +5,8 @@ from __future__ import annotations
 import anyio
 import httpx
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
-from app.mcp_server.backend_tool_gateway import (
+from app.mcp_server.server_runtime import build_mcp_server
+from app.mcp_server.tools.memory_reconciliation_tools import (
     alexandria_apply_existing_memory_reconciliation,
     alexandria_apply_memory_reconciliation,
     alexandria_get_memory_conflict,
@@ -19,7 +20,6 @@ from app.mcp_server.backend_tool_gateway import (
     alexandria_recall_memory_temporally,
     alexandria_resolve_memory_conflict,
 )
-from app.mcp_server.server_runtime import build_mcp_server
 from app.memory.domain.event_enum.context_enums import ContextScope
 from app.memory.domain.event_enum.reconciliation_enums import (
     MemoryConflictStatus,
@@ -28,8 +28,10 @@ from app.memory.domain.event_enum.reconciliation_enums import (
 from app.memory.interface.schemas.reconciliation.memory_existing_reconciliation_request_schema import (
     ExistingMemoryReconciliationHttpRequest,
 )
-from app.memory.interface.schemas.reconciliation.memory_reconciliation_request_schema import (
+from app.memory.interface.schemas.reconciliation.memory_reconciliation_candidate_request_schema import (
     MemoryCandidateRequest,
+)
+from app.memory.interface.schemas.reconciliation.memory_reconciliation_temporal_request_schema import (
     MemoryTemporalRecallHttpRequest,
 )
 from app.shared.serialization.orjson_codec import dumps_json, loads_json

@@ -12,7 +12,7 @@ from app.librarian.domain.contracts.hermes_collaboration_contracts import (
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianDelegateStatus
 from app.memory.application.memory_compact_service import MemoryCompactService
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
-from app.memory.domain.repositories.memory_compact_repository import (
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
     MemoryCompactCreate,
     MemoryCompactSourceRefCreate,
 )

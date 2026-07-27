@@ -9,7 +9,7 @@ from app.obsidian.infrastructure.markdown.paths import (
     resolve_vault_path,
     safe_relative_path,
 )
-from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.serialization.orjson_codec import dumps_pretty_json, loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
 from typing_extensions import TypedDict

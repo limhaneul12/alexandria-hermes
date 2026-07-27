@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from app.librarian.application.delegate_execution import (
+from app.librarian.application.delegate_execution_contracts import (
     LibrarianDelegateExecutor,
     LibrarianExecutionPlan,
-    execute_delegates,
 )
+from app.librarian.application.delegate_execution_runner import execute_delegates
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
     LibrarianDelegateResult,

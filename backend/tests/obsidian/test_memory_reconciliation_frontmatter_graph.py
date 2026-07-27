@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.memory.domain.event_enum.context_enums import ContextKind
-from app.obsidian.application.graph.obsidian_graph_relations import (
-    add_or_update_alexandria_links_section,
+from app.obsidian.application.graph.obsidian_graph_edge_builder import (
     relation_edges_from_note,
+)
+from app.obsidian.application.graph.obsidian_graph_link_renderer import (
+    add_or_update_alexandria_links_section,
 )
 from app.obsidian.application.notes.obsidian_context_frontmatter_mapper import (
     context_content_hash,

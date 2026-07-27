@@ -8,20 +8,20 @@ from app.memory.application.memory_compact_policy import (
     ensure_review_passes,
     missing_current_sections,
 )
-from app.memory.application.memory_compact_review import (
+from app.memory.application.memory_compact_review import review_memory_compact
+from app.memory.application.memory_compact_review_contracts import (
     MemoryCompactReviewResult,
-    review_memory_compact,
 )
 from app.memory.domain.entities.memory_compact import (
     MemoryCompact,
     MemoryCompactSourceRef,
 )
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
-from app.memory.domain.repositories.memory_compact_repository import (
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
     MemoryCompactCreate,
     MemoryCompactSourceRefCreate,
 )
-from app.shared.exceptions import MemoryCompactValidationError
+from app.shared.exceptions.memory_compact_exceptions import MemoryCompactValidationError
 from app.shared.types.types_convert_utils import aware_utc_datetime, enum_value
 
 

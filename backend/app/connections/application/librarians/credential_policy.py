@@ -16,7 +16,9 @@ from app.connections.domain.event_enum.provider_enums import (
     ConfigCredentialKey,
     ProviderType,
 )
-from app.shared.exceptions import ConnectionsProviderUnsupportedError
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsProviderUnsupportedError,
+)
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 SUPPORTED_PROVIDER_AUTH_TYPES: Final[Mapping[ProviderType, frozenset[AuthType]]] = {

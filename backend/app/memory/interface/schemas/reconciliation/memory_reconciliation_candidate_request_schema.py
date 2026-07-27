@@ -11,9 +11,7 @@ from app.memory.domain.entities.memory_reconciliation import (
     CanonicalClaimQualifier,
     MemorySourceReference,
 )
-from app.memory.domain.event_enum.context_enums import (
-    ContextScope,
-)
+from app.memory.domain.event_enum.context_enums import ContextScope
 from app.memory.domain.event_enum.reconciliation_enums import (
     MemoryClaimPolarity,
 )

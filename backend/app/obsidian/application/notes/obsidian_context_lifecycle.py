@@ -21,7 +21,10 @@ from app.obsidian.infrastructure.markdown.frontmatter import (
     update_frontmatter_scalars,
 )
 from app.obsidian.infrastructure.markdown.paths import resolve_note_path
-from app.shared.exceptions import ObsidianIndexWriteError, ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import (
+    ObsidianIndexWriteError,
+    ObsidianValidationError,
+)
 from app.shared.types.types_convert_utils import now_utc
 
 

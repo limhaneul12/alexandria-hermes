@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 
-from app.librarian.application.delegate_execution import LibrarianProfileResolution
-from app.librarian.application.profile_routing import LibrarianRoutingDecision
+from app.librarian.application.delegate_execution_contracts import (
+    LibrarianProfileResolution,
+)
+from app.librarian.application.profile_routing_contracts import LibrarianRoutingDecision
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
 )

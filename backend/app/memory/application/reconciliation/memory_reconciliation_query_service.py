@@ -9,7 +9,7 @@ from app.memory.domain.entities.memory_reconciliation import (
 from app.memory.domain.repositories.memory_reconciliation_use_case_repositories import (
     IMemoryReconciliationQueryRepository,
 )
-from app.shared.exceptions import (
+from app.shared.exceptions.memory_context_exceptions import (
     MemoryContextNotFoundError,
     MemoryContextValidationError,
 )

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from app.obsidian.application.graph.obsidian_graph_relations import (
+from app.obsidian.application.graph.obsidian_graph_link_renderer import (
     add_or_update_alexandria_links_section,
+)
+from app.obsidian.application.graph.obsidian_graph_relation_targets import (
     source_refs_from_json,
 )
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianSaveNote

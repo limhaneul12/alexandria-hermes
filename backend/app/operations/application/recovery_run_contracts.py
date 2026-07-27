@@ -11,7 +11,7 @@ from app.obsidian.domain.entities.obsidian_note import (
     ObsidianReindexResult,
     ObsidianSearchHit,
 )
-from app.operations.application.operational_readiness_service import (
+from app.operations.application.operational_readiness_contracts import (
     ContextReadinessService,
     ObsidianReadinessService,
 )

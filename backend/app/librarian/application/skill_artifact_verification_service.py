@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from app.librarian.application.skill_artifact_document_policy import (
+from app.librarian.application.skill_artifact_validation_policy import (
     _verify_saved_contract,
 )
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianSearchQuery
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
-from app.shared.exceptions import LibrarianValidationError
+from app.shared.exceptions.librarian_exceptions import LibrarianValidationError
 from app.shared.types.extra_types import JSONObject
 
 

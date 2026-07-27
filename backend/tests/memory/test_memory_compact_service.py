@@ -7,7 +7,7 @@ from pathlib import Path
 
 import anyio
 import pytest
-from app.memory.application.memory_compact_review import (
+from app.memory.application.memory_compact_review_contracts import (
     MemoryCompactSourceObservation,
 )
 from app.memory.application.memory_compact_service import MemoryCompactService
@@ -15,14 +15,14 @@ from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactReviewVerdict,
     MemoryCompactStatus,
 )
-from app.memory.domain.repositories.memory_compact_repository import (
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
     MemoryCompactCreate,
     MemoryCompactSourceRefCreate,
 )
 from app.memory.infrastructure.repositories.memory_compact_repository import (
     ObsidianMemoryCompactRepository,
 )
-from app.shared.exceptions import MemoryCompactValidationError
+from app.shared.exceptions.memory_compact_exceptions import MemoryCompactValidationError
 
 
 def _service(vault_path: Path) -> MemoryCompactService:

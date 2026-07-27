@@ -6,8 +6,10 @@ from datetime import UTC, datetime
 
 import anyio
 from app.librarian.application.skill_library_search_service import (
-    SkillCapabilityBrief,
     SkillLibrarySearchService,
+)
+from app.librarian.application.skill_library_search_contracts import (
+    SkillCapabilityBrief,
     SkillSearchDecision,
 )
 from app.librarian.domain.event_enum.skill_acquisition_enums import RiskLevel

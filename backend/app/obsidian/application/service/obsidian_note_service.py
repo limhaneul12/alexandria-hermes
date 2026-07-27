@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
-from app.obsidian.application.graph.obsidian_graph_relations import (
+from app.obsidian.application.graph.obsidian_graph_link_renderer import (
     add_or_update_alexandria_links_section,
 )
 from app.obsidian.application.notes.obsidian_authoritative_read import (
@@ -63,6 +64,7 @@ from app.shared.exceptions.obsidian_exceptions import (
     ObsidianIndexWriteError,
     ObsidianNotFoundError,
     ObsidianValidationError,
+    ObsidianWriteConflictError,
 )
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.types_convert_utils import now_utc
@@ -109,6 +111,7 @@ class ObsidianNoteService:
         self._vault_config_store = vault_config_store
         self._reindex = reindex
         self._mark_context_superseded = mark_context_superseded
+        self._write_lock = asyncio.Lock()
 
     async def search(
         self,
@@ -185,6 +188,14 @@ class ObsidianNoteService:
         Returns:
             Saved note loaded through the index.
         """
+        async with self._write_lock:
+            return await self._save_note_serialized(payload)
+
+    async def _save_note_serialized(
+        self,
+        payload: ObsidianSaveNote,
+    ) -> ObsidianNote:
+        """Save one note while serializing canonical read-check-replace writes."""
         config = self._vault_config_store.current()
         title = payload.title.strip()
         if not title:
@@ -204,6 +215,11 @@ class ObsidianNoteService:
         safe_path = str(safe_relative_path(relative_path))
         absolute = resolve_note_path(config.vault_path, safe_path)
         indexed_note = await self._repository.get_by_path(safe_path)
+        self._validate_expected_content_hash(
+            payload=payload,
+            indexed_note=indexed_note,
+            safe_path=safe_path,
+        )
         if (
             payload.note_id is not None
             and indexed_note is not None
@@ -296,6 +312,27 @@ class ObsidianNoteService:
                     "reindex reconciliation"
                 ) from exc
         return note
+
+    @staticmethod
+    def _validate_expected_content_hash(
+        *,
+        payload: ObsidianSaveNote,
+        indexed_note: ObsidianNote | None,
+        safe_path: str,
+    ) -> None:
+        """Reject a stale compare-and-swap token before replacing Markdown."""
+        expected = payload.expected_content_hash
+        if expected is None:
+            return
+        if indexed_note is None:
+            raise ObsidianWriteConflictError(
+                f"OBSIDIAN_WRITE_CONFLICT: note does not exist: {safe_path}"
+            )
+        if indexed_note.content_hash != expected:
+            raise ObsidianWriteConflictError(
+                "OBSIDIAN_WRITE_CONFLICT: expected content hash does not match "
+                f"the current note: {safe_path}"
+            )
 
     def note_id_from_existing_file(self, path: Path) -> str | None:
         """Read a stable note id from an existing managed Markdown file.

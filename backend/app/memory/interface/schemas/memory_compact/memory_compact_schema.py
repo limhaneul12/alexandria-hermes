@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from app.memory.application.memory_compact_review import (
+from app.memory.application.memory_compact_review_contracts import (
     MemoryCompactReviewResult,
     MemoryCompactRubricScore,
     MemoryCompactSourceObservation,
@@ -17,7 +17,7 @@ from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactReviewVerdict,
     MemoryCompactStatus,
 )
-from app.memory.domain.repositories.memory_compact_repository import (
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
     MemoryCompactCreate,
     MemoryCompactSourceRefCreate,
 )

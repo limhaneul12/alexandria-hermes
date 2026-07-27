@@ -5,14 +5,14 @@ from __future__ import annotations
 from app.memory.application.retrieval.context_ranking import (
     rank_best_matches_per_context,
 )
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
 from app.memory.domain.contracts.context_recall_contracts import (
     ContextRecallFilter,
     ContextVectorRecall,
 )
 from app.memory.domain.entities.context_read_models import ContextSearchMatch
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
-from app.shared.exceptions import MemoryContextValidationError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from asyncer import asyncify
 
 

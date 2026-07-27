@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.backend_gateway_policy import DEFAULT_CONTEXT_SEARCH_LIMIT
+from app.mcp_server.tools.obsidian_backend_gateway import (
+    alexandria_ask_obsidian_librarian,
+    alexandria_get_related_notes,
+    alexandria_read_note,
+    alexandria_save_note,
+)
 from app.shared.types.extra_types import JSONValue
 
 
@@ -25,20 +31,16 @@ def register_obsidian_note_tools(
         path: str | None = None,
     ) -> JSONValue:
         """Read one Alexandria-managed Obsidian note by id or path."""
-        return await backend_tool_gateway.alexandria_read_note(
-            api_client, note_id, path
-        )
+        return await alexandria_read_note(api_client, note_id, path)
 
     @server.tool(name="alexandria_get_related_notes")
     async def _tool_get_related_notes(
         note_id: str | None = None,
         path: str | None = None,
-        limit: int = backend_tool_gateway.DEFAULT_CONTEXT_SEARCH_LIMIT,
+        limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
     ) -> JSONValue:
         """Read graph-related Obsidian notes by id or path."""
-        return await backend_tool_gateway.alexandria_get_related_notes(
-            api_client, note_id, path, limit
-        )
+        return await alexandria_get_related_notes(api_client, note_id, path, limit)
 
     @server.tool(name="alexandria_save_note")
     async def _tool_save_note(
@@ -54,7 +56,7 @@ def register_obsidian_note_tools(
         frontmatter: dict[str, JSONValue] | None = None,
     ) -> JSONValue:
         """Save one Alexandria-managed Obsidian Markdown note."""
-        return await backend_tool_gateway.alexandria_save_note(
+        return await alexandria_save_note(
             api_client,
             title,
             body,
@@ -81,7 +83,7 @@ def register_obsidian_note_tools(
         profile_id: str | None = None,
     ) -> JSONValue:
         """Ask the Obsidian-aware Alexandria librarian."""
-        return await backend_tool_gateway.alexandria_ask_obsidian_librarian(
+        return await alexandria_ask_obsidian_librarian(
             api_client,
             query,
             active_note_path,

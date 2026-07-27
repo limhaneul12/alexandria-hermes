@@ -12,7 +12,7 @@ from app.librarian.domain.entities.skill_acquisition_job import SkillAcquisition
 from app.librarian.domain.event_enum.collaboration_enums import (
     SkillAcquisitionJobStage,
 )
-from app.shared.exceptions import LibrarianValidationError
+from app.shared.exceptions.librarian_exceptions import LibrarianValidationError
 from app.shared.types.extra_types import JSONObject
 
 

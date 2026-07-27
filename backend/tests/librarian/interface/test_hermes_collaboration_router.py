@@ -18,7 +18,7 @@ from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )
-from app.librarian.application.delegate_execution import (
+from app.librarian.application.delegate_execution_contracts import (
     LibrarianDelegateExecutor,
     LibrarianExecutionPlan,
 )
@@ -42,7 +42,9 @@ from app.memory.domain.entities.memory_compact import (
     MemoryCompactSourceRef,
 )
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
-from app.memory.domain.repositories.memory_compact_repository import MemoryCompactCreate
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
+    MemoryCompactCreate,
+)
 from app.shared.types.extra_types import JSONObject
 from fastapi.testclient import TestClient
 from tests.shared.provider_overrides import override_library_provider

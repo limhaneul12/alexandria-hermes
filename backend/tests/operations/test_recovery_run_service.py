@@ -28,11 +28,9 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianIndexStatus,
 )
-from app.operations.application.recovery_plan_service import RecoveryPlanRequest
-from app.operations.application.recovery_run_service import (
-    RecoveryInProgressError,
-    RecoveryRunService,
-)
+from app.operations.application.recovery_plan_contracts import RecoveryPlanRequest
+from app.operations.application.recovery_run_service import RecoveryRunService
+from app.operations.application.recovery_run_errors import RecoveryInProgressError
 from app.operations.domain.event_enum.operational_recovery_enums import (
     RecoveryRunStatus,
 )

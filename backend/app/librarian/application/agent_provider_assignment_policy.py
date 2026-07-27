@@ -11,7 +11,7 @@ from app.connections.domain.repositories.librarian_repository import (
     IProviderSecretRepository,
 )
 from app.librarian.application.provider_execution_policy import provider_can_execute
-from app.shared.exceptions import (
+from app.shared.exceptions.librarian_exceptions import (
     LibrarianProviderUnsupportedError,
     LibrarianResourceNotFoundError,
 )

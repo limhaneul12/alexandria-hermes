@@ -5,10 +5,10 @@ from __future__ import annotations
 import anyio
 import httpx
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
-from app.mcp_server.backend_tool_gateway import (
+from app.mcp_server.server_runtime import build_mcp_server
+from app.mcp_server.tools.memory_reconciliation_tools import (
     alexandria_list_memory_reconciliation_review_queue,
 )
-from app.mcp_server.server_runtime import build_mcp_server
 from app.shared.serialization.orjson_codec import dumps_json
 
 

@@ -60,6 +60,7 @@ def test_recovery_plan_route_returns_read_only_plan_payload(tmp_path: Path) -> N
             database=database,
             context_service=_FakeContextService(),
             obsidian_service=_FakeObsidianService(tmp_path / "vault"),
+            reconciliation_service=None,
         )
         return response.model_dump(mode="json")
 

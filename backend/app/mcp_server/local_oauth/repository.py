@@ -19,6 +19,7 @@ from app.mcp_server.local_oauth.orm import (
     McpOAuthAuthorizationCodeORM,
     McpOAuthAuthorizationRequestORM,
     McpOAuthClientORM,
+    McpOAuthPairingCodeORM,
     McpOAuthTokenORM,
 )
 from app.shared.types.extra_types import JSONObject, JSONValue
@@ -144,6 +145,35 @@ class LocalMcpOAuthRepository:
             row.approval_attempts += 1
             return row.approval_attempts
 
+    async def create_pairing_code(
+        self,
+        *,
+        code_hash: str,
+        expires_at: int,
+        now: int,
+    ) -> None:
+        """Replace prior active pairing codes with one new hashed code.
+
+        Args:
+            code_hash: SHA-256 lookup value for the code.
+            expires_at: Pairing-code expiry epoch.
+            now: Current epoch.
+        """
+        async with self._session_factory() as session, session.begin():
+            await session.execute(
+                update(McpOAuthPairingCodeORM)
+                .where(McpOAuthPairingCodeORM.consumed_at.is_(None))
+                .values(consumed_at=now)
+            )
+            session.add(
+                McpOAuthPairingCodeORM(
+                    code_hash=code_hash,
+                    expires_at=expires_at,
+                    consumed_at=None,
+                    created_at=now,
+                )
+            )
+
     async def approve_authorization_request(
         self,
         *,
@@ -152,6 +182,7 @@ class LocalMcpOAuthRepository:
         code_hash: str,
         code_expires_at: int,
         now: int,
+        pairing_code_hash: str | None = None,
     ) -> LocalOAuthAuthorizationCodeRecord | None:
         """Consume one approval request and atomically create its code.
 
@@ -174,6 +205,18 @@ class LocalMcpOAuthRepository:
                 or request_row.expires_at <= now
             ):
                 return None
+            if pairing_code_hash is not None:
+                pairing_row = await session.get(
+                    McpOAuthPairingCodeORM,
+                    pairing_code_hash,
+                )
+                if (
+                    pairing_row is None
+                    or pairing_row.consumed_at is not None
+                    or pairing_row.expires_at <= now
+                ):
+                    return None
+                pairing_row.consumed_at = now
             request_row.consumed_at = now
             session.add(
                 McpOAuthAuthorizationCodeORM(
@@ -203,7 +246,13 @@ class LocalMcpOAuthRepository:
                 expires_at=code_expires_at,
             )
 
-    async def deny_authorization_request(self, request_id: str, now: int) -> bool:
+    async def deny_authorization_request(
+        self,
+        request_id: str,
+        now: int,
+        *,
+        pairing_code_hash: str | None = None,
+    ) -> bool:
         """Consume one pending request without issuing a code.
 
         Args:
@@ -215,6 +264,18 @@ class LocalMcpOAuthRepository:
             row = await session.get(McpOAuthAuthorizationRequestORM, request_id)
             if row is None or row.consumed_at is not None or row.expires_at <= now:
                 return False
+            if pairing_code_hash is not None:
+                pairing_row = await session.get(
+                    McpOAuthPairingCodeORM,
+                    pairing_code_hash,
+                )
+                if (
+                    pairing_row is None
+                    or pairing_row.consumed_at is not None
+                    or pairing_row.expires_at <= now
+                ):
+                    return False
+                pairing_row.consumed_at = now
             row.consumed_at = now
             return True
 

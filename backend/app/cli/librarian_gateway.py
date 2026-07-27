@@ -32,7 +32,9 @@ class _BackendToolGatewayAdapter:
             JSON-compatible readiness payload.
         """
         # local import justified: CLI help must not import the broad MCP gateway.
-        from app.mcp_server.backend_tool_gateway import alexandria_librarian_readiness
+        from app.mcp_server.tools.librarian_readiness_tools import (
+            alexandria_librarian_readiness,
+        )
 
         return await alexandria_librarian_readiness(
             client,
@@ -59,7 +61,7 @@ class _BackendToolGatewayAdapter:
             JSON-compatible review queue payload.
         """
         # local import justified: CLI help must not import the broad MCP gateway.
-        from app.mcp_server.backend_tool_gateway import (
+        from app.mcp_server.tools.librarian_vault_backend_gateway import (
             alexandria_librarian_review_queue,
         )
 
@@ -89,7 +91,7 @@ class _BackendToolGatewayAdapter:
             JSON-compatible move-plan payload.
         """
         # local import justified: CLI help must not import the broad MCP gateway.
-        from app.mcp_server.backend_tool_gateway import (
+        from app.mcp_server.tools.librarian_vault_backend_gateway import (
             alexandria_librarian_review_move_plan,
         )
 
@@ -127,7 +129,7 @@ class _BackendToolGatewayAdapter:
             JSON-compatible move application payload.
         """
         # local import justified: CLI help must not import the broad MCP gateway.
-        from app.mcp_server.backend_tool_gateway import (
+        from app.mcp_server.tools.librarian_vault_backend_gateway import (
             alexandria_librarian_review_apply_moves,
         )
 
@@ -165,7 +167,7 @@ class _BackendToolGatewayAdapter:
             JSON-compatible compact refresh payload.
         """
         # local import justified: CLI help must not import the broad MCP gateway.
-        from app.mcp_server.backend_tool_gateway import (
+        from app.mcp_server.tools.librarian_readiness_tools import (
             alexandria_librarian_refresh_current_compact,
         )
 

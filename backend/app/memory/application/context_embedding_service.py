@@ -11,7 +11,7 @@ from app.memory.application.context_embedding_reindex_service import (
 from app.memory.application.context_vector_recall_service import (
     ContextVectorRecallService,
 )
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
 from app.memory.domain.contracts.context_recall_contracts import ContextRecallFilter
 from app.memory.domain.entities.context_read_models import (
     ContextEmbeddingSourceStatus,

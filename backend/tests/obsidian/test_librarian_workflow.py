@@ -18,7 +18,7 @@ from app.librarian.domain.event_enum.collaboration_enums import (
 from app.librarian.domain.types.hermes_collaboration_payload_types import (
     HermesLibrarianAskPayload,
 )
-from app.obsidian.application.librarian.obsidian_librarian_langgraph_support import (
+from app.obsidian.application.librarian.obsidian_librarian_graph_contracts import (
     ObsidianLibrarianDelegateService,
 )
 from app.obsidian.application.librarian.obsidian_librarian_workflow_service import (
@@ -45,7 +45,7 @@ from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
 from app.obsidian.infrastructure.repositories.obsidian_workflow_repository import (
     SqlAlchemyObsidianWorkflowRepository,
 )
-from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 from app.shared.infrastructure.database import Database
 from sqlalchemy.ext.asyncio import AsyncSession

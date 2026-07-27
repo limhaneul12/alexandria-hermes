@@ -19,7 +19,9 @@ from app.connections.infrastructure.models.librarian_provider_models import (
     LibrarianProviderORM,
     ProviderSecretORM,
 )
-from app.shared.exceptions import ConnectionsResourceNotFoundError
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsResourceNotFoundError,
+)
 from app.shared.security.secret_cipher import SecretCipher, SecretCipherSettings
 from app.shared.types.types_convert_utils import aware_utc_datetime
 from sqlalchemy import delete, select

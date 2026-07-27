@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from app.shared.exceptions import ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.utils.secret_redaction import (
     is_secret_field_name,

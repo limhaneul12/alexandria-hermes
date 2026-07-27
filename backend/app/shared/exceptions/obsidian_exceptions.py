@@ -15,5 +15,9 @@ class ObsidianValidationError(ObsidianDomainError):
     """Raised when an Obsidian request violates a storage invariant."""
 
 
+class ObsidianWriteConflictError(ObsidianDomainError):
+    """Raised when a canonical note changed after an agent read it."""
+
+
 class ObsidianIndexWriteError(ObsidianDomainError):
     """Raised when one rebuildable Obsidian index write fails."""

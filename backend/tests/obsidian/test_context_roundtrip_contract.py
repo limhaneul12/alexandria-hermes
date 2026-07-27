@@ -22,7 +22,10 @@ from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
-from app.shared.exceptions import ObsidianIndexWriteError, ObsidianValidationError
+from app.shared.exceptions.obsidian_exceptions import (
+    ObsidianIndexWriteError,
+    ObsidianValidationError,
+)
 from app.shared.infrastructure.database import Database
 from pytest import MonkeyPatch
 from sqlalchemy.exc import SQLAlchemyError

@@ -6,12 +6,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from app.connections.domain.event_enum.provider_enums import ProviderType
-from app.connections.infrastructure.librarians.contracts import (
+from app.connections.domain.contracts.librarian_client_contracts import (
     ApiKeyCredential,
     ProviderClientTestResult,
 )
-from app.shared.exceptions import ConnectionsProviderUnsupportedError
+from app.connections.domain.event_enum.provider_enums import ProviderType
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsProviderUnsupportedError,
+)
 from app.shared.types.extra_types import JSONObject
 from openai import OpenAI
 

@@ -13,7 +13,7 @@ from app.memory.application.memory_compact_lifecycle_service import (
 from app.memory.application.memory_compact_query_service import (
     MemoryCompactQueryService,
 )
-from app.memory.application.memory_compact_review import (
+from app.memory.application.memory_compact_review_contracts import (
     MemoryCompactReviewResult,
     MemoryCompactSourceObservation,
 )
@@ -21,6 +21,8 @@ from app.memory.domain.entities.memory_compact import MemoryCompact
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
 from app.memory.domain.repositories.memory_compact_repository import (
     IMemoryCompactRepository,
+)
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
     MemoryCompactCreate,
 )
 

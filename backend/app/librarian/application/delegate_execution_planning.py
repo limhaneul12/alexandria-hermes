@@ -7,8 +7,8 @@ from app.librarian.application.delegate_execution_contracts import (
     LibrarianExecutionPlan,
     LibrarianProfileResolution,
 )
-from app.librarian.application.profile_routing import (
-    LibrarianRoutingDecision,
+from app.librarian.application.profile_routing_contracts import LibrarianRoutingDecision
+from app.librarian.application.profile_routing_policy import (
     matched_specialties_for_profile,
 )
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (

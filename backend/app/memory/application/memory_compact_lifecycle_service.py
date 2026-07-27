@@ -11,16 +11,16 @@ from app.memory.application.memory_compact_policy import (
 from app.memory.application.memory_compact_query_service import (
     MemoryCompactQueryService,
 )
-from app.memory.application.memory_compact_review import (
+from app.memory.application.memory_compact_review import review_memory_compact
+from app.memory.application.memory_compact_review_contracts import (
     MemoryCompactReviewResult,
     MemoryCompactSourceObservation,
-    review_memory_compact,
 )
 from app.memory.domain.entities.memory_compact import MemoryCompact
 from app.memory.domain.repositories.memory_compact_lifecycle_repository import (
     IMemoryCompactLifecycleRepository,
 )
-from app.shared.exceptions import MemoryCompactValidationError
+from app.shared.exceptions.memory_compact_exceptions import MemoryCompactValidationError
 
 
 class MemoryCompactLifecycleService:

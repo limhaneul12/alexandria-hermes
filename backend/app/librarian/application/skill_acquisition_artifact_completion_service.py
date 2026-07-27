@@ -30,7 +30,8 @@ from app.librarian.domain.event_enum.collaboration_enums import (
     SkillAcquisitionJobStatus,
 )
 from app.librarian.domain.event_enum.skill_acquisition_enums import ItemStatus
-from app.shared.exceptions import LibrarianValidationError, ObsidianValidationError
+from app.shared.exceptions.librarian_exceptions import LibrarianValidationError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.types.extra_types import JSONObject
 
 

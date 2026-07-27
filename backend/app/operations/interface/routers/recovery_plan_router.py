@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, status
 
@@ -40,12 +38,9 @@ async def recovery_plan(
     obsidian_service: ObsidianService = Depends(
         Provide[ApplicationContainer.obsidian.obsidian_service]
     ),
-    reconciliation_service: Annotated[
-        MemoryReconciliationReadinessService | None,
-        Depends(
-            Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
-        ),
-    ] = None,
+    reconciliation_service: MemoryReconciliationReadinessService | None = Depends(
+        Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
+    ),
 ) -> RecoveryPlanResponse:
     """Return recovery dry-run plan.
 

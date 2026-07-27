@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from app.container import ApplicationContainer
 from app.obsidian.application.service.obsidian_service import ObsidianService
+from app.obsidian.interface.schemas.obsidian.obsidian_index_error_repair_schema import (
+    ObsidianIndexErrorRepairApplyRequest,
+    ObsidianIndexErrorRepairPlanResponse,
+    ObsidianIndexErrorRepairReportResponse,
+)
 from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
     ObsidianNoteResponse,
     ObsidianReindexResponse,
@@ -95,3 +100,65 @@ async def reindex_obsidian_vault(
     """
     result = await service.reindex()
     return ObsidianReindexResponse.from_entity(result)
+
+
+@router.post(
+    "/index/errors/repair-plan",
+    response_model=ObsidianIndexErrorRepairPlanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Plan known legacy index-error repairs",
+    description=(
+        "Inspect current source hashes and return a non-mutating repair plan. "
+        "Unknown errors are skipped for manual review."
+    ),
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def plan_obsidian_index_error_repairs(
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianIndexErrorRepairPlanResponse:
+    """Return a dry-run plan bound to the current Markdown bytes.
+
+    Args:
+        service: Obsidian application facade.
+
+    Returns:
+        HTTP repair-plan response.
+    """
+    plan = await service.plan_index_error_repairs()
+    return ObsidianIndexErrorRepairPlanResponse.from_entity(plan)
+
+
+@router.post(
+    "/index/errors/repair",
+    response_model=ObsidianIndexErrorRepairReportResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Apply known legacy index-error repairs",
+    description=(
+        "Verify the plan hash, back up every source, patch only known scalar "
+        "frontmatter fields, then reindex and persist an audit report."
+    ),
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def apply_obsidian_index_error_repairs(
+    request: ObsidianIndexErrorRepairApplyRequest,
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianIndexErrorRepairReportResponse:
+    """Apply an unchanged repair plan after writing verified backups.
+
+    Args:
+        request: Accepted plan hash.
+        service: Obsidian application facade.
+
+    Returns:
+        HTTP repair evidence response.
+    """
+    report = await service.apply_index_error_repairs(
+        expected_plan_hash=request.expected_plan_hash
+    )
+    return ObsidianIndexErrorRepairReportResponse.from_entity(report)

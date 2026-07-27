@@ -17,12 +17,14 @@ from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
 )
-from app.connections.infrastructure.librarians.clients import (
+from app.connections.infrastructure.librarians.clients import LibrarianClientFactory
+from app.connections.domain.contracts.librarian_client_contracts import (
     ApiKeyCredential,
-    LibrarianClientFactory,
     LibrarianProviderClientFactory,
     ProviderClientTestResult,
-    SecretResolver,
+)
+from app.connections.domain.repositories.librarian_repository import (
+    IProviderSecretRepository as SecretResolver,
 )
 from app.connections.infrastructure.librarians.openai_adapter import OpenAIClientConfig
 from app.shared.types.extra_types import JSONValue

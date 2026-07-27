@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from app.shared.exceptions import BoundaryValidationError
+from app.shared.exceptions.common_exceptions import BoundaryValidationError
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 

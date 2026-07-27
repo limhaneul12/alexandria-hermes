@@ -17,9 +17,13 @@ from app.connections.domain.event_enum.provider_enums import (
 from app.connections.infrastructure.librarians import openai_codex_oauth_adapter
 from app.connections.infrastructure.librarians.openai_codex_oauth_adapter import (
     OpenAICodexOAuthClient,
+)
+from app.connections.infrastructure.librarians.openai_codex_oauth_contracts import (
     OpenAICodexOAuthSettings,
 )
-from app.shared.exceptions import ConnectionsProviderUnsupportedError
+from app.shared.exceptions.connections_exceptions import (
+    ConnectionsProviderUnsupportedError,
+)
 from app.shared.types.extra_types import JSONObject
 
 PROVIDER_ID = "00000000-0000-4000-8000-000000000888"

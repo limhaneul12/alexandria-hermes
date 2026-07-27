@@ -9,8 +9,10 @@ from app.memory.domain.event_enum.reconciliation_enums import MemoryConflictStat
 from app.memory.interface.schemas.reconciliation.memory_existing_reconciliation_request_schema import (
     ExistingMemoryReconciliationHttpRequest,
 )
-from app.memory.interface.schemas.reconciliation.memory_reconciliation_request_schema import (
+from app.memory.interface.schemas.reconciliation.memory_reconciliation_candidate_request_schema import (
     MemoryCandidateRequest,
+)
+from app.memory.interface.schemas.reconciliation.memory_reconciliation_temporal_request_schema import (
     MemoryTemporalRecallHttpRequest,
 )
 from app.shared.serialization.model_codec import schema_payload

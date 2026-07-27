@@ -148,6 +148,30 @@ class LibrarianOAuthStatusEvaluator:
             connected=connected,
             expires_at=expires_at,
             refresh_required=refresh_required,
+            reconnect_required=status
+            in {
+                OAuthConnectionStatus.EXPIRED,
+                OAuthConnectionStatus.MISSING_REFRESH_TOKEN,
+                OAuthConnectionStatus.NOT_CONNECTED,
+            },
+            next_action=(
+                "poll"
+                if status is OAuthConnectionStatus.PENDING
+                else (
+                    "refresh"
+                    if refresh_required
+                    else (
+                        "start_oauth"
+                        if status
+                        in {
+                            OAuthConnectionStatus.EXPIRED,
+                            OAuthConnectionStatus.MISSING_REFRESH_TOKEN,
+                            OAuthConnectionStatus.NOT_CONNECTED,
+                        }
+                        else "none"
+                    )
+                )
+            ),
             message=message,
         )
 

@@ -20,7 +20,7 @@ from app.memory.infrastructure.repositories.contexts.fts import (
 )
 from app.memory.infrastructure.repositories.contexts.mapping import map_context_row
 from app.memory.application.retrieval.chunker import chunk_markdown
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
 from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.shared.types.types_convert_utils import now_utc
 from sqlalchemy import text

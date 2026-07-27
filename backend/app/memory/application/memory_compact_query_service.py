@@ -9,7 +9,7 @@ from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatu
 from app.memory.domain.repositories.memory_compact_query_repository import (
     IMemoryCompactQueryRepository,
 )
-from app.shared.exceptions import MemoryCompactNotFoundError
+from app.shared.exceptions.memory_compact_exceptions import MemoryCompactNotFoundError
 from app.shared.types.types_convert_utils import enum_value
 
 

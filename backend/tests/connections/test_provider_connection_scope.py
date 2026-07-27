@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 import anyio
 from app.connections.domain.entities.read_models import LibrarianProvider
 from app.connections.domain.event_enum.provider_enums import AuthType, ProviderType
-from app.connections.infrastructure.librarians.clients import (
-    LibrarianClientFactory,
+from app.connections.infrastructure.librarians.clients import LibrarianClientFactory
+from app.connections.domain.contracts.librarian_client_contracts import (
     ProviderClientTestResult,
 )
 from app.connections.infrastructure.librarians.openai_adapter import OpenAIClientConfig

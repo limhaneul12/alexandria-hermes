@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.memory.application.memory_compact_service import MemoryCompactService
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
-from app.memory.domain.repositories.memory_compact_repository import (
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
     MemoryCompactCreate,
     MemoryCompactSourceRefCreate,
 )
@@ -16,7 +16,7 @@ from app.memory.infrastructure.repositories.memory_compact_repository import (
     ObsidianMemoryCompactRepository,
 )
 from app.mcp_server.tools.librarian_compact_refresh import refresh_compact_payload
-from app.mcp_server.type_validate.librarian_readiness_contracts import (
+from app.mcp_server.type_validate.librarian_readiness_schemas import (
     CurrentCompactPayload,
     RagStatusPayload,
     ReadinessSummaryPayload,

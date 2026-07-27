@@ -25,6 +25,7 @@ from pydantic import TypeAdapter
 
 from app.mcp_server.local_oauth.contracts import (
     LocalOAuthAuthorizationRequestRecord,
+    LocalOAuthPairingCode,
     LocalOAuthTokenKind,
 )
 from app.mcp_server.local_oauth.repository import LocalMcpOAuthRepository
@@ -46,6 +47,7 @@ class LocalMcpOAuthSettings:
     refresh_token_ttl_seconds: int
     authorization_code_ttl_seconds: int
     approval_ttl_seconds: int
+    pairing_code_ttl_seconds: int
     max_approval_attempts: int
     approval_key: str = field(repr=False)
 
@@ -379,21 +381,37 @@ class LocalMcpOAuthProvider(
             )
         return record
 
+    async def create_pairing_code(self) -> LocalOAuthPairingCode:
+        """Create one short-lived code without exposing OAuth bearer tokens.
+
+        Returns:
+            Newly generated single-use pairing code and expiry epoch.
+        """
+        code = _pairing_code()
+        now = _now()
+        expires_at = now + self._settings.pairing_code_ttl_seconds
+        await self._repository.create_pairing_code(
+            code_hash=_hash_opaque(code),
+            expires_at=expires_at,
+            now=now,
+        )
+        return LocalOAuthPairingCode(code=code, expires_at=expires_at)
+
     async def approve_authorization(
         self,
         *,
         request_id: str,
-        operator_key: str,
+        approval_code: str,
     ) -> str:
-        """Approve one request after constant-time operator key verification.
+        """Approve one request with a single-use code or bootstrap operator key.
 
         Args:
             request_id: Value supplied to approve_authorization.
-            operator_key: Value supplied to approve_authorization.
+            approval_code: One-time pairing code or bootstrap operator key.
         Returns:
             str: Value produced by approve_authorization."""
         record = await self.pending_authorization(request_id)
-        await self._verify_operator_key(request_id, operator_key)
+        pairing_code_hash = self._pairing_code_hash(approval_code)
         code = _opaque_value()
         now = _now()
         issued = await self._repository.approve_authorization_request(
@@ -402,12 +420,10 @@ class LocalMcpOAuthProvider(
             code_hash=_hash_opaque(code),
             code_expires_at=now + self._settings.authorization_code_ttl_seconds,
             now=now,
+            pairing_code_hash=pairing_code_hash,
         )
         if issued is None:
-            raise LocalOAuthApprovalError(
-                HTTPStatus.BAD_REQUEST,
-                "OAuth approval request is no longer available",
-            )
+            await self._raise_failed_approval(request_id)
         return construct_redirect_uri(
             record.redirect_uri,
             code=code,
@@ -418,23 +434,23 @@ class LocalMcpOAuthProvider(
         self,
         *,
         request_id: str,
-        operator_key: str,
+        approval_code: str,
     ) -> str:
-        """Deny one request after constant-time operator key verification.
+        """Deny one request with a single-use code or bootstrap operator key.
 
         Args:
             request_id: Value supplied to deny_authorization.
-            operator_key: Value supplied to deny_authorization.
+            approval_code: One-time pairing code or bootstrap operator key.
         Returns:
             str: Value produced by deny_authorization."""
         record = await self.pending_authorization(request_id)
-        await self._verify_operator_key(request_id, operator_key)
-        denied = await self._repository.deny_authorization_request(request_id, _now())
+        denied = await self._repository.deny_authorization_request(
+            request_id,
+            _now(),
+            pairing_code_hash=self._pairing_code_hash(approval_code),
+        )
         if not denied:
-            raise LocalOAuthApprovalError(
-                HTTPStatus.BAD_REQUEST,
-                "OAuth approval request is no longer available",
-            )
+            await self._raise_failed_approval(request_id)
         return construct_redirect_uri(
             record.redirect_uri,
             error="access_denied",
@@ -442,13 +458,21 @@ class LocalMcpOAuthProvider(
             state=record.state,
         )
 
-    async def _verify_operator_key(self, request_id: str, operator_key: str) -> None:
+    def _pairing_code_hash(self, approval_code: str) -> str | None:
         if hmac.compare_digest(
-            operator_key.encode("utf-8"),
+            approval_code.encode("utf-8"),
             self._settings.approval_key.encode("utf-8"),
         ):
-            return
+            return None
+        return _hash_opaque(_normalize_pairing_code(approval_code))
+
+    async def _raise_failed_approval(self, request_id: str) -> None:
         attempts = await self._repository.record_failed_approval(request_id, _now())
+        if attempts == 0:
+            raise LocalOAuthApprovalError(
+                HTTPStatus.BAD_REQUEST,
+                "OAuth approval request is no longer available",
+            )
         if attempts >= self._settings.max_approval_attempts:
             raise LocalOAuthApprovalError(
                 HTTPStatus.TOO_MANY_REQUESTS,
@@ -456,12 +480,25 @@ class LocalMcpOAuthProvider(
             )
         raise LocalOAuthApprovalError(
             HTTPStatus.FORBIDDEN,
-            "OAuth approval key is invalid",
+            "OAuth pairing code is invalid",
         )
 
 
 def _opaque_value() -> str:
     return secrets.token_urlsafe(32)
+
+
+def _pairing_code() -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    compact = "".join(secrets.choice(alphabet) for _ in range(8))
+    return f"{compact[:4]}-{compact[4:]}"
+
+
+def _normalize_pairing_code(value: str) -> str:
+    compact = "".join(character for character in value.upper() if character.isalnum())
+    if len(compact) != 8:
+        return compact
+    return f"{compact[:4]}-{compact[4:]}"
 
 
 def _hash_opaque(value: str) -> str:

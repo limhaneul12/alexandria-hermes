@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.operations.domain.entities.operational_readiness import (
     OperationalDatabaseSnapshot,
 )
-from app.shared.infrastructure.database import Database, is_sqlite_corruption_error
+from app.shared.infrastructure.database import Database
+from app.shared.infrastructure.sqlite_database_policy import is_sqlite_corruption_error
 
 
 class OperationalDatabaseProbe:

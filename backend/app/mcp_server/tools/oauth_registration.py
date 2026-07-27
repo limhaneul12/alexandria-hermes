@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.oauth_backend_gateway import (
+    alexandria_librarian_oauth_poll,
+    alexandria_librarian_oauth_refresh,
+    alexandria_librarian_oauth_start,
+    alexandria_librarian_oauth_status,
+)
 from app.shared.types.extra_types import JSONValue
 
 
@@ -29,9 +34,7 @@ def register_librarian_oauth_tools(
         Returns:
             Public OAuth start response with secret codes removed.
         """
-        return await backend_tool_gateway.alexandria_librarian_oauth_start(
-            api_client, provider_id
-        )
+        return await alexandria_librarian_oauth_start(api_client, provider_id)
 
     @server.tool(name="alexandria_librarian_oauth_poll")
     async def _tool_librarian_oauth_poll(provider_id: str) -> JSONValue:
@@ -43,9 +46,7 @@ def register_librarian_oauth_tools(
         Returns:
             Public OAuth status response without token material.
         """
-        return await backend_tool_gateway.alexandria_librarian_oauth_poll(
-            api_client, provider_id
-        )
+        return await alexandria_librarian_oauth_poll(api_client, provider_id)
 
     @server.tool(name="alexandria_librarian_oauth_status")
     async def _tool_librarian_oauth_status(provider_id: str) -> JSONValue:
@@ -57,9 +58,7 @@ def register_librarian_oauth_tools(
         Returns:
             Public OAuth status response without token material.
         """
-        return await backend_tool_gateway.alexandria_librarian_oauth_status(
-            api_client, provider_id
-        )
+        return await alexandria_librarian_oauth_status(api_client, provider_id)
 
     @server.tool(name="alexandria_librarian_oauth_refresh")
     async def _tool_librarian_oauth_refresh(provider_id: str) -> JSONValue:
@@ -71,6 +70,4 @@ def register_librarian_oauth_tools(
         Returns:
             Public OAuth status response without token material.
         """
-        return await backend_tool_gateway.alexandria_librarian_oauth_refresh(
-            api_client, provider_id
-        )
+        return await alexandria_librarian_oauth_refresh(api_client, provider_id)

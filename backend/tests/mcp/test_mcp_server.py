@@ -12,56 +12,72 @@ from app.mcp_server.backend_api_client import (
     AlexandriaApiClient,
     AlexandriaApiSettings,
 )
-from app.mcp_server.backend_tool_gateway import (
+from app.mcp_server.server_runtime import build_mcp_server
+from app.mcp_server.tools.context_backend_gateway import (
     alexandria_archive_context,
-    alexandria_archive_memory_compact,
-    alexandria_ask_librarian,
-    alexandria_ask_obsidian_librarian,
-    alexandria_complete_skill_acquisition,
-    alexandria_create_memory_compact,
     alexandria_delete_context,
-    alexandria_delete_memory_compact,
-    alexandria_get_current_memory_compact,
-    alexandria_get_memory_compact,
-    alexandria_get_related_notes,
-    alexandria_librarian_brief_preview,
-    alexandria_librarian_job_status,
-    alexandria_librarian_oauth_poll,
-    alexandria_librarian_oauth_refresh,
-    alexandria_librarian_oauth_start,
-    alexandria_librarian_oauth_status,
+    alexandria_rag_status,
+    alexandria_search,
+    alexandria_supersede_context,
+)
+from app.mcp_server.tools.librarian_readiness_tools import (
     alexandria_librarian_readiness,
     alexandria_librarian_refresh_current_compact,
+)
+from app.mcp_server.tools.librarian_vault_backend_gateway import (
     alexandria_librarian_review_apply_moves,
     alexandria_librarian_review_move_plan,
     alexandria_librarian_review_queue,
-    alexandria_librarian_route_preview,
     alexandria_librarian_vault_apply_moves,
     alexandria_librarian_vault_inventory,
     alexandria_librarian_vault_move_plan,
     alexandria_librarian_vault_path_search,
+    alexandria_reindex_vault,
+)
+from app.mcp_server.tools.memory_compact_tools import (
+    alexandria_archive_memory_compact,
+    alexandria_create_memory_compact,
+    alexandria_delete_memory_compact,
+    alexandria_get_current_memory_compact,
+    alexandria_get_memory_compact,
     alexandria_list_memory_compact_artifacts,
     alexandria_mark_memory_compact_current,
-    alexandria_operational_readiness,
-    alexandria_rag_status,
+    alexandria_review_memory_compact,
+)
+from app.mcp_server.tools.oauth_backend_gateway import (
+    alexandria_librarian_oauth_poll,
+    alexandria_librarian_oauth_refresh,
+    alexandria_librarian_oauth_start,
+    alexandria_librarian_oauth_status,
+)
+from app.mcp_server.tools.obsidian_backend_gateway import (
+    alexandria_ask_obsidian_librarian,
+    alexandria_get_related_notes,
     alexandria_read_note,
+    alexandria_save_note,
+    alexandria_search_vault,
+)
+from app.mcp_server.tools.operations_backend_gateway import (
+    alexandria_operational_readiness,
     alexandria_recovery_plan,
     alexandria_recovery_quarantine,
     alexandria_recovery_retry,
     alexandria_recovery_run,
     alexandria_recovery_run_status,
-    alexandria_reindex_vault,
-    alexandria_review_memory_compact,
-    alexandria_save_note,
-    alexandria_search,
+)
+from app.mcp_server.tools.skill_backend_gateway import (
+    alexandria_ask_librarian,
+    alexandria_complete_skill_acquisition,
+    alexandria_librarian_brief_preview,
+    alexandria_librarian_job_status,
+    alexandria_librarian_route_preview,
     alexandria_search_skills,
-    alexandria_search_vault,
     alexandria_skill_acquisition_job_status,
     alexandria_start_skill_acquisition,
-    alexandria_supersede_context,
 )
-from app.mcp_server.server_runtime import build_mcp_server
-from app.memory.domain.event_enum.context_enums import ContextRecallLifecycleStatus
+from app.memory.domain.event_enum.context_enums import (
+    ContextRecallLifecycleStatus,
+)
 from app.memory.domain.event_enum.memory_compact_enums import (
     MemoryCompactStatus,
 )

@@ -43,7 +43,7 @@ from app.memory.domain.repositories.memory_reconciliation_use_case_repositories 
     IMemoryExistingReconciliationRepository,
 )
 from app.memory.domain.types.context_payload_types import ContextMetadataPayload
-from app.shared.exceptions import MemoryContextValidationError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from app.shared.types.extra_types import JSONValue
 from pydantic import TypeAdapter, ValidationError
 

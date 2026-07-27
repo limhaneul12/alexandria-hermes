@@ -13,7 +13,7 @@ from app.librarian.domain.entities.read_models import AgentProfile
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianProfileRole
 from app.librarian.domain.repositories.agent_repository import IAgentRepository
 from app.librarian.infrastructure.models.agent_models import AgentProfileORM
-from app.shared.exceptions import LibrarianResourceNotFoundError
+from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 from app.shared.types.types_convert_utils import aware_utc_datetime
 
 

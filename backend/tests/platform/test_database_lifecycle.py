@@ -11,9 +11,9 @@ import app.librarian.infrastructure.models.agent_models as _agent_models
 import app.librarian.infrastructure.models.skill_acquisition_job_models as _skill_acquisition_job_models
 import app.memory.infrastructure.models.context_models as _context_models
 import app.obsidian.infrastructure.models.obsidian_index_models as _obsidian_index_models
-from app.shared.infrastructure.database import (
+from app.shared.infrastructure.database import Database
+from app.shared.infrastructure.sqlite_database_policy import (
     SQLITE_BUSY_TIMEOUT_MS,
-    Database,
     is_sqlite_corruption_error,
 )
 from sqlalchemy import text

@@ -16,7 +16,7 @@ from app.memory.domain.event_enum.reconciliation_enums import MemoryConflictStat
 from app.memory.infrastructure.repositories.memory_reconciliation_repository import (
     SqlAlchemyMemoryReconciliationRepository,
 )
-from app.shared.exceptions import (
+from app.shared.exceptions.memory_context_exceptions import (
     MemoryContextNotFoundError,
     MemoryContextValidationError,
 )

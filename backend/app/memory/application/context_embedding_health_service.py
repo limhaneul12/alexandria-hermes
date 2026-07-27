@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from app.memory.application.retrieval.embedding_provider import EmbeddingProvider
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
 from app.memory.application.retrieval.rag_health import build_rag_dependency_health
 from app.memory.domain.entities.context_read_models import (
     ContextEmbeddingSourceStatus,

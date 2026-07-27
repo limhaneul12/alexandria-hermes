@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, status
 
@@ -13,8 +11,12 @@ from app.memory.application.reconciliation.memory_reconciliation_readiness_servi
     MemoryReconciliationReadinessService,
 )
 from app.obsidian.application.service.obsidian_service import ObsidianService
+from app.operations.application.operational_capability_policy import capability_snapshot
 from app.operations.application.operational_readiness_service import (
     OperationalReadinessService,
+)
+from app.operations.interface.schemas.operations.operational_capability_schema import (
+    OperationalCapabilitySnapshotResponse,
 )
 from app.operations.interface.schemas.operations.operational_readiness_schema import (
     OperationalReadinessSnapshotResponse,
@@ -40,12 +42,9 @@ async def operational_readiness(
     obsidian_service: ObsidianService = Depends(
         Provide[ApplicationContainer.obsidian.obsidian_service]
     ),
-    reconciliation_service: Annotated[
-        MemoryReconciliationReadinessService | None,
-        Depends(
-            Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
-        ),
-    ] = None,
+    reconciliation_service: MemoryReconciliationReadinessService | None = Depends(
+        Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
+    ),
 ) -> OperationalReadinessSnapshotResponse:
     """Return operational readiness snapshot.
 
@@ -66,3 +65,49 @@ async def operational_readiness(
     )
     snapshot = await service.snapshot()
     return OperationalReadinessSnapshotResponse.from_entity(snapshot)
+
+
+@router.get(
+    "/capabilities",
+    response_model=OperationalCapabilitySnapshotResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get independently assessed platform capabilities",
+    description=(
+        "Assess durable core memory independently from semantic retrieval and "
+        "the optional external Librarian connection."
+    ),
+)
+@inject
+async def operational_capabilities(
+    database: Database = Depends(Provide[ApplicationContainer.database]),
+    context_service: ContextService = Depends(
+        Provide[ApplicationContainer.memory.context_service]
+    ),
+    obsidian_service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+    reconciliation_service: MemoryReconciliationReadinessService | None = Depends(
+        Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
+    ),
+) -> OperationalCapabilitySnapshotResponse:
+    """Return independently classified core, semantic, and Librarian states.
+
+    Args:
+        database: Shared database coordinator.
+        context_service: Context and RAG health boundary.
+        obsidian_service: Canonical Vault health boundary.
+        reconciliation_service: Optional reconciliation diagnostics boundary.
+
+    Returns:
+        Independent capability readiness response.
+    """
+    service = OperationalReadinessService(
+        database=database,
+        context_service=context_service,
+        obsidian_service=obsidian_service,
+        reconciliation_service=reconciliation_service,
+    )
+    readiness = await service.snapshot()
+    return OperationalCapabilitySnapshotResponse.from_entity(
+        capability_snapshot(readiness)
+    )

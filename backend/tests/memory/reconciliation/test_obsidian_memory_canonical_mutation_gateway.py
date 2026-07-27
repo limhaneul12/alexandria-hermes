@@ -21,7 +21,7 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianIndexStatus,
 )
-from app.shared.exceptions import ObsidianNotFoundError
+from app.shared.exceptions.obsidian_exceptions import ObsidianNotFoundError
 
 NOW = datetime(2026, 7, 25, tzinfo=UTC)
 

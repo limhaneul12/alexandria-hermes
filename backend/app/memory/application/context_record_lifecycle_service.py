@@ -15,7 +15,7 @@ from app.memory.domain.repositories.canonical_context_repository import (
 from app.memory.domain.repositories.context_record_mutation_repository import (
     IContextRecordMutationRepository,
 )
-from app.shared.exceptions import MemoryContextValidationError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from app.shared.types.types_convert_utils import enum_value, now_utc
 
 

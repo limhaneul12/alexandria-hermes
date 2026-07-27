@@ -15,15 +15,17 @@ from app.mcp_server.local_oauth.provider import (
     LocalOAuthApprovalError,
 )
 
-_SECURITY_HEADERS: Final[dict[str, str]] = {
+_COMMON_SECURITY_HEADERS: Final[dict[str, str]] = {
     "Cache-Control": "no-store",
     "Pragma": "no-cache",
-    "Content-Security-Policy": (
-        "default-src 'none'; form-action 'self'; base-uri 'none'; "
-        "frame-ancestors 'none'"
-    ),
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
+}
+_PAGE_SECURITY_HEADERS: Final[dict[str, str]] = {
+    **_COMMON_SECURITY_HEADERS,
+    "Content-Security-Policy": (
+        "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    ),
     "X-Frame-Options": "DENY",
 }
 
@@ -58,22 +60,22 @@ def register_local_oauth_approval_route(
                     client_name=pending.client_name or "ChatGPT MCP client",
                     scopes=pending.scopes,
                 ),
-                headers=_SECURITY_HEADERS,
+                headers=_PAGE_SECURITY_HEADERS,
             )
         form = await request.form()
         request_id = _form_text(form.get("request_id"))
-        operator_key = _form_text(form.get("operator_key"))
+        approval_code = _form_text(form.get("pairing_code") or form.get("operator_key"))
         decision = _form_text(form.get("decision"))
         try:
             if decision == "approve":
                 redirect_url = await provider.approve_authorization(
                     request_id=request_id,
-                    operator_key=operator_key,
+                    approval_code=approval_code,
                 )
             elif decision == "deny":
                 redirect_url = await provider.deny_authorization(
                     request_id=request_id,
-                    operator_key=operator_key,
+                    approval_code=approval_code,
                 )
             else:
                 raise LocalOAuthApprovalError(400, "OAuth decision is invalid")
@@ -82,7 +84,7 @@ def register_local_oauth_approval_route(
         return RedirectResponse(
             redirect_url,
             status_code=302,
-            headers=_SECURITY_HEADERS,
+            headers=_COMMON_SECURITY_HEADERS,
         )
 
 
@@ -106,8 +108,10 @@ def _approval_html(
     <p>This approval grants access to your local Alexandria memory tools.</p>
     <form method="post" action="/approve" autocomplete="off">
       <input type="hidden" name="request_id" value="{safe_request_id}">
-      <label>Local operator approval key
-        <input type="password" name="operator_key" required autofocus>
+      <label>One-time pairing code
+        <input type="text" name="pairing_code" inputmode="text"
+               autocomplete="one-time-code" placeholder="ABCD-EFGH"
+               minlength="8" maxlength="9" required autofocus>
       </label>
       <button type="submit" name="decision" value="approve">Approve</button>
       <button type="submit" name="decision" value="deny">Deny</button>
@@ -122,7 +126,7 @@ def _error_response(exc: LocalOAuthApprovalError) -> HTMLResponse:
         "<!doctype html><html><body><h1>OAuth approval failed</h1>"
         f"<p>{escape(exc.detail)}</p></body></html>",
         status_code=exc.status_code,
-        headers=_SECURITY_HEADERS,
+        headers=_PAGE_SECURITY_HEADERS,
     )
 
 

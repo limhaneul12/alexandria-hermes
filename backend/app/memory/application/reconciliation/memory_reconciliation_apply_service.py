@@ -36,7 +36,7 @@ from app.memory.domain.repositories.memory_canonical_mutation_gateway import (
 from app.memory.domain.repositories.memory_reconciliation_use_case_repositories import (
     IMemoryReconciliationApplyRepository,
 )
-from app.shared.exceptions import MemoryContextNotFoundError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextNotFoundError
 from app.shared.types.types_convert_utils import now_utc
 
 

@@ -6,8 +6,8 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from app.librarian.application.skill_acquisition_service import (
-    SkillAcquisitionService,
+from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
+from app.librarian.application.skill_artifact_publication_contracts import (
     SkillArtifactPublisher,
 )
 from app.librarian.domain.contracts.skill_acquisition_contracts import (

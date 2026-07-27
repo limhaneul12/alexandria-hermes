@@ -5,6 +5,9 @@ from __future__ import annotations
 from app.connections.infrastructure.librarians.memory_relation_proposal_provider import (
     ConfiguredMemoryRelationProposalProvider,
 )
+from app.memory.application.context_embedding_recovery_service import (
+    ContextEmbeddingRecoveryService,
+)
 from app.memory.application.context_service import ContextService
 from app.memory.application.integration.obsidian_canonical_context_gateway import (
     ObsidianCanonicalContextGateway,
@@ -134,6 +137,11 @@ class MemoryContainer(containers.DeclarativeContainer):
         vector_retrieval_enabled=app_config.provided.rag_vector_enabled,
         extra_search_sources=providers.List(obsidian_context_search_source),
         canonical_context_repository=canonical_context_gateway,
+    )
+    context_embedding_recovery_service = providers.Singleton(
+        ContextEmbeddingRecoveryService,
+        batch_size=app_config.provided.rag_embedding_recovery_batch_size,
+        max_batches=app_config.provided.rag_embedding_recovery_max_batches,
     )
     memory_compact_service = providers.Factory(
         MemoryCompactService,

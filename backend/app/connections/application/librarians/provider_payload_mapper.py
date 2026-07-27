@@ -9,8 +9,8 @@ from app.connections.domain.event_enum.provider_enums import AuthType, ProviderT
 from app.connections.domain.types.librarian_provider_payload_types import (
     LibrarianProviderPayload,
 )
-from app.shared.exceptions import (
-    BoundaryValidationError,
+from app.shared.exceptions.common_exceptions import BoundaryValidationError
+from app.shared.exceptions.connections_exceptions import (
     ConnectionsProviderUnsupportedError,
 )
 from app.shared.types.types_convert_utils import enum_value

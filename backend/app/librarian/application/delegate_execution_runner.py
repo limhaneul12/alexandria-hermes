@@ -8,9 +8,7 @@ from app.librarian.application.delegate_execution_contracts import (
     LibrarianDelegateExecutor,
     LibrarianExecutionPlan,
 )
-from app.librarian.application.profile_routing import (
-    profile_role,
-)
+from app.librarian.application.profile_routing_policy import profile_role
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
     LibrarianDelegateResult,

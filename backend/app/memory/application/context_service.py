@@ -20,9 +20,7 @@ from app.memory.application.context_search_service import ContextSearchService
 from app.memory.application.context_soft_rebuild_service import (
     ContextSoftRebuildService,
 )
-from app.memory.application.retrieval.embedding_provider import (
-    EmbeddingProvider,
-)
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
 from app.memory.domain.entities.context_read_models import (
     ContextAccessEventRecord,
     ContextChunkRecord,

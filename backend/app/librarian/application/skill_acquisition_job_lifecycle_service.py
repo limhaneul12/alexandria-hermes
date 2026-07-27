@@ -19,7 +19,7 @@ from app.librarian.domain.event_enum.collaboration_enums import (
 from app.librarian.domain.repositories.skill_acquisition_job_repository import (
     ISkillAcquisitionJobRepository,
 )
-from app.shared.exceptions import LibrarianResourceNotFoundError
+from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 from app.shared.types.extra_types import JSONObject
 
 

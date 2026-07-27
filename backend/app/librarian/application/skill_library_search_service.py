@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.librarian.application.skill_library_candidate_policy import _dedupe_candidates
 from app.librarian.application.skill_library_search_contracts import (
     SkillCapabilityBrief,
     SkillSearchBackend,
@@ -9,9 +10,8 @@ from app.librarian.application.skill_library_search_contracts import (
     SkillSearchDecision,
     SkillSearchResult,
 )
-from app.librarian.application.skill_library_search_policy import (
+from app.librarian.application.skill_library_search_handoff_policy import (
     _decision_explanation,
-    _dedupe_candidates,
     _empty_decision_explanation,
     _existing_skill_handoff,
     _query_text,

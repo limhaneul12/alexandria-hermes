@@ -4,14 +4,30 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.memory_reconciliation_tools import (
+    alexandria_apply_existing_memory_reconciliation,
+    alexandria_apply_memory_reconciliation,
+    alexandria_get_memory_conflict,
+    alexandria_get_memory_reconciliation_plan,
+    alexandria_get_memory_reconciliation_result,
+    alexandria_list_memory_conflicts,
+    alexandria_list_memory_reconciliation_review_queue,
+    alexandria_mark_memory_conflict_reviewing,
+    alexandria_preview_existing_memory_reconciliation,
+    alexandria_preview_memory_reconciliation,
+    alexandria_preview_reconciliation_memory_compact,
+    alexandria_recall_memory_temporally,
+    alexandria_resolve_memory_conflict,
+)
 from app.memory.domain.event_enum.reconciliation_enums import MemoryConflictStatus
 from app.memory.interface.schemas.reconciliation.memory_existing_reconciliation_request_schema import (
     ExistingMemoryReconciliationHttpRequest,
 )
-from app.memory.interface.schemas.reconciliation.memory_reconciliation_request_schema import (
+from app.memory.interface.schemas.reconciliation.memory_reconciliation_candidate_request_schema import (
     MemoryCandidateRequest,
+)
+from app.memory.interface.schemas.reconciliation.memory_reconciliation_temporal_request_schema import (
     MemoryTemporalRecallHttpRequest,
 )
 from app.shared.types.extra_types import JSONValue
@@ -35,7 +51,7 @@ def register_memory_reconciliation_tools(
         recall_limit: int = 20,
     ) -> JSONValue:
         """Preview and persist a reconciliation plan without mutation."""
-        return await backend_tool_gateway.alexandria_preview_memory_reconciliation(
+        return await alexandria_preview_memory_reconciliation(
             api_client,
             candidate,
             idempotency_key=idempotency_key,
@@ -47,7 +63,7 @@ def register_memory_reconciliation_tools(
         request: MemoryTemporalRecallHttpRequest,
     ) -> JSONValue:
         """Recall current, historical, or all matching memory states."""
-        return await backend_tool_gateway.alexandria_recall_memory_temporally(
+        return await alexandria_recall_memory_temporally(
             api_client,
             request,
         )
@@ -57,11 +73,9 @@ def register_memory_reconciliation_tools(
         request: MemoryTemporalRecallHttpRequest,
     ) -> JSONValue:
         """Preview safe Memory Compact fact buckets and blockers."""
-        return (
-            await backend_tool_gateway.alexandria_preview_reconciliation_memory_compact(
-                api_client,
-                request,
-            )
+        return await alexandria_preview_reconciliation_memory_compact(
+            api_client,
+            request,
         )
 
     @server.tool(name="alexandria_preview_existing_memory_reconciliation")
@@ -69,7 +83,7 @@ def register_memory_reconciliation_tools(
         request: ExistingMemoryReconciliationHttpRequest,
     ) -> JSONValue:
         """Analyze existing memory without persisting backfill state or plans."""
-        return await backend_tool_gateway.alexandria_preview_existing_memory_reconciliation(
+        return await alexandria_preview_existing_memory_reconciliation(
             api_client,
             request,
         )
@@ -79,17 +93,15 @@ def register_memory_reconciliation_tools(
         request: ExistingMemoryReconciliationHttpRequest,
     ) -> JSONValue:
         """Apply safe temporal backfill and persist reviewable plans."""
-        return (
-            await backend_tool_gateway.alexandria_apply_existing_memory_reconciliation(
-                api_client,
-                request,
-            )
+        return await alexandria_apply_existing_memory_reconciliation(
+            api_client,
+            request,
         )
 
     @server.tool(name="alexandria_get_memory_reconciliation_plan")
     async def _get_memory_reconciliation_plan(plan_id: str) -> JSONValue:
         """Read one persisted reconciliation plan."""
-        return await backend_tool_gateway.alexandria_get_memory_reconciliation_plan(
+        return await alexandria_get_memory_reconciliation_plan(
             api_client,
             plan_id,
         )
@@ -99,7 +111,7 @@ def register_memory_reconciliation_tools(
         limit: int = 100,
     ) -> JSONValue:
         """List persisted UNKNOWN and other review-required plans."""
-        return await backend_tool_gateway.alexandria_list_memory_reconciliation_review_queue(
+        return await alexandria_list_memory_reconciliation_review_queue(
             api_client,
             limit=limit,
         )
@@ -110,7 +122,7 @@ def register_memory_reconciliation_tools(
         retry_failed: bool = False,
     ) -> JSONValue:
         """Apply one reconciliation plan idempotently."""
-        return await backend_tool_gateway.alexandria_apply_memory_reconciliation(
+        return await alexandria_apply_memory_reconciliation(
             api_client,
             plan_id,
             retry_failed=retry_failed,
@@ -121,7 +133,7 @@ def register_memory_reconciliation_tools(
         reconciliation_id: str,
     ) -> JSONValue:
         """Read one reconciliation execution result."""
-        return await backend_tool_gateway.alexandria_get_memory_reconciliation_result(
+        return await alexandria_get_memory_reconciliation_result(
             api_client,
             reconciliation_id,
         )
@@ -132,7 +144,7 @@ def register_memory_reconciliation_tools(
         limit: int = 100,
     ) -> JSONValue:
         """List open or resolved memory conflicts."""
-        return await backend_tool_gateway.alexandria_list_memory_conflicts(
+        return await alexandria_list_memory_conflicts(
             api_client,
             status=status,
             limit=limit,
@@ -141,7 +153,7 @@ def register_memory_reconciliation_tools(
     @server.tool(name="alexandria_get_memory_conflict")
     async def _get_memory_conflict(conflict_set_id: str) -> JSONValue:
         """Read one memory conflict set."""
-        return await backend_tool_gateway.alexandria_get_memory_conflict(
+        return await alexandria_get_memory_conflict(
             api_client,
             conflict_set_id,
         )
@@ -151,7 +163,7 @@ def register_memory_reconciliation_tools(
         conflict_set_id: str,
     ) -> JSONValue:
         """Mark one open memory conflict as under review."""
-        return await backend_tool_gateway.alexandria_mark_memory_conflict_reviewing(
+        return await alexandria_mark_memory_conflict_reviewing(
             api_client,
             conflict_set_id,
         )
@@ -163,7 +175,7 @@ def register_memory_reconciliation_tools(
         resolution: str,
     ) -> JSONValue:
         """Record an explicit final conflict resolution."""
-        return await backend_tool_gateway.alexandria_resolve_memory_conflict(
+        return await alexandria_resolve_memory_conflict(
             api_client,
             conflict_set_id,
             status=status,

@@ -114,4 +114,5 @@ class ApplicationContainer(containers.DeclarativeContainer):
         app_config=app_config,
         librarian_delegate_service=librarian.hermes_collaboration_service,
         memory_context_service=memory.context_service,
+        memory_embedding_recovery_service=memory.context_embedding_recovery_service,
     )

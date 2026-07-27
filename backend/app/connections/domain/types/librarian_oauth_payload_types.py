@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from app.connections.domain.event_enum.provider_enums import (
     OAuthConnectionStatus,
@@ -31,4 +32,6 @@ class LibrarianOAuthStatusPayload(TypedDict, closed=True):
     connected: bool
     expires_at: datetime | None
     refresh_required: bool
+    reconnect_required: bool
+    next_action: Literal["none", "poll", "refresh", "start_oauth"]
     message: str | None

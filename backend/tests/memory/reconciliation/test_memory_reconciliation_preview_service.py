@@ -54,7 +54,7 @@ from app.memory.domain.repositories.memory_candidate_recall_source import (
 from app.memory.infrastructure.repositories.memory_reconciliation_repository import (
     SqlAlchemyMemoryReconciliationRepository,
 )
-from app.shared.exceptions import MemoryContextValidationError
+from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from app.shared.infrastructure.database import Database
 from pydantic import TypeAdapter
 

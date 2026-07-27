@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import anyio
+import pytest
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
 )
@@ -21,7 +22,7 @@ from app.librarian.domain.types.hermes_collaboration_payload_types import (
 from app.main import app
 from app.memory.application.memory_compact_service import MemoryCompactService
 from app.memory.domain.event_enum.memory_compact_enums import MemoryCompactStatus
-from app.memory.domain.repositories.memory_compact_repository import (
+from app.memory.domain.repositories.memory_compact_repository_contracts import (
     MemoryCompactCreate,
     MemoryCompactSourceRefCreate,
 )
@@ -61,10 +62,11 @@ from app.obsidian.infrastructure.obsidian_vault_config_store import (
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
-from app.shared.exceptions import (
+from app.shared.exceptions.obsidian_exceptions import (
     ObsidianIndexWriteError,
     ObsidianNotFoundError,
     ObsidianValidationError,
+    ObsidianWriteConflictError,
 )
 from app.shared.infrastructure.database import Database
 from app.shared.serialization.orjson_codec import loads_json
@@ -757,6 +759,57 @@ def test_obsidian_save_note_writes_markdown_and_reindexes(tmp_path: Path) -> Non
         assert hits[0].note.note_id == "skill_web_research"
 
     anyio.run(scenario)
+
+
+def test_obsidian_save_rejects_stale_agent_update(tmp_path: Path) -> None:
+    """Only the first agent holding a matching content hash may replace a note."""
+
+    async def scenario() -> tuple[str, str]:
+        database, session, service = await _service(tmp_path)
+        try:
+            original = await service.save_note(
+                ObsidianSaveNote(
+                    title="Shared",
+                    body="# Shared\n\noriginal",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_shared_cas",
+                )
+            )
+            first = await service.save_note(
+                ObsidianSaveNote(
+                    title="Shared",
+                    body="# Shared\n\nagent one",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id=original.note_id,
+                    relative_path=original.relative_path,
+                    expected_content_hash=original.content_hash,
+                )
+            )
+            with pytest.raises(
+                ObsidianWriteConflictError,
+                match="OBSIDIAN_WRITE_CONFLICT",
+            ):
+                await service.save_note(
+                    ObsidianSaveNote(
+                        title="Shared",
+                        body="# Shared\n\nagent two",
+                        alexandria_type=AlexandriaNoteType.SKILL,
+                        note_id=original.note_id,
+                        relative_path=original.relative_path,
+                        expected_content_hash=original.content_hash,
+                    )
+                )
+            retained = await service.read_note(original.note_id)
+            return first.content_hash, retained.body
+        finally:
+            await session.close()
+            await database.shutdown()
+
+    first_hash, retained_body = anyio.run(scenario)
+
+    assert first_hash
+    assert "agent one" in retained_body
+    assert "agent two" not in retained_body
 
 
 def test_obsidian_save_rejects_cross_type_note_id_collision(tmp_path: Path) -> None:

@@ -10,11 +10,11 @@ from typing import Final, Literal
 from urllib.parse import ParseResult, urlparse
 
 from app.mcp_server.type_validate.auth_contracts import McpAuthMode
-from app.memory.application.retrieval.embedding_factory import EmbeddingProviderName
-from app.memory.application.retrieval.embedding_provider import (
+from app.memory.application.retrieval.embedding_contract import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
 )
+from app.memory.application.retrieval.embedding_factory import EmbeddingProviderName
 from app.shared.utils.config import settings_model_config
 from pydantic import (
     AliasChoices,
@@ -35,6 +35,7 @@ DEFAULT_MCP_LOCAL_ACCESS_TOKEN_TTL_SECONDS: Final[int] = 60 * 60
 DEFAULT_MCP_LOCAL_REFRESH_TOKEN_TTL_SECONDS: Final[int] = 30 * 24 * 60 * 60
 DEFAULT_MCP_LOCAL_AUTHORIZATION_CODE_TTL_SECONDS: Final[int] = 5 * 60
 DEFAULT_MCP_LOCAL_APPROVAL_TTL_SECONDS: Final[int] = 10 * 60
+DEFAULT_MCP_LOCAL_PAIRING_CODE_TTL_SECONDS: Final[int] = 5 * 60
 DEFAULT_MCP_LOCAL_MAX_APPROVAL_ATTEMPTS: Final[int] = 5
 _LOCAL_HTTP_HOSTS: Final[frozenset[str]] = frozenset({"localhost", "127.0.0.1", "::1"})
 
@@ -96,6 +97,11 @@ class AppConfig(BaseSettings):
         ge=60,
         le=30 * 60,
     )
+    mcp_local_pairing_code_ttl_seconds: int = Field(
+        default=DEFAULT_MCP_LOCAL_PAIRING_CODE_TTL_SECONDS,
+        ge=60,
+        le=10 * 60,
+    )
     mcp_local_max_approval_attempts: int = Field(
         default=DEFAULT_MCP_LOCAL_MAX_APPROVAL_ATTEMPTS,
         ge=1,
@@ -134,6 +140,9 @@ class AppConfig(BaseSettings):
     rag_embedding_model: str = Field(default=DEFAULT_EMBEDDING_MODEL, min_length=1)
     rag_embedding_dimensions: int = Field(default=DEFAULT_EMBEDDING_DIMENSIONS, ge=1)
     rag_embedding_cache_dir: str | None = Field(default=None)
+    rag_embedding_recovery_on_startup: bool = Field(default=False)
+    rag_embedding_recovery_batch_size: int = Field(default=250, ge=1, le=1000)
+    rag_embedding_recovery_max_batches: int = Field(default=40, ge=1, le=1000)
 
     obsidian_vault_path: str = Field(default="./data/obsidian-vault", min_length=1)
     alexandria_obsidian_root: str = Field(default="Alexandria", min_length=1)
@@ -149,6 +158,11 @@ class AppConfig(BaseSettings):
         default="./data/obsidian_librarian_langgraph.sqlite",
         min_length=1,
     )
+    operational_backup_root: str = Field(
+        default="./data/operational-backups",
+        min_length=1,
+    )
+    operational_backup_retention_count: int = Field(default=10, ge=1, le=365)
 
     @field_validator(
         "mcp_oauth_issuer",

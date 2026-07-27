@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from app.mcp_server.type_validate.librarian_readiness_contracts import (
+from app.mcp_server.type_validate.librarian_readiness_schemas import (
     CompactRefreshDraftPayload,
     CompactSourceRefPayload,
     NextActionPayload,

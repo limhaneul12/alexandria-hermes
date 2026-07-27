@@ -11,6 +11,9 @@ from app.obsidian.application.librarian.obsidian_librarian_delegation import (
 from app.obsidian.application.service.obsidian_context_lifecycle_service import (
     ObsidianContextLifecycleService,
 )
+from app.obsidian.application.service.obsidian_index_error_repair_service import (
+    ObsidianIndexErrorRepairService,
+)
 from app.obsidian.application.service.obsidian_librarian_conversation_service import (
     ObsidianLibrarianConversationService,
 )
@@ -39,6 +42,10 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianVaultMoveApplyRequest,
     ObsidianVaultMovePlanRequest,
     ObsidianVaultSettingsUpdate,
+)
+from app.obsidian.domain.entities.obsidian_index_error_repair import (
+    ObsidianIndexErrorRepairPlan,
+    ObsidianIndexErrorRepairReport,
 )
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianLibrarianReviewQueueItem,
@@ -112,6 +119,12 @@ class ObsidianService:
             mark_context_superseded=self._delegate_mark_context_superseded,
             context_reindex_hook=context_reindex_hook,
         )
+        self._index_error_repair_service = ObsidianIndexErrorRepairService(
+            repository=self._repository,
+            vault_config_store=self._vault_config_store,
+            reindex=self.reindex,
+            status=self.status,
+        )
         self._note_service = ObsidianNoteService(
             repository=self._repository,
             vault_config_store=self._vault_config_store,
@@ -184,6 +197,31 @@ class ObsidianService:
             Reindex summary with counts and warnings.
         """
         return await self._vault_lifecycle_service.reindex()
+
+    async def plan_index_error_repairs(self) -> ObsidianIndexErrorRepairPlan:
+        """Build a non-mutating plan for known legacy index errors.
+
+        Returns:
+            Hash-locked repair plan.
+        """
+        return await self._index_error_repair_service.plan()
+
+    async def apply_index_error_repairs(
+        self,
+        *,
+        expected_plan_hash: str,
+    ) -> ObsidianIndexErrorRepairReport:
+        """Apply a hash-locked, backup-first legacy index repair plan.
+
+        Args:
+            expected_plan_hash: Plan hash accepted by the operator.
+
+        Returns:
+            Applied repair report.
+        """
+        return await self._index_error_repair_service.apply(
+            expected_plan_hash=expected_plan_hash
+        )
 
     async def inventory_vault(
         self,

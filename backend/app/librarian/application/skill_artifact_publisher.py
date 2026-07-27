@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from app.librarian.application.skill_artifact_document_policy import (
+from app.librarian.application.skill_artifact_document_renderer import (
     _skill_frontmatter,
     _skill_markdown_body,
     _skill_note_id,
     _skill_tags,
-    _validate_artifact,
 )
 from app.librarian.application.skill_artifact_handoff_policy import (
     _handoff_payload,
@@ -15,6 +14,9 @@ from app.librarian.application.skill_artifact_handoff_policy import (
 from app.librarian.application.skill_artifact_publication_contracts import (
     PublishedSkillArtifact,
     SkillArtifactPublicationError,
+)
+from app.librarian.application.skill_artifact_validation_policy import (
+    _validate_artifact,
 )
 from app.librarian.application.skill_artifact_verification_service import (
     SkillArtifactVerificationService,
@@ -31,7 +33,7 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianSaveNote,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
-from app.shared.exceptions import LibrarianValidationError
+from app.shared.exceptions.librarian_exceptions import LibrarianValidationError
 
 _REQUIRED_SKILL_SECTIONS: tuple[str, ...] = (
     "## 목적",

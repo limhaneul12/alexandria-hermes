@@ -5,8 +5,18 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from app.librarian.domain.event_enum.skill_acquisition_enums import RiskLevel
-from app.mcp_server import backend_tool_gateway
 from app.mcp_server.backend_api_client import AlexandriaApiClient
+from app.mcp_server.tools.backend_gateway_policy import DEFAULT_SOURCE_AGENT
+from app.mcp_server.tools.skill_backend_gateway import (
+    alexandria_ask_librarian,
+    alexandria_complete_skill_acquisition,
+    alexandria_librarian_brief_preview,
+    alexandria_librarian_job_status,
+    alexandria_librarian_route_preview,
+    alexandria_search_skills,
+    alexandria_skill_acquisition_job_status,
+    alexandria_start_skill_acquisition,
+)
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 
@@ -46,7 +56,7 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
         Returns:
             Search-first sufficiency decision.
         """
-        return await backend_tool_gateway.alexandria_search_skills(
+        return await alexandria_search_skills(
             api_client,
             capability=capability,
             task_goal=task_goal,
@@ -62,7 +72,7 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
     @server.tool(name="alexandria_start_skill_acquisition")
     async def _tool_start_skill_acquisition(
         prompt: str,
-        agent_name: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        agent_name: str = DEFAULT_SOURCE_AGENT,
         project: str | None = None,
         task_summary: str | None = None,
         provider_id: str | None = None,
@@ -85,7 +95,7 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
         Returns:
             Sanitized durable job response.
         """
-        return await backend_tool_gateway.alexandria_start_skill_acquisition(
+        return await alexandria_start_skill_acquisition(
             api_client,
             prompt=prompt,
             agent_name=agent_name,
@@ -107,9 +117,7 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
         Returns:
             Sanitized durable job response with result handles when available.
         """
-        return await backend_tool_gateway.alexandria_skill_acquisition_job_status(
-            api_client, job_id
-        )
+        return await alexandria_skill_acquisition_job_status(api_client, job_id)
 
     @server.tool(name="alexandria_complete_skill_acquisition")
     async def _tool_complete_skill_acquisition(
@@ -141,7 +149,7 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
         Returns:
             Completed durable job response with skill/context handles.
         """
-        return await backend_tool_gateway.alexandria_complete_skill_acquisition(
+        return await alexandria_complete_skill_acquisition(
             api_client,
             job_id=job_id,
             title=title,
@@ -159,7 +167,7 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
     async def _tool_ask_librarian(
         prompt: str,
         delegate_to_librarian: bool = False,
-        agent_name: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        agent_name: str = DEFAULT_SOURCE_AGENT,
         project: str | None = None,
         task_summary: str | None = None,
         provider_id: str | None = None,
@@ -187,7 +195,7 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
         Returns:
             Backend ask-librarian response.
         """
-        return await backend_tool_gateway.alexandria_ask_librarian(
+        return await alexandria_ask_librarian(
             api_client,
             prompt,
             delegate_to_librarian,
@@ -220,14 +228,14 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
         Returns:
             Backend librarian brief preview response.
         """
-        return await backend_tool_gateway.alexandria_librarian_brief_preview(
+        return await alexandria_librarian_brief_preview(
             api_client, prompt, project, max_input_chars, max_source_refs
         )
 
     @server.tool(name="alexandria_librarian_route_preview")
     async def _tool_librarian_route_preview(
         prompt: str,
-        agent_name: str = backend_tool_gateway.DEFAULT_SOURCE_AGENT,
+        agent_name: str = DEFAULT_SOURCE_AGENT,
         project: str | None = None,
         task_summary: str | None = None,
         provider_id: str | None = None,
@@ -254,7 +262,7 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
         Returns:
             Backend route-preview response.
         """
-        return await backend_tool_gateway.alexandria_librarian_route_preview(
+        return await alexandria_librarian_route_preview(
             api_client,
             prompt,
             agent_name,
@@ -278,6 +286,4 @@ def register_librarian_tools(server: FastMCP, api_client: AlexandriaApiClient) -
         Returns:
             Backend job status response.
         """
-        return await backend_tool_gateway.alexandria_librarian_job_status(
-            api_client, job_id
-        )
+        return await alexandria_librarian_job_status(api_client, job_id)
