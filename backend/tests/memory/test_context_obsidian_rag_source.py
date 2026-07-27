@@ -79,6 +79,17 @@ class KeywordEmbeddingProvider(EmbeddingProvider):
         return [0.0, 0.0, 1.0]
 
 
+class CapturingEmbeddingProvider(KeywordEmbeddingProvider):
+    """Embedding provider that records canonical document input text."""
+
+    def __init__(self) -> None:
+        self.document_texts: list[str] = []
+
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
+        self.document_texts.extend(texts)
+        return super().embed_documents(texts)
+
+
 class UpgradedPoolingEmbeddingProvider(KeywordEmbeddingProvider):
     """Provider fake with same model/dimension but a changed fingerprint."""
 
@@ -155,6 +166,60 @@ def test_context_rag_search_includes_obsidian_vault_fts_source(
     assert set(context_ids) == {f"obsidian:{note_id}"}
     assert "Command Usage Handoff" in context_pack
     assert "obsidian:" in context_pack
+
+
+def test_obsidian_embedding_input_includes_title_heading_and_content(
+    tmp_path: Path,
+) -> None:
+    """Canonical Obsidian vectors should use the versioned metadata input format."""
+
+    async def scenario() -> tuple[int, list[str]]:
+        async with (
+            _temporary_database(tmp_path / "obsidian-embedding-input.db") as database,
+            database.session() as session,
+        ):
+            obsidian_service = ObsidianService(
+                repository=SqlAlchemyObsidianIndexRepository(session=session),
+                vault_path=str(tmp_path / "vault"),
+                alexandria_root="Alexandria",
+            )
+            await obsidian_service.save_note(
+                ObsidianSaveNote(
+                    title="Metadata Embedding Note",
+                    body=(
+                        "# Metadata Embedding Note\n\n"
+                        "Overview.\n\n"
+                        "## Retrieval Evidence\n\n"
+                        "semantic-target canonical content."
+                    ),
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="metadata_embedding_note",
+                    project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
+                )
+            )
+            provider = CapturingEmbeddingProvider()
+            context_service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session),
+                embedding_provider=provider,
+                vector_retrieval_enabled=True,
+                extra_search_sources=[
+                    SqlAlchemyObsidianContextSearchSource(session=session)
+                ],
+            )
+            rebuilt = await context_service.reindex_embeddings(limit=20, force=True)
+            return rebuilt.updated, provider.document_texts
+
+    updated, document_texts = anyio.run(scenario)
+
+    assert updated >= 1
+    assert any(
+        document_text.startswith(
+            "Title: Metadata Embedding Note\nHeading: Retrieval Evidence\n\n"
+        )
+        and "semantic-target canonical content." in document_text
+        for document_text in document_texts
+    )
 
 
 def test_context_rag_excludes_librarian_ops_and_superseded_notes_by_default(
@@ -904,7 +969,7 @@ def test_obsidian_context_update_cannot_duplicate_another_context(
                 vault_path=str(tmp_path / "vault"),
                 alexandria_root="Alexandria",
             )
-            first = await service.save_note(
+            await service.save_note(
                 ObsidianSaveNote(
                     title="First Context",
                     body="# Shared\n\nduplicate update body",
@@ -1117,7 +1182,12 @@ def test_obsidian_context_supersede_rejects_self_and_missing_target(
             titles = ("Self Supersede", "Missing Supersede")
             references = ("ctx_self", "ctx_missing")
             note_ids = ("ctx_self", "ctx_replacement")
-            for title, reference, note_id in zip(titles, references, note_ids):
+            for title, reference, note_id in zip(
+                titles,
+                references,
+                note_ids,
+                strict=True,
+            ):
                 try:
                     await service.save_note(
                         ObsidianSaveNote(

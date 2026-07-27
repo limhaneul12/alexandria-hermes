@@ -21,7 +21,9 @@ from app.obsidian.infrastructure.markdown.frontmatter import (
 )
 from app.obsidian.infrastructure.markdown.paths import safe_filename
 from app.shared.infrastructure.identifiers import new_uuid
+from app.shared.search.markdown_text_chunking import split_markdown_text
 from app.shared.types.extra_types import JSONObject
+from app.shared.utils.text_metrics import count_word_tokens
 
 LIBRARIAN_OPERATIONS_FOLDER = "_Ops/Librarian"
 
@@ -54,7 +56,7 @@ def frontmatter_for_save(
     return frontmatter
 
 
-def chunks_for_body(body: str) -> list[ObsidianChunkIndex]:
+def chunks_for_body(body: str, *, title: str) -> list[ObsidianChunkIndex]:
     if not body.strip():
         return [
             ObsidianChunkIndex(
@@ -65,34 +67,16 @@ def chunks_for_body(body: str) -> list[ObsidianChunkIndex]:
                 token_count=0,
             )
         ]
-    chunks: list[ObsidianChunkIndex] = []
-    current_heading: str | None = None
-    current_lines: list[str] = []
-    for line in body.splitlines():
-        if line.startswith("#"):
-            if current_lines:
-                chunks.append(_chunk(len(chunks), current_heading, current_lines))
-                current_lines = []
-            current_heading = line.lstrip("#").strip() or None
-        current_lines.append(line)
-    if current_lines:
-        chunks.append(_chunk(len(chunks), current_heading, current_lines))
-    return chunks
-
-
-def _chunk(
-    index: int,
-    heading: str | None,
-    lines: list[str],
-) -> ObsidianChunkIndex:
-    text = "\n".join(lines).strip()
-    return ObsidianChunkIndex(
-        chunk_index=index,
-        heading_path=heading,
-        text=text,
-        content_hash=sha256_text(text),
-        token_count=len(text.split()),
-    )
+    return [
+        ObsidianChunkIndex(
+            chunk_index=chunk.chunk_index,
+            heading_path=chunk.heading,
+            text=chunk.content,
+            content_hash=sha256_text(chunk.content),
+            token_count=count_word_tokens(chunk.content),
+        )
+        for chunk in split_markdown_text(title=title, content=body)
+    ]
 
 
 def title_from_document(

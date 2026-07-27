@@ -107,7 +107,7 @@ def match_from_obsidian_rows(
     why_retrieved: str,
 ) -> ContextSearchMatch:
     context = context_record_from_obsidian_row(note)
-    chunk_record = chunk_record_from_obsidian_row(chunk)
+    chunk_record = chunk_record_from_obsidian_row(chunk, title=note.title)
     return ContextSearchMatch(
         context=context,
         chunk=chunk_record,
@@ -122,10 +122,16 @@ def context_record_from_obsidian_row(note: ObsidianFileORM) -> ContextRecord:
     return context_record_from_obsidian_note(note_from_model(note))
 
 
-def chunk_record_from_obsidian_row(chunk: ObsidianChunkORM) -> ContextChunkRecord:
+def chunk_record_from_obsidian_row(
+    chunk: ObsidianChunkORM,
+    *,
+    title: str,
+) -> ContextChunkRecord:
     metadata = ContextMetadataPayload(
         source_surface="obsidian_vault",
         obsidian_note_id=chunk.note_id,
+        title=title,
+        heading=chunk.heading_path,
     )
     return ContextChunkRecord(
         id=f"{OBSIDIAN_CHUNK_ID_PREFIX}{chunk.id}",

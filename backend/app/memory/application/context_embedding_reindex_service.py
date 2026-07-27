@@ -6,6 +6,9 @@ from app.memory.application.context_embedding_health_service import (
     ContextEmbeddingHealthService,
 )
 from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
+from app.memory.application.retrieval.embedding_document import (
+    build_embedding_document_text,
+)
 from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.memory.domain.contracts.context_contracts import (
     ContextChunkEmbeddingUpdate,
@@ -154,9 +157,17 @@ async def _embedding_updates(
 ) -> list[ContextChunkEmbeddingUpdate]:
     if not chunks:
         return []
+    document_texts = [
+        build_embedding_document_text(
+            content=chunk.content,
+            title=_chunk_title(chunk),
+            heading=chunk.heading,
+        )
+        for chunk in chunks
+    ]
     embeddings = await _embed_documents(
         provider,
-        [chunk.content for chunk in chunks],
+        document_texts,
     )
     if len(embeddings) != len(chunks):
         raise MemoryContextValidationError(
@@ -192,3 +203,8 @@ async def _embedding_updates(
             )
         )
     return updates
+
+
+def _chunk_title(chunk: ContextChunkRecord) -> str | None:
+    title = chunk.chunk_metadata.get("title")
+    return title if isinstance(title, str) else None

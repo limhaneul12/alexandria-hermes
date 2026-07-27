@@ -34,6 +34,23 @@ from sqlalchemy.sql.elements import ColumnElement
 
 MAX_FTS_TOKEN_COUNT = 32
 MAX_FTS_TOKEN_LENGTH = 64
+CONTEXT_FTS_COLUMN_WEIGHTS = (
+    0.0,
+    0.0,
+    8.0,
+    4.0,
+    1.0,
+    0.5,
+    1.5,
+    0.25,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.5,
+    2.0,
+    5.0,
+)
 
 CONTEXT_CHUNK_FTS_SQL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS context_chunk_fts USING fts5(
@@ -165,7 +182,10 @@ def build_context_fts_query(recall: ContextFtsRecall) -> ContextFtsQuery | None:
     fts_match_target = fts_table.table_valued()
     rank = cast(
         ColumnElement[float],
-        func.bm25(fts_match_target).label("rank"),
+        func.bm25(
+            fts_match_target,
+            *CONTEXT_FTS_COLUMN_WEIGHTS,
+        ).label("rank"),
     )
     recall_filter = recall.recall_filter
     lifecycle_statuses = recall_filter.lifecycle_statuses

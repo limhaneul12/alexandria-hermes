@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from app.obsidian.application.librarian.obsidian_librarian_ranking import (
+    fuse_librarian_search_hits,
+)
 from app.obsidian.application.librarian.obsidian_librarian_retrieval import (
     librarian_excluded_types,
     librarian_query_text,
@@ -62,7 +65,7 @@ class ObsidianLibrarianSourceService:
         search_limit = librarian_search_limit(payload.max_source_refs)
         preferred_types = librarian_type_filters(payload.preferred_alexandria_types)
         excluded_types = librarian_excluded_types(preferred_types)
-        hits_by_note_id: dict[str, ObsidianSearchHit] = {}
+        ranked_hit_lists: list[list[ObsidianSearchHit]] = []
         for query_variant in librarian_query_variants(query_text):
             search_queries = _librarian_search_queries(
                 query=query_variant,
@@ -71,10 +74,10 @@ class ObsidianLibrarianSourceService:
                 preferred_types=preferred_types,
                 excluded_types=excluded_types,
             )
-            for search_query in search_queries:
-                hits = await self._search(search_query)
-                for hit in hits:
-                    hits_by_note_id.setdefault(hit.note.note_id, hit)
-                    if len(hits_by_note_id) >= payload.max_source_refs:
-                        return list(hits_by_note_id.values())
-        return list(hits_by_note_id.values())
+            ranked_hit_lists.extend(
+                [await self._search(search_query) for search_query in search_queries]
+            )
+        return fuse_librarian_search_hits(
+            ranked_hit_lists=ranked_hit_lists,
+            limit=payload.max_source_refs,
+        )

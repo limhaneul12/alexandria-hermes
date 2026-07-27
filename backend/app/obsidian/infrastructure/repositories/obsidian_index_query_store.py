@@ -34,6 +34,9 @@ from app.obsidian.infrastructure.repositories.obsidian_index_row_cleanup import 
 from app.obsidian.infrastructure.repositories.obsidian_index_schema import (
     ensure_obsidian_index_search_tables,
 )
+from app.shared.infrastructure.sqlite_fts_relevance import (
+    sqlite_fts_rank_to_score,
+)
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -144,7 +147,7 @@ class ObsidianIndexQueryStore:
                 ObsidianSearchHit(
                     note=note,
                     excerpt=excerpt,
-                    score=float(rank),
+                    score=sqlite_fts_rank_to_score(float(rank)),
                     chunk_id=str(chunk_id),
                     heading_path=None if chunk is None else chunk.heading_path,
                 )

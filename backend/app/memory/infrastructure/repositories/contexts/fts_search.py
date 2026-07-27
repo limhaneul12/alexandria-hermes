@@ -10,6 +10,9 @@ from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
 )
+from app.shared.infrastructure.sqlite_fts_relevance import (
+    sqlite_fts_rank_to_score,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,7 +54,7 @@ async def search_context_fts(
         context_row = contexts_by_id.get(context_id)
         if chunk_row is None or context_row is None:
             continue
-        fts_score = 1.0 / (1.0 + abs(rank))
+        fts_score = sqlite_fts_rank_to_score(rank)
         matches.append(
             ContextSearchMatch(
                 context=map_context_row(context_row),

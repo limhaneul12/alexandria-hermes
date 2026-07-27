@@ -397,6 +397,49 @@ distractor should rank behind the semantic target.
     anyio.run(scenario)
 
 
+def test_context_fts_ranks_stronger_korean_match_first(tmp_path: Path) -> None:
+    """FTS recall should preserve SQLite BM25 order for Korean memory queries."""
+
+    async def scenario() -> tuple[list[str], str]:
+        async with (
+            _temporary_database(tmp_path / "fts-korean-ranking.db") as database,
+            database.session() as session,
+        ):
+            service = ContextService(
+                repository=SqlAlchemyContextRepository(session=session)
+            )
+            stronger = await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="검색 품질 개선",
+                summary="검색 품질을 반복 평가하는 기준 문서.",
+                content=(
+                    "# 검색 품질 개선\n\n"
+                    "검색 품질은 golden query와 검색 품질 회귀 테스트로 측정한다."
+                ),
+            )
+            await seed_context(
+                session,
+                kind=ContextKind.RESEARCH,
+                title="운영 메모",
+                summary="일반 운영 기록.",
+                content="# 운영 메모\n\n검색 품질 점검을 한 번 수행했다.",
+            )
+            await session.commit()
+
+            pack = await service.search(
+                query="검색 품질",
+                strategy=RagStrategy.FTS_ONLY,
+                limit=2,
+            )
+
+        return [match.context.id for match in pack.matches], stronger.id
+
+    ranked_ids, stronger_id = anyio.run(scenario)
+
+    assert ranked_ids[0] == stronger_id
+
+
 def test_context_recall_filters_each_requested_scope_by_its_own_identity(
     tmp_path: Path,
 ) -> None:

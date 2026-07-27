@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
 from typing import Final
 
@@ -11,7 +10,7 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianLibrarianStopToken,
 )
-from app.shared.utils.text_metrics import extract_word_tokens
+from app.shared.search.retrieval_query_variants import focused_query_variants
 
 MAX_LIBRARIAN_QUERY_VARIANTS: Final[int] = 16
 MAX_LIBRARIAN_SEARCH_LIMIT: Final[int] = 50
@@ -19,7 +18,6 @@ DEFAULT_LIBRARIAN_EXCLUDED_TYPES: Final[tuple[AlexandriaNoteType, ...]] = (
     AlexandriaNoteType.LIBRARIAN_CHAT,
 )
 
-_QUERY_SEGMENT_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[,;\n]+")
 _STOP_TOKENS: Final[frozenset[str]] = frozenset(
     token.value for token in ObsidianLibrarianStopToken
 )
@@ -50,18 +48,11 @@ def librarian_query_variants(query: str) -> tuple[str, ...]:
     Returns:
         Ordered query variants from broad to focused.
     """
-    variants: list[str] = []
-    _append_variant(variants, query.strip())
-    for segment in _QUERY_SEGMENT_SPLIT_RE.split(query):
-        tokens = _meaningful_tokens(segment)
-        _append_token_variant(variants, tokens)
-        if len(tokens) > 4:
-            _append_token_variant(variants, tokens[-4:])
-        if len(tokens) > 3:
-            _append_token_variant(variants, tokens[-3:])
-        if len(variants) >= MAX_LIBRARIAN_QUERY_VARIANTS:
-            break
-    return tuple(variants[:MAX_LIBRARIAN_QUERY_VARIANTS])
+    return focused_query_variants(
+        query,
+        stop_tokens=_STOP_TOKENS,
+        max_variants=MAX_LIBRARIAN_QUERY_VARIANTS,
+    )
 
 
 def librarian_search_limit(source_ref_limit: int) -> int:
@@ -104,27 +95,3 @@ def librarian_excluded_types(
     if tuple(preferred_types):
         return ()
     return DEFAULT_LIBRARIAN_EXCLUDED_TYPES
-
-
-def _meaningful_tokens(text: str) -> tuple[str, ...]:
-    tokens = extract_word_tokens(text)
-    return tuple(
-        token
-        for token in tokens
-        if len(token) > 1 and token.casefold() not in _STOP_TOKENS
-    )
-
-
-def _append_token_variant(variants: list[str], tokens: tuple[str, ...]) -> None:
-    if not tokens:
-        return
-    _append_variant(variants, " ".join(tokens))
-
-
-def _append_variant(variants: list[str], query: str) -> None:
-    normalized = " ".join(query.split())
-    if not normalized:
-        return
-    if normalized in variants:
-        return
-    variants.append(normalized)

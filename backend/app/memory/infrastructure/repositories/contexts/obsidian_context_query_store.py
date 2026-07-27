@@ -43,6 +43,9 @@ from app.obsidian.infrastructure.repositories.obsidian_fts import (
     build_obsidian_fts_query,
     ensure_obsidian_chunk_fts_table,
 )
+from app.shared.infrastructure.sqlite_fts_relevance import (
+    sqlite_fts_rank_to_score,
+)
 from sqlalchemy import bindparam, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -113,7 +116,7 @@ class ObsidianContextQueryStore:
                 include_lifecycle_statuses=recall_filter.lifecycle_statuses,
             ):
                 continue
-            fts_score = 1.0 / (1.0 + abs(rank))
+            fts_score = sqlite_fts_rank_to_score(rank)
             matches.append(
                 match_from_obsidian_rows(
                     note=note,

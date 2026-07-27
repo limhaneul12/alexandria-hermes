@@ -16,6 +16,18 @@ from sqlalchemy.sql.elements import ColumnElement
 
 MAX_FTS_TOKEN_COUNT = 32
 MAX_FTS_TOKEN_LENGTH = 64
+OBSIDIAN_FTS_COLUMN_WEIGHTS = (
+    0.0,
+    0.0,
+    8.0,
+    1.0,
+    5.0,
+    0.5,
+    1.5,
+    0.25,
+    2.0,
+    1.0,
+)
 
 OBSIDIAN_CHUNK_FTS_SQL = """
 CREATE VIRTUAL TABLE IF NOT EXISTS obsidian_chunk_fts USING fts5(
@@ -148,7 +160,13 @@ def build_obsidian_fts_query(
         return None
     fts_table = OBSIDIAN_CHUNK_FTS_TABLE
     fts_match_target = fts_table.table_valued()
-    rank = cast(ColumnElement[float], func.bm25(fts_match_target).label("rank"))
+    rank = cast(
+        ColumnElement[float],
+        func.bm25(
+            fts_match_target,
+            *OBSIDIAN_FTS_COLUMN_WEIGHTS,
+        ).label("rank"),
+    )
     statement = select(fts_table.c.chunk_id, fts_table.c.note_id, rank).where(
         fts_match_target.op("MATCH")(bindparam("query"))
     )

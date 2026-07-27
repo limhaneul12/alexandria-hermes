@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from app.memory.application.context_embedding_service import ContextEmbeddingService
 from app.memory.application.retrieval.context_pack import build_context_pack
+from app.memory.application.retrieval.context_query_planning import (
+    context_query_variants,
+)
 from app.memory.application.retrieval.context_ranking import (
+    hybrid_candidate_limit,
     merge_hybrid_matches,
     rank_best_matches_per_context,
 )
@@ -157,12 +163,16 @@ class ContextSearchService:
                 recall_filter=recall_filter,
             )
         else:
+            candidate_filter = replace(
+                recall_filter,
+                limit=hybrid_candidate_limit(limit),
+            )
             fts_matches = await self._search_fts_sources(
-                ContextFtsRecall(query=query, recall_filter=recall_filter)
+                ContextFtsRecall(query=query, recall_filter=candidate_filter)
             )
             vector_matches = await self._embedding_service.search_vector(
                 query=query,
-                recall_filter=recall_filter,
+                recall_filter=candidate_filter,
             )
             matches = merge_hybrid_matches(
                 fts_matches=fts_matches,
@@ -184,7 +194,21 @@ class ContextSearchService:
         self,
         recall: ContextFtsRecall,
     ) -> list[ContextSearchMatch]:
-        matches: list[ContextSearchMatch] = []
-        for source in self._search_sources:
-            matches.extend(await source.search_fts(recall))
-        return rank_best_matches_per_context(matches, recall.recall_filter.limit)
+        matches_by_context_id: dict[str, ContextSearchMatch] = {}
+        for query_variant in context_query_variants(recall.query):
+            variant_matches: list[ContextSearchMatch] = []
+            variant_recall = ContextFtsRecall(
+                query=query_variant,
+                recall_filter=recall.recall_filter,
+            )
+            for source in self._search_sources:
+                variant_matches.extend(await source.search_fts(variant_recall))
+            ranked_variant = rank_best_matches_per_context(
+                variant_matches,
+                recall.recall_filter.limit,
+            )
+            for match in ranked_variant:
+                matches_by_context_id.setdefault(match.context.id, match)
+                if len(matches_by_context_id) >= recall.recall_filter.limit:
+                    return list(matches_by_context_id.values())
+        return list(matches_by_context_id.values())

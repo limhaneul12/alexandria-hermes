@@ -59,7 +59,7 @@ class ObsidianContextEmbeddingStore:
             Obsidian chunks mapped into Context RAG chunk read models.
         """
         statement = (
-            select(ObsidianChunkORM)
+            select(ObsidianChunkORM, ObsidianFileORM.title)
             .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
             .where(*_default_recall_visibility_conditions())
             .where(func.length(func.trim(ObsidianChunkORM.text)) > 0)
@@ -96,7 +96,8 @@ class ObsidianContextEmbeddingStore:
         )
         rows = await self._session.execute(statement)
         chunks = [
-            chunk_record_from_obsidian_row(chunk) for chunk in rows.scalars().all()
+            chunk_record_from_obsidian_row(chunk, title=title)
+            for chunk, title in rows.all()
         ]
         return chunks
 

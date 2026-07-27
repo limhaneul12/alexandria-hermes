@@ -66,6 +66,7 @@ def note_index_from_path(
         raise ValueError("FRONTMATTER_PARSE_ERROR: managed note is missing id")
     stat = path.stat()
     body = document.body.rstrip("\n")
+    title = title_from_document(document.frontmatter, body, path)
     frontmatter = frontmatter_json(document.frontmatter)
     frontmatter["alexandria_type"] = note_type.value
     project = frontmatter_text(document.frontmatter, "project")
@@ -87,7 +88,7 @@ def note_index_from_path(
         note_id=note_id,
         relative_path=relative_path,
         alexandria_type=note_type,
-        title=title_from_document(document.frontmatter, body, path),
+        title=title,
         status=status,
         tags=tuple(frontmatter_list(document.frontmatter, "tags")),
         project=project,
@@ -97,7 +98,7 @@ def note_index_from_path(
         body=body,
         size_bytes=stat.st_size,
         modified_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
-        chunks=tuple(chunks_for_body(body)),
+        chunks=tuple(chunks_for_body(body, title=title)),
         edges=tuple(
             relation_edges_from_note(
                 note_id=note_id,

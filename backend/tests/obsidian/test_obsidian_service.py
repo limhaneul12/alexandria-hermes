@@ -55,7 +55,10 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
 from app.obsidian.infrastructure.models import (
     obsidian_index_models as _obsidian_index_models,
 )
-from app.obsidian.infrastructure.models.obsidian_index_models import ObsidianFileORM
+from app.obsidian.infrastructure.models.obsidian_index_models import (
+    ObsidianChunkORM,
+    ObsidianFileORM,
+)
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
 )
@@ -96,6 +99,45 @@ async def _service(tmp_path: Path) -> tuple[Database, AsyncSession, ObsidianServ
         alexandria_root="Alexandria",
     )
     return database, session, service
+
+
+def test_obsidian_index_bounds_and_overlaps_large_canonical_note_chunks(
+    tmp_path: Path,
+) -> None:
+    """Canonical Obsidian indexing should use bounded overlapping search chunks."""
+
+    async def scenario() -> list[str]:
+        database, session, service = await _service(tmp_path)
+        try:
+            note_id = "context_large_search_chunk"
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Large Search Chunk",
+                    body="# Large Search Chunk\n\n"
+                    + " ".join(f"검색토큰-{index}" for index in range(600)),
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id=note_id,
+                    project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
+                )
+            )
+            rows = await session.scalars(
+                select(ObsidianChunkORM)
+                .where(ObsidianChunkORM.note_id == note_id)
+                .order_by(ObsidianChunkORM.chunk_index)
+            )
+            return [chunk.text for chunk in rows.all()]
+        finally:
+            await session.close()
+            await database.shutdown()
+
+    chunk_texts = anyio.run(scenario)
+
+    assert len(chunk_texts) > 2
+    assert all(len(chunk_text) <= 1400 for chunk_text in chunk_texts)
+    first_tail = set(chunk_texts[0].split()[-15:])
+    second_head = set(chunk_texts[1].split()[:30])
+    assert len(first_tail & second_head) >= 5
 
 
 class _RecordingDelegateService:

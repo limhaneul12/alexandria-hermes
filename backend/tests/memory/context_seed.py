@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.memory.application.retrieval.chunker import chunk_markdown
+from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
+from app.memory.application.retrieval.embedding_document import (
+    build_embedding_document_text,
+)
+from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.memory.domain.entities.context_read_models import ContextRecord
 from app.memory.domain.event_enum.context_enums import (
     ContextContentFormat,
@@ -19,9 +25,6 @@ from app.memory.infrastructure.repositories.contexts.fts import (
     ensure_context_chunk_fts_table,
 )
 from app.memory.infrastructure.repositories.contexts.mapping import map_context_row
-from app.memory.application.retrieval.chunker import chunk_markdown
-from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
-from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.shared.types.types_convert_utils import now_utc
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,8 +145,16 @@ async def seed_context(
     await session.flush()
 
     markdown_chunks = list(chunk_markdown(title=title, content=content))
+    embedding_texts = [
+        build_embedding_document_text(
+            content=chunk.content,
+            title=title,
+            heading=chunk.heading,
+        )
+        for chunk in markdown_chunks
+    ]
     embeddings = (
-        embedding_provider.embed_documents([chunk.content for chunk in markdown_chunks])
+        embedding_provider.embed_documents(embedding_texts)
         if embedding_provider is not None
         else [None for _ in markdown_chunks]
     )

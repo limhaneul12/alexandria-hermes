@@ -5,6 +5,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
+from app.memory.application.retrieval.embedding_document import (
+    EMBEDDING_DOCUMENT_INPUT_FORMAT,
+)
 from app.memory.application.retrieval.embedding_fingerprint import (
     EmbeddingFingerprint,
 )
@@ -75,6 +78,15 @@ class EmbeddingProvider(ABC):
         """
         return True
 
+    @property
+    def document_input_format(self) -> str:
+        """Return the document-text composition version included in fingerprints.
+
+        Returns:
+            Stable document input format identifier.
+        """
+        return EMBEDDING_DOCUMENT_INPUT_FORMAT
+
     def fingerprint(self) -> EmbeddingFingerprint:
         """Return the current embedding generation fingerprint.
 
@@ -88,6 +100,7 @@ class EmbeddingProvider(ABC):
             pooling_mode=self.pooling_mode,
             normalize=self.normalize,
             dimensions=self.dimensions,
+            document_input_format=self.document_input_format,
         )
 
     @abstractmethod

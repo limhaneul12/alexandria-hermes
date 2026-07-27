@@ -19,6 +19,7 @@ class EmbeddingFingerprint:
     pooling_mode: str
     normalize: bool
     dimensions: int
+    document_input_format: str
 
     def identity_payload(self) -> JSONObject:
         """Return the timestamp-free identity payload.
@@ -33,6 +34,7 @@ class EmbeddingFingerprint:
             "pooling_mode": self.pooling_mode,
             "normalize": self.normalize,
             "dimensions": self.dimensions,
+            "document_input_format": self.document_input_format,
         }
 
     def key(self) -> str:
