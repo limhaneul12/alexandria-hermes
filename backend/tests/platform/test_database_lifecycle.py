@@ -11,9 +11,12 @@ import app.librarian.infrastructure.models.agent_models as _agent_models
 import app.librarian.infrastructure.models.skill_acquisition_job_models as _skill_acquisition_job_models
 import app.memory.infrastructure.models.context_models as _context_models
 import app.obsidian.infrastructure.models.obsidian_index_models as _obsidian_index_models
+import app.shared.infrastructure.sqlite_database_policy as sqlite_database_policy
+import pytest
 from app.shared.infrastructure.database import Database
 from app.shared.infrastructure.sqlite_database_policy import (
     SQLITE_BUSY_TIMEOUT_MS,
+    install_sqlite_connection_pragmas,
     is_sqlite_corruption_error,
 )
 from sqlalchemy import text
@@ -26,6 +29,30 @@ _ORM_MODELS_LOADED = (
     _obsidian_index_models,
     _skill_acquisition_job_models,
 )
+
+
+class _RecordingCursor:
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def execute(self, statement: str) -> None:
+        self.statements.append(statement)
+
+    def close(self) -> None:
+        pass
+
+
+class _RecordingConnection:
+    def __init__(self) -> None:
+        self.cursor_instance = _RecordingCursor()
+
+    def cursor(self) -> _RecordingCursor:
+        return self.cursor_instance
+
+
+class _FakeAsyncEngine:
+    def __init__(self) -> None:
+        self.sync_engine = object()
 
 
 def _table_names(database_path: Path) -> set[str]:
@@ -81,6 +108,39 @@ def test_database_initialize_can_create_schema_for_isolated_repository_tests(
     anyio.run(scenario)
 
 
+def test_sqlite_wal_mode_is_configured_once_per_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Journal mode must not be mutated for every pooled SQLite connection."""
+    callbacks: dict[str, object] = {}
+
+    def fake_listens_for(_target: object, event_name: str):
+        def register(callback):
+            callbacks[event_name] = callback
+            return callback
+
+        return register
+
+    monkeypatch.setattr(
+        sqlite_database_policy.event,
+        "listens_for",
+        fake_listens_for,
+    )
+    install_sqlite_connection_pragmas(_FakeAsyncEngine())  # type: ignore[arg-type]
+
+    first_connection = _RecordingConnection()
+    pooled_connection = _RecordingConnection()
+    callbacks["first_connect"](first_connection, object())  # type: ignore[operator]
+    callbacks["connect"](pooled_connection, object())  # type: ignore[operator]
+
+    assert "PRAGMA journal_mode=WAL" in first_connection.cursor_instance.statements
+    assert "PRAGMA journal_mode=WAL" not in pooled_connection.cursor_instance.statements
+    assert pooled_connection.cursor_instance.statements == [
+        f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}",
+        "PRAGMA synchronous=NORMAL",
+    ]
+
+
 def test_sqlite_connections_use_wal_and_extended_busy_timeout(
     tmp_path: Path,
 ) -> None:
@@ -103,6 +163,38 @@ def test_sqlite_connections_use_wal_and_extended_busy_timeout(
             await database.shutdown()
 
     anyio.run(scenario)
+
+
+def test_new_sqlite_connection_does_not_reapply_wal_during_active_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opening a pooled reader must not mutate journal mode under write contention."""
+    monkeypatch.setattr(sqlite_database_policy, "SQLITE_BUSY_TIMEOUT_MS", 50)
+
+    async def scenario() -> int:
+        database_path = tmp_path / "active-write.db"
+        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
+        await database.initialize()
+        writer = database.session_factory()()
+        try:
+            async with database.engine.begin() as connection:
+                await connection.execute(
+                    text("CREATE TABLE contention_probe (value INTEGER NOT NULL)")
+                )
+            await writer.execute(
+                text("INSERT INTO contention_probe (value) VALUES (1)")
+            )
+
+            async with database.session_factory()() as reader:
+                scalar = await reader.scalar(text("SELECT 1"))
+                return int(scalar or 0)
+        finally:
+            await writer.rollback()
+            await writer.close()
+            await database.shutdown()
+
+    assert anyio.run(scenario) == 1
 
 
 def test_database_recovers_from_sqlite_file_corruption_errors(

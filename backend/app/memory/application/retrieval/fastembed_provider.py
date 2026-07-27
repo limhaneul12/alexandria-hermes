@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING
@@ -14,6 +15,11 @@ from app.memory.application.retrieval.embedding_contract import (
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
+
+_MEAN_POOLING_ADVISORY_PATTERN = (
+    rf"^The model {DEFAULT_EMBEDDING_MODEL} now uses mean pooling instead of "
+    r"CLS embedding\..*$"
+)
 
 
 class FastEmbedEmbeddingProvider(EmbeddingProvider):
@@ -125,12 +131,19 @@ class FastEmbedEmbeddingProvider(EmbeddingProvider):
             # lazy import justified: optional FastEmbed dependency loads only when embeddings are requested.
             from fastembed import TextEmbedding
 
-            if self._cache_dir is None:
-                self._model = TextEmbedding(model_name=self._model_name)
-            else:
-                self._model = TextEmbedding(
-                    model_name=self._model_name,
-                    cache_dir=self._cache_dir,
-                )
+            with warnings.catch_warnings():
+                if self._model_name == DEFAULT_EMBEDDING_MODEL:
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=_MEAN_POOLING_ADVISORY_PATTERN,
+                        category=UserWarning,
+                    )
+                if self._cache_dir is None:
+                    self._model = TextEmbedding(model_name=self._model_name)
+                else:
+                    self._model = TextEmbedding(
+                        model_name=self._model_name,
+                        cache_dir=self._cache_dir,
+                    )
         model = self._model
         return model

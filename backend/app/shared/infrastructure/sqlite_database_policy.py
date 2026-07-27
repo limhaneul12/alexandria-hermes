@@ -46,18 +46,26 @@ def ensure_sqlite_parent(sqlite_path: str | None) -> None:
 
 
 def install_sqlite_connection_pragmas(engine: AsyncEngine) -> None:
-    """Apply SQLite connection settings that prevent transient lock failures.
+    """Apply pool and connection settings that prevent transient lock failures.
 
     Args:
         engine: Async SQLAlchemy engine backed by SQLite.
     """
 
-    @event.listens_for(engine.sync_engine, "connect")
-    def set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
+    @event.listens_for(engine.sync_engine, "first_connect")
+    def set_sqlite_pool_pragmas(dbapi_connection, _connection_record) -> None:
         cursor = dbapi_connection.cursor()
         try:
             cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
             cursor.execute("PRAGMA journal_mode=WAL")
+        finally:
+            cursor.close()
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_connection_pragmas(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
             cursor.execute("PRAGMA synchronous=NORMAL")
         finally:
             cursor.close()
