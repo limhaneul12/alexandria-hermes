@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alexandria MCP Client Management</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23151614'/%3E%3Ctext x='9' y='45' fill='%23d9ff57' font-size='38' font-family='serif'%3EAH%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/connect/assets/connection-hub.css">
+  <script src="/connect/assets/mcp-clients.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">ALEXANDRIA · ADMIN ONLY</p>
+      <div class="hero-grid">
+        <div>
+          <h1>MCP 클라이언트<br>관리</h1>
+          <p class="lede">OAuth로 등록된 MCP 클라이언트를 확인하고, 연결 해제 또는 refresh 만료 연장을 수행합니다. 이 페이지는 localhost 관리자 표면으로 제한됩니다.</p>
+        </div>
+        <div class="seal" aria-hidden="true">
+          <span>02</span>
+          <small>INBOUND<br>OAUTH</small>
+        </div>
+      </div>
+    </header>
+
+    <section class="admin-grid">
+      <article class="card card-mcp admin-card">
+        <div class="card-number">A</div>
+        <p class="card-kicker">ENDPOINT</p>
+        <h2>연결 설정</h2>
+        <dl class="facts">
+          <div><dt>Endpoint</dt><dd><code id="mcp-endpoint">확인 중</code></dd></div>
+          <div><dt>Auth mode</dt><dd id="mcp-mode">확인 중</dd></div>
+          <div><dt>Issuer</dt><dd id="mcp-issuer">—</dd></div>
+        </dl>
+        <div class="notice" id="mcp-notice">MCP OAuth 설정을 확인하고 있습니다.</div>
+        <div class="device-panel" id="pairing-panel" hidden>
+          <small>ONE-TIME PAIRING CODE</small>
+          <strong id="pairing-code">—</strong>
+          <span id="pairing-expiry"></span>
+        </div>
+        <div class="actions">
+          <button class="primary" id="copy-mcp-endpoint" type="button">Endpoint 복사</button>
+          <button class="secondary" id="generate-pairing-code" type="button" hidden>페어링 코드 생성</button>
+          <a class="button-link secondary" href="/.well-known/oauth-protected-resource" target="_blank" rel="noopener noreferrer">OAuth 메타데이터</a>
+          <a class="button-link ghost" href="/connect">허브로 돌아가기</a>
+        </div>
+        <p class="message" id="mcp-message" role="status"></p>
+      </article>
+
+      <article class="card card-mcp admin-card">
+        <div class="card-number">B</div>
+        <p class="card-kicker">REGISTERED CLIENTS</p>
+        <div class="client-panel standalone">
+          <div class="client-panel-header">
+            <div>
+              <h2 class="section-title">OAuth 연결 클라이언트</h2>
+              <p class="hint">연결 끊기는 client 등록과 관련 OAuth 상태를 모두 영구 삭제합니다. 토큰 값과 client secret은 표시하지 않습니다.</p>
+            </div>
+            <button class="secondary compact" id="refresh-mcp-clients" type="button">목록 새로고침</button>
+          </div>
+          <div class="client-list client-list-wide" id="mcp-client-list">
+            연결된 MCP 클라이언트를 확인하고 있습니다.
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <footer>
+      <span>LOCALHOST ONLY · TOKEN-REDACTED · NO INLINE SCRIPT</span>
+      <a href="/docs">API 문서</a>
+    </footer>
+  </main>
+</body>
+</html>

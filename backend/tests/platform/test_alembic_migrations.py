@@ -147,6 +147,193 @@ def test_alembic_upgrade_drops_legacy_library_crud_tables(
     }.isdisjoint(table_names)
 
 
+def test_alembic_upgrade_hard_deletes_disconnected_mcp_oauth_clients(
+    tmp_path: Path,
+) -> None:
+    """Head migration should remove legacy client rows left by soft disconnect."""
+
+    database_path = tmp_path / "legacy-disconnected-oauth.db"
+    result = _run_alembic(database_path, "9e4d7b6c2a10")
+    assert result.returncode == 0, result.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            INSERT INTO mcp_oauth_clients (
+                client_id,
+                client_secret_ciphertext,
+                client_metadata,
+                issued_at,
+                secret_expires_at
+            )
+            VALUES
+                ('disconnected-client', NULL, '{}', 1, NULL),
+                ('connected-client', NULL, '{}', 1, NULL);
+
+            INSERT INTO mcp_oauth_authorization_requests (
+                request_id,
+                client_id,
+                client_name,
+                state,
+                scopes,
+                code_challenge,
+                redirect_uri,
+                redirect_uri_provided_explicitly,
+                resource,
+                expires_at,
+                approval_attempts,
+                consumed_at
+            )
+            VALUES (
+                'disconnected-request',
+                'disconnected-client',
+                'Disconnected',
+                NULL,
+                '[]',
+                'challenge',
+                'https://example.com/callback',
+                1,
+                'http://localhost/mcp',
+                100,
+                0,
+                50
+            );
+
+            INSERT INTO mcp_oauth_authorization_requests (
+                request_id,
+                client_id,
+                client_name,
+                state,
+                scopes,
+                code_challenge,
+                redirect_uri,
+                redirect_uri_provided_explicitly,
+                resource,
+                expires_at,
+                approval_attempts,
+                consumed_at
+            )
+            VALUES (
+                'orphan-request',
+                'missing-client',
+                'Orphan',
+                NULL,
+                '[]',
+                'challenge',
+                'https://example.com/callback',
+                1,
+                'http://localhost/mcp',
+                100,
+                0,
+                50
+            );
+
+            INSERT INTO mcp_oauth_authorization_codes (
+                code_hash,
+                client_id,
+                scopes,
+                code_challenge,
+                redirect_uri,
+                redirect_uri_provided_explicitly,
+                resource,
+                expires_at,
+                consumed_at
+            )
+            VALUES (
+                'orphan-code',
+                'missing-client',
+                '[]',
+                'challenge',
+                'https://example.com/callback',
+                1,
+                'http://localhost/mcp',
+                100,
+                50
+            );
+
+            INSERT INTO mcp_oauth_tokens (
+                token_hash,
+                token_kind,
+                family_id,
+                client_id,
+                scopes,
+                resource,
+                expires_at,
+                revoked_at,
+                created_at
+            )
+            VALUES
+                (
+                    'disconnected-refresh',
+                    'refresh',
+                    'disconnected-family',
+                    'disconnected-client',
+                    '[]',
+                    'http://localhost/mcp',
+                    100,
+                    50,
+                    1
+                ),
+                (
+                    'connected-refresh',
+                    'refresh',
+                    'connected-family',
+                    'connected-client',
+                    '[]',
+                    'http://localhost/mcp',
+                    100,
+                    NULL,
+                    1
+                ),
+                (
+                    'orphan-refresh',
+                    'refresh',
+                    'orphan-family',
+                    'missing-client',
+                    '[]',
+                    'http://localhost/mcp',
+                    100,
+                    50,
+                    1
+                );
+            """
+        )
+
+    result = _run_alembic(database_path, "head")
+    assert result.returncode == 0, result.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        client_ids = {
+            row[0]
+            for row in connection.execute(
+                "SELECT client_id FROM mcp_oauth_clients"
+            ).fetchall()
+        }
+        request_ids = {
+            row[0]
+            for row in connection.execute(
+                "SELECT request_id FROM mcp_oauth_authorization_requests"
+            ).fetchall()
+        }
+        code_hashes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT code_hash FROM mcp_oauth_authorization_codes"
+            ).fetchall()
+        }
+        token_hashes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT token_hash FROM mcp_oauth_tokens"
+            ).fetchall()
+        }
+
+    assert client_ids == {"connected-client"}
+    assert request_ids == set()
+    assert code_hashes == set()
+    assert token_hashes == {"connected-refresh"}
+
+
 def test_alembic_upgrade_marks_legacy_sqlite_datetimes_as_utc(
     tmp_path: Path,
 ) -> None:

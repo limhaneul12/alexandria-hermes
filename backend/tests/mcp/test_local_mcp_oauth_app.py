@@ -65,6 +65,17 @@ def test_create_app_exposes_local_oauth_routes_without_shadowing_rest_routes(
                 },
             )
             pairing = client.post("/connect/mcp/pairing-code")
+            oauth_clients = client.get("/connect/mcp/clients")
+            client_id = registration.json()["client_id"]
+            extend_registered = client.post(f"/connect/mcp/clients/{client_id}/extend")
+            disconnect_registered = client.post(
+                f"/connect/mcp/clients/{client_id}/disconnect"
+            )
+            oauth_clients_after_disconnect = client.get("/connect/mcp/clients")
+            remote_page = client.get(
+                "/connect/mcp",
+                headers={"host": "alexandria.example"},
+            )
     finally:
         default_app.state.container.wire(packages=_ROUTER_PACKAGES)
 
@@ -80,3 +91,15 @@ def test_create_app_exposes_local_oauth_routes_without_shadowing_rest_routes(
     assert pairing.status_code == 201
     assert len(pairing.json()["code"]) == 9
     assert "token" not in pairing.text.lower()
+    assert oauth_clients.status_code == 200
+    oauth_client = oauth_clients.json()["clients"][0]
+    assert oauth_client["client_name"] == "ChatGPT"
+    assert oauth_client["status"] == "registered"
+    assert oauth_client["connected"] is False
+    assert oauth_client["supports_disconnect"] is True
+    assert oauth_client["supports_extension"] is False
+    assert extend_registered.status_code == 409
+    assert disconnect_registered.status_code == 204
+    assert disconnect_registered.content == b""
+    assert oauth_clients_after_disconnect.json()["clients"] == []
+    assert remote_page.status_code == 403

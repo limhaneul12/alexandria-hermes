@@ -22,10 +22,37 @@ def test_connection_hub_page_has_secure_external_assets() -> None:
     assert "<script>" not in response.text
     assert "operator_key" not in response.text
     assert "OpenAI Librarian" in response.text
+    assert "MCP 클라이언트 관리" in response.text
+    assert "목록 새로고침" not in response.text
     assert script.status_code == 200
     assert script.headers["content-type"].startswith("text/javascript")
     assert stylesheet.status_code == 200
     assert stylesheet.headers["content-type"].startswith("text/css")
+
+
+def test_mcp_management_page_is_dedicated_and_localhost_only() -> None:
+    """MCP client administration should live on a separate localhost-only page."""
+    with TestClient(app) as client:
+        response = client.get("/connect/mcp")
+        script = client.get("/connect/assets/mcp-clients.js")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert "<script src=" in response.text
+    assert "<script>" not in response.text
+    assert "OAuth 연결 클라이언트" in response.text
+    assert "localhost 관리자 표면" in response.text
+    assert "access_token" not in response.text
+    assert "refresh_token" not in response.text
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert "disconnected" not in script.text.lower()
+
+    with TestClient(app, base_url="https://alexandria.example") as remote_client:
+        remote_response = remote_client.get("/connect/mcp")
+
+    assert remote_response.status_code == 403
 
 
 def test_connection_hub_status_redacts_runtime_secrets() -> None:
