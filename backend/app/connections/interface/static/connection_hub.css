@@ -131,6 +131,12 @@ h1 {
   gap: 18px;
 }
 
+.admin-grid {
+  display: grid;
+  gap: 18px;
+  margin-top: 36px;
+}
+
 .card {
   position: relative;
   min-height: 570px;
@@ -143,6 +149,7 @@ h1 {
 
 .card-openai { border-top: 5px solid var(--orange); }
 .card-mcp { border-top: 5px solid var(--blue); }
+.admin-card { min-height: auto; }
 
 .card-number {
   position: absolute;
@@ -164,6 +171,14 @@ h2 {
   font-weight: 400;
   letter-spacing: -0.045em;
   word-break: keep-all;
+}
+
+.section-title {
+  margin: 0;
+  font-family: inherit;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .card-copy {
@@ -236,6 +251,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .primary { border-color: var(--acid); background: var(--acid); color: #11120f; font-weight: 800; }
 .secondary { background: transparent; color: var(--ink); }
 .ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.compact { min-height: 34px; padding: 7px 10px; font-size: 0.83rem; }
 
 .facts { margin: 32px 0 24px; border-top: 1px solid var(--line); }
 .facts div {
@@ -259,6 +275,87 @@ code { color: var(--blue); }
 .notice.warn { border-color: var(--orange); }
 .message { min-height: 24px; color: var(--muted); }
 .message.error { color: var(--danger); }
+.client-panel {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  padding: 14px;
+  background: rgba(17, 18, 15, 0.44);
+}
+.client-panel.standalone {
+  margin-top: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.client-panel-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+.client-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.client-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.client-row.wide {
+  grid-template-columns: minmax(160px, 0.7fr) minmax(260px, 1.3fr) auto;
+}
+.client-row strong, .client-row small { display: block; }
+.client-row small {
+  margin-top: 4px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.client-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.client-metadata {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.client-metadata span {
+  min-width: 0;
+  border: 1px solid var(--line);
+  padding: 8px;
+}
+.client-metadata small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.client-metadata b {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  font-size: 0.86rem;
+}
+.hint, .empty {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
 
 footer {
   display: flex;
@@ -275,6 +372,9 @@ footer a { color: var(--ink); }
   .status-strip article { border-right: 0; border-bottom: 1px solid var(--line); }
   .status-strip article:last-child { border-bottom: 0; }
   .card { min-height: auto; }
+  .client-row, .client-row.wide { grid-template-columns: 1fr; }
+  .client-metadata { grid-template-columns: 1fr; }
+  .client-controls { justify-content: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {

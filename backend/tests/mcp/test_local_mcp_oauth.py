@@ -11,8 +11,10 @@ import anyio
 import httpx
 import pytest
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
+from app.mcp_server.local_oauth.contracts import LocalOAuthClientConnectionStatus
 from app.mcp_server.local_oauth.orm import (
     McpOAuthAuthorizationCodeORM,
+    McpOAuthAuthorizationRequestORM,
     McpOAuthClientORM,
     McpOAuthPairingCodeORM,
     McpOAuthTokenORM,
@@ -183,8 +185,22 @@ def test_local_oauth_provider_issues_rotates_and_revokes_hashed_tokens(
                 second_refresh,
             )
             assert loaded_second_refresh is not None
-            await provider.revoke_token(loaded_second_refresh)
-            assert await provider.load_access_token(second_pair.access_token) is None
+            connections = await provider.list_client_connections()
+            assert len(connections) == 1
+            connected = connections[0]
+            assert connected.client_id == "client-1"
+            assert connected.client_name == "ChatGPT"
+            assert connected.status is LocalOAuthClientConnectionStatus.CONNECTED
+            assert connected.connected is True
+            assert connected.refresh_token_expires_at is not None
+            extended = await provider.extend_client_connection("client-1")
+            assert extended is not None
+            assert extended.refresh_token_expires_at is not None
+            assert (
+                extended.refresh_token_expires_at
+                == connected.refresh_token_expires_at
+                + _settings().refresh_token_ttl_seconds
+            )
 
             async with database.session() as session:
                 client_row = await session.get(McpOAuthClientORM, "client-1")
@@ -214,6 +230,41 @@ def test_local_oauth_provider_issues_rotates_and_revokes_hashed_tokens(
             assert len(pairing_rows) == 1
             assert pairing_rows[0].code_hash != pairing.code
             assert pairing_rows[0].consumed_at is not None
+
+            await provider.revoke_token(loaded_second_refresh)
+            assert await provider.load_access_token(second_pair.access_token) is None
+            revoked_connections = await provider.list_client_connections()
+            assert len(revoked_connections) == 1
+            assert (
+                revoked_connections[0].status
+                is LocalOAuthClientConnectionStatus.REGISTERED
+            )
+
+            deleted = await provider.delete_client_connection("client-1")
+            assert deleted is True
+            assert await provider.load_access_token(second_pair.access_token) is None
+            assert await provider.get_client("client-1") is None
+            assert await provider.list_client_connections() == ()
+
+            async with database.session() as session:
+                client_row = await session.get(McpOAuthClientORM, "client-1")
+                request_rows = tuple(
+                    (await session.execute(select(McpOAuthAuthorizationRequestORM)))
+                    .scalars()
+                    .all()
+                )
+                code_rows = tuple(
+                    (await session.execute(select(McpOAuthAuthorizationCodeORM)))
+                    .scalars()
+                    .all()
+                )
+                token_rows = tuple(
+                    (await session.execute(select(McpOAuthTokenORM))).scalars().all()
+                )
+            assert client_row is None
+            assert request_rows == ()
+            assert code_rows == ()
+            assert token_rows == ()
         finally:
             await database.shutdown()
 

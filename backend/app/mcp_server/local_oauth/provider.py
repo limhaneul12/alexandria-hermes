@@ -25,6 +25,7 @@ from pydantic import TypeAdapter
 
 from app.mcp_server.local_oauth.contracts import (
     LocalOAuthAuthorizationRequestRecord,
+    LocalOAuthClientConnectionRecord,
     LocalOAuthPairingCode,
     LocalOAuthTokenKind,
 )
@@ -357,6 +358,54 @@ class LocalMcpOAuthProvider(
             _now(),
         )
 
+    async def list_client_connections(
+        self,
+    ) -> tuple[LocalOAuthClientConnectionRecord, ...]:
+        """List OAuth MCP clients for the local operator without token material.
+
+        Returns:
+            Public-safe registered client connection records.
+        """
+        return await self._repository.list_client_connections(_now())
+
+    async def extend_client_connection(
+        self,
+        client_id: str,
+    ) -> LocalOAuthClientConnectionRecord | None:
+        """Extend one currently connected MCP client's refresh-token window.
+
+        Args:
+            client_id: Registered OAuth client id.
+
+        Returns:
+            Updated connection record, or None when the client is unknown or expired.
+        """
+        if await self.get_client(client_id) is None:
+            return None
+        now = _now()
+        extended_count = await self._repository.extend_client_refresh_tokens(
+            client_id=client_id,
+            extension_seconds=self._settings.refresh_token_ttl_seconds,
+            now=now,
+        )
+        if extended_count == 0:
+            return None
+        return await self._client_connection(client_id)
+
+    async def delete_client_connection(
+        self,
+        client_id: str,
+    ) -> bool:
+        """Hard-delete one MCP OAuth client and all credential state.
+
+        Args:
+            client_id: Registered OAuth client id.
+
+        Returns:
+            Whether the client aggregate existed and was deleted.
+        """
+        return await self._repository.delete_client(client_id)
+
     async def pending_authorization(
         self,
         request_id: str,
@@ -482,6 +531,15 @@ class LocalMcpOAuthProvider(
             HTTPStatus.FORBIDDEN,
             "OAuth pairing code is invalid",
         )
+
+    async def _client_connection(
+        self,
+        client_id: str,
+    ) -> LocalOAuthClientConnectionRecord | None:
+        for connection in await self.list_client_connections():
+            if connection.client_id == client_id:
+                return connection
+        return None
 
 
 def _opaque_value() -> str:

@@ -16,6 +16,14 @@ class LocalOAuthTokenKind(StrEnum):
     REFRESH = "refresh"
 
 
+class LocalOAuthClientConnectionStatus(StrEnum):
+    """Public-safe lifecycle state for one registered MCP OAuth client."""
+
+    REGISTERED = "registered"
+    CONNECTED = "connected"
+    EXPIRED = "expired"
+
+
 @dataclass(frozen=True, slots=True)
 class LocalOAuthPairingCode:
     """One-time local approval code returned only at creation time."""
@@ -78,3 +86,19 @@ class LocalOAuthTokenRecord:
     scopes: tuple[str, ...]
     resource: str
     expires_at: int
+
+
+@dataclass(frozen=True, slots=True)
+class LocalOAuthClientConnectionRecord:
+    """Operator-visible MCP OAuth client state without credential material."""
+
+    client_id: str
+    client_name: str | None
+    issued_at: int
+    status: LocalOAuthClientConnectionStatus
+    connected: bool
+    scopes: tuple[str, ...]
+    resource: str | None
+    access_token_expires_at: int | None
+    refresh_token_expires_at: int | None
+    active_token_families: int

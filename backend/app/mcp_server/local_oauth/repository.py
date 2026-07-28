@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
-from sqlalchemy import update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.mcp_server.local_oauth.contracts import (
     LocalOAuthAuthorizationCodeRecord,
     LocalOAuthAuthorizationRequestRecord,
+    LocalOAuthClientConnectionRecord,
+    LocalOAuthClientConnectionStatus,
     LocalOAuthClientRecord,
     LocalOAuthTokenKind,
     LocalOAuthTokenRecord,
@@ -86,6 +88,38 @@ class LocalMcpOAuthRepository:
             metadata=_frozen_mapping(row.client_metadata),
             issued_at=row.issued_at,
             secret_expires_at=row.secret_expires_at,
+        )
+
+    async def list_client_connections(
+        self,
+        now: int,
+    ) -> tuple[LocalOAuthClientConnectionRecord, ...]:
+        """List registered MCP OAuth clients with public-safe token status.
+
+        Args:
+            now: Current epoch used to classify token expiry.
+
+        Returns:
+            Operator-visible client connection records without token material.
+        """
+        async with self._session_factory() as session:
+            client_rows = tuple(
+                (await session.execute(select(McpOAuthClientORM))).scalars().all()
+            )
+            token_rows = tuple(
+                (await session.execute(select(McpOAuthTokenORM))).scalars().all()
+            )
+        return tuple(
+            _client_connection_record(
+                client_row=client_row,
+                token_rows=tuple(
+                    token_row
+                    for token_row in token_rows
+                    if token_row.client_id == client_row.client_id
+                ),
+                now=now,
+            )
+            for client_row in client_rows
         )
 
     async def create_authorization_request(
@@ -478,6 +512,67 @@ class LocalMcpOAuthRepository:
                 .values(revoked_at=now)
             )
 
+    async def delete_client(self, client_id: str) -> bool:
+        """Hard-delete one OAuth client aggregate.
+
+        Args:
+            client_id: Registered OAuth client id.
+
+        Returns:
+            Whether a client registration row was removed.
+        """
+        async with self._session_factory() as session, session.begin():
+            row = await session.get(McpOAuthClientORM, client_id)
+            if row is None:
+                return False
+            for child_model in (
+                McpOAuthAuthorizationRequestORM,
+                McpOAuthAuthorizationCodeORM,
+                McpOAuthTokenORM,
+            ):
+                await session.execute(
+                    delete(child_model).where(child_model.client_id == client_id)
+                )
+            await session.delete(row)
+            return True
+
+    async def extend_client_refresh_tokens(
+        self,
+        *,
+        client_id: str,
+        extension_seconds: int,
+        now: int,
+    ) -> int:
+        """Extend currently connected refresh tokens from their current expiry.
+
+        Args:
+            client_id: Registered OAuth client id.
+            extension_seconds: Duration added to each active refresh-token expiry.
+            now: Current epoch; expired refresh tokens require reconnect.
+
+        Returns:
+            Number of refresh-token rows extended.
+        """
+        async with self._session_factory() as session, session.begin():
+            rows = tuple(
+                (
+                    await session.execute(
+                        select(McpOAuthTokenORM).where(
+                            McpOAuthTokenORM.client_id == client_id,
+                            McpOAuthTokenORM.token_kind
+                            == LocalOAuthTokenKind.REFRESH.value,
+                            McpOAuthTokenORM.revoked_at.is_(None),
+                            McpOAuthTokenORM.expires_at > now,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for row in rows:
+                row.expires_at += extension_seconds
+            return len(rows)
+
 
 def _authorization_request_record(
     row: McpOAuthAuthorizationRequestORM,
@@ -500,6 +595,94 @@ def _authorization_request_record(
 
 def _frozen_mapping(value: JSONObject) -> Mapping[str, JSONValue]:
     return MappingProxyType(dict(value))
+
+
+def _client_connection_record(
+    *,
+    client_row: McpOAuthClientORM,
+    token_rows: tuple[McpOAuthTokenORM, ...],
+    now: int,
+) -> LocalOAuthClientConnectionRecord:
+    refresh_rows = tuple(
+        row for row in token_rows if row.token_kind == LocalOAuthTokenKind.REFRESH.value
+    )
+    unrevoked_refresh_rows = tuple(
+        row for row in refresh_rows if row.revoked_at is None
+    )
+    active_refresh_rows = tuple(
+        row for row in unrevoked_refresh_rows if row.expires_at > now
+    )
+    active_access_rows = tuple(
+        row
+        for row in token_rows
+        if row.token_kind == LocalOAuthTokenKind.ACCESS.value
+        and row.revoked_at is None
+        and row.expires_at > now
+    )
+    reference_row = _latest_token_row(
+        active_refresh_rows or unrevoked_refresh_rows or refresh_rows
+    )
+    active_family_count = len({row.family_id for row in active_refresh_rows})
+    return LocalOAuthClientConnectionRecord(
+        client_id=client_row.client_id,
+        client_name=_metadata_text(client_row.client_metadata, "client_name"),
+        issued_at=client_row.issued_at,
+        status=_connection_status(
+            refresh_rows=refresh_rows,
+            unrevoked_refresh_rows=unrevoked_refresh_rows,
+            active_refresh_rows=active_refresh_rows,
+        ),
+        connected=bool(active_refresh_rows),
+        scopes=_connection_scopes(client_row.client_metadata, reference_row),
+        resource=None if reference_row is None else reference_row.resource,
+        access_token_expires_at=_max_expires_at(active_access_rows),
+        refresh_token_expires_at=_max_expires_at(active_refresh_rows),
+        active_token_families=active_family_count,
+    )
+
+
+def _connection_status(
+    *,
+    refresh_rows: tuple[McpOAuthTokenORM, ...],
+    unrevoked_refresh_rows: tuple[McpOAuthTokenORM, ...],
+    active_refresh_rows: tuple[McpOAuthTokenORM, ...],
+) -> LocalOAuthClientConnectionStatus:
+    if active_refresh_rows:
+        return LocalOAuthClientConnectionStatus.CONNECTED
+    if unrevoked_refresh_rows:
+        return LocalOAuthClientConnectionStatus.EXPIRED
+    return LocalOAuthClientConnectionStatus.REGISTERED
+
+
+def _connection_scopes(
+    metadata: JSONObject,
+    token_row: McpOAuthTokenORM | None,
+) -> tuple[str, ...]:
+    if token_row is not None:
+        return tuple(token_row.scopes)
+    scope = _metadata_text(metadata, "scope")
+    if scope is None:
+        return ()
+    return tuple(item for item in scope.split() if item)
+
+
+def _latest_token_row(
+    token_rows: tuple[McpOAuthTokenORM, ...],
+) -> McpOAuthTokenORM | None:
+    if not token_rows:
+        return None
+    return max(token_rows, key=lambda row: row.created_at)
+
+
+def _max_expires_at(token_rows: tuple[McpOAuthTokenORM, ...]) -> int | None:
+    if not token_rows:
+        return None
+    return max(row.expires_at for row in token_rows)
+
+
+def _metadata_text(metadata: JSONObject, key: str) -> str | None:
+    value = metadata.get(key)
+    return value if isinstance(value, str) and value else None
 
 
 def _add_token_pair(

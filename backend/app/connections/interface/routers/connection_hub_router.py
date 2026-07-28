@@ -8,9 +8,15 @@ from typing import Final
 
 from app.connections.interface.schemas.connection_hub_schema import (
     ConnectionHubStatusResponse,
+    McpOAuthClientConnectionListResponse,
+    McpOAuthClientConnectionResponse,
     McpPairingCodeResponse,
 )
 from app.container import ApplicationContainer
+from app.mcp_server.local_oauth.contracts import (
+    LocalOAuthClientConnectionRecord,
+    LocalOAuthClientConnectionStatus,
+)
 from app.mcp_server.local_oauth.provider import LocalMcpOAuthProvider
 from app.mcp_server.type_validate.auth_contracts import McpAuthMode
 from app.platform.config.app_config import AppConfig
@@ -22,8 +28,10 @@ router = APIRouter(tags=["connection-hub"])
 
 _INTERFACE_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 _HUB_HTML: Final[Path] = _INTERFACE_ROOT / "templates" / "connection_hub.html"
+_MCP_CLIENTS_HTML: Final[Path] = _INTERFACE_ROOT / "templates" / "mcp_clients.html"
 _HUB_CSS: Final[Path] = _INTERFACE_ROOT / "static" / "connection_hub.css"
 _HUB_JS: Final[Path] = _INTERFACE_ROOT / "static" / "connection_hub.js"
+_MCP_CLIENTS_JS: Final[Path] = _INTERFACE_ROOT / "static" / "mcp_clients.js"
 _PAGE_SECURITY_HEADERS: Final[dict[str, str]] = {
     "Cache-Control": "no-store",
     "Pragma": "no-cache",
@@ -62,6 +70,29 @@ def connection_hub_page() -> FileResponse:
 
 
 @router.get(
+    "/connect/mcp",
+    response_class=FileResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+def mcp_client_management_page(request: Request) -> FileResponse:
+    """Return the dedicated MCP OAuth client management page.
+
+    Args:
+        request: Active FastAPI request.
+
+    Returns:
+        Hardened HTML file response.
+    """
+    _require_local_management_request(request)
+    return FileResponse(
+        _MCP_CLIENTS_HTML,
+        media_type="text/html; charset=utf-8",
+        headers=_PAGE_SECURITY_HEADERS,
+    )
+
+
+@router.get(
     "/connect/assets/connection-hub.css",
     response_class=FileResponse,
     status_code=status.HTTP_200_OK,
@@ -94,6 +125,25 @@ def connection_hub_script() -> FileResponse:
     """
     return FileResponse(
         _HUB_JS,
+        media_type="text/javascript; charset=utf-8",
+        headers=_ASSET_HEADERS,
+    )
+
+
+@router.get(
+    "/connect/assets/mcp-clients.js",
+    response_class=FileResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+def mcp_clients_script() -> FileResponse:
+    """Return the MCP client management browser controller.
+
+    Returns:
+        No-store JavaScript file response.
+    """
+    return FileResponse(
+        _MCP_CLIENTS_JS,
         media_type="text/javascript; charset=utf-8",
         headers=_ASSET_HEADERS,
     )
@@ -147,11 +197,7 @@ async def create_mcp_pairing_code(
     Returns:
         One-time pairing code and expiration.
     """
-    if request.url.hostname not in {"127.0.0.1", "localhost", "::1", "testserver"}:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="MCP pairing codes may only be created from localhost",
-        )
+    _require_local_management_request(request)
     config = getattr(request.app.state, "app_config", configured_app)
     if config.mcp_auth_mode is not McpAuthMode.LOCAL_OAUTH2:
         raise HTTPException(
@@ -169,3 +215,154 @@ async def create_mcp_pairing_code(
         code=pairing.code,
         expires_at=datetime.fromtimestamp(pairing.expires_at, tz=UTC),
     )
+
+
+@router.get(
+    "/connect/mcp/clients",
+    response_model=McpOAuthClientConnectionListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List MCP OAuth client connections",
+)
+@inject
+async def list_mcp_oauth_clients(
+    request: Request,
+    configured_app: AppConfig = Depends(Provide[ApplicationContainer.app_config]),
+) -> McpOAuthClientConnectionListResponse:
+    """Return OAuth clients registered against the local MCP endpoint.
+
+    Args:
+        request: Active FastAPI request.
+        configured_app: Dependency-injected configuration fallback.
+
+    Returns:
+        Public-safe client records without token material.
+    """
+    provider = _local_oauth_provider(request, configured_app)
+    connections = await provider.list_client_connections()
+    return McpOAuthClientConnectionListResponse(
+        clients=[_connection_response(connection) for connection in connections],
+        extension_policy=(
+            "Each extension adds the configured local OAuth TTL to the current "
+            "refresh-token expiry; unlimited bearer tokens are not exposed."
+        ),
+    )
+
+
+@router.post(
+    "/connect/mcp/clients/{client_id}/disconnect",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Disconnect one MCP OAuth client",
+)
+@inject
+async def disconnect_mcp_oauth_client(
+    client_id: str,
+    request: Request,
+    configured_app: AppConfig = Depends(Provide[ApplicationContainer.app_config]),
+) -> None:
+    """Hard-delete one MCP OAuth client and all related credential state.
+
+    Args:
+        client_id: Registered OAuth client id.
+        request: Active FastAPI request.
+        configured_app: Dependency-injected configuration fallback.
+
+    """
+    provider = _local_oauth_provider(request, configured_app)
+    deleted = await provider.delete_client_connection(client_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="MCP OAuth client is not registered",
+        )
+
+
+@router.post(
+    "/connect/mcp/clients/{client_id}/extend",
+    response_model=McpOAuthClientConnectionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Extend one MCP OAuth client connection",
+)
+@inject
+async def extend_mcp_oauth_client(
+    client_id: str,
+    request: Request,
+    configured_app: AppConfig = Depends(Provide[ApplicationContainer.app_config]),
+) -> McpOAuthClientConnectionResponse:
+    """Extend active refresh tokens for one connected MCP OAuth client.
+
+    Args:
+        client_id: Registered OAuth client id.
+        request: Active FastAPI request.
+        configured_app: Dependency-injected configuration fallback.
+
+    Returns:
+        Updated public-safe client connection state.
+    """
+    provider = _local_oauth_provider(request, configured_app)
+    connection = await provider.extend_client_connection(client_id)
+    if connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="MCP OAuth client must reconnect before it can be extended",
+        )
+    return _connection_response(connection)
+
+
+def _local_oauth_provider(
+    request: Request,
+    configured_app: AppConfig,
+) -> LocalMcpOAuthProvider:
+    _require_local_management_request(request)
+    config = getattr(request.app.state, "app_config", configured_app)
+    if config.mcp_auth_mode is not McpAuthMode.LOCAL_OAUTH2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="MCP local OAuth is not enabled",
+        )
+    provider = getattr(request.app.state, "local_mcp_oauth_provider", None)
+    if not isinstance(provider, LocalMcpOAuthProvider):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MCP local OAuth is still starting",
+        )
+    return provider
+
+
+def _require_local_management_request(request: Request) -> None:
+    if request.url.hostname not in {"127.0.0.1", "localhost", "::1", "testserver"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="MCP OAuth management is restricted to localhost",
+        )
+
+
+def _connection_response(
+    connection: LocalOAuthClientConnectionRecord,
+) -> McpOAuthClientConnectionResponse:
+    return McpOAuthClientConnectionResponse(
+        client_id=connection.client_id,
+        client_name=connection.client_name,
+        status=connection.status,
+        connected=connection.connected,
+        scopes=list(connection.scopes),
+        resource=connection.resource,
+        issued_at=_datetime_from_epoch(connection.issued_at),
+        access_token_expires_at=_optional_datetime_from_epoch(
+            connection.access_token_expires_at
+        ),
+        refresh_token_expires_at=_optional_datetime_from_epoch(
+            connection.refresh_token_expires_at
+        ),
+        active_token_families=connection.active_token_families,
+        supports_disconnect=True,
+        supports_extension=connection.status
+        is LocalOAuthClientConnectionStatus.CONNECTED,
+    )
+
+
+def _datetime_from_epoch(epoch: int) -> datetime:
+    return datetime.fromtimestamp(epoch, tz=UTC)
+
+
+def _optional_datetime_from_epoch(epoch: int | None) -> datetime | None:
+    return None if epoch is None else _datetime_from_epoch(epoch)
