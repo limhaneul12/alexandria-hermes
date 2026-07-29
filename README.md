@@ -67,8 +67,12 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 Required local secret:
 
 ```bash
-export ALEXANDRIA_OPERATOR_API_KEY="replace-with-at-least-32-characters"
+export SERVICE_MCP_LOCAL_APPROVAL_KEY="replace-with-at-least-32-characters"
 ```
+
+Docker Compose passes the gitignored project `.env` into the backend container.
+Keep that file private and store deployment-specific secrets there rather than
+duplicating application defaults in `docker-compose.yml`.
 
 Useful Obsidian storage settings:
 
@@ -128,7 +132,7 @@ an MCP client directly to the URL above. No custom operator header is required.
 To enable Alexandria-issued OAuth for a public HTTPS endpoint, configure:
 
 ```bash
-export ALEXANDRIA_OPERATOR_API_KEY="$(openssl rand -base64 32)"
+export SERVICE_MCP_LOCAL_APPROVAL_KEY="$(openssl rand -base64 32)"
 export SERVICE_SECRET_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 export SERVICE_MCP_AUTH_MODE="local_oauth2"
 export SERVICE_MCP_OAUTH_ISSUER="https://your-mcp-host.example"
@@ -143,11 +147,17 @@ https://your-mcp-host.example/mcp
 
 The client discovers `/register`, `/authorize`, `/token`, `/revoke`, and the
 OAuth metadata automatically. During connection, Alexandria opens `/approve`;
-enter `ALEXANDRIA_OPERATOR_API_KEY` there to approve or deny the request. The
-operator key is used only for that browser approval and is not added to MCP
-backend REST calls. Authorization codes and access/refresh tokens are stored
-only as SHA-256 lookup hashes; dynamic client secrets are encrypted with the
-configured `SERVICE_SECRET_ENCRYPTION_KEY`.
+open `http://127.0.0.1:8000/connect` on the backend host, create one pairing
+code, and enter it on the approval page. Pairing codes are single-use and
+short-lived. Authorization codes and access/refresh tokens are stored only as
+SHA-256 lookup hashes; dynamic client secrets are encrypted with the configured
+`SERVICE_SECRET_ENCRYPTION_KEY`.
+
+Public hosts expose only the MCP/OAuth protocol routes and `/health/live`.
+Operator surfaces such as `/connect`, `/settings/connections`, `/operations`,
+API documentation, and ordinary backend REST routes remain localhost-only.
+Use `http://127.0.0.1:8000/connect` for local administration; do not publish the
+Hub itself as the MCP endpoint.
 
 For an external OAuth/JWKS issuer instead, use `SERVICE_MCP_AUTH_MODE=oauth2`
 and configure `SERVICE_MCP_OAUTH_ISSUER`, `SERVICE_MCP_OAUTH_AUDIENCE`, and
