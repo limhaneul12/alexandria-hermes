@@ -82,6 +82,9 @@ from app.platform.lifecycle.dependency_health import PlatformDependency
 from app.platform.lifecycle.state import LifecycleState
 from app.platform.logging.formatter.config import configure_logging
 from app.platform.middleware.database_session import install_database_session_middleware
+from app.platform.middleware.public_surface_access import (
+    install_public_surface_access_middleware,
+)
 from app.platform.middleware.request_logging import install_request_logging_middleware
 from app.shared.infrastructure.database import Database
 from app.shared.security.secret_cipher import SecretCipher
@@ -267,6 +270,7 @@ def create_app(app_config: AppConfig) -> FastAPI:
     )
 
     install_database_session_middleware(app, resolve_database=resolve_database)
+    install_public_surface_access_middleware(app)
     install_request_logging_middleware(app, logger=logger)
     install_health_routes(
         app,
