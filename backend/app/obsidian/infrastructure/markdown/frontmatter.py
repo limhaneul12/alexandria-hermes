@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
 
-from app.shared.types.extra_types import JSONObject, JSONValue
+from app.shared.types.extra_types import JSONObject, JSONPrimitive, JSONValue
 
 FRONTMATTER_DELIMITER = "---"
-type FrontmatterValue = str | tuple[str, ...] | None
-type MutableFrontmatterValue = str | list[str] | None
+type FrontmatterScalar = str | int | float | bool | None
+type FrontmatterValue = FrontmatterScalar | tuple[FrontmatterScalar, ...]
+type MutableFrontmatterValue = FrontmatterScalar | list[FrontmatterScalar]
+
+_INTEGER_SCALAR = re.compile(r"[-+]?(?:0|[1-9][0-9]*)")
+_FLOAT_SCALAR = re.compile(
+    r"[-+]?(?:(?:0|[1-9][0-9]*)\.[0-9]+|(?:0|[1-9][0-9]*)[eE][-+]?[0-9]+)"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +177,7 @@ def frontmatter_list(
     """
     value = frontmatter.get(key)
     if isinstance(value, tuple):
-        return list(value)
+        return [item for item in value if isinstance(item, str)]
     if isinstance(value, str) and value:
         return [value]
     return []
@@ -213,7 +220,7 @@ def _parse_frontmatter_lines(
             raw_item = stripped.removeprefix("-").strip()
             current = frontmatter.get(active_list_key)
             if isinstance(current, list):
-                current.append(_parse_scalar(raw_item) or "")
+                current.append(_parse_scalar(raw_item))
             continue
         if line != line.lstrip():
             continue
@@ -237,48 +244,55 @@ def _parse_frontmatter_lines(
     return frontmatter
 
 
-def _parse_inline_list(value: str) -> list[str]:
+def _parse_inline_list(value: str) -> list[FrontmatterScalar]:
     inner = value[1:-1].strip()
     if not inner:
         return []
-    return [
-        item
-        for raw in inner.split(",")
-        if (item := (_parse_scalar(raw.strip()) or "").strip())
-    ]
+    return [_parse_scalar(raw.strip()) for raw in inner.split(",")]
 
 
-def _parse_scalar(value: str) -> str | None:
-    if value in {"", "null", "Null", "NULL", "~"}:
-        return None
+def _parse_scalar(value: str) -> FrontmatterScalar:
     if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
         return value[1:-1].replace("''", "'")
     if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
         return value[1:-1]
+    lowered = value.lower()
+    if value == "~" or lowered == "null" or not value:
+        return None
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if _INTEGER_SCALAR.fullmatch(value):
+        return int(value)
+    if _FLOAT_SCALAR.fullmatch(value):
+        return float(value)
     return value
 
 
 def _render_frontmatter_value(key: str, value: JSONValue) -> list[str]:
-    if isinstance(value, list):
-        return [f"{key}:", *[f"  - {_yaml_scalar(str(item))}" for item in value]]
-    return [f"{key}: {_yaml_scalar(_string_value(value))}"]
+    if isinstance(value, list | tuple):
+        if not value:
+            return [f"{key}: []"]
+        return [f"{key}:", *[f"  - {_yaml_value(item)}" for item in value]]
+    return [f"{key}: {_yaml_value(value)}"]
 
 
-def _string_value(value: JSONValue) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int | float):
-        return str(value)
-    if isinstance(value, str):
-        return value
-    return str(value)
+def _yaml_value(value: JSONValue) -> str:
+    if value is None or isinstance(value, str | int | float | bool | datetime):
+        return _yaml_scalar(value)
+    return _yaml_scalar(str(value))
 
 
-def _yaml_scalar(value: str | None) -> str:
+def _yaml_scalar(value: JSONPrimitive) -> str:
     if value is None:
         return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, datetime):
+        return _yaml_scalar(timestamp_text(value))
+    if isinstance(value, int | float):
+        return str(value)
     if _can_render_plain(value):
         return value
     escaped = value.replace("'", "''")
@@ -288,8 +302,10 @@ def _yaml_scalar(value: str | None) -> str:
 def _can_render_plain(value: str) -> bool:
     if not value:
         return False
-    if value in {"true", "false", "null"}:
-        return True
+    if value == "~" or value.lower() in {"true", "false", "null"}:
+        return False
+    if _INTEGER_SCALAR.fullmatch(value) or _FLOAT_SCALAR.fullmatch(value):
+        return False
     blocked = {":", "#", "[", "]", "{", "}", "\n", "'", '"'}
     if any(character in value for character in blocked):
         return False

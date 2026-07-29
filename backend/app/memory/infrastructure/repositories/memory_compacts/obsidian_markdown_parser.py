@@ -24,6 +24,9 @@ from app.shared.serialization.orjson_codec import loads_json
 from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.types.types_convert_utils import aware_utc_datetime
 
+type CompactFrontmatterValue = str | bool | tuple[str, ...] | None
+type MutableCompactFrontmatterValue = str | bool | list[str] | None
+
 
 def read_compact_file(path: Path) -> MemoryCompact | None:
     """Read one Obsidian note when it is an Alexandria Memory Compact.
@@ -43,7 +46,7 @@ def read_compact_file(path: Path) -> MemoryCompact | None:
     return _compact_from_frontmatter(frontmatter, body)
 
 
-def _read_frontmatter(text: str) -> tuple[dict[str, str | None], str]:
+def _read_frontmatter(text: str) -> tuple[dict[str, CompactFrontmatterValue], str]:
     lines = text.splitlines()
     if not lines or lines[0].strip() != FRONTMATTER_DELIMITER:
         return {}, text
@@ -55,18 +58,42 @@ def _read_frontmatter(text: str) -> tuple[dict[str, str | None], str]:
         )
     except StopIteration:
         return {}, text
-    frontmatter: dict[str, str | None] = {}
+    mutable_frontmatter: dict[str, MutableCompactFrontmatterValue] = {}
+    active_list_key: str | None = None
     for line in lines[1:end_index]:
-        if not line.strip() or line.lstrip().startswith("#") or ":" not in line:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if active_list_key is not None and stripped.startswith("-"):
+            current = mutable_frontmatter.get(active_list_key)
+            if isinstance(current, list):
+                item = _parse_yaml_scalar(stripped.removeprefix("-").strip())
+                if isinstance(item, str):
+                    current.append(item)
+            continue
+        active_list_key = None
+        if line != line.lstrip() or ":" not in line:
             continue
         key, raw_value = line.split(":", 1)
-        frontmatter[key.strip()] = _parse_yaml_scalar(raw_value.strip())
+        key = key.strip()
+        value = raw_value.strip()
+        if not key:
+            continue
+        if value == "":
+            mutable_frontmatter[key] = []
+            active_list_key = key
+        else:
+            mutable_frontmatter[key] = _parse_yaml_value(value)
+    frontmatter = {
+        key: tuple(value) if isinstance(value, list) else value
+        for key, value in mutable_frontmatter.items()
+    }
     body = "\n".join(lines[end_index + 1 :])
     return frontmatter, body
 
 
 def _compact_from_frontmatter(
-    frontmatter: dict[str, str | None], body: str
+    frontmatter: dict[str, CompactFrontmatterValue], body: str
 ) -> MemoryCompact | None:
     try:
         compact_id = _required_text(frontmatter, "id")
@@ -86,21 +113,29 @@ def _compact_from_frontmatter(
         )
         return MemoryCompact(
             id=compact_id,
-            project=frontmatter.get("project"),
+            project=_frontmatter_text(frontmatter, "project"),
             covered_from=covered_from,
             covered_to=covered_to,
             markdown_body=body.rstrip("\n"),
             status=status,
             source_refs=_source_refs_from_json(
-                frontmatter.get("source_refs"), compact_id=compact_id
+                _frontmatter_text(frontmatter, "source_refs"), compact_id=compact_id
             ),
             created_at=created_at,
             updated_at=updated_at,
-            archived_at=_optional_datetime(frontmatter.get("archived_at")),
-            review_verdict=_optional_review_verdict(frontmatter.get("review_verdict")),
-            review_score=_optional_int(frontmatter.get("review_score")),
-            review_max_score=_optional_int(frontmatter.get("review_max_score")),
-            reviewed_at=_optional_datetime(frontmatter.get("reviewed_at")),
+            archived_at=_optional_datetime(
+                _frontmatter_text(frontmatter, "archived_at")
+            ),
+            review_verdict=_optional_review_verdict(
+                _frontmatter_text(frontmatter, "review_verdict")
+            ),
+            review_score=_optional_int(_frontmatter_text(frontmatter, "review_score")),
+            review_max_score=_optional_int(
+                _frontmatter_text(frontmatter, "review_max_score")
+            ),
+            reviewed_at=_optional_datetime(
+                _frontmatter_text(frontmatter, "reviewed_at")
+            ),
             metadata_warnings=(
                 ("memory_compact_timestamp_missing",) if updated_at_missing else ()
             ),
@@ -139,11 +174,18 @@ def _source_refs_from_json(
     return tuple(refs)
 
 
-def _required_text(frontmatter: dict[str, str | None], key: str) -> str:
+def _required_text(frontmatter: dict[str, CompactFrontmatterValue], key: str) -> str:
     value = frontmatter[key]
-    if value is None or not value:
+    if not isinstance(value, str) or not value:
         raise ValueError(f"Missing Memory Compact frontmatter: {key}")
     return value
+
+
+def _frontmatter_text(
+    frontmatter: dict[str, CompactFrontmatterValue], key: str
+) -> str | None:
+    value = frontmatter.get(key)
+    return value if isinstance(value, str) else None
 
 
 def _optional_string(value: JSONValue | None) -> str | None:
@@ -153,21 +195,21 @@ def _optional_string(value: JSONValue | None) -> str | None:
 
 
 def _status_from_frontmatter(
-    frontmatter: dict[str, str | None],
+    frontmatter: dict[str, CompactFrontmatterValue],
 ) -> MemoryCompactStatus:
     value = _required_text(frontmatter, "status")
     return MemoryCompactStatus(value.strip().upper())
 
 
 def _datetime_from_frontmatter(
-    frontmatter: dict[str, str | None],
+    frontmatter: dict[str, CompactFrontmatterValue],
     keys: tuple[str, ...],
     *,
     fallback: datetime | None = None,
 ) -> datetime:
     for key in keys:
         value = frontmatter.get(key)
-        if value:
+        if isinstance(value, str) and value:
             return _parse_datetime(value)
     if fallback is not None:
         return fallback
@@ -197,9 +239,28 @@ def _parse_datetime(value: str) -> datetime:
     return aware_utc_datetime(datetime.fromisoformat(value.replace("Z", "+00:00")))
 
 
-def _parse_yaml_scalar(value: str) -> str | None:
+def _parse_yaml_value(value: str) -> MutableCompactFrontmatterValue:
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        if not inner.startswith(("{", "[")):
+            return [
+                item
+                for raw_item in inner.split(",")
+                if isinstance(item := _parse_yaml_scalar(raw_item.strip()), str)
+                and item
+            ]
+    return _parse_yaml_scalar(value)
+
+
+def _parse_yaml_scalar(value: str) -> str | bool | None:
     if value in {"", "null", "Null", "NULL", "~"}:
         return None
+    if value in {"true", "True", "TRUE"}:
+        return True
+    if value in {"false", "False", "FALSE"}:
+        return False
     if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
         return value[1:-1].replace("''", "'")
     if len(value) >= 2 and value[0] == '"' and value[-1] == '"':

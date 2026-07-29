@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from app.memory.domain.entities.context_read_models import RagDependencyHealth
 from app.memory.domain.entities.memory_reconciliation_diagnostics import (
@@ -30,6 +30,18 @@ class ObsidianReadinessService(Protocol):
 
         Returns:
             Obsidian vault/index status snapshot.
+        """
+
+
+@runtime_checkable
+class ObsidianDataIntegrityService(Protocol):
+    """Managed-source boundary used by integrity diagnostics."""
+
+    async def managed_markdown_paths(self) -> list[str]:
+        """Return every managed Markdown path, including invalid notes.
+
+        Returns:
+            Vault-relative managed Markdown paths.
         """
 
 

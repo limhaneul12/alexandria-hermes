@@ -6,11 +6,15 @@ from datetime import UTC, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.operations.application.operational_data_integrity_service import (
+    OperationalDataIntegrityService,
+)
 from app.operations.application.operational_database_probe import (
     OperationalDatabaseProbe,
 )
 from app.operations.application.operational_readiness_contracts import (
     ContextReadinessService,
+    ObsidianDataIntegrityService,
     ObsidianReadinessService,
     ReconciliationReadinessService,
 )
@@ -26,6 +30,9 @@ from app.operations.application.operational_readiness_policy import (
 from app.operations.application.operational_recovery_history import (
     _active_recovery_run_id,
     _last_successful_recovery_run_id,
+)
+from app.operations.domain.entities.operational_data_integrity import (
+    unchecked_data_integrity_snapshot,
 )
 from app.operations.domain.entities.operational_readiness import (
     OperationalReadinessSnapshot,
@@ -82,6 +89,12 @@ class OperationalReadinessService:
         started = datetime.now(UTC)
         database = await self._database_probe.snapshot()
         vault_status = await self._obsidian_service.status()
+        if isinstance(self._obsidian_service, ObsidianDataIntegrityService):
+            data_integrity = await OperationalDataIntegrityService(
+                self._obsidian_service
+            ).snapshot(vault_status)
+        else:
+            data_integrity = unchecked_data_integrity_snapshot()
         rag_health = await self._context_service.rag_health_with_index_status()
         vault = _vault_snapshot(vault_status)
         rag = _rag_snapshot(rag_health)
@@ -140,4 +153,5 @@ class OperationalReadinessService:
             warnings=tuple(warnings),
             blockers=tuple(blockers),
             next_actions=tuple(_next_actions(warnings)),
+            data_integrity=data_integrity,
         )

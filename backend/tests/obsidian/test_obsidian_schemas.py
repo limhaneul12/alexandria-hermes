@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 from app.obsidian.interface.schemas.obsidian.obsidian_librarian_workflow_schema import (
     ObsidianLibrarianAskRequest,
@@ -10,6 +11,7 @@ from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
     ObsidianSaveNoteRequest,
     ObsidianSearchRequest,
 )
+from pydantic import ValidationError
 
 
 def test_obsidian_request_schemas_restore_enum_contracts() -> None:
@@ -45,3 +47,54 @@ def test_obsidian_librarian_request_accepts_agent_type_aliases() -> None:
         AlexandriaNoteType.CONTEXT,
         AlexandriaNoteType.MEMORY_COMPACT,
     )
+
+
+def test_obsidian_save_schema_normalizes_metadata_at_http_boundary() -> None:
+    """HTTP saves should produce typed, canonical metadata before the service."""
+    request = ObsidianSaveNoteRequest(
+        title="Metadata Integrity",
+        body="# Metadata Integrity",
+        alexandria_type="context",
+        tags=" Evidence Intelligence ",
+        frontmatter={
+            "artifact_refs": ("artifact-1", "artifact-1", "artifact-2"),
+            "evidence_refs": ("evidence-1", "evidence-2"),
+            "source_of_truth": "TrUe",
+        },
+    )
+
+    command = request.to_command()
+
+    assert command.tags == ("Evidence Intelligence",)
+    assert command.frontmatter["artifact_refs"] == ["artifact-1", "artifact-2"]
+    assert command.frontmatter["evidence_refs"] == ["evidence-1", "evidence-2"]
+    assert command.frontmatter["source_of_truth"] is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["('evidence-1', 'evidence-2')", "()", '["evidence-1"]'],
+)
+def test_obsidian_save_schema_rejects_legacy_collection_repr(value: str) -> None:
+    """HTTP saves must reject collection repr strings after migration."""
+    with pytest.raises(ValidationError):
+        ObsidianSaveNoteRequest(
+            title="Metadata Integrity",
+            body="# Metadata Integrity",
+            alexandria_type="context",
+            frontmatter={"evidence_refs": value},
+        )
+
+
+@pytest.mark.parametrize("value", ["yes", "1", 1])
+def test_obsidian_save_schema_rejects_ambiguous_boolean_metadata(
+    value: object,
+) -> None:
+    """HTTP saves must not use permissive truthy coercion for Boolean fields."""
+    with pytest.raises(ValidationError):
+        ObsidianSaveNoteRequest(
+            title="Metadata Integrity",
+            body="# Metadata Integrity",
+            alexandria_type="context",
+            frontmatter={"source_of_truth": value},
+        )

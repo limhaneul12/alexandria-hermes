@@ -50,7 +50,7 @@ def register_obsidian_note_tools(
         note_id: str | None = None,
         path: str | None = None,
         project: str | None = None,
-        tags: list[str] | None = None,
+        tags: list[str] | str | None = None,
         status: str = "active",
         source: str = "mcp",
         frontmatter: dict[str, JSONValue] | None = None,

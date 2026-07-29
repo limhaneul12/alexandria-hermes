@@ -31,7 +31,10 @@ router = APIRouter(prefix="/operations", tags=["operations"])
     response_model=OperationalReadinessSnapshotResponse,
     status_code=status.HTTP_200_OK,
     summary="Get operational readiness",
-    description="Return read-only database, vault, and RAG readiness diagnostics.",
+    description=(
+        "Return read-only database, vault, and RAG readiness plus a separate "
+        "non-blocking canonical data-integrity status."
+    ),
 )
 @inject
 async def operational_readiness(

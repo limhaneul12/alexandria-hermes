@@ -9,6 +9,11 @@ from app.obsidian.interface.schemas.obsidian.obsidian_index_error_repair_schema 
     ObsidianIndexErrorRepairPlanResponse,
     ObsidianIndexErrorRepairReportResponse,
 )
+from app.obsidian.interface.schemas.obsidian.obsidian_legacy_metadata_repair_schema import (
+    ObsidianLegacyMetadataRepairApplyRequest,
+    ObsidianLegacyMetadataRepairPlanResponse,
+    ObsidianLegacyMetadataRepairReportResponse,
+)
 from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
     ObsidianNoteResponse,
     ObsidianReindexResponse,
@@ -162,3 +167,65 @@ async def apply_obsidian_index_error_repairs(
         expected_plan_hash=request.expected_plan_hash
     )
     return ObsidianIndexErrorRepairReportResponse.from_entity(report)
+
+
+@router.post(
+    "/metadata/legacy-repair-plan",
+    response_model=ObsidianLegacyMetadataRepairPlanResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Plan legacy metadata repairs",
+    description=(
+        "Dry-run managed Markdown for tuple-repr collections, string Booleans, "
+        "and unrecoverable redacted URLs without changing source files."
+    ),
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def plan_obsidian_legacy_metadata_repairs(
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianLegacyMetadataRepairPlanResponse:
+    """Return a non-mutating, source-hash-bound metadata repair plan.
+
+    Args:
+        service: Obsidian application facade.
+
+    Returns:
+        HTTP repair-plan response.
+    """
+    plan = await service.plan_legacy_metadata_repairs()
+    return ObsidianLegacyMetadataRepairPlanResponse.from_entity(plan)
+
+
+@router.post(
+    "/metadata/legacy-repair",
+    response_model=ObsidianLegacyMetadataRepairReportResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Apply legacy metadata repairs",
+    description=(
+        "Apply only an explicitly accepted plan after verified backups, then "
+        "reindex changed documents and report before/after content hashes."
+    ),
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def apply_obsidian_legacy_metadata_repairs(
+    request: ObsidianLegacyMetadataRepairApplyRequest,
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianLegacyMetadataRepairReportResponse:
+    """Apply the accepted repair plan and return per-document evidence.
+
+    Args:
+        request: Explicitly accepted repair plan hash.
+        service: Obsidian application facade.
+
+    Returns:
+        HTTP repair report.
+    """
+    report = await service.apply_legacy_metadata_repairs(
+        expected_plan_hash=request.expected_plan_hash
+    )
+    return ObsidianLegacyMetadataRepairReportResponse.from_entity(report)

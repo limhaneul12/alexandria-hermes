@@ -1557,7 +1557,7 @@ def test_obsidian_librarian_vault_inventory_and_path_search(
 ) -> None:
     """Vault operation inventory should read managed notes without FTS dependency."""
 
-    async def scenario() -> tuple[list[str], list[str]]:
+    async def scenario() -> tuple[list[str], list[str], list[str]]:
         database, session, service = await _service(tmp_path)
         try:
             await service.save_note(
@@ -1576,6 +1576,16 @@ def test_obsidian_librarian_vault_inventory_and_path_search(
             inventory = await service.inventory_vault(
                 ObsidianVaultInventoryRequest(scope_path="Alexandria/Contexts/Projects")
             )
+            invalid_path = (
+                tmp_path
+                / "vault"
+                / "Alexandria"
+                / "Contexts"
+                / "Projects"
+                / "Invalid.md"
+            )
+            invalid_path.write_text("# Missing frontmatter\n", encoding="utf-8")
+            managed_paths = await service.managed_markdown_paths()
             matches = await service.search_vault_paths(
                 query="Loose Project",
                 scope_path="Alexandria/Contexts/Projects",
@@ -1586,12 +1596,17 @@ def test_obsidian_librarian_vault_inventory_and_path_search(
         return (
             [item.relative_path for item in inventory],
             [item.note_id for item in matches],
+            managed_paths,
         )
 
-    paths, matches = anyio.run(scenario)
+    paths, matches, managed_paths = anyio.run(scenario)
 
     assert paths == ["Alexandria/Contexts/Projects/Loose Project Context.md"]
     assert matches == ["ctx_loose_project_context"]
+    assert managed_paths == [
+        "Alexandria/Contexts/Projects/Invalid.md",
+        "Alexandria/Contexts/Projects/Loose Project Context.md",
+    ]
 
 
 def test_obsidian_librarian_vault_inventory_accepts_implementation_history(

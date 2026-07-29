@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from app.memory.domain.event_enum.context_enums import ContextKind
+from app.obsidian.application.notes.frontmatter_metadata_normalization import (
+    normalize_string_collection,
+)
 from app.obsidian.domain.event_enum.obsidian_enums import (
     ObsidianContextLifecycleStatus,
 )
@@ -123,18 +126,12 @@ def reference_tuple(value: JSONValue) -> tuple[str, ...]:
     Raises:
         ValueError: If the collection or an item has an invalid type.
     """
-    if value is None:
-        return ()
-    if not isinstance(value, list | tuple):
-        raise ValueError("provenance references must be a string sequence")
-    references: list[str] = []
-    for item in value:
-        if not isinstance(item, str):
-            raise ValueError("provenance references must contain strings")
-        text = item.strip()
-        if text:
-            references.append(text)
-    return tuple(references)
+    try:
+        return tuple(normalize_string_collection(value))
+    except ValueError as exc:
+        raise ValueError(
+            "provenance references must be a flat string collection"
+        ) from exc
 
 
 def lifecycle_status_value(

@@ -7,6 +7,7 @@ from inspect import iscoroutinefunction
 
 import anyio
 import httpx
+import pytest
 from app.main import app as default_app, create_app
 from app.mcp_server.backend_api_client import (
     AlexandriaApiClient,
@@ -849,6 +850,61 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
     assert ask_body["delegate_to_librarian"] is True
     assert ask_body["provider_id"] == "codex-oauth"
     assert ask_body["profile_id"] == "research-critic"
+
+
+def test_mcp_save_note_normalizes_collection_input_before_http_forwarding() -> None:
+    """MCP saves should forward canonical arrays instead of repr strings."""
+    client, calls = _client()
+
+    anyio.run(
+        alexandria_save_note,
+        client,
+        "Metadata Integrity",
+        "# Metadata Integrity",
+        "context",
+        None,
+        None,
+        "Evidence Intelligence",
+        " Evidence Intelligence ",
+        "active",
+        "mcp",
+        {
+            "artifact_refs": ("artifact-1", "artifact-2"),
+            "evidence_refs": (),
+            "source_of_truth": "TRUE",
+        },
+    )
+
+    request_body = loads_json(calls[0].content or b"{}")
+    assert request_body["tags"] == ["Evidence Intelligence"]
+    assert request_body["frontmatter"] == {
+        "artifact_refs": ["artifact-1", "artifact-2"],
+        "evidence_refs": [],
+        "source_of_truth": True,
+    }
+
+
+def test_mcp_save_note_rejects_legacy_collection_repr() -> None:
+    """MCP saves must not reintroduce migrated repr strings."""
+    client, calls = _client()
+
+    with pytest.raises(ValueError, match="legacy"):
+        anyio.run(
+            alexandria_save_note,
+            client,
+            "Metadata Integrity",
+            "# Metadata Integrity",
+            "context",
+            None,
+            None,
+            "Evidence Intelligence",
+            "('Evidence Intelligence', 'Market')",
+            "active",
+            "mcp",
+            None,
+        )
+
+    assert calls == []
 
 
 def test_mcp_librarian_review_apply_requires_confirmation_when_plan_has_moves() -> None:

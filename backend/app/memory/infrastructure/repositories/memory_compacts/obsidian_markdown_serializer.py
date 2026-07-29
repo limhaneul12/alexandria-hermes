@@ -16,6 +16,8 @@ from app.shared.serialization.orjson_codec import dumps_json
 from app.shared.types.extra_types import JSONValue
 from app.shared.types.types_convert_utils import aware_utc_datetime
 
+type CompactFrontmatterValue = str | bool | tuple[str, ...] | None
+
 
 def serialize_compact(compact: MemoryCompact) -> str:
     """Serialize one Memory Compact entity into an Obsidian Markdown note.
@@ -38,7 +40,7 @@ def serialize_compact(compact: MemoryCompact) -> str:
         }
         for source_ref in compact.source_refs
     ]
-    frontmatter = {
+    frontmatter: dict[str, CompactFrontmatterValue] = {
         "alexandria_type": ALEXANDRIA_MEMORY_COMPACT_TYPE,
         "id": compact.id,
         "tags": DEFAULT_MEMORY_COMPACT_TAGS,
@@ -77,10 +79,18 @@ def _isoformat(value: datetime) -> str:
     return aware_utc_datetime(value).isoformat().replace("+00:00", "Z")
 
 
-def _yaml_scalar(value: str | None) -> str:
+def _yaml_scalar(value: CompactFrontmatterValue) -> str:
     if value is None:
         return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, tuple):
+        return f"[{', '.join(_quoted_yaml_string(item) for item in value)}]"
     if value.startswith("[") and value.endswith("]"):
         return value
+    return _quoted_yaml_string(value)
+
+
+def _quoted_yaml_string(value: str) -> str:
     escaped = value.replace("'", "''")
     return f"'{escaped}'"

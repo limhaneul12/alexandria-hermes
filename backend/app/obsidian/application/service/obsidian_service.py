@@ -14,6 +14,9 @@ from app.obsidian.application.service.obsidian_context_lifecycle_service import 
 from app.obsidian.application.service.obsidian_index_error_repair_service import (
     ObsidianIndexErrorRepairService,
 )
+from app.obsidian.application.service.obsidian_legacy_metadata_repair_service import (
+    ObsidianLegacyMetadataRepairService,
+)
 from app.obsidian.application.service.obsidian_librarian_conversation_service import (
     ObsidianLibrarianConversationService,
 )
@@ -46,6 +49,10 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
 from app.obsidian.domain.entities.obsidian_index_error_repair import (
     ObsidianIndexErrorRepairPlan,
     ObsidianIndexErrorRepairReport,
+)
+from app.obsidian.domain.entities.obsidian_legacy_metadata_repair import (
+    ObsidianLegacyMetadataRepairPlan,
+    ObsidianLegacyMetadataRepairReport,
 )
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianLibrarianReviewQueueItem,
@@ -124,6 +131,10 @@ class ObsidianService:
             vault_config_store=self._vault_config_store,
             reindex=self.reindex,
             status=self.status,
+        )
+        self._legacy_metadata_repair_service = ObsidianLegacyMetadataRepairService(
+            vault_config_store=self._vault_config_store,
+            reindex=self.reindex,
         )
         self._note_service = ObsidianNoteService(
             repository=self._repository,
@@ -223,6 +234,33 @@ class ObsidianService:
             expected_plan_hash=expected_plan_hash
         )
 
+    async def plan_legacy_metadata_repairs(
+        self,
+    ) -> ObsidianLegacyMetadataRepairPlan:
+        """Scan managed Markdown for repairable legacy metadata.
+
+        Returns:
+            Non-mutating metadata repair plan.
+        """
+        return await self._legacy_metadata_repair_service.plan()
+
+    async def apply_legacy_metadata_repairs(
+        self,
+        *,
+        expected_plan_hash: str,
+    ) -> ObsidianLegacyMetadataRepairReport:
+        """Apply an unchanged, backup-first legacy metadata repair plan.
+
+        Args:
+            expected_plan_hash: Hash of the inspected plan accepted for apply.
+
+        Returns:
+            Applied repair report with content-hash evidence.
+        """
+        return await self._legacy_metadata_repair_service.apply(
+            expected_plan_hash=expected_plan_hash
+        )
+
     async def inventory_vault(
         self,
         request: ObsidianVaultInventoryRequest,
@@ -236,6 +274,14 @@ class ObsidianService:
             Managed note inventory items sorted by path.
         """
         return await self._vault_inventory_service.inventory(request)
+
+    async def managed_markdown_paths(self) -> list[str]:
+        """List every managed Markdown source regardless of index validity.
+
+        Returns:
+            Vault-relative managed Markdown paths.
+        """
+        return await self._vault_inventory_service.managed_markdown_paths()
 
     async def search_vault_paths(
         self,

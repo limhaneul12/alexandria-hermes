@@ -9,6 +9,10 @@ from app.mcp_server.tools.backend_gateway_policy import (
     _items_or_empty,
     _path_segment,
 )
+from app.obsidian.application.notes.frontmatter_metadata_normalization import (
+    normalize_known_frontmatter_metadata,
+    normalize_string_collection,
+)
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 
@@ -106,7 +110,7 @@ async def alexandria_save_note(
     note_id: str | None = None,
     path: str | None = None,
     project: str | None = None,
-    tags: list[str] | None = None,
+    tags: list[str] | str | None = None,
     status: str = "active",
     source: str = "mcp",
     frontmatter: JSONObject | None = None,
@@ -121,7 +125,7 @@ async def alexandria_save_note(
         note_id: Optional stable id.
         path: Optional vault-relative path.
         project: Optional project.
-        tags: Optional tags.
+        tags: Optional tags as an array or one string.
         status: Frontmatter lifecycle status.
         source: Frontmatter source marker.
         frontmatter: Optional extra frontmatter object.
@@ -129,14 +133,16 @@ async def alexandria_save_note(
     Returns:
         Backend saved note response.
     """
+    normalized_frontmatter = {} if frontmatter is None else dict(frontmatter)
+    normalize_known_frontmatter_metadata(normalized_frontmatter)
     payload: JSONObject = {
         "title": title,
         "body": body,
         "alexandria_type": alexandria_type,
-        "tags": _items_or_empty(tags),
+        "tags": normalize_string_collection(tags),
         "status": status,
         "source": source,
-        "frontmatter": {} if frontmatter is None else dict(frontmatter),
+        "frontmatter": normalized_frontmatter,
     }
     if note_id is not None:
         payload["id"] = note_id

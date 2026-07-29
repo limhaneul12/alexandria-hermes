@@ -8,12 +8,19 @@ from app.memory.interface.schemas.context.context_mapping import source_status_p
 from app.memory.interface.schemas.context.context_schema import (
     ContextEmbeddingSourceStatusResponse,
 )
+from app.operations.domain.entities.operational_data_integrity import (
+    OperationalDataIntegritySnapshot,
+)
 from app.operations.domain.entities.operational_readiness import (
     OperationalDatabaseSnapshot,
     OperationalRagSnapshot,
     OperationalReadinessSnapshot,
     OperationalReconciliationSnapshot,
     OperationalVaultSnapshot,
+)
+from app.operations.domain.event_enum.operational_data_integrity_enums import (
+    OperationalDataIntegrityStatus,
+    OperationalDataIntegrityWarningCode,
 )
 from app.operations.domain.event_enum.operational_readiness_enums import (
     OperationalReadinessStatus,
@@ -188,6 +195,52 @@ class OperationalReconciliationSnapshotResponse(StrictSchemaModel):
         )
 
 
+class OperationalDataIntegrityWarningResponse(StrictSchemaModel):
+    """One aggregated canonical-data warning."""
+
+    code: OperationalDataIntegrityWarningCode
+    count: int
+    note_paths: list[str] = Field(default_factory=list)
+    fields: list[str] = Field(default_factory=list)
+
+
+class OperationalDataIntegritySnapshotResponse(StrictSchemaModel):
+    """Canonical managed-note integrity independent of infrastructure."""
+
+    status: OperationalDataIntegrityStatus = OperationalDataIntegrityStatus.NOT_CHECKED
+    scanned_notes: int = 0
+    warnings: list[OperationalDataIntegrityWarningResponse] = Field(
+        default_factory=list
+    )
+
+    @classmethod
+    def from_entity(
+        cls,
+        snapshot: OperationalDataIntegritySnapshot,
+    ) -> OperationalDataIntegritySnapshotResponse:
+        """Map the internal integrity snapshot to the HTTP contract.
+
+        Args:
+            snapshot: Internal data-integrity diagnostic snapshot.
+
+        Returns:
+            HTTP data-integrity response.
+        """
+        return cls(
+            status=snapshot.status,
+            scanned_notes=snapshot.scanned_notes,
+            warnings=[
+                OperationalDataIntegrityWarningResponse(
+                    code=warning.code,
+                    count=warning.count,
+                    note_paths=list(warning.note_paths),
+                    fields=list(warning.fields),
+                )
+                for warning in snapshot.warnings
+            ],
+        )
+
+
 class OperationalReadinessSnapshotResponse(StrictSchemaModel):
     """Read-only operational readiness response."""
 
@@ -204,6 +257,9 @@ class OperationalReadinessSnapshotResponse(StrictSchemaModel):
     warnings: list[str] = Field(default_factory=list)
     blockers: list[str] = Field(default_factory=list)
     next_actions: list[str] = Field(default_factory=list)
+    data_integrity: OperationalDataIntegritySnapshotResponse = Field(
+        default_factory=OperationalDataIntegritySnapshotResponse
+    )
 
     @classmethod
     def from_entity(
@@ -234,4 +290,7 @@ class OperationalReadinessSnapshotResponse(StrictSchemaModel):
             warnings=list(snapshot.warnings),
             blockers=list(snapshot.blockers),
             next_actions=list(snapshot.next_actions),
+            data_integrity=OperationalDataIntegritySnapshotResponse.from_entity(
+                snapshot.data_integrity
+            ),
         )

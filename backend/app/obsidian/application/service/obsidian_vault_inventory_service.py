@@ -12,6 +12,7 @@ from app.obsidian.domain.entities.obsidian_note import ObsidianVaultInventoryIte
 from app.obsidian.infrastructure.markdown.paths import (
     NOTE_SUFFIX,
     resolve_note_path,
+    validate_discovered_note_path,
 )
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
@@ -52,13 +53,13 @@ class ObsidianVaultInventoryService:
         )
         if not scope.exists():
             return []
-        note_paths = (
-            [scope] if scope.is_file() else sorted(scope.rglob(NOTE_SUFFIX_GLOB))
-        )
         items: list[ObsidianVaultInventoryItem] = []
-        for path in note_paths:
-            if not path.is_file() or path.suffix != NOTE_SUFFIX:
-                continue
+        for discovered in _markdown_paths(scope):
+            path = validate_discovered_note_path(
+                config.vault_path,
+                config.alexandria_root,
+                discovered,
+            )
             relative_path = str(path.relative_to(config.vault_path))
             payload = note_index_from_path(
                 path,
@@ -81,6 +82,30 @@ class ObsidianVaultInventoryService:
                 )
             )
         return items
+
+    async def managed_markdown_paths(self) -> list[str]:
+        """List every managed Markdown source, including invalid notes.
+
+        Returns:
+            Vault-relative, path-confined Markdown source paths.
+        """
+        config = self._vault_config_store.current()
+        root = _scope_path(
+            vault_path=config.vault_path,
+            alexandria_root=config.alexandria_root,
+            scope_path=None,
+        )
+        if not root.exists():
+            return []
+        relative_paths: list[str] = []
+        for discovered in _markdown_paths(root):
+            path = validate_discovered_note_path(
+                config.vault_path,
+                config.alexandria_root,
+                discovered,
+            )
+            relative_paths.append(str(path.relative_to(config.vault_path)))
+        return relative_paths
 
     async def search_paths(
         self,
@@ -114,6 +139,13 @@ def _scope_path(
 ) -> Path:
     scope = alexandria_root if scope_path is None else scope_path
     return resolve_note_path(vault_path, scope)
+
+
+def _markdown_paths(scope: Path) -> list[Path]:
+    discovered = [scope] if scope.is_file() else sorted(scope.rglob(NOTE_SUFFIX_GLOB))
+    return [
+        path for path in discovered if path.is_file() and path.suffix == NOTE_SUFFIX
+    ]
 
 
 def _inventory_item_matches(

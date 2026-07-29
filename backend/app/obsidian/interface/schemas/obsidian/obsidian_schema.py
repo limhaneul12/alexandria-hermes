@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from app.obsidian.application.notes.frontmatter_metadata_normalization import (
+    normalize_known_frontmatter_metadata,
+    normalize_string_collection,
+)
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianSaveNote,
     ObsidianSearchQuery,
@@ -23,8 +27,8 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
 )
 from app.shared.schemas.common_schemas import StrictSchemaModel
 from app.shared.schemas.datetime_schemas import AwareTimestamp
-from app.shared.types.extra_types import JSONObject
-from pydantic import Field
+from app.shared.types.extra_types import JSONObject, JSONValue
+from pydantic import Field, field_validator
 
 
 class ObsidianStatusResponse(StrictSchemaModel):
@@ -178,6 +182,19 @@ class ObsidianSearchRequest(StrictSchemaModel):
     project: str | None = None
     tags: list[str] = Field(default_factory=list)
 
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: JSONValue) -> list[str]:
+        """Normalize tag filters without accepting nested or numeric values.
+
+        Args:
+            value: Raw tag filter input.
+
+        Returns:
+            Canonical ordered tag filters.
+        """
+        return normalize_string_collection(value)
+
     def to_query(self) -> ObsidianSearchQuery:
         """Convert to application search query.
 
@@ -284,6 +301,34 @@ class ObsidianSaveNoteRequest(StrictSchemaModel):
         max_length=64,
         pattern=r"^[0-9a-f]{64}$",
     )
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: JSONValue) -> list[str]:
+        """Normalize note tags at the external HTTP boundary.
+
+        Args:
+            value: Raw note tag input.
+
+        Returns:
+            Canonical ordered note tags.
+        """
+        return normalize_string_collection(value)
+
+    @field_validator("frontmatter", mode="before")
+    @classmethod
+    def normalize_frontmatter(cls, value: JSONObject) -> JSONObject:
+        """Normalize known typed metadata before building the internal command.
+
+        Args:
+            value: Raw JSON-compatible frontmatter payload.
+
+        Returns:
+            Copied frontmatter with canonical collection and Boolean values.
+        """
+        normalized = dict(value)
+        normalize_known_frontmatter_metadata(normalized)
+        return normalized
 
     def to_command(self) -> ObsidianSaveNote:
         """Convert request into application save command.

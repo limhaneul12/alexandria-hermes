@@ -9,7 +9,17 @@ from typing import cast
 
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
 from app.shared.utils.text_metrics import extract_word_tokens
-from sqlalchemy import Select, bindparam, column, delete, func, select, table, text
+from sqlalchemy import (
+    Select,
+    bindparam,
+    column,
+    delete,
+    exists,
+    func,
+    select,
+    table,
+    text,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.dml import Delete
 from sqlalchemy.sql.elements import ColumnElement
@@ -64,6 +74,7 @@ OBSIDIAN_FILES_TABLE = table(
     column("note_id"),
     column("index_status"),
     column("project"),
+    column("tags"),
     column("frontmatter_json"),
 )
 
@@ -227,9 +238,19 @@ def build_obsidian_fts_query(
         statement = statement.where(fts_table.c.project == bindparam("project"))
         parameters["project"] = project
     if tags:
-        tag_query = " ".join(tags)
-        statement = statement.where(fts_table.c.tags.like(bindparam("tag_query")))
-        parameters["tag_query"] = f"%{tag_query}%"
+        for index, tag in enumerate(tags):
+            parameter_name = f"required_tag_{index}"
+            tag_values = func.json_each(OBSIDIAN_FILES_TABLE.c.tags).table_valued(
+                "value"
+            )
+            statement = statement.where(
+                exists(
+                    select(1)
+                    .select_from(tag_values)
+                    .where(tag_values.c.value == bindparam(parameter_name))
+                )
+            )
+            parameters[parameter_name] = tag
     statement = statement.order_by(rank.asc()).limit(bindparam("limit"))
     return ObsidianFtsQuery(
         statement=cast(ObsidianFtsStatement, statement),

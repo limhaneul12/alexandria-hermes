@@ -7,6 +7,9 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.obsidian.application.notes.frontmatter_metadata_normalization import (
+    normalize_known_frontmatter_metadata,
+)
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianChunkIndex,
     ObsidianLibrarianAsk,
@@ -53,6 +56,7 @@ def frontmatter_for_save(
         frontmatter["project"] = payload.project
     if redaction_warnings:
         frontmatter["redaction_warnings"] = redaction_warnings
+    normalize_known_frontmatter_metadata(frontmatter)
     return frontmatter
 
 
