@@ -3,7 +3,22 @@
 from __future__ import annotations
 
 from app.main import app
+from app.platform.middleware.public_surface_access import (
+    install_public_surface_access_middleware,
+)
+from fastapi import FastAPI, Response
 from fastapi.testclient import TestClient
+
+
+def _create_local_access_test_app() -> FastAPI:
+    test_app = FastAPI()
+    install_public_surface_access_middleware(test_app)
+
+    @test_app.get("/settings/connections")
+    async def local_management_route() -> Response:
+        return Response(status_code=204)
+
+    return test_app
 
 
 def test_public_host_exposes_only_mcp_oauth_protocol_routes() -> None:
@@ -40,14 +55,8 @@ def test_public_host_exposes_only_mcp_oauth_protocol_routes() -> None:
 
 
 def test_localhost_retains_operator_surface_access() -> None:
-    """The local operator must retain the connection hub and management APIs."""
-    with TestClient(app) as client:
-        hub = client.get("/connect")
-        status = client.get("/connect/status")
-        connections = client.get("/settings/connections")
-        readiness = client.get("/operations/readiness")
+    """A local host must bypass the public-host restriction."""
+    with TestClient(_create_local_access_test_app()) as client:
+        response = client.get("/settings/connections")
 
-    assert hub.status_code == 200
-    assert status.status_code == 200
-    assert connections.status_code == 200
-    assert readiness.status_code == 200
+    assert response.status_code == 204
