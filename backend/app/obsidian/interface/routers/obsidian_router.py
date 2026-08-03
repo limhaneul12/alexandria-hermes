@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from app.obsidian.interface.routers.obsidian_graph_projection_router import (
+    router as graph_projection_router,
+)
 from app.obsidian.interface.routers.obsidian_librarian_router import (
     ask_obsidian_librarian,
     cancel_obsidian_librarian_workflow,
@@ -30,6 +33,7 @@ from fastapi import APIRouter
 router = APIRouter(prefix="/obsidian", tags=["obsidian"])
 router.include_router(vault_index_router)
 router.include_router(note_router)
+router.include_router(graph_projection_router)
 router.include_router(librarian_router)
 
 __all__ = [

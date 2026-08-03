@@ -55,6 +55,93 @@ Run the backend with Docker Compose:
 docker compose up --build
 ```
 
+Neo4j graph read-model support is optional and disabled by the default Compose
+profile. To start the backend plus local-only Neo4j for graph projection work,
+add `ALEXANDRIA_NEO4J_PASSWORD` with a private local value to the gitignored
+project `.env`, then enable the `graph` profile. Compose intentionally provides
+no password fallback and refuses to start the graph profile when the variable
+is absent:
+
+```bash
+docker compose --profile graph up --build
+```
+
+Stop the optional graph profile with:
+
+```bash
+docker compose --profile graph down
+```
+
+Neo4j is a rebuildable graph projection target, not canonical storage. Obsidian
+Markdown remains the human-editable source of truth, and SQLite remains the
+local search/index/cache plus operational state layer. SQLite `obsidian_edges`
+rows are only a source cache for explicit Neo4j projection rebuilds; graph
+evidence, lineage, traversal, and impact reads are Neo4j-only.
+
+The backend config selector `SERVICE_GRAPH_READ_MODEL` defaults to `disabled`
+and also accepts `neo4j`. Disabled mode does not create a driver, verify
+connectivity, open a session, or add graph-lane warnings to Context search
+responses. SQLite search and RAG remain available in disabled mode, but contain
+no graph evidence, and related-note reads return service unavailable rather
+than falling back to SQLite or reporting a misleading empty graph. To opt into
+the rebuildable projection adapter, store
+the connection values it consumes in the gitignored project `.env`:
+
+```dotenv
+ALEXANDRIA_NEO4J_PASSWORD=replace-with-a-private-local-password
+SERVICE_GRAPH_READ_MODEL=neo4j
+SERVICE_NEO4J_URI=bolt://neo4j:7687
+SERVICE_NEO4J_USERNAME=neo4j
+SERVICE_NEO4J_PASSWORD=replace-with-the-same-private-local-password
+SERVICE_NEO4J_DATABASE=neo4j
+```
+
+Keep the password in the gitignored project `.env`; never place it in tracked
+Compose or documentation files. The adapter owns one async driver for its
+application lifetime and creates a short-lived session for each explicit graph
+operation. It does not run connectivity checks during default startup or
+readiness, and no existing RAG path depends on it.
+
+After enabling the graph profile, make sure the SQLite schema is current, then
+rebuild the canonical Obsidian/SQLite index before rebuilding the optional Neo4j
+projection:
+
+```bash
+cd backend
+uv run alembic upgrade head
+curl -X POST http://127.0.0.1:8000/obsidian/index/rebuild
+curl -X POST http://127.0.0.1:8000/obsidian/graph/projection/rebuild
+curl http://127.0.0.1:8000/obsidian/graph/projection/status
+```
+
+The Neo4j projection reads from the SQLite note/edge cache produced by Obsidian
+reindexing. Running graph rebuild against a stale index can produce a technically
+`ready` projection from stale source rows, so keep the `reindex -> graph rebuild
+-> status` sequence together in local operations.
+
+Graph rebuild responses are concise by default: `issue_total` and
+`issue_counts` summarize non-fatal source diagnostics, while `errors` contains
+only operation failures. Missing or ambiguous link targets are skipped instead
+of being written into the active projection. Request a bounded sample only when
+investigating diagnostics:
+
+```bash
+curl -X POST \
+  'http://127.0.0.1:8000/obsidian/graph/projection/rebuild?include_issue_details=true&issue_limit=100'
+```
+
+Vault reindex, embedding rebuild/reindex, and graph projection rebuild share one
+fail-fast maintenance lane. A competing maintenance request returns HTTP `409`;
+retry it after the active operation finishes rather than running rebuilds in
+parallel.
+
+Neo4j stores the initially configured password in the `neo4j-data` named volume.
+If you later change `ALEXANDRIA_NEO4J_PASSWORD` in `.env`, the container may fail
+authentication against the existing volume. Either restore the previous local
+password, or intentionally reset only the rebuildable Neo4j projection volume and
+then run the reindex/rebuild sequence again. Do not delete the Obsidian vault or
+backend SQLite data when resetting the optional graph projection.
+
 Or run it locally from `backend/`:
 
 ```bash
@@ -352,7 +439,7 @@ If SQLite is deleted, Markdown can rebuild indexes/caches. Provider profiles, OA
 
 ## Graph edges, related notes, and workflows
 
-Reindex rebuilds an `obsidian_edges` cache from relation frontmatter and body wikilinks. Obsidian Markdown remains canonical; deleting SQLite and running reindex rebuilds the cache.
+Reindex rebuilds an `obsidian_edges` source cache from relation frontmatter and body wikilinks. Obsidian Markdown remains canonical; deleting SQLite and running reindex rebuilds the cache. This table does not serve graph traversal. Related-note traversal and graph evidence/lineage/impact reads use only the active Neo4j projection produced by the explicit graph rebuild endpoint. With `SERVICE_GRAPH_READ_MODEL=disabled`, SQLite search/RAG still works without graph evidence and related-note endpoints return `503 Service Unavailable`.
 
 HTTP/MCP additions include related-note retrieval and resumable LangGraph librarian workflows:
 

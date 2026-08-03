@@ -41,6 +41,7 @@ from .memory_context_exceptions import (
 )
 from .obsidian_exceptions import (
     ObsidianDomainError,
+    ObsidianGraphUnavailableError,
     ObsidianIndexWriteError,
     ObsidianNotFoundError,
     ObsidianValidationError,
@@ -79,6 +80,7 @@ __all__ = [
     "MemoryContextNotFoundError",
     "MemoryContextValidationError",
     "ObsidianDomainError",
+    "ObsidianGraphUnavailableError",
     "ObsidianIndexWriteError",
     "ObsidianNotFoundError",
     "ObsidianValidationError",

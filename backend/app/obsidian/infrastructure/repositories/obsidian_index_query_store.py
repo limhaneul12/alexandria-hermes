@@ -1,4 +1,4 @@
-"""Obsidian index read, search, duplicate, and graph query store."""
+"""Obsidian index read, search, and duplicate query store."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
 )
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianNote,
-    ObsidianRelatedNote,
     ObsidianSearchHit,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import (
@@ -16,14 +15,12 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
 )
 from app.obsidian.infrastructure.models.obsidian_index_models import (
     ObsidianChunkORM,
-    ObsidianEdgeORM,
     ObsidianFileORM,
 )
 from app.obsidian.infrastructure.repositories.obsidian_fts import (
     build_obsidian_fts_query,
 )
 from app.obsidian.infrastructure.repositories.obsidian_index_mapping import (
-    add_related_result,
     matches_tags,
     note_from_model,
     obsidian_excerpt,
@@ -37,7 +34,7 @@ from app.obsidian.infrastructure.repositories.obsidian_index_schema import (
 from app.shared.infrastructure.sqlite_fts_relevance import (
     sqlite_fts_rank_to_score,
 )
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -153,56 +150,6 @@ class ObsidianIndexQueryStore:
                 )
             )
         return hits
-
-    async def related_notes(
-        self,
-        *,
-        note_id: str,
-        limit: int,
-    ) -> list[ObsidianRelatedNote]:
-        """Return ranked related notes from indexed graph edges.
-
-        Args:
-            note_id: Source or target note id to expand.
-            limit: Maximum related notes.
-
-        Returns:
-            Ranked related-note results.
-        """
-        source = await self.get_by_id(note_id)
-        if source is None:
-            return []
-        results: dict[str, ObsidianRelatedNote] = {}
-        outgoing = await self._session.execute(
-            select(ObsidianEdgeORM, ObsidianFileORM)
-            .join(
-                ObsidianFileORM,
-                or_(
-                    ObsidianFileORM.note_id == ObsidianEdgeORM.target_note_id,
-                    ObsidianFileORM.relative_path == ObsidianEdgeORM.target_path,
-                ),
-            )
-            .where(ObsidianEdgeORM.source_note_id == note_id)
-        )
-        for edge, note_model in outgoing.all():
-            add_related_result(results, edge, note_model, direction="outgoing")
-        incoming = await self._session.execute(
-            select(ObsidianEdgeORM, ObsidianFileORM)
-            .join(
-                ObsidianFileORM,
-                ObsidianFileORM.note_id == ObsidianEdgeORM.source_note_id,
-            )
-            .where(
-                or_(
-                    ObsidianEdgeORM.target_note_id == note_id,
-                    ObsidianEdgeORM.target_path == source.relative_path,
-                )
-            )
-        )
-        for edge, note_model in incoming.all():
-            add_related_result(results, edge, note_model, direction="incoming")
-        ranked = sorted(results.values(), key=lambda item: item.score, reverse=True)
-        return ranked[:limit]
 
     async def count_by_status(self) -> tuple[int, int, int]:
         """Return indexed, stale, and error note counts.

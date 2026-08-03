@@ -10,13 +10,12 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
 )
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianNote,
-    ObsidianRelatedNote,
     ObsidianSearchHit,
 )
 
 
 class IObsidianIndexQueryRepository(ABC):
-    """Read, search, and expand graph relations from the Obsidian index."""
+    """Read and search the rebuildable SQLite Obsidian index."""
 
     @abstractmethod
     async def get_by_id(self, note_id: str) -> ObsidianNote | None:
@@ -63,23 +62,6 @@ class IObsidianIndexQueryRepository(ABC):
 
         Returns:
             Ranked search hits.
-        """
-
-    @abstractmethod
-    async def related_notes(
-        self,
-        *,
-        note_id: str,
-        limit: int,
-    ) -> list[ObsidianRelatedNote]:
-        """Return graph-related notes for one indexed note.
-
-        Args:
-            note_id: Source or target note id to expand.
-            limit: Maximum related notes.
-
-        Returns:
-            Ranked related-note results.
         """
 
     @abstractmethod

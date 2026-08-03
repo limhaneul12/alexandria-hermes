@@ -10,7 +10,6 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianIndexError,
     ObsidianNote,
-    ObsidianRelatedNote,
     ObsidianSearchHit,
 )
 from app.obsidian.infrastructure.repositories.obsidian_index_error_store import (
@@ -82,7 +81,7 @@ class ObsidianIndexWriteRepositoryDelegate:
 
 
 class ObsidianIndexQueryRepositoryDelegate:
-    """Delegate note, search, graph, and status queries."""
+    """Delegate note, search, and status queries."""
 
     _query_store: ObsidianIndexQueryStore
 
@@ -132,23 +131,6 @@ class ObsidianIndexQueryRepositoryDelegate:
             Ranked search hits.
         """
         return await self._query_store.search(query)
-
-    async def related_notes(
-        self,
-        *,
-        note_id: str,
-        limit: int,
-    ) -> list[ObsidianRelatedNote]:
-        """Return graph-related notes for one indexed note.
-
-        Args:
-            note_id: Source or target note id to expand.
-            limit: Maximum related notes.
-
-        Returns:
-            Ranked related-note results.
-        """
-        return await self._query_store.related_notes(note_id=note_id, limit=limit)
 
     async def count_by_status(self) -> tuple[int, int, int]:
         """Return indexed, stale, and error note counts.

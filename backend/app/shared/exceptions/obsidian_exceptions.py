@@ -21,3 +21,7 @@ class ObsidianWriteConflictError(ObsidianDomainError):
 
 class ObsidianIndexWriteError(ObsidianDomainError):
     """Raised when one rebuildable Obsidian index write fails."""
+
+
+class ObsidianGraphUnavailableError(ObsidianDomainError):
+    """Raised when a graph-only read is requested without a graph provider."""

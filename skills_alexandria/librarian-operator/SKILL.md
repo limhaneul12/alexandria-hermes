@@ -1,6 +1,6 @@
 ---
 name: librarian-operator
-description: Use when a task asks what Alexandria Librarian can do, how to use Librarian, or needs Librarian-backed Obsidian vault search, note-aware Q&A, vault curation, Memory Compact readiness, skill acquisition, or optional delegated librarian/provider guidance. Trigger on questions or actions involving Alexandria Librarian capabilities, librarian readiness, review queues, Obsidian side pane, skill acquisition, or search-first library operations.
+description: Use when a task asks what Alexandria Librarian can do, how to use Librarian, or needs Librarian-backed Obsidian vault search, graph-related note discovery, note-aware Q&A, vault curation, Memory Compact readiness, skill acquisition, or optional delegated librarian/provider guidance. Trigger on questions or actions involving Alexandria Librarian capabilities, librarian readiness, review queues, related notes, Obsidian side pane, skill acquisition, or search-first library operations.
 ---
 
 # Librarian Operator
@@ -36,6 +36,25 @@ Preferred MCP tools:
 - `alexandria_get_related_notes(note_id=... | path=...)`
 
 Use project, workspace, agent, or session scope when known. Do not broaden a missing specific identity to global.
+
+### Expand a search result through the graph
+
+Use graph traversal only after search identifies a relevant seed note:
+
+1. Check `GET /obsidian/graph/projection/status` or its MCP equivalent.
+2. Search the scoped library and select a stable note id/path.
+3. Call `alexandria_get_related_notes` for the seed.
+4. Inspect relationship direction/type and any lineage or impact signal.
+5. Read the related notes and cite their Markdown content before answering.
+
+Neo4j is an optional derived read model. It improves discovery but does not
+replace scoped FTS/vector/HYBRID search or Obsidian source citations. When the
+graph is disabled and related-note lookup returns 503, continue without graph
+evidence; never reconstruct the traversal from SQLite `obsidian_edges`.
+Projection status retains `last_run_issue_total` and counted issue codes. Treat
+missing/ambiguous link counts as non-fatal curation work: those targets are
+excluded from traversal until repaired. Request individual issue details only as
+a bounded diagnostic sample.
 
 ### Ask the Obsidian-aware Librarian
 
@@ -139,13 +158,21 @@ Allowed note types commonly used:
 - `librarian_brief`
 - `librarian_chat`
 - `job_plan`
+- `implementation_history`
 
 For updates to existing notes, prefer read-modify-write with content-hash conflict protection when the API exposes `expected_content_hash`. If a write conflict occurs, re-read, merge, and retry; do not blindly overwrite.
 
 After saves or vault moves, run or request reindex:
 
 - `alexandria_reindex_vault`
-- Then verify search/readback for the saved or moved item.
+- Run embedding soft rebuild when RAG reports stale or missing rows.
+- Rebuild `/obsidian/graph/projection/rebuild` when graph projection is enabled and note links or graph metadata changed.
+- Then verify search/readback and one related-note lookup for a known seed.
+
+Normal note search does not reindex the entire vault. Do not set `refresh=true`
+unless an explicit diagnostic refresh is needed. Run vault, embedding, and graph
+maintenance sequentially; an HTTP `409` means another maintenance operation is
+active, not that search should fall back to stale or alternate storage.
 
 ## Response pattern
 
@@ -158,3 +185,8 @@ Keep answers concrete:
 - list the MCP tool or CLI command;
 - say whether the step is read-only or mutating;
 - verify with readback, readiness, or search evidence before claiming completion.
+
+## Related Alexandria skills
+
+- [[Skills/Active/Alexandria Library]] — safe scoped recall and canonical write rules.
+- [[Skills/Active/Alexandria Operational Sync]] — reindex, embedding, and graph projection recovery.

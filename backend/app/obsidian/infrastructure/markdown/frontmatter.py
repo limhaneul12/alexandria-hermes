@@ -248,7 +248,39 @@ def _parse_inline_list(value: str) -> list[FrontmatterScalar]:
     inner = value[1:-1].strip()
     if not inner:
         return []
-    return [_parse_scalar(raw.strip()) for raw in inner.split(",")]
+    return [_parse_scalar(raw.strip()) for raw in _split_inline_list_items(inner)]
+
+
+def _split_inline_list_items(value: str) -> list[str]:
+    """Split a YAML flow sequence without breaking JSON-like metadata objects."""
+    items: list[str] = []
+    start = 0
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index, character in enumerate(value):
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif character == "\\" and quote == '"':
+                escaped = True
+            elif character == quote:
+                quote = None
+            continue
+        if character in {"'", '"'}:
+            quote = character
+            continue
+        if character in "[{(":
+            depth += 1
+            continue
+        if character in "]})":
+            depth = max(0, depth - 1)
+            continue
+        if character == "," and depth == 0:
+            items.append(value[start:index])
+            start = index + 1
+    items.append(value[start:])
+    return items
 
 
 def _parse_scalar(value: str) -> FrontmatterScalar:

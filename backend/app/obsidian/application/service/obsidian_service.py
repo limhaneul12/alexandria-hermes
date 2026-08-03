@@ -60,6 +60,7 @@ from app.obsidian.domain.entities.obsidian_note import (
     ObsidianReindexResult,
     ObsidianSearchHit,
     ObsidianVaultInventoryItem,
+    ObsidianVaultLocation,
     ObsidianVaultMovePlan,
     ObsidianVaultMoveReport,
     ObsidianVaultStatus,
@@ -69,6 +70,9 @@ from app.obsidian.domain.repositories.obsidian_repository import (
 )
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
+)
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
 )
 from app.shared.exceptions.obsidian_exceptions import (
     ObsidianValidationError,
@@ -92,6 +96,7 @@ class ObsidianService:
         vault_config_store: ObsidianVaultConfigStore | None = None,
         delegate_service: ObsidianLibrarianDelegateService | None = None,
         context_reindex_hook: Callable[[], Awaitable[None]] | None = None,
+        index_maintenance_coordinator: IndexMaintenanceCoordinator | None = None,
     ) -> None:
         """Initialize service dependencies.
 
@@ -112,6 +117,9 @@ class ObsidianService:
                 config_path=None,
             )
         self._vault_config_store = vault_config_store
+        self._index_maintenance_coordinator = (
+            index_maintenance_coordinator or IndexMaintenanceCoordinator()
+        )
         self._context_lifecycle_service = ObsidianContextLifecycleService(
             repository=self._repository,
             vault_config_store=self._vault_config_store,
@@ -125,6 +133,7 @@ class ObsidianService:
             note_id_from_existing_file=self._note_id_from_existing_file,
             mark_context_superseded=self._delegate_mark_context_superseded,
             context_reindex_hook=context_reindex_hook,
+            index_maintenance_coordinator=self._index_maintenance_coordinator,
         )
         self._index_error_repair_service = ObsidianIndexErrorRepairService(
             repository=self._repository,
@@ -170,6 +179,18 @@ class ObsidianService:
     @property
     def _alexandria_root(self) -> str:
         return self._vault_config_store.current().alexandria_root
+
+    def vault_location(self) -> ObsidianVaultLocation:
+        """Return the canonical Vault path without reading the SQLite index.
+
+        Returns:
+            Vault and managed-root location used by source-preserving backups.
+        """
+        config = self._vault_config_store.current()
+        return ObsidianVaultLocation(
+            vault_path=str(config.vault_path),
+            alexandria_root=config.alexandria_root,
+        )
 
     async def status(self) -> ObsidianVaultStatus:
         """Return local Obsidian vault and index status.
@@ -377,7 +398,7 @@ class ObsidianService:
         self,
         query: ObsidianSearchQuery,
         *,
-        refresh: bool = True,
+        refresh: bool = False,
     ) -> list[ObsidianSearchHit]:
         """Search Obsidian notes through the SQLite index.
 

@@ -11,6 +11,10 @@ class BoundaryValidationError(RuntimeError):
     """Raised when a shared boundary contract value is invalid."""
 
 
+class IndexMaintenanceConflictError(RuntimeError):
+    """Raised when another expensive index maintenance operation is active."""
+
+
 type RedisExceptionAction = Literal["drop", "retry"]
 type RedisJSONValue = (
     str
@@ -71,6 +75,7 @@ type RedisExceptionDecorator = Callable[[RedisExceptionHandler], RedisExceptionH
 
 __all__ = [
     "BoundaryValidationError",
+    "IndexMaintenanceConflictError",
     "RedisExceptionAction",
     "RedisExceptionArgValue",
     "RedisExceptionAware",

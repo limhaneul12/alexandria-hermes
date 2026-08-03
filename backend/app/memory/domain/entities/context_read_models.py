@@ -9,6 +9,8 @@ from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
     ContextContentFormat,
+    ContextGraphDirection,
+    ContextGraphSignalType,
     ContextImportance,
     ContextKind,
     ContextScope,
@@ -90,6 +92,20 @@ class ContextAccessEventRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class ContextGraphEvidence:
+    """One optional graph relationship explaining a recalled Context."""
+
+    signal: ContextGraphSignalType
+    relation: str
+    direction: ContextGraphDirection
+    source_context_id: str
+    target_context_id: str
+    target_title: str
+    distance: int
+    evidence_ref: str
+
+
+@dataclass(frozen=True, slots=True)
 class ContextSearchMatch:
     """One retrieved chunk with its parent context."""
 
@@ -99,6 +115,11 @@ class ContextSearchMatch:
     fts_score: float | None
     vector_score: float | None
     why_retrieved: str
+    graph_evidence: tuple[ContextGraphEvidence, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize graph evidence to an immutable tuple."""
+        object.__setattr__(self, "graph_evidence", tuple(self.graph_evidence))
 
 
 @dataclass(frozen=True, slots=True)

@@ -154,6 +154,31 @@ Supported `alexandria_type` values include `context`, `memory_compact`, `skill`,
 
 Notes without this frontmatter can stay in the vault, but reindex skips them as non-Alexandria notes.
 
+Obsidian Properties stores these values as YAML. Prefer simple scalar values and
+block lists because those are the property shapes the Obsidian UI can edit
+reliably. Quote wikilinks in Properties, and treat paths inside them as
+vault-root-relative:
+
+```yaml
+tags:
+  - "alexandria"
+  - "memory-compact"
+source_ref_links:
+  - "[[Contexts/Projects/alexandria-hermes/Source Note]]"
+related:
+  - "[[Skills/Active/Alexandria Library]]"
+```
+
+Nested object properties are valid YAML but are not currently supported by the
+Obsidian Properties UI. Alexandria therefore retains structured `source_refs`
+where a lossless machine round-trip is required and also writes the flat
+`source_ref_links` list for Obsidian-native link discovery. Edit structured
+legacy metadata in Source mode; use the flat link properties for new human-edited
+relationships.
+
+Reference: [Obsidian Properties](https://obsidian.md/help/properties) and
+[Obsidian Internal links](https://obsidian.md/help/Linking%2Bnotes%2Band%2Bfiles/Internal%2Blinks).
+
 ## 5. CLI examples
 
 Search notes:
@@ -202,7 +227,8 @@ uv run alexandria-hermes obsidian capture "Release Review Prompt" \
 adds artifact tags/frontmatter, writes Markdown as the canonical source, and
 updates the SQLite index/cache through the same `/obsidian/notes` path.
 
-Read graph-related notes after reindex:
+After enabling Neo4j and explicitly rebuilding the graph projection, read
+graph-related notes:
 
 ```bash
 uv run alexandria-hermes obsidian related --path "START_HERE.md"
@@ -273,13 +299,12 @@ The side pane now behaves like a small local chat/workflow console:
 
 ## 8. Graph relation contract
 
-Alexandria relation frontmatter is rendered into an Obsidian-readable managed wikilink section:
+Alexandria relation frontmatter uses quoted, vault-root-relative wikilink lists
+and is rendered into an Obsidian-readable managed wikilink section:
 
 ```yaml
-source_refs:
-  - id: alexandria_start_here
-    path: START_HERE.md
-    relation: cites
+source_ref_links:
+  - "[[START_HERE]]"
 derived_from: []
 related: []
 supersedes: []
@@ -295,7 +320,7 @@ promotes_to: []
 <!-- ALEXANDRIA-LINKS:END -->
 ```
 
-SQLite stores this as a rebuildable `obsidian_edges` cache. Related notes are available via CLI, MCP, and HTTP. The Obsidian side pane can show related notes and can write source wikilinks into the active note after user action. LangGraph workflow approval for `add_graph_links` now mutates the active Markdown note server-side, updates the managed Alexandria links section, and reindexes the edge cache before the workflow completes.
+SQLite stores this as a rebuildable `obsidian_edges` source cache used only by an explicit Neo4j projection rebuild. Graph evidence, lineage, related-note traversal, and impact analysis are read from the active Neo4j projection only. When `SERVICE_GRAPH_READ_MODEL=disabled`, SQLite search/RAG remains available without graph evidence, while related-note CLI/MCP/HTTP operations are unavailable (`503`) rather than falling back to SQLite or returning a misleading empty graph. The Obsidian side pane can show related notes when Neo4j is enabled and can write source wikilinks into the active note after user action. LangGraph workflow approval for `add_graph_links` now mutates the active Markdown note server-side, updates the managed Alexandria links section, and reindexes the edge source cache before the workflow completes; projection rebuild remains an explicit operation. Links inside code spans/blocks or comments are ignored. Missing and ambiguous targets remain non-fatal diagnostics but are excluded from the active projection.
 
 ## 9. Resumable librarian workflow
 
@@ -346,7 +371,7 @@ Observed result:
 - `START_HERE.md` and `Jobs/Alexandria Obsidian Smoke Test.md` were created.
 - A generated smoke fixture may index only a handful of notes, while the current `/Users/imhaneul/Desktop/Alexandria` vault is larger. Recent local verification saw 95 files, indexed 79 Alexandria notes, and skipped 16 non-Alexandria files.
 - Search found indexed Alexandria notes.
-- `obsidian related --path START_HERE.md --limit 5` returned an empty related set, which is valid when no graph edges target or originate from that note yet.
+- With Neo4j enabled and an active projection, `obsidian related --path START_HERE.md --limit 5` may return an empty related set when no projected edge targets or originates from that note. In disabled mode the command is unavailable rather than returning an empty graph.
 - Delegated librarian ask returned `delegate_status=requested_local_fallback`, `provider_id=codex-oauth`, and `profile_id=research-critic` without saving a transcript.
 - LangGraph workflow start/resume smoke moved `waiting_for_approval -> completed`; approving `ask_oauth_librarian` records `GUIDANCE_ONLY` or provider `COMPLETED` depending on configured GPT OAuth provider/profile availability.
 

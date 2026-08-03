@@ -7,7 +7,11 @@ from app.memory.domain.entities.memory_reconciliation_diagnostics import (
     MemoryReconciliationDiagnostics,
 )
 from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
-from app.obsidian.domain.entities.obsidian_note import ObsidianVaultStatus
+from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianIndexError,
+    ObsidianVaultStatus,
+)
+from app.obsidian.domain.event_enum.obsidian_enums import ObsidianIndexErrorCode
 from app.operations.domain.entities.operational_readiness import (
     OperationalDatabaseSnapshot,
     OperationalRagSnapshot,
@@ -204,18 +208,21 @@ def _status(
     return OperationalReadinessStatus.READY
 
 
-def _next_actions(warnings: list[str]) -> list[str]:
+def _next_actions(
+    warnings: list[str],
+    *,
+    index_errors: tuple[ObsidianIndexError, ...] = (),
+) -> list[str]:
     actions: list[str] = []
     warning_set = set(warnings)
     if "sqlite_corruption_detected" in warning_set:
         actions.append("plan_recovery")
-    if {
-        "vault_not_found",
-        "alexandria_root_not_found",
-        "obsidian_stale_notes_present",
-        "obsidian_error_notes_present",
-    } & warning_set:
+    if {"vault_not_found", "alexandria_root_not_found"} & warning_set:
+        actions.append("inspect_vault_configuration")
+    if "obsidian_stale_notes_present" in warning_set:
         actions.append("reindex_vault")
+    if "obsidian_error_notes_present" in warning_set:
+        actions.extend(_index_error_actions(index_errors))
     if {
         "rag_vector_not_healthy",
         "rag_embedding_reindex_required",
@@ -246,3 +253,33 @@ def _next_actions(warnings: list[str]) -> list[str]:
     if "memory_reconciliation_hard_delete_detected" in warning_set:
         actions.append("audit_memory_reconciliation_integrity")
     return actions
+
+
+def _index_error_actions(
+    index_errors: tuple[ObsidianIndexError, ...],
+) -> list[str]:
+    if not index_errors:
+        return ["inspect_obsidian_index_errors"]
+    codes = {error.error_code for error in index_errors}
+    actions: list[str] = []
+    if ObsidianIndexErrorCode.FRONTMATTER_SECRET_DETECTED in codes:
+        actions.append("review_obsidian_frontmatter_security_errors")
+    if codes & {
+        ObsidianIndexErrorCode.DUPLICATE_CONTEXT_ID,
+        ObsidianIndexErrorCode.DUPLICATE_CONTEXT_CONTENT,
+    }:
+        actions.append("resolve_duplicate_context_identity")
+    if ObsidianIndexErrorCode.PATH_SECURITY_VIOLATION in codes:
+        actions.append("inspect_obsidian_path_security")
+    if ObsidianIndexErrorCode.INDEX_WRITE_FAILED in codes:
+        actions.append("inspect_obsidian_index_storage")
+    repairable = codes - {
+        ObsidianIndexErrorCode.FRONTMATTER_SECRET_DETECTED,
+        ObsidianIndexErrorCode.DUPLICATE_CONTEXT_ID,
+        ObsidianIndexErrorCode.DUPLICATE_CONTEXT_CONTENT,
+        ObsidianIndexErrorCode.PATH_SECURITY_VIOLATION,
+        ObsidianIndexErrorCode.INDEX_WRITE_FAILED,
+    }
+    if repairable:
+        actions.append("plan_index_error_repairs")
+    return actions or ["inspect_obsidian_index_errors"]

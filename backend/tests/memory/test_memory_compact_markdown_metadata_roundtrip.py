@@ -6,6 +6,7 @@ from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown_pa
     _read_frontmatter,
 )
 from app.memory.infrastructure.repositories.memory_compacts.obsidian_markdown_serializer import (
+    _yaml_property_lines,
     _yaml_scalar,
 )
 
@@ -57,15 +58,16 @@ Body
 
 def test_memory_compact_frontmatter_collection_render_parse_round_trip() -> None:
     """Rendered string collections should parse back without stringification."""
-    rendered_tags = _yaml_scalar(("alpha", "beta"))
+    rendered_tag_lines = _yaml_property_lines("tags", ("alpha", "beta"))
+    rendered_tags = "\n".join(rendered_tag_lines)
     frontmatter, _ = _read_frontmatter(
         f"""---
 alexandria_type: memory_compact
-tags: {rendered_tags}
+{rendered_tags}
 ---
 Body
 """
     )
 
-    assert rendered_tags == "['alpha', 'beta']"
+    assert rendered_tag_lines == ["tags:", "  - 'alpha'", "  - 'beta'"]
     assert frontmatter["tags"] == ("alpha", "beta")

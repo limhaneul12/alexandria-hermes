@@ -54,7 +54,8 @@ This repository is a backend and CLI service for Alexandria-Hermes.
     * Backend tests named `test_*.py`
 * `docker-compose.yml`
 
-  * Runs the backend service only
+  * Runs the backend service by default
+  * Includes an optional `graph` profile for local Neo4j graph read-model projection
 * `README.md`
 
   * High-level setup and startup instructions

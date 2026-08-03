@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Awaitable
 from contextlib import asynccontextmanager, suppress
 from typing import cast
 
+from dependency_injector import providers
 from fastapi import FastAPI
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -153,6 +154,8 @@ def create_app(app_config: AppConfig) -> FastAPI:
     """
     lifecycle = LifecycleState()
     container = ApplicationContainer()
+    container.app_config.override(providers.Object(app_config))
+    container.memory.context_service.enable_async_mode()
     mcp_mount = McpHttpMount(build_mcp_http_auth_gate(app_config))
     mcp_api_settings = AlexandriaApiSettings.from_env()
     mcp_api_client = AlexandriaApiClient(mcp_api_settings)

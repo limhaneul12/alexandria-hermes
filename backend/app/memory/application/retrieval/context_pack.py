@@ -150,7 +150,7 @@ def _match_lines(
     chunk = match.chunk
     heading = f" — {_trim_text(chunk.heading, 160)}" if chunk.heading else ""
     metadata = retrieval_metadata(match)
-    return [
+    lines = [
         f"### {entry_number}. {_trim_text(context.title, 200)}{heading}",
         f"- context_id: {_trim_text(context.id, 200)}",
         f"- kind: {context.kind.value}",
@@ -165,10 +165,17 @@ def _match_lines(
         f"- retrieval_strategy: {metadata.retrieval_strategy.value}",
         f"- source_actor_id: {_trim_text(metadata.source_actor_id, 200)}",
         f"- why: {_trim_text(match.why_retrieved, 240)}",
-        "",
-        content,
-        "",
     ]
+    if match.graph_evidence:
+        lines.append("- graph_evidence:")
+        lines.extend(
+            "  - "
+            f"{item.signal.value}: {item.source_context_id} -[{item.relation}]-> "
+            f"{item.target_title} (direction={item.direction.value}, "
+            f"distance={item.distance}, evidence={item.evidence_ref})"
+            for item in match.graph_evidence
+        )
+    return [*lines, "", content, ""]
 
 
 def _allocate_content_budget(
@@ -196,6 +203,7 @@ def _evidence_references(matches: list[ContextSearchMatch]) -> list[str]:
         if isinstance(provenance, dict):
             references.extend(_reference_values(provenance.get("artifact_refs")))
             references.extend(_reference_values(provenance.get("evidence_refs")))
+        references.extend(item.evidence_ref for item in match.graph_evidence)
     return list(dict.fromkeys(_trim_text(reference, 300) for reference in references))[
         :20
     ]

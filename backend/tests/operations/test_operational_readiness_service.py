@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import anyio
 from app.memory.domain.entities.context_read_models import RagDependencyHealth
 from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
-from app.obsidian.domain.entities.obsidian_note import ObsidianVaultStatus
+from app.obsidian.domain.entities.obsidian_note import (
+    ObsidianIndexError,
+    ObsidianVaultStatus,
+)
+from app.obsidian.domain.event_enum.obsidian_enums import ObsidianIndexErrorCode
 from app.operations.application.operational_readiness_service import (
     OperationalReadinessService,
 )
@@ -86,7 +91,11 @@ def _healthy_components_warning_rag() -> RagDependencyHealth:
 
 
 def _obsidian_status(
-    tmp_path: Path, *, stale: int = 0, errors: int = 0
+    tmp_path: Path,
+    *,
+    stale: int = 0,
+    errors: int = 0,
+    index_errors: tuple[ObsidianIndexError, ...] = (),
 ) -> ObsidianVaultStatus:
     vault = tmp_path / "vault"
     root = vault / "Alexandria"
@@ -99,6 +108,7 @@ def _obsidian_status(
         indexed_notes=3,
         stale_notes=stale,
         error_notes=errors,
+        index_errors=index_errors,
     )
 
 
@@ -280,7 +290,44 @@ def test_operational_readiness_blocks_when_vault_has_index_errors(
     assert status == OperationalReadinessStatus.BLOCKED
     assert ready is False
     assert warnings == ("obsidian_stale_notes_present", "obsidian_error_notes_present")
-    assert "reindex_vault" in next_actions
+    assert next_actions == ("reindex_vault", "inspect_obsidian_index_errors")
+
+
+def test_operational_readiness_routes_frontmatter_errors_to_repair_planning(
+    tmp_path: Path,
+) -> None:
+    """Known structural index errors need repair guidance, not another blind scan."""
+
+    async def scenario() -> tuple[str, ...]:
+        database = Database(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'repair.db'}",
+            create_schema=True,
+        )
+        await database.initialize()
+        try:
+            index_error = ObsidianIndexError(
+                note_path="Alexandria/Contexts/Broken.md",
+                context_id="broken",
+                error_code=ObsidianIndexErrorCode.FRONTMATTER_PARSE_ERROR,
+                error_message="frontmatter parse failed",
+                detected_at=datetime.now(UTC),
+            )
+            service = OperationalReadinessService(
+                database=database,
+                context_service=_FakeContextService(_healthy_rag()),
+                obsidian_service=_FakeObsidianService(
+                    _obsidian_status(
+                        tmp_path,
+                        errors=1,
+                        index_errors=(index_error,),
+                    )
+                ),
+            )
+            return (await service.snapshot()).next_actions
+        finally:
+            await database.shutdown()
+
+    assert anyio.run(scenario) == ("plan_index_error_repairs",)
 
 
 def test_operational_readiness_marks_sqlite_corruption_as_recovery_required(

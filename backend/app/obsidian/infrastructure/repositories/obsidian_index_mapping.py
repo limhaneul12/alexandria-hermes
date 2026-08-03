@@ -8,7 +8,6 @@ from typing import cast
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianEdge,
     ObsidianNote,
-    ObsidianRelatedNote,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
@@ -57,44 +56,6 @@ def edge_from_model(model: ObsidianEdgeORM) -> ObsidianEdge:
         created_at=model.created_at,
         indexed_at=model.indexed_at,
     )
-
-
-def add_related_result(
-    results: dict[str, ObsidianRelatedNote],
-    edge: ObsidianEdgeORM,
-    note_model: ObsidianFileORM,
-    *,
-    direction: str,
-) -> None:
-    note = note_from_model(note_model)
-    if note.note_id == edge.source_note_id and direction == "outgoing":
-        return
-    edge_entity = edge_from_model(edge)
-    score = _relation_weight(edge_entity.relation) + edge_entity.confidence
-    result = ObsidianRelatedNote(
-        note=note,
-        relation=edge_entity.relation,
-        source_kind=edge_entity.source_kind,
-        direction=direction,
-        score=score,
-        edge_id=edge_entity.edge_id,
-    )
-    current = results.get(note.note_id)
-    if current is None or result.score > current.score:
-        results[note.note_id] = result
-
-
-def _relation_weight(relation: ObsidianRelationType) -> float:
-    return {
-        ObsidianRelationType.DERIVED_FROM: 1.0,
-        ObsidianRelationType.CITES: 0.9,
-        ObsidianRelationType.SUPERSEDES: 0.8,
-        ObsidianRelationType.PROMOTES_TO: 0.8,
-        ObsidianRelationType.RELATED: 0.6,
-        ObsidianRelationType.WIKILINK: 0.5,
-        ObsidianRelationType.BLOCKS: 0.4,
-        ObsidianRelationType.RESOLVES: 0.4,
-    }[relation]
 
 
 def matches_tags(tags: Sequence[str], required: Sequence[str]) -> bool:

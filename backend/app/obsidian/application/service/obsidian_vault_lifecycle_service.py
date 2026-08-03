@@ -43,6 +43,9 @@ from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfig,
     ObsidianVaultConfigStore,
 )
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
+)
 from app.shared.exceptions.obsidian_exceptions import (
     ObsidianIndexWriteError,
     ObsidianValidationError,
@@ -116,6 +119,7 @@ class ObsidianVaultLifecycleService:
         note_id_from_existing_file: Callable[[Path], str | None],
         mark_context_superseded: ObsidianMarkSupersededHook,
         context_reindex_hook: Callable[[], Awaitable[None]] | None,
+        index_maintenance_coordinator: IndexMaintenanceCoordinator,
     ) -> None:
         """Create the vault lifecycle service.
 
@@ -135,6 +139,7 @@ class ObsidianVaultLifecycleService:
         self._note_id_from_existing_file = note_id_from_existing_file
         self._mark_context_superseded = mark_context_superseded
         self._context_reindex_hook = context_reindex_hook
+        self._index_maintenance_coordinator = index_maintenance_coordinator
 
     async def status(self) -> ObsidianVaultStatus:
         """Return local Obsidian vault and index status.
@@ -215,6 +220,11 @@ class ObsidianVaultLifecycleService:
         Returns:
             Reindex summary with counts and warnings.
         """
+        async with self._index_maintenance_coordinator.operation("vault_reindex"):
+            return await self._reindex_serialized()
+
+    async def _reindex_serialized(self) -> ObsidianReindexResult:
+        """Run one vault scan while the shared maintenance lease is held."""
         config = self._vault_config_store.current()
         root = _root_path(config)
         if not root.exists():

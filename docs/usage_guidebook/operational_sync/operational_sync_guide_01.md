@@ -55,6 +55,15 @@ Obsidian Markdown 파일 변경이나 stale note가 있으면 먼저 vault index
 curl -sS -X POST http://127.0.0.1:8000/obsidian/index/rebuild | jq
 ```
 
+이 작업은 SQLite `obsidian_edges`를 Neo4j 재구축용 source cache로만
+갱신한다. Graph traversal/evidence가 필요하면 Neo4j를 활성화한 뒤 graph
+projection rebuild를 별도로 실행한다.
+
+일반 검색은 현재 인덱스를 읽기만 하며 자동 재색인하지 않는다. 검색과
+함께 명시적으로 갱신해야 하는 진단 상황에서만 HTTP 검색 요청에
+`"refresh": true`를 지정한다. 정상 운영에서는 이 옵션 대신 위의 전용
+rebuild endpoint를 사용한다.
+
 응답 예:
 
 ```json
@@ -115,7 +124,35 @@ curl -sS http://127.0.0.1:8000/memory/contexts/rag/status | jq
 
 `obsidian_vault.stale_rows=0`, `obsidian_vault.missing_rows=0`이 될 때까지 soft rebuild를 반복한다.
 
-## 5. stale SQLite cache row 정리
+## 5. Neo4j graph projection rebuild와 진단
+
+Graph read model이 `neo4j`이면 vault reindex 뒤 projection을 재구축한다.
+
+```bash
+curl -sS -X POST \
+  http://127.0.0.1:8000/obsidian/graph/projection/rebuild \
+  | jq '{status, scanned, indexed, skipped, issue_total, issue_counts, errors}'
+curl -sS http://127.0.0.1:8000/obsidian/graph/projection/status \
+  | jq '{status, node_count, edge_count, last_run_issue_total, last_run_issue_counts, errors}'
+```
+
+`issue_total`/`issue_counts`는 깨진 링크처럼 투영에서 제외된 비치명적 원본
+진단이다. `errors`는 실제 rebuild 실패만 담는다. 개별 진단은 기본 응답에서
+생략되므로 조사할 때만 최대 500개 이하의 bounded sample을 요청한다.
+깨진 링크 진단에서 `note_id`는 링크를 가진 원본 note, `relative_path`는
+찾지 못한 target, `edge_id`는 SQLite source-cache edge 식별자다.
+
+```bash
+curl -sS -X POST \
+  'http://127.0.0.1:8000/obsidian/graph/projection/rebuild?include_issue_details=true&issue_limit=100' \
+  | jq '{issue_total, issue_counts, issues_truncated, issues, errors}'
+```
+
+Vault/embedding/graph 유지보수 작업은 동시에 실행하지 않는다. 이미 다른
+유지보수 작업이 실행 중이면 서버가 대기하지 않고 HTTP `409`를 반환하므로,
+현재 작업 종료 후 순서대로 다시 실행한다.
+
+## 6. stale SQLite cache row 정리
 
 `/obsidian/index/rebuild` 후에도 `/obsidian/status`의 `stale_notes`가 남고, 해당 파일들이 실제 vault에 없으면 SQLite cache row만 남은 상태다.
 
@@ -170,7 +207,7 @@ SQL
 
 이 정리는 Obsidian Markdown을 삭제하지 않는다. SQLite의 rebuildable cache만 정리한다.
 
-## 6. 최종 검증
+## 7. 최종 검증
 
 ```bash
 curl -sS http://127.0.0.1:8000/obsidian/status | jq
@@ -210,7 +247,7 @@ curl -sS -X POST http://127.0.0.1:8000/memory/contexts/retrieval/search \
 - 첫 결과에 `obsidian:prd_operational_readiness_recovery_v0_1` 또는 관련 PRD note가 포함
 - `why_retrieved`가 semantic embedding/vector match를 설명
 
-## 7. readiness endpoint 500이면
+## 8. readiness endpoint 500이면
 
 `/operations/readiness`가 500이고 로그에 `ContextEmbeddingSourceStatusResponse` validation error가 보이면 schema boundary 변환 문제다.
 

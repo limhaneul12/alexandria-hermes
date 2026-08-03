@@ -24,6 +24,7 @@ from app.memory.domain.types.context_payload_types import (
     ContextAccessEventPayload,
     ContextChunkPayload,
     ContextEmbeddingSourceStatusPayload,
+    ContextGraphEvidencePayload,
     ContextLifecyclePayload,
     ContextPackPayload,
     ContextPayload,
@@ -156,6 +157,19 @@ def match_payload(match: ContextSearchMatch) -> ContextSearchMatchPayload:
         Typed response payload for one retrieved match.
     """
     metadata = retrieval_metadata(match)
+    graph_evidence = [
+        ContextGraphEvidencePayload(
+            signal=item.signal,
+            relation=item.relation,
+            direction=item.direction,
+            source_context_id=item.source_context_id,
+            target_context_id=item.target_context_id,
+            target_title=item.target_title,
+            distance=item.distance,
+            evidence_ref=item.evidence_ref,
+        )
+        for item in match.graph_evidence
+    ]
     payload: ContextSearchMatchPayload = {
         "context": context_payload(match.context),
         "chunk": chunk_payload(match.chunk),
@@ -167,6 +181,7 @@ def match_payload(match: ContextSearchMatch) -> ContextSearchMatchPayload:
         "lifecycle_status": metadata.lifecycle_status,
         "source": metadata.retrieval_source,
         "retrieval_strategy": metadata.retrieval_strategy,
+        "graph_evidence": graph_evidence or None,
     }
     return payload
 

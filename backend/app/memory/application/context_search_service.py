@@ -33,6 +33,9 @@ from app.memory.domain.event_enum.context_enums import (
     RagHealthState,
     RagStrategy,
 )
+from app.memory.domain.repositories.context_graph_signal_provider import (
+    IContextGraphSignalProvider,
+)
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
 from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
 from app.shared.types.types_convert_utils import enum_value
@@ -46,15 +49,18 @@ class ContextSearchService:
         *,
         search_sources: list[IContextSearchSource],
         embedding_service: ContextEmbeddingService,
+        graph_signal_provider: IContextGraphSignalProvider | None = None,
     ) -> None:
         """Create the Context search service.
 
         Args:
             search_sources: Configured FTS and vector recall sources.
             embedding_service: Vector recall and dependency health collaborator.
+            graph_signal_provider: Optional score-preserving graph evidence provider.
         """
         self._search_sources = search_sources
         self._embedding_service = embedding_service
+        self._graph_signal_provider = graph_signal_provider
 
     async def search(
         self,
@@ -180,6 +186,28 @@ class ContextSearchService:
                 limit=limit,
             )
         matches = filter_context_matches(matches, scope_filter)
+        if self._graph_signal_provider is not None:
+            primary_matches = matches
+            try:
+                graph_result = await self._graph_signal_provider.enrich(matches)
+            # The optional provider is a recovery boundary: adapter failures must
+            # degrade to sanitized diagnostics without changing primary recall.
+            except Exception as exc:
+                warnings.append(
+                    "Graph context lane unavailable "
+                    f"[GRAPH_CONTEXT_UNAVAILABLE; {_exception_class_name(exc)}]; "
+                    "primary Context recall preserved."
+                )
+            else:
+                candidate_matches = list(graph_result.matches)
+                if _preserves_primary_ranking(primary_matches, candidate_matches):
+                    matches = candidate_matches
+                    warnings.extend(graph_result.warnings)
+                else:
+                    warnings.append(
+                        "Graph context lane returned invalid ranking; "
+                        "primary Context recall preserved."
+                    )
         return ContextPack(
             query=query,
             strategy=strategy,
@@ -212,3 +240,38 @@ class ContextSearchService:
                 if len(matches_by_context_id) >= recall.recall_filter.limit:
                     return list(matches_by_context_id.values())
         return list(matches_by_context_id.values())
+
+
+def _preserves_primary_ranking(
+    primary: list[ContextSearchMatch],
+    enriched: list[ContextSearchMatch],
+) -> bool:
+    return [
+        (
+            match.context,
+            match.chunk,
+            match.score,
+            match.fts_score,
+            match.vector_score,
+        )
+        for match in primary
+    ] == [
+        (
+            match.context,
+            match.chunk,
+            match.score,
+            match.fts_score,
+            match.vector_score,
+        )
+        for match in enriched
+    ]
+
+
+def _exception_class_name(exc: Exception) -> str:
+    class_name = type(exc).__name__
+    sanitized = "".join(
+        character
+        for character in class_name
+        if character.isascii() and (character.isalnum() or character == "_")
+    )
+    return (sanitized or "Exception")[:80]

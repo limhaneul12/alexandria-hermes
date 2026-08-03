@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from app.shared.exceptions.common_exceptions import BoundaryValidationError
+from app.shared.exceptions.common_exceptions import (
+    BoundaryValidationError,
+    IndexMaintenanceConflictError,
+)
 from app.shared.exceptions.connections_exceptions import (
     ConnectionsProviderUnsupportedError,
     ConnectionsResourceNotFoundError,
@@ -22,6 +25,7 @@ from app.shared.exceptions.memory_context_exceptions import (
     MemoryContextValidationError,
 )
 from app.shared.exceptions.obsidian_exceptions import (
+    ObsidianGraphUnavailableError,
     ObsidianNotFoundError,
     ObsidianValidationError,
     ObsidianWriteConflictError,
@@ -51,12 +55,15 @@ CONTEXT_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     BoundaryValidationError: status.HTTP_400_BAD_REQUEST,
     MemoryContextNotFoundError: status.HTTP_404_NOT_FOUND,
     MemoryContextValidationError: status.HTTP_400_BAD_REQUEST,
+    IndexMaintenanceConflictError: status.HTTP_409_CONFLICT,
 }
 
 OBSIDIAN_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     BoundaryValidationError: status.HTTP_400_BAD_REQUEST,
     ObsidianNotFoundError: status.HTTP_404_NOT_FOUND,
     ObsidianValidationError: status.HTTP_400_BAD_REQUEST,
+    ObsidianGraphUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    IndexMaintenanceConflictError: status.HTTP_409_CONFLICT,
 }
 
 OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {

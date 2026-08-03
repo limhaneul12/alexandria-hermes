@@ -5,6 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import anyio
+from app.obsidian.application.notes.obsidian_frontmatter_redaction import (
+    frontmatter_contains_secret_field,
+    redacted_frontmatter,
+)
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianSaveNote,
@@ -48,6 +52,32 @@ def _raw_context(note_id: str, extra_frontmatter: str, body: str) -> str:
         "---\n\n"
         f"# Security Boundary\n\n{body}\n"
     )
+
+
+def test_false_secret_recording_audit_marker_is_not_treated_as_a_credential() -> None:
+    """An exact false audit marker should remain while true/secret fields stay blocked."""
+    safe_markdown = _raw_context(
+        "ctx_safe_audit",
+        "secret_values_recorded: false\n",
+        "safe",
+    )
+    unsafe_markdown = _raw_context(
+        "ctx_unsafe_audit",
+        "secret_values_recorded: true\n",
+        "unsafe",
+    )
+
+    redacted, warnings = redacted_frontmatter(
+        {
+            "secret_values_recorded": False,
+            "token": "credential-like-value",
+        }
+    )
+
+    assert frontmatter_contains_secret_field(safe_markdown) is False
+    assert frontmatter_contains_secret_field(unsafe_markdown) is True
+    assert redacted == {"secret_values_recorded": False}
+    assert warnings == ["potential secret-like frontmatter field was redacted"]
 
 
 def test_reindex_rejects_symlinked_markdown_without_reading_external_content(

@@ -6,6 +6,8 @@ from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
     ContextContentFormat,
+    ContextGraphDirection,
+    ContextGraphSignalType,
     ContextImportance,
     ContextKind,
     ContextRecallLifecycleStatus,
@@ -220,6 +222,19 @@ class ContextSearchRequest(StrictSchemaModel):
         return self
 
 
+class ContextGraphEvidenceResponse(StrictSchemaModel):
+    """One graph relationship explaining optional recall evidence."""
+
+    signal: ContextGraphSignalType
+    relation: str
+    direction: ContextGraphDirection
+    source_context_id: str
+    target_context_id: str
+    target_title: str
+    distance: int
+    evidence_ref: str
+
+
 class ContextSearchMatchResponse(StrictSchemaModel):
     """One retrieved context chunk with scores."""
 
@@ -233,6 +248,10 @@ class ContextSearchMatchResponse(StrictSchemaModel):
     lifecycle_status: ContextRecallLifecycleStatus
     source: ContextRetrievalSource
     retrieval_strategy: RagStrategy
+    graph_evidence: list[ContextGraphEvidenceResponse] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
 
 
 class ContextPackResponse(StrictSchemaModel):

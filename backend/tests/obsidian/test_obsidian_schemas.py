@@ -28,6 +28,8 @@ def test_obsidian_request_schemas_restore_enum_contracts() -> None:
     )
 
     assert search.to_query().alexandria_type is AlexandriaNoteType.CONTEXT
+    assert search.refresh is False
+    assert ObsidianSearchRequest(query="cache", refresh=True).refresh is True
     assert ObsidianSearchRequest(query="cache").to_query().alexandria_type is None
     assert save.to_command().alexandria_type is AlexandriaNoteType.JOB_PLAN
     assert ask.to_command().preferred_alexandria_types == (

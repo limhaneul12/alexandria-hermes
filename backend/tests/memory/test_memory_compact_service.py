@@ -105,6 +105,7 @@ def test_memory_compact_service_writes_obsidian_note_when_created(
         assert f"id: '{compact.id}'" in note
         assert "status: 'CURRENT'" in note
         assert "source_refs:" in note
+        assert "tags:\n  - 'alexandria'\n  - 'memory-compact'" in note
         assert "review_verdict: 'pass'" in note
         assert "review_score:" in note
         loaded = await service.get(compact.id)
@@ -116,6 +117,40 @@ def test_memory_compact_service_writes_obsidian_note_when_created(
         assert "## Evidence Summary" in note
 
     anyio.run(scenario)
+
+
+def test_memory_compact_writes_obsidian_property_links_for_note_sources(
+    tmp_path: Path,
+) -> None:
+    """Structured refs stay lossless while Obsidian receives a flat link list."""
+
+    async def scenario() -> str:
+        service = _service(tmp_path / "vault")
+        payload = _create(MemoryCompactStatus.CURRENT)
+        payload = MemoryCompactCreate(
+            project=payload.project,
+            covered_from=payload.covered_from,
+            covered_to=payload.covered_to,
+            markdown_body=payload.markdown_body,
+            status=payload.status,
+            source_refs=[
+                MemoryCompactSourceRefCreate(
+                    source_type="obsidian_note",
+                    source_id="ctx-source",
+                    title="Source",
+                    detail_path="Alexandria/Contexts/Source.md",
+                )
+            ],
+        )
+        compact = await service.create(payload)
+        return (
+            tmp_path / "vault" / "Alexandria" / "Memory Compacts" / f"{compact.id}.md"
+        ).read_text(encoding="utf-8")
+
+    note = anyio.run(scenario)
+
+    assert "source_ref_links:\n  - '[[Alexandria/Contexts/Source]]'" in note
+    assert '"source_id":"ctx-source"' in note
 
 
 def test_memory_compact_service_supersedes_previous_current_when_new_current_created(

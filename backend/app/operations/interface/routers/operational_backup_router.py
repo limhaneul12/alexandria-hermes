@@ -62,7 +62,7 @@ async def create_operational_backup(
             status_code=status.HTTP_409_CONFLICT,
             detail="Operational backup currently requires local SQLite",
         )
-    vault = await obsidian_service.status()
+    vault = obsidian_service.vault_location()
     service = OperationalStateBackupService(
         backup_root=config.operational_backup_root,
         operational_database_path=database_path,

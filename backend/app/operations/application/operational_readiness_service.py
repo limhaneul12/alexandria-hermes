@@ -152,6 +152,8 @@ class OperationalReadinessService:
             last_successful_recovery_run_id=last_successful_recovery_run_id,
             warnings=tuple(warnings),
             blockers=tuple(blockers),
-            next_actions=tuple(_next_actions(warnings)),
+            next_actions=tuple(
+                _next_actions(warnings, index_errors=vault_status.index_errors)
+            ),
             data_integrity=data_integrity,
         )

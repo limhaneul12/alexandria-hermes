@@ -4,7 +4,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     command: >
-      sh -c "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "uv run alembic upgrade head && exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
       interval: 10s
@@ -32,3 +32,44 @@ services:
       - ./backend/data:/app/data
       - ${ALEXANDRIA_HOST_OBSIDIAN_VAULT_PATH:-${HOME}/Desktop/Alexandria}:/vault
     restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5-community
+    profiles:
+      - "graph"
+    environment:
+      ALEXANDRIA_NEO4J_PASSWORD:
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512m
+    entrypoint: ["/bin/sh", "-eu", "-c"]
+    command:
+      - |
+        : "$${ALEXANDRIA_NEO4J_PASSWORD:?set ALEXANDRIA_NEO4J_PASSWORD for the graph profile}"
+        case "$${ALEXANDRIA_NEO4J_PASSWORD}" in
+          *[![:space:]]*) ;;
+          *) echo "ALEXANDRIA_NEO4J_PASSWORD must not be blank" >&2; exit 1 ;;
+        esac
+        export NEO4J_AUTH="neo4j/$${ALEXANDRIA_NEO4J_PASSWORD}"
+        exec /startup/docker-entrypoint.sh neo4j
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "cypher-shell --non-interactive --format plain -u neo4j -p \"$${ALEXANDRIA_NEO4J_PASSWORD:?}\" 'RETURN 1;' >/dev/null",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  neo4j-data:
+  neo4j-logs:

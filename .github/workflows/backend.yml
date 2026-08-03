@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - "backend/**"
+      - "docker-compose.yml"
       - ".github/workflows/backend.yml"
   push:
     branches:
       - main
     paths:
       - "backend/**"
+      - "docker-compose.yml"
       - ".github/workflows/backend.yml"
 
 permissions:
@@ -48,3 +50,21 @@ jobs:
         run: |
           make format_check
           make type_checking
+          make guardrails
+
+      - name: Validate Docker Compose graph profile
+        run: |
+          docker compose config --quiet --no-env-resolution
+          docker compose --profile graph config --quiet --no-env-resolution
+
+      - name: Run Neo4j graph focused contracts
+        working-directory: backend
+        run: |
+          uv run --no-editable pytest -q \
+            tests/platform/test_app_config.py \
+            tests/platform/test_compose_backend_process_contract.py \
+            tests/platform/test_compose_neo4j_profile_contract.py \
+            tests/obsidian/graph \
+            tests/memory/interface/test_context_router.py \
+            tests/memory/test_context_service_provider_mode.py \
+            tests/memory/test_graph_aware_context_retrieval.py

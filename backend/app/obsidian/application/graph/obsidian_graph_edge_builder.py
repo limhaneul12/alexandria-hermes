@@ -45,7 +45,12 @@ def relation_edges_from_note(
     edges: list[ObsidianEdgeIndex] = []
     seen: set[tuple[str, str, str, str | None]] = set()
     for field_name, fallback_relation in _FRONTMATTER_RELATIONS:
-        for target in _relation_targets(frontmatter.get(field_name)):
+        if field_name == "source_refs" and "source_ref_links" in frontmatter:
+            continue
+        for target in _relation_targets(
+            frontmatter.get(field_name),
+            field_name=field_name,
+        ):
             relation = target.relation or fallback_relation
             target_path = _normalize_target_path(
                 target.path,

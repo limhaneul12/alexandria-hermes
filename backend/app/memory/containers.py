@@ -82,6 +82,9 @@ from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
 from app.platform.config.app_config import AppConfig
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
+)
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -93,6 +96,10 @@ class MemoryContainer(containers.DeclarativeContainer):
     app_config = providers.Dependency(instance_of=AppConfig)
     librarian_provider_repo = providers.Dependency()
     provider_secret_repo = providers.Dependency()
+    graph_signal_provider = providers.Dependency(default=None)
+    index_maintenance_coordinator = providers.Dependency(
+        instance_of=IndexMaintenanceCoordinator
+    )
     embedding_provider = providers.Factory(
         create_embedding_provider,
         vector_enabled=app_config.provided.rag_vector_enabled,
@@ -137,6 +144,8 @@ class MemoryContainer(containers.DeclarativeContainer):
         vector_retrieval_enabled=app_config.provided.rag_vector_enabled,
         extra_search_sources=providers.List(obsidian_context_search_source),
         canonical_context_repository=canonical_context_gateway,
+        graph_signal_provider=graph_signal_provider,
+        index_maintenance_coordinator=index_maintenance_coordinator,
     )
     context_embedding_recovery_service = providers.Singleton(
         ContextEmbeddingRecoveryService,

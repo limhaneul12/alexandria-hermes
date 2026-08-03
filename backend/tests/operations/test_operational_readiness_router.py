@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import anyio
 import pytest
@@ -64,6 +65,14 @@ class _FakeObsidianService:
     def __init__(self, tmp_path: Path) -> None:
         self._tmp_path = tmp_path
 
+    def vault_location(self) -> SimpleNamespace:
+        vault = self._tmp_path / "vault"
+        (vault / "Alexandria").mkdir(parents=True, exist_ok=True)
+        return SimpleNamespace(
+            vault_path=str(vault),
+            alexandria_root="Alexandria",
+        )
+
     async def status(self) -> ObsidianVaultStatus:
         vault = self._tmp_path / "vault"
         root = vault / "Alexandria"
@@ -77,6 +86,22 @@ class _FakeObsidianService:
             stale_notes=0,
             error_notes=0,
         )
+
+
+class _BackupOnlyObsidianService:
+    def __init__(self, tmp_path: Path) -> None:
+        self._tmp_path = tmp_path
+
+    def vault_location(self) -> SimpleNamespace:
+        vault = self._tmp_path / "vault"
+        (vault / "Alexandria").mkdir(parents=True, exist_ok=True)
+        return SimpleNamespace(
+            vault_path=str(vault),
+            alexandria_root="Alexandria",
+        )
+
+    async def status(self) -> ObsidianVaultStatus:
+        raise AssertionError("backup must not open an index-status transaction")
 
 
 class _FakeReconciliationService:
@@ -249,3 +274,40 @@ def test_fastapi_resolves_readiness_and_recovery_dependencies(
     assert restore_response.json()["sqlite_integrity"] == "HEALTHY"
     assert recovery_response.status_code == 200
     assert recovery_response.json()["idempotency_key"] == "fastapi-di-contract"
+
+
+def test_operational_backup_reads_vault_location_without_index_status_query(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Online SQLite backup must not keep a prior index read transaction open."""
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'backup-route.db'}"
+    database = Database(database_url=database_url, create_schema=True)
+    anyio.run(database.initialize)
+    anyio.run(database.shutdown)
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    config = AppConfig(
+        _env_file=None,
+        obsidian_vault_path=str(tmp_path / "vault"),
+        obsidian_vault_config_path=str(tmp_path / "vault-config.json"),
+        obsidian_librarian_langgraph_checkpoint_path=str(
+            tmp_path / "missing-librarian-checkpoint.sqlite"
+        ),
+        operational_backup_root=str(tmp_path / "backups"),
+    )
+    app = create_app(config)
+    root_container = app.state.container
+
+    try:
+        with (
+            root_container.obsidian.obsidian_service.override(
+                providers.Object(_BackupOnlyObsidianService(tmp_path))
+            ),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            response = client.post("/operations/backups")
+    finally:
+        default_app.state.container.wire(packages=_ROUTER_PACKAGES)
+
+    assert response.status_code == 201
+    assert response.json()["artifact_count"] == 1

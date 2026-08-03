@@ -9,6 +9,8 @@ from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
     ContextContentFormat,
+    ContextGraphDirection,
+    ContextGraphSignalType,
     ContextImportance,
     ContextKind,
     ContextRecallLifecycleStatus,
@@ -155,6 +157,19 @@ class ContextAccessEventPayload(TypedDict, closed=True):
     source_surface: str | None
 
 
+class ContextGraphEvidencePayload(TypedDict, closed=True):
+    """API payload for one graph relationship explaining recall."""
+
+    signal: ContextGraphSignalType
+    relation: str
+    direction: ContextGraphDirection
+    source_context_id: str
+    target_context_id: str
+    target_title: str
+    distance: int
+    evidence_ref: str
+
+
 class ContextSearchMatchPayload(TypedDict, closed=True):
     """API payload for one retrieved context match."""
 
@@ -168,6 +183,7 @@ class ContextSearchMatchPayload(TypedDict, closed=True):
     lifecycle_status: ContextRecallLifecycleStatus
     source: ContextRetrievalSource
     retrieval_strategy: RagStrategy
+    graph_evidence: list[ContextGraphEvidencePayload] | None
 
 
 class ContextPackPayload(TypedDict, closed=True):

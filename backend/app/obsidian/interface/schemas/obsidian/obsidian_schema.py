@@ -181,6 +181,7 @@ class ObsidianSearchRequest(StrictSchemaModel):
     alexandria_type: AlexandriaNoteType | None = None
     project: str | None = None
     tags: list[str] = Field(default_factory=list)
+    refresh: bool = False
 
     @field_validator("tags", mode="before")
     @classmethod

@@ -68,6 +68,82 @@ def test_graph_relations_parse_frontmatter_and_wikilinks() -> None:
     ]
 
 
+def test_graph_relations_parse_legacy_inline_json_source_refs() -> None:
+    """Legacy JSON metadata must remain one relation instead of comma fragments."""
+    from app.obsidian.infrastructure.markdown.frontmatter import (
+        frontmatter_json,
+        parse_markdown_document,
+    )
+
+    document = parse_markdown_document(
+        "---\n"
+        "alexandria_type: memory_compact\n"
+        'source_refs: [{"id":"ref-1","source_type":"obsidian_note",'
+        '"source_id":"ctx-source","detail_path":"Contexts/Source.md"}]\n'
+        "---\n\n# Compact\n"
+    )
+
+    edges = relation_edges_from_note(
+        note_id="compact-current",
+        relative_path="Alexandria/Memory Compacts/Current.md",
+        alexandria_root="Alexandria",
+        frontmatter=frontmatter_json(document.frontmatter),
+        body=document.body,
+    )
+
+    assert [
+        (edge.target_note_id, edge.target_path, edge.relation) for edge in edges
+    ] == [
+        (
+            "ctx-source",
+            "Alexandria/Contexts/Source.md",
+            ObsidianRelationType.CITES,
+        )
+    ]
+
+
+def test_graph_relations_treat_explicit_empty_source_ref_links_as_no_graph_cites() -> (
+    None
+):
+    """Structured source metadata should not become graph edges after link migration."""
+    edges = relation_edges_from_note(
+        note_id="compact-current",
+        relative_path="Memory Compacts/Current.md",
+        alexandria_root=".",
+        frontmatter={
+            "source_refs": [
+                {
+                    "source_id": "external-run",
+                    "detail_path": "operations/readiness/2026-07-31.md",
+                }
+            ],
+            "source_ref_links": [],
+        },
+        body="# Compact\n",
+    )
+
+    assert edges == []
+
+
+def test_graph_relations_ignore_wikilinks_in_comments_and_code() -> None:
+    """Only rendered Markdown links should become graph relations."""
+    edges = relation_edges_from_note(
+        note_id="ctx-current",
+        relative_path="Alexandria/Contexts/Projects/Current.md",
+        alexandria_root="Alexandria",
+        frontmatter={},
+        body=(
+            "Visible [[Contexts/Source]].\n"
+            "`inline [[Inline Example]]`\n"
+            "<!-- [[HTML Comment]] -->\n"
+            "%% [[Obsidian Comment]] %%\n"
+            "```md\n[[Fenced Example]]\n```\n"
+        ),
+    )
+
+    assert [edge.target_path for edge in edges] == ["Alexandria/Contexts/Source.md"]
+
+
 def test_graph_relations_keep_vault_root_targets_when_root_is_dot() -> None:
     """Root-vault installs should not treat the first folder as Alexandria root."""
     edges = relation_edges_from_note(

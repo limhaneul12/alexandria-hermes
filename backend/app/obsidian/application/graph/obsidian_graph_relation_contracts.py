@@ -12,6 +12,7 @@ ALEXANDRIA_LINKS_START = "<!-- ALEXANDRIA-LINKS:START -->"
 ALEXANDRIA_LINKS_END = "<!-- ALEXANDRIA-LINKS:END -->"
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
 _FRONTMATTER_RELATIONS: tuple[tuple[str, ObsidianRelationType], ...] = (
+    ("source_ref_links", ObsidianRelationType.CITES),
     ("source_refs", ObsidianRelationType.CITES),
     ("derived_from", ObsidianRelationType.DERIVED_FROM),
     ("related", ObsidianRelationType.RELATED),

@@ -194,6 +194,24 @@ class RagStrategy(StrEnum):
     HYBRID = "HYBRID"
 
 
+class ContextGraphSignalType(StrEnum):
+    """Optional graph evidence categories attached after primary recall."""
+
+    GRAPH_PROXIMITY = "graph_proximity"
+    IMPACT_ANALYSIS = "impact_analysis"
+    DUPLICATE_CANDIDATE = "duplicate_candidate"
+    SUPERSEDES_CANDIDATE = "supersedes_candidate"
+    LINEAGE = "lineage"
+    RESUME_PATH = "resume_path"
+
+
+class ContextGraphDirection(StrEnum):
+    """Direction of graph evidence relative to the recalled Context."""
+
+    OUTGOING = "outgoing"
+    INCOMING = "incoming"
+
+
 class RagHealthState(StrEnum):
     """Health states for retriever dependencies."""
 

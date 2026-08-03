@@ -117,7 +117,7 @@ class ObsidianNoteService:
         self,
         query: ObsidianSearchQuery,
         *,
-        refresh: bool = True,
+        refresh: bool = False,
     ) -> list[ObsidianSearchHit]:
         """Search Obsidian notes through the SQLite index.
 

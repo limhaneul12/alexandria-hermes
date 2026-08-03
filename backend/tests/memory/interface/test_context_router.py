@@ -339,8 +339,14 @@ def test_context_api_lists_searches_accesses_and_archives_seeded_context(
     assert chunks_response.status_code == 200
     assert chunks_response.json()[0]["context_id"] == context_id
     assert search_response.status_code == 200
-    assert search_response.json()["effective_strategy"] == "FTS_ONLY"
-    assert context_id in search_response.json()["context_pack"]
+    search_payload = search_response.json()
+    assert search_payload["effective_strategy"] == "FTS_ONLY"
+    assert context_id in search_payload["context_pack"]
+    assert "vector_score" in search_payload["matches"][0]
+    assert search_payload["matches"][0]["vector_score"] is None
+    assert "workspace_id" in search_payload["matches"][0]["context"]
+    assert search_payload["matches"][0]["context"]["workspace_id"] is None
+    assert "graph_evidence" not in search_payload["matches"][0]
     assert access_response.status_code == 200
     assert access_response.json()["access_count"] == 1
     assert access_event_response.status_code == 404

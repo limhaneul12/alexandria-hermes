@@ -24,7 +24,6 @@ from app.obsidian.application.librarian.obsidian_librarian_graph_contracts impor
 from app.obsidian.application.librarian.obsidian_librarian_workflow_service import (
     ObsidianLibrarianWorkflowService,
 )
-from app.obsidian.application.graph.obsidian_graph_service import ObsidianGraphService
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
@@ -39,15 +38,17 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
 from app.obsidian.infrastructure.models import (
     obsidian_index_models as _obsidian_index_models,
 )
+from app.obsidian.infrastructure.models.obsidian_index_models import ObsidianEdgeORM
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
 from app.obsidian.infrastructure.repositories.obsidian_workflow_repository import (
     SqlAlchemyObsidianWorkflowRepository,
 )
-from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
+from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.infrastructure.database import Database
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
@@ -218,10 +219,6 @@ def test_librarian_workflow_applies_approved_graph_links_to_active_note(
 
     async def scenario() -> tuple[list[str], str, list[tuple[str, str, str]]]:
         database, session, obsidian, workflow_service = await _services(tmp_path)
-        graph = ObsidianGraphService(
-            repository=SqlAlchemyObsidianIndexRepository(session=session),
-            obsidian_service=obsidian,
-        )
         try:
             source = await obsidian.save_note(
                 ObsidianSaveNote(
@@ -257,7 +254,11 @@ def test_librarian_workflow_applies_approved_graph_links_to_active_note(
                 )
             )
             updated = await obsidian.read_note_by_path(active.relative_path)
-            related = await graph.related_notes_by_path(active.relative_path)
+            related = await session.execute(
+                select(ObsidianEdgeORM).where(
+                    ObsidianEdgeORM.source_note_id == active.note_id
+                )
+            )
         finally:
             await session.close()
             await database.shutdown()
@@ -265,9 +266,9 @@ def test_librarian_workflow_applies_approved_graph_links_to_active_note(
             list(resumed.state["completed_actions"]),
             updated.body,
             [
-                (item.note.note_id, item.relation.value, item.direction)
-                for item in related
-                if item.note.note_id == source.note_id
+                (item.target_note_id or "", item.relation, "outgoing")
+                for item in related.scalars().all()
+                if item.target_note_id == source.note_id
             ],
         )
 
@@ -277,9 +278,10 @@ def test_librarian_workflow_applies_approved_graph_links_to_active_note(
         "add_graph_links:Alexandria/Contexts/Projects/Active Work Note.md"
     ]
     assert "[[Alexandria/Contexts/Projects/Storage Source]] — cites" in body
-    assert related == [
-        ("ctx_storage_source", ObsidianRelationType.CITES.value, "outgoing")
-    ]
+    assert set(related) == {
+        ("ctx_storage_source", ObsidianRelationType.CITES.value, "outgoing"),
+        ("ctx_storage_source", ObsidianRelationType.WIKILINK.value, "outgoing"),
+    }
 
 
 def test_librarian_workflow_runs_gpt_oauth_delegate_when_approved(

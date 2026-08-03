@@ -8,6 +8,12 @@ from app.memory.application.context_embedding_recovery_service import (
     ContextEmbeddingRecoveryService,
 )
 from app.memory.application.context_service import ContextService
+from app.obsidian.application.graph.obsidian_graph_projection_rebuild_service import (
+    ObsidianGraphProjectionRebuildService,
+)
+from app.obsidian.application.graph.obsidian_graph_projection_source_builder import (
+    ObsidianGraphProjectionSourceBuilder,
+)
 from app.obsidian.application.graph.obsidian_graph_service import ObsidianGraphService
 from app.obsidian.application.librarian.obsidian_librarian_job_service import (
     ObsidianLibrarianJobService,
@@ -16,6 +22,9 @@ from app.obsidian.application.librarian.obsidian_librarian_workflow_service impo
     ObsidianLibrarianWorkflowService,
 )
 from app.obsidian.application.service.obsidian_service import ObsidianService
+from app.obsidian.infrastructure.graph.sqlalchemy_obsidian_graph_projection_source import (
+    SqlAlchemyObsidianGraphProjectionSource,
+)
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
 )
@@ -26,6 +35,9 @@ from app.obsidian.infrastructure.repositories.obsidian_workflow_repository impor
     SqlAlchemyObsidianWorkflowRepository,
 )
 from app.platform.config.app_config import AppConfig
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
+)
 from app.shared.infrastructure.database import Database
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,8 +72,27 @@ class ObsidianContainer(containers.DeclarativeContainer):
         instance_of=ContextEmbeddingRecoveryService,
         default=None,
     )
+    graph_projection_repository = providers.Dependency(default=None)
+    index_maintenance_coordinator = providers.Dependency(
+        instance_of=IndexMaintenanceCoordinator
+    )
     index_repo = providers.Factory(
         SqlAlchemyObsidianIndexRepository, session=db_session
+    )
+    graph_projection_source = providers.Factory(
+        SqlAlchemyObsidianGraphProjectionSource,
+        session=db_session,
+    )
+    graph_projection_source_builder = providers.Factory(
+        ObsidianGraphProjectionSourceBuilder,
+        source=graph_projection_source,
+    )
+    graph_projection_rebuild_service = providers.Factory(
+        ObsidianGraphProjectionRebuildService,
+        config=app_config,
+        source_builder=graph_projection_source_builder,
+        repository=graph_projection_repository,
+        index_maintenance_coordinator=index_maintenance_coordinator,
     )
     vault_config_store = providers.Singleton(
         ObsidianVaultConfigStore,
@@ -79,11 +110,12 @@ class ObsidianContainer(containers.DeclarativeContainer):
             context_service=memory_context_service,
             recovery_service=memory_embedding_recovery_service,
         ),
+        index_maintenance_coordinator=index_maintenance_coordinator,
     )
     graph_service = providers.Factory(
         ObsidianGraphService,
         repository=index_repo,
-        obsidian_service=obsidian_service,
+        graph_repository=graph_projection_repository,
     )
     job_service = providers.Singleton(
         ObsidianLibrarianJobService,

@@ -12,6 +12,7 @@ from app.shared.utils.secret_redaction import (
 )
 
 _FRONTMATTER_KEY_PATTERN = re.compile(r"^\s*(?:-\s*)?([^:#][^:]*)\s*:")
+_FALSE_SECRET_AUDIT_FIELDS = frozenset({"secret_values_recorded"})
 
 
 def redacted_frontmatter(frontmatter: JSONObject) -> tuple[JSONObject, list[str]]:
@@ -43,8 +44,15 @@ def frontmatter_contains_secret_field(markdown: str) -> bool:
         if line.strip() == "---":
             return False
         match = _FRONTMATTER_KEY_PATTERN.match(line)
-        if match is not None and is_secret_field_name(match.group(1).strip()):
-            return True
+        if match is None:
+            continue
+        field_name = match.group(1).strip()
+        if not is_secret_field_name(field_name):
+            continue
+        raw_value = line[match.end() :].strip()
+        if _is_safe_false_secret_audit_field(field_name, raw_value):
+            continue
+        return True
     return False
 
 
@@ -82,13 +90,28 @@ def _redacted_mapping(value: dict[str, JSONValue]) -> tuple[JSONObject, list[str
     payload: JSONObject = {}
     warnings: list[str] = []
     for key, item in value.items():
-        if is_secret_field_name(str(key)) and item not in (None, ""):
+        field_name = str(key)
+        if _is_safe_false_secret_audit_field(field_name, item):
+            payload[field_name] = False
+            continue
+        if is_secret_field_name(field_name) and item not in (None, ""):
             warnings.append("potential secret-like frontmatter field was redacted")
             continue
         redacted_item, item_warnings = _redacted_json(item)
-        payload[str(key)] = redacted_item
+        payload[field_name] = redacted_item
         warnings.extend(item_warnings)
     return payload, _dedupe_warnings(warnings)
+
+
+def _is_safe_false_secret_audit_field(
+    field_name: str,
+    value: JSONValue,
+) -> bool:
+    if field_name.casefold() not in _FALSE_SECRET_AUDIT_FIELDS:
+        return False
+    if value is False:
+        return True
+    return isinstance(value, str) and value.casefold() == "false"
 
 
 def _dedupe_warnings(warnings: list[str]) -> list[str]:

@@ -49,7 +49,7 @@ async def search_obsidian_notes(
     Returns:
         Search result response.
     """
-    hits = await service.search(request.to_query())
+    hits = await service.search(request.to_query(), refresh=request.refresh)
     items = [ObsidianSearchHitResponse.from_entity(hit) for hit in hits]
     return ObsidianSearchResponse(items=items, total=len(items))
 

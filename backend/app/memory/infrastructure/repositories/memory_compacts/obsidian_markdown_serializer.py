@@ -40,6 +40,11 @@ def serialize_compact(compact: MemoryCompact) -> str:
         }
         for source_ref in compact.source_refs
     ]
+    source_ref_links = tuple(
+        link
+        for source_ref in compact.source_refs
+        if (link := _obsidian_source_link(source_ref.detail_path)) is not None
+    )
     frontmatter: dict[str, CompactFrontmatterValue] = {
         "alexandria_type": ALEXANDRIA_MEMORY_COMPACT_TYPE,
         "id": compact.id,
@@ -67,9 +72,11 @@ def serialize_compact(compact: MemoryCompact) -> str:
         if compact.reviewed_at is not None
         else None,
         "source_refs": dumps_json(cast(JSONValue, source_refs)).decode("utf-8"),
+        "source_ref_links": source_ref_links,
     }
     lines = [FRONTMATTER_DELIMITER]
-    lines.extend(f"{key}: {_yaml_scalar(value)}" for key, value in frontmatter.items())
+    for key, value in frontmatter.items():
+        lines.extend(_yaml_property_lines(key, value))
     lines.append(FRONTMATTER_DELIMITER)
     body = compact.markdown_body.rstrip("\n")
     return "\n".join(lines) + f"\n{body}\n"
@@ -85,7 +92,7 @@ def _yaml_scalar(value: CompactFrontmatterValue) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, tuple):
-        return f"[{', '.join(_quoted_yaml_string(item) for item in value)}]"
+        raise TypeError("list properties must be rendered as block sequences")
     if value.startswith("[") and value.endswith("]"):
         return value
     return _quoted_yaml_string(value)
@@ -94,3 +101,18 @@ def _yaml_scalar(value: CompactFrontmatterValue) -> str:
 def _quoted_yaml_string(value: str) -> str:
     escaped = value.replace("'", "''")
     return f"'{escaped}'"
+
+
+def _yaml_property_lines(key: str, value: CompactFrontmatterValue) -> list[str]:
+    if isinstance(value, tuple):
+        if not value:
+            return [f"{key}: []"]
+        return [f"{key}:", *[f"  - {_quoted_yaml_string(item)}" for item in value]]
+    return [f"{key}: {_yaml_scalar(value)}"]
+
+
+def _obsidian_source_link(detail_path: str) -> str | None:
+    normalized = detail_path.strip().lstrip("/")
+    if not normalized.lower().endswith(".md") or "://" in normalized:
+        return None
+    return f"[[{normalized[:-3]}]]"

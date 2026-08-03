@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import anyio
-from app.obsidian.application.graph.obsidian_graph_service import ObsidianGraphService
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianSaveNote
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
@@ -29,7 +28,7 @@ def _database_url(path: Path) -> str:
 
 async def _services(
     tmp_path: Path,
-) -> tuple[Database, AsyncSession, ObsidianService, ObsidianGraphService]:
+) -> tuple[Database, AsyncSession, ObsidianService]:
     database = Database(
         database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
     )
@@ -41,15 +40,14 @@ async def _services(
         vault_path=str(tmp_path / "vault"),
         alexandria_root="Alexandria",
     )
-    graph = ObsidianGraphService(repository=repository, obsidian_service=obsidian)
-    return database, session, obsidian, graph
+    return database, session, obsidian
 
 
-def test_reindex_builds_edges_and_related_notes_from_markdown(tmp_path: Path) -> None:
-    """Related-note retrieval should use edges rebuilt from Obsidian Markdown."""
+def test_reindex_builds_sqlite_edge_source_cache_from_markdown(tmp_path: Path) -> None:
+    """Reindex should retain SQLite edges as Neo4j rebuild source cache."""
 
     async def scenario() -> tuple[list[tuple[str, str, str]], str]:
-        database, session, obsidian, graph = await _services(tmp_path)
+        database, session, obsidian = await _services(tmp_path)
         try:
             start = await obsidian.save_note(
                 ObsidianSaveNote(
@@ -80,18 +78,25 @@ def test_reindex_builds_edges_and_related_notes_from_markdown(tmp_path: Path) ->
                     },
                 )
             )
-            related = await graph.related_notes_by_path(current.relative_path)
+            rows = await session.execute(
+                select(
+                    ObsidianEdgeORM.target_note_id,
+                    ObsidianEdgeORM.relation,
+                    ObsidianEdgeORM.source_note_id,
+                )
+            )
         finally:
             await session.close()
             await database.shutdown()
-        return [
-            (item.note.note_id, item.relation.value, item.direction) for item in related
-        ], current.relative_path
+        return (
+            [(target or "", relation, source) for target, relation, source in rows],
+            current.relative_path,
+        )
 
     related, current_path = anyio.run(scenario)
 
     assert current_path == "Alexandria/Contexts/Projects/Graph Current.md"
-    assert related[0] == ("alexandria_start_here", "cites", "outgoing")
+    assert related[0] == ("alexandria_start_here", "cites", "ctx_graph_current")
 
 
 def test_reindex_resolves_relative_wikilinks_from_source_folder(
@@ -99,11 +104,8 @@ def test_reindex_resolves_relative_wikilinks_from_source_folder(
 ) -> None:
     """Relative wikilinks should resolve against the source note folder."""
 
-    async def scenario() -> tuple[
-        list[tuple[str, str, str]],
-        list[tuple[str, str]],
-    ]:
-        database, session, obsidian, graph = await _services(tmp_path)
+    async def scenario() -> list[tuple[str, str]]:
+        database, session, obsidian = await _services(tmp_path)
         root = tmp_path / "vault" / "Alexandria"
         source_path = root / "A Source.md"
         target_path = root / "Z Target.md"
@@ -131,7 +133,6 @@ def test_reindex_resolves_relative_wikilinks_from_source_folder(
         )
         try:
             await obsidian.reindex()
-            related = await graph.related_notes_by_path("Alexandria/A Source.md")
             rows = await session.execute(
                 select(ObsidianEdgeORM.target_path, ObsidianEdgeORM.target_note_id)
             )
@@ -139,17 +140,10 @@ def test_reindex_resolves_relative_wikilinks_from_source_folder(
         finally:
             await session.close()
             await database.shutdown()
-        return (
-            [
-                (item.note.note_id, item.relation.value, item.direction)
-                for item in related
-            ],
-            indexed_edges,
-        )
+        return indexed_edges
 
-    related, indexed_edges = anyio.run(scenario)
+    indexed_edges = anyio.run(scenario)
 
-    assert related == [("ctx_z_target", "wikilink", "outgoing")]
     assert indexed_edges == [("Alexandria/Z Target.md", "ctx_z_target")]
 
 
@@ -159,7 +153,7 @@ def test_repository_resolves_edges_after_target_note_is_indexed_later(
     """A second resolve pass should fill target ids for late-indexed notes."""
 
     async def scenario() -> tuple[int, list[tuple[str, str]]]:
-        database, session, obsidian, _graph = await _services(tmp_path)
+        database, session, obsidian = await _services(tmp_path)
         repository = SqlAlchemyObsidianIndexRepository(session=session)
         try:
             await obsidian.save_note(
@@ -198,11 +192,11 @@ def test_repository_resolves_edges_after_target_note_is_indexed_later(
     assert edges == [("Alexandria/Late Target.md", "ctx_late_target")]
 
 
-def test_related_notes_include_incoming_backlinks(tmp_path: Path) -> None:
-    """A target note should show notes that link to it as incoming relations."""
+def test_sqlite_edge_cache_preserves_incoming_backlink_source(tmp_path: Path) -> None:
+    """SQLite should preserve backlink source rows without serving traversal."""
 
     async def scenario() -> list[tuple[str, str]]:
-        database, session, obsidian, graph = await _services(tmp_path)
+        database, session, obsidian = await _services(tmp_path)
         try:
             await obsidian.save_note(
                 ObsidianSaveNote(
@@ -224,10 +218,90 @@ def test_related_notes_include_incoming_backlinks(tmp_path: Path) -> None:
                     frontmatter={"scope": "GLOBAL"},
                 )
             )
-            related = await graph.related_notes("ctx_target")
+            rows = await session.execute(
+                select(
+                    ObsidianEdgeORM.source_note_id,
+                    ObsidianEdgeORM.target_note_id,
+                ).where(ObsidianEdgeORM.target_note_id == "ctx_target")
+            )
         finally:
             await session.close()
             await database.shutdown()
-        return [(item.note.note_id, item.direction) for item in related]
+        return [(source, target or "") for source, target in rows]
 
-    assert anyio.run(scenario) == [("ctx_source", "incoming")]
+    assert anyio.run(scenario) == [("ctx_source", "ctx_target")]
+
+
+def test_sqlite_edge_cache_persists_and_replaces_stale_source_edges(
+    tmp_path: Path,
+) -> None:
+    """Saved edge rows should survive reopen and disappear after source replacement."""
+
+    async def scenario() -> tuple[list[str], list[str]]:
+        database, session, obsidian = await _services(tmp_path)
+        reopened: AsyncSession | None = None
+        try:
+            await obsidian.save_note(
+                ObsidianSaveNote(
+                    title="Persistent Target",
+                    body="# Persistent Target\n",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_persistent_target",
+                    relative_path="Alexandria/Persistent Target.md",
+                    frontmatter={"scope": "GLOBAL"},
+                )
+            )
+            await obsidian.save_note(
+                ObsidianSaveNote(
+                    title="Persistent Source",
+                    body="# Persistent Source\n\nSee [[Persistent Target]].",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_persistent_source",
+                    relative_path="Alexandria/Persistent Source.md",
+                    frontmatter={"scope": "GLOBAL"},
+                )
+            )
+            await session.commit()
+            await session.close()
+
+            reopened = database.session()
+            persisted_rows = await reopened.scalars(
+                select(ObsidianEdgeORM.edge_id).where(
+                    ObsidianEdgeORM.source_note_id == "ctx_persistent_source"
+                )
+            )
+            persisted = list(persisted_rows.all())
+            repository = SqlAlchemyObsidianIndexRepository(session=reopened)
+            reopened_obsidian = ObsidianService(
+                repository=repository,
+                vault_path=str(tmp_path / "vault"),
+                alexandria_root="Alexandria",
+            )
+            await reopened_obsidian.save_note(
+                ObsidianSaveNote(
+                    title="Persistent Source",
+                    body="# Persistent Source\n\nRelationship removed.",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="ctx_persistent_source",
+                    relative_path="Alexandria/Persistent Source.md",
+                    frontmatter={"scope": "GLOBAL"},
+                )
+            )
+            await reopened.commit()
+            remaining_rows = await reopened.scalars(
+                select(ObsidianEdgeORM.edge_id).where(
+                    ObsidianEdgeORM.source_note_id == "ctx_persistent_source"
+                )
+            )
+            remaining = list(remaining_rows.all())
+        finally:
+            await session.close()
+            if reopened is not None:
+                await reopened.close()
+            await database.shutdown()
+        return persisted, remaining
+
+    persisted, remaining = anyio.run(scenario)
+
+    assert len(persisted) == 1
+    assert remaining == []

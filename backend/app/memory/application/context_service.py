@@ -42,8 +42,14 @@ from app.memory.domain.event_enum.context_enums import (
 from app.memory.domain.repositories.canonical_context_repository import (
     ICanonicalContextRepository,
 )
+from app.memory.domain.repositories.context_graph_signal_provider import (
+    IContextGraphSignalProvider,
+)
 from app.memory.domain.repositories.context_repository import IContextRepository
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
+)
 
 
 class ContextService:
@@ -62,6 +68,8 @@ class ContextService:
         vector_retrieval_enabled: bool = False,
         extra_search_sources: Sequence[IContextSearchSource] | None = None,
         canonical_context_repository: ICanonicalContextRepository | None = None,
+        graph_signal_provider: IContextGraphSignalProvider | None = None,
+        index_maintenance_coordinator: IndexMaintenanceCoordinator | None = None,
     ) -> None:
         """Initialize service dependencies.
 
@@ -71,8 +79,12 @@ class ContextService:
             vector_retrieval_enabled: Whether vector indexing and query paths are wired.
             extra_search_sources: Optional additional Context RAG sources.
             canonical_context_repository: Optional canonical Markdown context adapter.
+            graph_signal_provider: Optional score-preserving graph evidence provider.
         """
         search_sources = [repository, *(extra_search_sources or ())]
+        self._index_maintenance_coordinator = (
+            index_maintenance_coordinator or IndexMaintenanceCoordinator()
+        )
         self._lint_service = ContextLintService()
         self._embedding_service = ContextEmbeddingService(
             provider=embedding_provider,
@@ -82,6 +94,7 @@ class ContextService:
         self._search_service = ContextSearchService(
             search_sources=search_sources,
             embedding_service=self._embedding_service,
+            graph_signal_provider=graph_signal_provider,
         )
         self._soft_rebuild_service = ContextSoftRebuildService(
             embedding_service=self._embedding_service,
@@ -394,7 +407,8 @@ class ContextService:
         Returns:
             Context embedding reindex result.
         """
-        return await self._embedding_service.reindex(limit=limit, force=force)
+        async with self._index_maintenance_coordinator.operation("embedding_reindex"):
+            return await self._embedding_service.reindex(limit=limit, force=force)
 
     async def soft_rebuild_embeddings(
         self,
@@ -413,11 +427,14 @@ class ContextService:
         Returns:
             Operator-facing soft rebuild report.
         """
-        return await self._soft_rebuild_service.rebuild(
-            limit=limit,
-            verification_query=verification_query,
-            project=project,
-        )
+        async with self._index_maintenance_coordinator.operation(
+            "embedding_soft_rebuild"
+        ):
+            return await self._soft_rebuild_service.rebuild(
+                limit=limit,
+                verification_query=verification_query,
+                project=project,
+            )
 
     async def embedding_source_statuses(self) -> list[ContextEmbeddingSourceStatus]:
         """Return source-level embedding fingerprint diagnostics.

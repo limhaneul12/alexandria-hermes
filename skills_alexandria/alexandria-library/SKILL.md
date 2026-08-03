@@ -1,6 +1,6 @@
 ---
 name: alexandria-library
-description: Use when current/local Hermes context, memory, skills, prompts, or librarian-backed self-acquisition may help the task, especially when agents must read or safely update scoped Obsidian-backed memory without overwriting another agent.
+description: Use when current/local Hermes context, memory, skills, prompts, graph-related notes, or librarian-backed self-acquisition may help the task, especially when agents must search or safely update scoped Obsidian-backed memory without overwriting another agent.
 ---
 
 # Alexandria Library
@@ -12,6 +12,7 @@ Use Alexandria as an optional local-first knowledge library for Hermes.
 - When local/current context is insufficient, read the current Memory Compact
   before deeper Context Vault recall/RAG.
 - Recall project decisions, compact handoffs, skill candidates, prompts, and usage notes.
+- Expand from a relevant seed note through the optional Neo4j related-note graph when direct search is not enough.
 - Acquire a missing skill through Hermes-alone fallback first; ask a librarian only on explicit user request.
 
 ## Policy contract
@@ -36,6 +37,24 @@ Use Alexandria as an optional local-first knowledge library for Hermes.
   on explicit user request or stricter local policy.
 - Keep writes compact and durable: decisions, root causes, reusable plans, and skill candidates.
 - Do not store secrets, transient task logs, or private credentials.
+
+## Graph-aware discovery
+
+Use search to find a relevant seed note before traversing the graph:
+
+1. Run scoped FTS/vector/HYBRID search.
+2. Read the best seed note and retain its stable `id` or canonical path.
+3. Check `/obsidian/graph/projection/status` when graph expansion is useful.
+4. Use `alexandria_get_related_notes(note_id=... | path=...)` to inspect related notes.
+5. Read and cite the returned notes before using them as evidence.
+
+The graph is a rebuildable Neo4j read model, not a source of truth. Obsidian
+Markdown remains canonical, while SQLite `obsidian_edges` remains projection
+source-cache state. If graph projection is disabled or unavailable, continue
+with normal scoped RAG and do not simulate graph traversal from SQLite.
+Missing or ambiguous targets are reported as counted, non-fatal rebuild issues
+and are excluded from the active projection. Use detailed issue output only as a
+bounded repair sample, not as the normal graph status payload.
 
 ## Safe Agent writes
 
@@ -62,3 +81,19 @@ prevents one agent from silently overwriting another agent's completed update.
 After canonical writes, verify the note can be read back and that scoped
 FTS/vector/HYBRID recall does not return another agent, session, project, or
 workspace.
+
+When a write changes note links or graph-relevant metadata, finish with:
+
+1. vault reindex;
+2. embedding soft rebuild when RAG reports missing or stale rows;
+3. Neo4j graph projection rebuild when graph projection is enabled;
+4. exact search/readback plus one related-note lookup from a known seed.
+
+These maintenance steps are sequential. Retry HTTP `409` after the current
+maintenance operation completes. Normal search reads the current index and does
+not perform an implicit vault reindex.
+
+## Related Alexandria skills
+
+- [[Skills/Active/Librarian Operator]] — search-first curation, note-aware synthesis, and graph expansion.
+- [[Skills/Active/Alexandria Operational Sync]] — vault, embedding, and graph projection recovery.

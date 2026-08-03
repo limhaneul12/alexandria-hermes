@@ -1,6 +1,6 @@
 ---
 name: operational-sync
-description: Use when Alexandria-Hermes needs encrypted operational backup, isolated restore verification, SQLite/Obsidian index synchronization, embedding soft rebuild, RAG status repair, stale cache cleanup, or proof that the library is READY/HYBRID.
+description: Use when Alexandria-Hermes needs encrypted operational backup, isolated restore verification, SQLite/Obsidian index synchronization, embedding soft rebuild, Neo4j graph projection rebuild, RAG status repair, stale cache cleanup, or proof that library search and optional graph discovery are healthy.
 ---
 
 # Operational Sync
@@ -10,8 +10,10 @@ Use this skill to restore Alexandria-Hermes retrieval health without modifying O
 ## Invariants
 
 - Treat Obsidian Markdown as the source of truth.
-- Treat SQLite, FTS, vector, and embedding rows as rebuildable cache/index state.
-- Prefer non-destructive sync first: status check → Obsidian reindex → embedding soft rebuild → readiness verification.
+- Treat SQLite, FTS, vector, embedding rows, and the Neo4j projection as rebuildable cache/index state.
+- Preserve SQLite `obsidian_edges` as projection source cache; do not use it as a graph traversal fallback.
+- Treat vault reindex, embedding rebuild/reindex, and graph rebuild as one fail-fast maintenance lane; run them sequentially and retry an HTTP `409` only after the active operation finishes.
+- Prefer non-destructive sync first: status check → Obsidian reindex → embedding soft rebuild when needed → graph projection rebuild when enabled → verification.
 - Create a verified operational backup before manual SQLite cleanup or recovery.
 - Restore into an isolated drill directory before considering maintenance recovery.
 - Never hard-delete Obsidian Markdown as part of this procedure.
@@ -26,6 +28,7 @@ Run from the repo root unless noted otherwise.
 curl -sS http://127.0.0.1:8000/health/live
 curl -sS http://127.0.0.1:8000/obsidian/status | jq
 curl -sS http://127.0.0.1:8000/memory/contexts/rag/status | jq
+curl -sS http://127.0.0.1:8000/obsidian/graph/projection/status | jq
 curl -sS http://127.0.0.1:8000/operations/readiness | jq
 ```
 
@@ -43,6 +46,33 @@ curl -sS -X POST \
 ```
 
 After every reindex, re-check RAG status. Vault reindex can create new missing embedding rows, so run soft rebuild again if needed.
+
+If graph projection is enabled, rebuild it after vault reindex so removed notes,
+changed links, lineage, and impact signals do not remain stale:
+
+```bash
+curl -fsS -X POST \
+  http://127.0.0.1:8000/obsidian/graph/projection/rebuild | jq
+curl -fsS \
+  http://127.0.0.1:8000/obsidian/graph/projection/status | jq
+```
+
+Require `status=ready`, `graph_read_model=neo4j`, no errors, and node/edge counts consistent with the
+current indexed vault. Read `issue_total`/`issue_counts` from rebuild and
+`last_run_issue_total`/`last_run_issue_counts` from status as non-fatal source
+diagnostics. Missing or ambiguous targets are excluded from the active graph.
+Only when investigating, request a bounded sample with
+`?include_issue_details=true&issue_limit=100` (maximum 500). When graph
+projection is disabled, skip this step and verify that core RAG remains healthy;
+do not fall back to SQLite traversal.
+
+For a missing-target detail, use `note_id` as the source note to repair,
+`relative_path` as the unresolved target, and `edge_id` as the SQLite source-cache
+edge identifier.
+
+Normal `/obsidian/search` requests read the current index and do not trigger a
+vault-wide reindex. Use `refresh=true` only for an explicit diagnostic refresh;
+prefer the dedicated rebuild endpoint for routine synchronization.
 
 ## Encrypted backup and restore drill
 
@@ -101,6 +131,7 @@ Only use this when all remaining `obsidian_files.index_status='stale'` rows refe
 3. Delete stale `obsidian_files` rows and related `obsidian_edges`; `obsidian_chunks` should cascade from `obsidian_files`.
 4. Run `PRAGMA foreign_key_check`.
 5. Verify `/obsidian/status`, `/memory/contexts/rag/status`, and `/operations/readiness`.
+6. If graph projection is enabled, rebuild it and verify one known related-note traversal.
 
 The direct file copy below is only a secondary same-host safety snapshot after
 the operational backup succeeds:
@@ -164,6 +195,23 @@ Expected:
 - a relevant Obsidian PRD/context note appears
 - vector/semantic retrieval evidence is present
 
+When graph projection is enabled, also verify graph discovery from a known seed:
+
+```bash
+curl -fsS -X POST \
+  http://127.0.0.1:8000/obsidian/graph/projection/rebuild | jq
+curl -fsS \
+  "http://127.0.0.1:8000/obsidian/notes/<note-id>/related?limit=5" | jq
+```
+
+Expected:
+
+- projection `status=ready` and `graph_read_model=neo4j`;
+- rebuild `errors` is empty; any `issue_total` is explained by its counted source diagnostics rather than mistaken for an operation failure;
+- each related item exposes its relation, source kind, direction, score, and edge id;
+- returned notes can be read back from canonical Obsidian Markdown;
+- disabled mode returns 503 for related-note traversal while core RAG remains usable.
+
 ## Code repair note
 
 If `/operations/readiness` returns 500 with a Pydantic validation error for `ContextEmbeddingSourceStatusResponse`, fix the interface schema boundary rather than the embedding data:
@@ -171,3 +219,8 @@ If `/operations/readiness` returns 500 with a Pydantic validation error for `Con
 - Convert `ContextEmbeddingSourceStatus` dataclasses through `source_status_payload()` before Pydantic validation.
 - Add/keep a router regression test that asserts `rag.source_statuses` is serialized.
 - Run `cd backend && make ci` before claiming completion.
+
+## Related Alexandria skills
+
+- [[Skills/Active/Alexandria Library]] — scoped recall, safe writes, and graph-aware discovery.
+- [[Skills/Active/Librarian Operator]] — search-first operation and related-note expansion.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from typing import cast
 
@@ -23,29 +24,42 @@ class _RelationTarget:
         self.relation = relation
 
 
-def _relation_targets(value: JSONValue | None) -> Iterable[_RelationTarget]:
+def _relation_targets(
+    value: JSONValue | None,
+    *,
+    field_name: str | None = None,
+) -> Iterable[_RelationTarget]:
     if value is None:
         return ()
     if isinstance(value, str):
+        sequence = _target_sequence_from_string(value)
+        if sequence is not None:
+            return tuple(
+                target
+                for item in sequence
+                for target in _relation_targets(item, field_name=field_name)
+            )
         parsed = _target_mapping_from_string(value)
         if parsed is not None:
-            return (_target_from_mapping(parsed),)
+            return (_target_from_mapping(parsed, field_name=field_name),)
         return (_RelationTarget(path=value, note_id=None, relation=None),)
     if isinstance(value, Mapping):
-        return (_target_from_mapping(value),)
+        return (_target_from_mapping(value, field_name=field_name),)
     if isinstance(value, Sequence):
         targets: list[_RelationTarget] = []
         for item in value:
             if isinstance(item, str):
                 parsed = _target_mapping_from_string(item)
                 if parsed is not None:
-                    targets.append(_target_from_mapping(parsed))
+                    targets.append(_target_from_mapping(parsed, field_name=field_name))
                 else:
                     targets.append(
                         _RelationTarget(path=item, note_id=None, relation=None)
                     )
             elif isinstance(item, Mapping):
-                targets.append(_target_from_mapping(cast(JSONObject, item)))
+                targets.append(
+                    _target_from_mapping(cast(JSONObject, item), field_name=field_name)
+                )
         return targets
     return ()
 
@@ -53,18 +67,51 @@ def _relation_targets(value: JSONValue | None) -> Iterable[_RelationTarget]:
 def _target_mapping_from_string(value: str) -> Mapping[str, JSONValue] | None:
     if not value.lstrip().startswith("{"):
         return None
-    try:
-        parsed = ast.literal_eval(value)
-    except (SyntaxError, ValueError):
-        return None
+    parsed = _structured_value(value)
     if not isinstance(parsed, Mapping):
         return None
     return cast(JSONObject, parsed)
 
 
-def _target_from_mapping(value: Mapping[str, JSONValue]) -> _RelationTarget:
-    path = _string_field(value, "path") or _string_field(value, "target_path")
-    note_id = _string_field(value, "id") or _string_field(value, "target_note_id")
+def _target_sequence_from_string(value: str) -> Sequence[JSONValue] | None:
+    if not value.lstrip().startswith("["):
+        return None
+    parsed = _structured_value(value)
+    if not isinstance(parsed, Sequence) or isinstance(parsed, str):
+        return None
+    return cast(Sequence[JSONValue], parsed)
+
+
+def _structured_value(value: str) -> JSONValue | None:
+    try:
+        return cast(JSONValue, json.loads(value))
+    except json.JSONDecodeError:
+        try:
+            return cast(JSONValue, ast.literal_eval(value))
+        except (SyntaxError, ValueError):
+            return None
+
+
+def _target_from_mapping(
+    value: Mapping[str, JSONValue],
+    *,
+    field_name: str | None,
+) -> _RelationTarget:
+    path = (
+        _string_field(value, "path")
+        or _string_field(value, "target_path")
+        or (
+            _string_field(value, "detail_path") if field_name == "source_refs" else None
+        )
+    )
+    source_id = (
+        _string_field(value, "source_id") if field_name == "source_refs" else None
+    )
+    note_id = (
+        source_id
+        or _string_field(value, "target_note_id")
+        or _string_field(value, "id")
+    )
     relation_value = _string_field(value, "relation")
     relation = _relation_or_none(relation_value)
     return _RelationTarget(path=path, note_id=note_id, relation=relation)

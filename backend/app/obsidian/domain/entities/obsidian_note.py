@@ -159,6 +159,14 @@ class ObsidianVaultStatus:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianVaultLocation:
+    """Canonical Vault location without opening the rebuildable index."""
+
+    vault_path: str
+    alexandria_root: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianVaultInventoryItem:
     """One managed Markdown note discovered by vault inventory."""
 

@@ -23,6 +23,7 @@ dependencies = [
     "typer>=0.25.1,<1.0.0",
     "langgraph>=1.0.0,<2.0.0",
     "langgraph-checkpoint-sqlite>=3.1.0,<4.0.0",
+    "neo4j>=6.2,<7",
 ]
 
 [project.scripts]
