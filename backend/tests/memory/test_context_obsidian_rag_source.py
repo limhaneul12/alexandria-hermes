@@ -12,6 +12,12 @@ from app.memory.application.integration.obsidian_canonical_context_gateway impor
     ObsidianCanonicalContextGateway,
 )
 from app.memory.application.retrieval.embedding_contract import EmbeddingProvider
+from app.memory.domain.contracts.context_recall_contracts import (
+    ContextFtsRecall,
+    ContextRecallFilter,
+    ContextVectorRecall,
+    validated_scope_identity,
+)
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextScope,
@@ -44,7 +50,7 @@ from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
 )
 from app.shared.exceptions.obsidian_exceptions import ObsidianValidationError
 from app.shared.infrastructure.database import Database
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, event, func, select
 from tests.memory.context_seed import seed_context
 
 _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
@@ -166,6 +172,173 @@ def test_context_rag_search_includes_obsidian_vault_fts_source(
     assert set(context_ids) == {f"obsidian:{note_id}"}
     assert "Command Usage Handoff" in context_pack
     assert "obsidian:" in context_pack
+
+
+def test_obsidian_fts_bulk_hydrates_ranked_candidates(tmp_path: Path) -> None:
+    """FTS candidate hydration must use bounded queries instead of N+1 gets."""
+
+    async def scenario() -> tuple[int, int, int]:
+        async with _temporary_database(tmp_path / "obsidian-rag-bulk.db") as database:
+            async with database.session() as write_session:
+                obsidian_service = ObsidianService(
+                    repository=SqlAlchemyObsidianIndexRepository(session=write_session),
+                    vault_path=str(tmp_path / "vault"),
+                    alexandria_root="Alexandria",
+                )
+                for index in range(6):
+                    await obsidian_service.save_note(
+                        ObsidianSaveNote(
+                            title=f"Bulk Recall Note {index}",
+                            body=(
+                                f"# Bulk Recall Note {index}\n\n"
+                                "bulk-hydration-regression-token"
+                            ),
+                            alexandria_type=AlexandriaNoteType.CONTEXT,
+                            note_id=f"bulk_recall_note_{index}",
+                            project="alexandria-hermes",
+                            frontmatter={"scope": "PROJECT"},
+                        )
+                    )
+                await write_session.commit()
+
+            recall = ContextFtsRecall(
+                query="bulk-hydration-regression-token",
+                recall_filter=ContextRecallFilter(
+                    limit=5,
+                    kind=None,
+                    scope_identity=validated_scope_identity(
+                        (ContextScope.PROJECT, ContextScope.GLOBAL),
+                        "alexandria-hermes",
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                    lifecycle_statuses=None,
+                ),
+            )
+            statement_count = 0
+
+            def count_statement(*_args: object, **_kwargs: object) -> None:
+                nonlocal statement_count
+                statement_count += 1
+
+            event.listen(
+                database.engine.sync_engine,
+                "before_cursor_execute",
+                count_statement,
+            )
+            try:
+                async with database.session() as search_session:
+                    source = SqlAlchemyObsidianContextSearchSource(
+                        session=search_session
+                    )
+                    matches = await source.search_fts(recall)
+                    first_statement_count = statement_count
+                    statement_count = 0
+                    repeated_matches = await source.search_fts(recall)
+            finally:
+                event.remove(
+                    database.engine.sync_engine,
+                    "before_cursor_execute",
+                    count_statement,
+                )
+            assert len(repeated_matches) == len(matches)
+            return first_statement_count, statement_count, len(matches)
+
+    first_statement_count, repeated_statement_count, match_count = anyio.run(scenario)
+
+    assert first_statement_count == 4
+    assert repeated_statement_count == 3
+    assert match_count == 5
+
+
+def test_obsidian_vector_bulk_hydrates_ranked_candidates(tmp_path: Path) -> None:
+    """Vector candidate hydration must use one rank query and two bulk loads."""
+
+    async def scenario() -> tuple[int, int]:
+        async with _temporary_database(
+            tmp_path / "obsidian-vector-bulk.db"
+        ) as database:
+            async with database.session() as write_session:
+                obsidian_service = ObsidianService(
+                    repository=SqlAlchemyObsidianIndexRepository(session=write_session),
+                    vault_path=str(tmp_path / "vault"),
+                    alexandria_root="Alexandria",
+                )
+                provider = KeywordEmbeddingProvider()
+                for index in range(6):
+                    await obsidian_service.save_note(
+                        ObsidianSaveNote(
+                            title=f"Vector Recall Note {index}",
+                            body=(
+                                f"# Vector Recall Note {index}\n\n"
+                                "semantic-target vector-bulk-regression-token"
+                            ),
+                            alexandria_type=AlexandriaNoteType.CONTEXT,
+                            note_id=f"vector_recall_note_{index}",
+                            project="alexandria-hermes",
+                            frontmatter={"scope": "PROJECT"},
+                        )
+                    )
+                service = ContextService(
+                    repository=SqlAlchemyContextRepository(session=write_session),
+                    embedding_provider=provider,
+                    vector_retrieval_enabled=True,
+                    extra_search_sources=[
+                        SqlAlchemyObsidianContextSearchSource(session=write_session)
+                    ],
+                )
+                await service.reindex_embeddings(limit=50, force=True)
+                await write_session.commit()
+
+            recall = ContextVectorRecall(
+                query_embedding=tuple(provider.embed_query("query-alias")),
+                model_name=provider.model_name,
+                dimensions=provider.dimensions,
+                fingerprint_key=provider.fingerprint().key(),
+                recall_filter=ContextRecallFilter(
+                    limit=5,
+                    kind=None,
+                    scope_identity=validated_scope_identity(
+                        (ContextScope.PROJECT, ContextScope.GLOBAL),
+                        "alexandria-hermes",
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                    lifecycle_statuses=None,
+                ),
+            )
+            statement_count = 0
+
+            def count_statement(*_args: object, **_kwargs: object) -> None:
+                nonlocal statement_count
+                statement_count += 1
+
+            event.listen(
+                database.engine.sync_engine,
+                "before_cursor_execute",
+                count_statement,
+            )
+            try:
+                async with database.session() as search_session:
+                    matches = await SqlAlchemyObsidianContextSearchSource(
+                        session=search_session
+                    ).search_vector(recall)
+            finally:
+                event.remove(
+                    database.engine.sync_engine,
+                    "before_cursor_execute",
+                    count_statement,
+                )
+            return statement_count, len(matches)
+
+    statement_count, match_count = anyio.run(scenario)
+
+    assert statement_count == 3
+    assert match_count == 5
 
 
 def test_obsidian_embedding_input_includes_title_heading_and_content(

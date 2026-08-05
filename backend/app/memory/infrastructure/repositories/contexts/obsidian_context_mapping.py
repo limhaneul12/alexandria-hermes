@@ -44,6 +44,7 @@ DEFAULT_EXCLUDED_OBSIDIAN_RECALL_PREFIXES = ("_Ops/",)
 
 def matches_context_filters(
     note: ObsidianFileORM,
+    context: ContextRecord,
     kind: ContextKind | None,
     scope_filter: ScopeIdentity | None,
     project: str | None = None,
@@ -51,7 +52,6 @@ def matches_context_filters(
 ) -> bool:
     if not is_recall_visible(note, include_lifecycle_statuses):
         return False
-    context = context_record_from_obsidian_row(note)
     if kind is not None and context.kind != kind:
         return False
     if scope_filter is not None:
@@ -101,12 +101,12 @@ def match_from_obsidian_rows(
     *,
     note: ObsidianFileORM,
     chunk: ObsidianChunkORM,
+    context: ContextRecord,
     score: float,
     fts_score: float | None,
     vector_score: float | None,
     why_retrieved: str,
 ) -> ContextSearchMatch:
-    context = context_record_from_obsidian_row(note)
     chunk_record = chunk_record_from_obsidian_row(chunk, title=note.title)
     return ContextSearchMatch(
         context=context,
