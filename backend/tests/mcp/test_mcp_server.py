@@ -26,6 +26,8 @@ from app.mcp_server.tools.librarian_readiness_tools import (
     alexandria_librarian_refresh_current_compact,
 )
 from app.mcp_server.tools.librarian_vault_backend_gateway import (
+    alexandria_get_graph_build_status,
+    alexandria_get_graph_projection_status,
     alexandria_librarian_review_apply_moves,
     alexandria_librarian_review_move_plan,
     alexandria_librarian_review_queue,
@@ -33,7 +35,10 @@ from app.mcp_server.tools.librarian_vault_backend_gateway import (
     alexandria_librarian_vault_inventory,
     alexandria_librarian_vault_move_plan,
     alexandria_librarian_vault_path_search,
+    alexandria_rebuild_graph_projection,
+    alexandria_rebuild_note_graph,
     alexandria_reindex_vault,
+    alexandria_validate_note_links,
 )
 from app.mcp_server.tools.memory_compact_tools import (
     alexandria_archive_memory_compact,
@@ -53,10 +58,16 @@ from app.mcp_server.tools.oauth_backend_gateway import (
 )
 from app.mcp_server.tools.obsidian_backend_gateway import (
     alexandria_ask_obsidian_librarian,
+    alexandria_check_path_exists,
+    alexandria_create_note,
     alexandria_get_related_notes,
     alexandria_read_note,
+    alexandria_resolve_canonical_identity,
     alexandria_save_note,
     alexandria_search_vault,
+    alexandria_update_note,
+    alexandria_upsert_note,
+    alexandria_upsert_report_bundle,
 )
 from app.mcp_server.tools.operations_backend_gateway import (
     alexandria_operational_readiness,
@@ -177,6 +188,10 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
         alexandria_read_note,
         alexandria_get_related_notes,
         alexandria_reindex_vault,
+        alexandria_get_graph_projection_status,
+        alexandria_rebuild_graph_projection,
+        alexandria_get_graph_build_status,
+        alexandria_validate_note_links,
         alexandria_ask_librarian,
         alexandria_librarian_brief_preview,
         alexandria_librarian_job_status,
@@ -852,6 +867,49 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
     assert ask_body["profile_id"] == "research-critic"
 
 
+def test_mcp_graph_projection_tools_map_to_backend_endpoints() -> None:
+    """Graph projection MCP tools should call the explicit REST endpoints."""
+    client, calls = _client()
+
+    async def run_tools() -> None:
+        await alexandria_get_graph_projection_status(client)
+        await alexandria_rebuild_graph_projection(client)
+        await alexandria_get_graph_build_status(client)
+        await alexandria_validate_note_links(
+            client,
+            note_id="note-1",
+            path="Alexandria/Note 1.md",
+            include_resolved_targets=True,
+        )
+        await alexandria_rebuild_note_graph(
+            client,
+            note_id="note-1",
+            replace_existing_edges=True,
+        )
+
+    anyio.run(run_tools)
+
+    methods_and_paths = [
+        (request.method, str(request.url).removeprefix("http://backend:8000"))
+        for request in calls
+    ]
+    assert methods_and_paths == [
+        ("GET", "/obsidian/graph/projection/status"),
+        ("POST", "/obsidian/graph/projection/rebuild"),
+        ("GET", "/obsidian/graph/build/status"),
+        (
+            "GET",
+            "/obsidian/graph/notes/validate-links?"
+            "include_resolved_targets=True&note_id=note-1&path=Alexandria%2FNote+1.md",
+        ),
+        (
+            "POST",
+            "/obsidian/graph/notes/rebuild?replace_existing_edges=True&note_id=note-1",
+        ),
+    ]
+    assert loads_json(calls[1].content or b"{}") == {}
+
+
 def test_mcp_save_note_normalizes_collection_input_before_http_forwarding() -> None:
     """MCP saves should forward canonical arrays instead of repr strings."""
     client, calls = _client()
@@ -881,6 +939,124 @@ def test_mcp_save_note_normalizes_collection_input_before_http_forwarding() -> N
         "artifact_refs": ["artifact-1", "artifact-2"],
         "evidence_refs": [],
         "source_of_truth": True,
+    }
+
+
+def test_mcp_explicit_note_writes_map_modes_and_identity_selectors() -> None:
+    """Explicit note tools should preserve their operation-specific REST contract."""
+    client, calls = _client()
+
+    async def run_tools() -> None:
+        await alexandria_create_note(
+            client,
+            "Created",
+            "# Created",
+            "skill",
+            "path",
+            note_id="skill-created",
+            path="Alexandria/Skills/Drafts/created.md",
+        )
+        await alexandria_update_note(
+            client,
+            "Updated",
+            "# Updated",
+            "skill",
+            "note_id",
+            note_id="skill-created",
+            expected_content_hash="a" * 64,
+        )
+        await alexandria_upsert_note(
+            client,
+            "Upserted",
+            "# Upserted",
+            "skill",
+            "path",
+            path="Alexandria/Skills/Drafts/upserted.md",
+            frontmatter_mode="replace_user_fields",
+        )
+
+    anyio.run(run_tools)
+
+    assert [request.url.path for request in calls] == [
+        "/obsidian/notes/create",
+        "/obsidian/notes/update",
+        "/obsidian/notes/upsert",
+    ]
+    create_body = loads_json(calls[0].content or b"{}")
+    update_body = loads_json(calls[1].content or b"{}")
+    upsert_body = loads_json(calls[2].content or b"{}")
+    assert create_body["match_by"] == "path"
+    assert create_body["id"] == "skill-created"
+    assert update_body["match_by"] == "note_id"
+    assert update_body["expected_content_hash"] == "a" * 64
+    assert "tags" not in update_body
+    assert "status" not in update_body
+    assert "source" not in update_body
+    assert "frontmatter" not in update_body
+    assert upsert_body["frontmatter_mode"] == "replace_user_fields"
+
+
+def test_mcp_report_bundle_maps_idempotency_and_verification_contract() -> None:
+    """Report bundle MCP calls should forward one bounded orchestration request."""
+    client, calls = _client()
+
+    anyio.run(
+        alexandria_upsert_report_bundle,
+        client,
+        "ethereum:2026-08-03",
+        {
+            "title": "Ethereum Source",
+            "path": "Contexts/Projects/Ethereum Source.md",
+            "body": "# Ethereum Source",
+            "frontmatter": {"project": "crypto", "source_of_truth": "TRUE"},
+        },
+        [
+            {
+                "path": "Indexes/Ethereum Month Index.md",
+                "relation": "contains",
+            }
+        ],
+    )
+
+    assert calls[0].url.path == "/obsidian/report-bundles/upsert"
+    body = loads_json(calls[0].content or b"{}")
+    assert body["idempotency_key"] == "ethereum:2026-08-03"
+    assert body["source"]["frontmatter"]["source_of_truth"] is True
+    assert body["graph_owners"] == [
+        {"path": "Indexes/Ethereum Month Index.md", "relation": "contains"}
+    ]
+    assert body["verify"] == {
+        "index_status": True,
+        "incoming_edges": True,
+        "duplicates": True,
+    }
+
+
+def test_mcp_exact_path_and_canonical_identity_map_without_fuzzy_search() -> None:
+    """Identity MCP tools should use focused exact-path and resolver endpoints."""
+    client, calls = _client()
+
+    async def run_tools() -> None:
+        await alexandria_check_path_exists(client, "Contexts/Projects/Source.md")
+        await alexandria_resolve_canonical_identity(
+            client,
+            "Crypto Intelligence Trader",
+            "XRP Morning Read",
+            "2026-08-03",
+            "XRP",
+        )
+
+    anyio.run(run_tools)
+
+    assert [request.method for request in calls] == ["GET", "POST"]
+    assert calls[0].url.path == "/obsidian/notes/check-path"
+    assert calls[0].url.params["path"] == "Contexts/Projects/Source.md"
+    assert calls[1].url.path == "/obsidian/notes/resolve-canonical-identity"
+    assert loads_json(calls[1].content or b"{}") == {
+        "project": "Crypto Intelligence Trader",
+        "report": "XRP Morning Read",
+        "date": "2026-08-03",
+        "entity": "XRP",
     }
 
 
@@ -2203,6 +2379,11 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_recovery_run",
         "alexandria_recovery_run_status",
         "alexandria_reindex_vault",
+        "alexandria_get_graph_projection_status",
+        "alexandria_rebuild_graph_projection",
+        "alexandria_get_graph_build_status",
+        "alexandria_validate_note_links",
+        "alexandria_rebuild_note_graph",
         "alexandria_search_vault",
         "alexandria_librarian_review_queue",
         "alexandria_librarian_review_move_plan",
@@ -2212,7 +2393,13 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_librarian_vault_move_plan",
         "alexandria_librarian_vault_apply_moves",
         "alexandria_read_note",
+        "alexandria_check_path_exists",
+        "alexandria_resolve_canonical_identity",
         "alexandria_save_note",
+        "alexandria_create_note",
+        "alexandria_update_note",
+        "alexandria_upsert_note",
+        "alexandria_upsert_report_bundle",
         "alexandria_ask_obsidian_librarian",
     } <= names
     assert {

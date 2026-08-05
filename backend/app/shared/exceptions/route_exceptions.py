@@ -26,9 +26,12 @@ from app.shared.exceptions.memory_context_exceptions import (
 )
 from app.shared.exceptions.obsidian_exceptions import (
     ObsidianGraphUnavailableError,
+    ObsidianIdempotencyConflictError,
+    ObsidianIdentityConflictError,
     ObsidianNotFoundError,
     ObsidianValidationError,
     ObsidianWriteConflictError,
+    ObsidianWriteTargetNotFoundError,
 )
 from fastapi import status
 
@@ -70,6 +73,9 @@ OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {
     **OBSIDIAN_ROUTE_EXCEPTION_MAPPING,
     ObsidianValidationError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     ObsidianWriteConflictError: status.HTTP_409_CONFLICT,
+    ObsidianIdentityConflictError: status.HTTP_409_CONFLICT,
+    ObsidianIdempotencyConflictError: status.HTTP_409_CONFLICT,
+    ObsidianWriteTargetNotFoundError: status.HTTP_404_NOT_FOUND,
 }
 
 OPERATIONS_ROUTE_EXCEPTION_MAPPING: RouteExceptionStatusMapping = {

@@ -26,6 +26,48 @@ class ObsidianIndexStatus(StrEnum):
     ERROR = "error"
 
 
+class ObsidianWriteMode(StrEnum):
+    """Caller-visible mutation semantics for canonical notes."""
+
+    CREATE = "create"
+    UPDATE = "update"
+    UPSERT = "upsert"
+
+
+class ObsidianWriteMatchBy(StrEnum):
+    """Supported exact identity selectors for note writes."""
+
+    NOTE_ID = "note_id"
+    PATH = "path"
+
+
+class ObsidianFrontmatterMode(StrEnum):
+    """How caller-owned frontmatter fields are applied on update."""
+
+    MERGE = "merge"
+    REPLACE_USER_FIELDS = "replace_user_fields"
+
+
+class ObsidianWriteOperation(StrEnum):
+    """Observed result of one explicit note write."""
+
+    CREATED = "created"
+    UPDATED = "updated"
+    UNCHANGED = "unchanged"
+
+
+class ObsidianReportBundleCompletionStatus(StrEnum):
+    """Durable completion states for an orchestrated report bundle run."""
+
+    COMPLETED = "COMPLETED"
+    COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+    PARTIAL_SOURCE_SAVED = "PARTIAL_SOURCE_SAVED"
+    PARTIAL_OWNER_UPDATE = "PARTIAL_OWNER_UPDATE"
+    PARTIAL_INDEXED = "PARTIAL_INDEXED"
+    PARTIAL_GRAPH_UNVERIFIED = "PARTIAL_GRAPH_UNVERIFIED"
+    FAILED_NO_MUTATION = "FAILED_NO_MUTATION"
+
+
 class ObsidianIndexErrorCode(StrEnum):
     """Stable operator-facing error codes for Context note indexing."""
 
@@ -126,6 +168,7 @@ class ObsidianRelationType(StrEnum):
     SUPPORTS = "supports"
     EXTENDS = "extends"
     CONTRADICTS = "contradicts"
+    CONTAINS = "contains"
     WIKILINK = "wikilink"
 
 

@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from app.obsidian.interface.routers.obsidian_graph_projection_router import (
+    graph_build_status,
+    graph_projection_status,
+    rebuild_graph_projection,
     router as graph_projection_router,
+    validate_note_graph_links,
 )
 from app.obsidian.interface.routers.obsidian_librarian_router import (
     ask_obsidian_librarian,
@@ -40,10 +44,13 @@ __all__ = [
     "ask_obsidian_librarian",
     "cancel_obsidian_librarian_workflow",
     "get_obsidian_librarian_workflow",
+    "graph_build_status",
+    "graph_projection_status",
     "initialize_obsidian_vault",
     "obsidian_status",
     "read_obsidian_note",
     "read_obsidian_note_by_path",
+    "rebuild_graph_projection",
     "reindex_obsidian_vault",
     "related_obsidian_notes",
     "related_obsidian_notes_by_path",
@@ -52,4 +59,5 @@ __all__ = [
     "save_obsidian_note",
     "search_obsidian_notes",
     "start_obsidian_librarian_workflow",
+    "validate_note_graph_links",
 ]

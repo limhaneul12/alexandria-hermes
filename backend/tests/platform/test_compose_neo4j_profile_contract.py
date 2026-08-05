@@ -1,4 +1,4 @@
-"""Docker Compose contract for optional Neo4j graph read-model service."""
+"""Docker Compose contract for the Neo4j graph read-model service."""
 
 import os
 import subprocess
@@ -19,13 +19,26 @@ def _neo4j_entrypoint_script(compose: str) -> str:
 
 
 def test_compose_declares_neo4j_as_optional_graph_profile() -> None:
-    """Neo4j must be opt-in so the default backend startup stays SQLite-only."""
+    """The graph container should use the explicit Alexandria service names."""
     compose = (REPOSITORY_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
-    assert "  neo4j:" in compose
-    assert "profiles:" in compose
-    assert '- "graph"' in compose
+    assert "  alexandria-backend:" in compose
+    assert "container_name: alexandria-backend" in compose
+    assert "  alexandria-graph:" in compose
+    assert "container_name: alexandria-graph" in compose
     assert "neo4j:5-community" in compose
+    assert "alexandria-network" in compose
+
+
+def test_compose_graph_network_keeps_the_neo4j_dns_alias() -> None:
+    """Operator-local bolt://neo4j:7687 URIs must resolve inside Compose."""
+    compose = _compose_text()
+    graph_start = compose.index("  alexandria-graph:")
+    graph_end = compose.index("\nvolumes:", graph_start)
+    graph_service = compose[graph_start:graph_end]
+
+    assert "aliases:" in graph_service
+    assert "- neo4j" in graph_service
 
 
 def test_compose_persists_neo4j_data_in_named_volume() -> None:

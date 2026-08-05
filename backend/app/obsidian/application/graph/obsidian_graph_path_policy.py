@@ -9,6 +9,8 @@ from app.obsidian.application.graph.obsidian_graph_relation_contracts import (
     _WIKILINK_RE,
 )
 
+_NON_NOTE_REFERENCE_PREFIXES = ("artifact:", "evidence:")
+
 
 def _wikilink_targets(
     body: str,
@@ -69,7 +71,12 @@ def _normalize_markdown_target(path: str | None) -> str | None:
         normalized = normalized[2:-2].split("|", maxsplit=1)[0]
         normalized = normalized.split("#", maxsplit=1)[0]
     normalized = normalized.removeprefix("./")
-    if not normalized or "://" in normalized or normalized.startswith("#"):
+    if (
+        not normalized
+        or "://" in normalized
+        or normalized.startswith("#")
+        or normalized.casefold().startswith(_NON_NOTE_REFERENCE_PREFIXES)
+    ):
         return None
     normalized = normalized.removesuffix(".md") + ".md"
     if normalized.startswith("/") or ".." in normalized.split("/"):

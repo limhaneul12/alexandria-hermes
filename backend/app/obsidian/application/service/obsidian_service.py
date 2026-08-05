@@ -45,6 +45,7 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianVaultMoveApplyRequest,
     ObsidianVaultMovePlanRequest,
     ObsidianVaultSettingsUpdate,
+    ObsidianWriteNote,
 )
 from app.obsidian.domain.entities.obsidian_index_error_repair import (
     ObsidianIndexErrorRepairPlan,
@@ -57,6 +58,7 @@ from app.obsidian.domain.entities.obsidian_legacy_metadata_repair import (
 from app.obsidian.domain.entities.obsidian_note import (
     ObsidianLibrarianReviewQueueItem,
     ObsidianNote,
+    ObsidianNoteWriteResult,
     ObsidianReindexResult,
     ObsidianSearchHit,
     ObsidianVaultInventoryItem,
@@ -443,6 +445,20 @@ class ObsidianService:
             Saved note loaded through the index.
         """
         return await self._note_service.save_note(payload)
+
+    async def write_note(
+        self,
+        command: ObsidianWriteNote,
+    ) -> ObsidianNoteWriteResult:
+        """Execute explicit create, update, or upsert semantics.
+
+        Args:
+            command: Value supplied to write_note.
+
+        Returns:
+            Result produced by write_note.
+        """
+        return await self._note_service.write_note(command)
 
     async def archive_context(self, note_id: str) -> ObsidianNote:
         """Archive one canonical Context while preserving its Markdown content.

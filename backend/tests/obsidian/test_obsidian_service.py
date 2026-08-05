@@ -46,11 +46,16 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianVaultMovePlanRequest,
     ObsidianVaultMoveRequest,
     ObsidianVaultSettingsUpdate,
+    ObsidianWriteNote,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
+    ObsidianFrontmatterMode,
     ObsidianIndexStatus,
     ObsidianLibrarianJobStatus,
+    ObsidianWriteMatchBy,
+    ObsidianWriteMode,
+    ObsidianWriteOperation,
 )
 from app.obsidian.infrastructure.models import (
     obsidian_index_models as _obsidian_index_models,
@@ -66,10 +71,12 @@ from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
 from app.shared.exceptions.obsidian_exceptions import (
+    ObsidianIdentityConflictError,
     ObsidianIndexWriteError,
     ObsidianNotFoundError,
     ObsidianValidationError,
     ObsidianWriteConflictError,
+    ObsidianWriteTargetNotFoundError,
 )
 from app.shared.infrastructure.database import Database
 from app.shared.serialization.orjson_codec import loads_json
@@ -254,6 +261,54 @@ def test_obsidian_reindex_searches_frontmatter_notes(tmp_path: Path) -> None:
         assert [(hit.note.note_id, hit.note.relative_path) for hit in hits] == [
             ("ctx_storage", "Alexandria/Contexts/Decisions/Storage.md")
         ]
+
+    anyio.run(scenario)
+
+
+def test_obsidian_reindex_reports_skip_reasons_and_late_edge_resolution(
+    tmp_path: Path,
+) -> None:
+    """Reindex counts should explain skips and late graph target repairs."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            root = tmp_path / "vault" / "Alexandria" / "Indexes"
+            root.mkdir(parents=True)
+            (root / "A Owner.md").write_text(
+                "---\n"
+                "alexandria_type: job_plan\n"
+                "id: owner-late-edge\n"
+                "title: A Owner\n"
+                "status: active\n"
+                "---\n\n"
+                "# A Owner\n\n[[Alexandria/Indexes/Z Target.md]]\n",
+                encoding="utf-8",
+            )
+            (root / "Z Target.md").write_text(
+                "---\n"
+                "alexandria_type: job_plan\n"
+                "id: target-late-edge\n"
+                "title: Z Target\n"
+                "status: active\n"
+                "---\n\n# Z Target\n",
+                encoding="utf-8",
+            )
+            (root / "Unmanaged.md").write_text(
+                "# Unmanaged\n\nNo Alexandria frontmatter.\n",
+                encoding="utf-8",
+            )
+
+            result = await service.reindex()
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        assert result.files_seen == 3
+        assert result.files_indexed == 2
+        assert result.files_skipped == 1
+        assert result.skip_reasons == {"missing_alexandria_frontmatter": 1}
+        assert result.edge_targets_resolved == 1
 
     anyio.run(scenario)
 
@@ -977,6 +1032,81 @@ def test_obsidian_context_save_scope_validation_returns_422(tmp_path: Path) -> N
     assert response.status_code == 422
 
 
+def test_explicit_note_routes_return_outcome_and_structured_conflict(
+    tmp_path: Path,
+) -> None:
+    """HTTP callers should receive stage visibility and machine-readable conflicts."""
+    database, session, service = anyio.run(_service, tmp_path)
+
+    async def close_resources() -> None:
+        await session.close()
+        await database.shutdown()
+
+    first_request = {
+        "title": "Route First",
+        "body": "# Route First\n\nretained",
+        "alexandria_type": "skill",
+        "id": "skill_route_first",
+        "path": "Alexandria/Skills/Drafts/route-first.md",
+        "match_by": "path",
+    }
+    second_request = {
+        "title": "Route Second",
+        "body": "# Route Second\n\nretained",
+        "alexandria_type": "skill",
+        "id": "skill_route_second",
+        "path": "Alexandria/Skills/Drafts/route-second.md",
+        "match_by": "path",
+    }
+    try:
+        with (
+            override_library_provider("obsidian_service", service),
+            TestClient(app, raise_server_exceptions=False) as client,
+        ):
+            created = client.post("/obsidian/notes/create", json=first_request)
+            updated_by_id = client.post(
+                "/obsidian/notes/update",
+                json={
+                    **first_request,
+                    "body": "# Route First\n\nupdated by id",
+                    "path": None,
+                    "match_by": "note_id",
+                },
+            )
+            second = client.post("/obsidian/notes/create", json=second_request)
+            conflict = client.post(
+                "/obsidian/notes/update",
+                json={
+                    **first_request,
+                    "title": "Ambiguous Route Update",
+                    "body": "# Ambiguous\n\nnot written",
+                    "path": second_request["path"],
+                    "match_by": "note_id",
+                },
+            )
+    finally:
+        anyio.run(close_resources)
+
+    assert created.status_code == 201
+    assert second.status_code == 201
+    assert updated_by_id.status_code == 200
+    assert updated_by_id.json()["operation"] == "updated"
+    assert created.json()["operation"] == "created"
+    assert created.json()["pipeline"]["metadata_status"] == "indexed"
+    assert created.json()["pipeline"]["graph_projection_status"] == "stale"
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == {
+        "error_code": "IDENTITY_CONFLICT",
+        "operation": "update",
+        "requested_note_id": "skill_route_first",
+        "requested_path": "Alexandria/Skills/Drafts/route-second.md",
+        "id_target_path": "Alexandria/Skills/Drafts/route-first.md",
+        "path_target_id": "skill_route_second",
+        "mutation_performed": False,
+        "recommended_operation": "resolve_identity",
+    }
+
+
 def test_obsidian_vault_settings_update_redirects_future_writes(
     tmp_path: Path,
 ) -> None:
@@ -1226,6 +1356,277 @@ def test_obsidian_save_existing_default_path_reuses_note_id(tmp_path: Path) -> N
         assert second.note_id == first.note_id
         assert second.relative_path == first.relative_path
         assert "second body" in second.body
+
+    anyio.run(scenario)
+
+
+def test_explicit_note_write_updates_by_id_and_preserves_history(
+    tmp_path: Path,
+) -> None:
+    """Explicit update-by-id should retain identity and advance server history."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            created = await service.write_note(
+                ObsidianWriteNote(
+                    write_mode=ObsidianWriteMode.CREATE,
+                    match_by=ObsidianWriteMatchBy.PATH,
+                    frontmatter_mode=ObsidianFrontmatterMode.MERGE,
+                    note=ObsidianSaveNote(
+                        title="History Contract",
+                        body="# History Contract\n\nfirst",
+                        alexandria_type=AlexandriaNoteType.SKILL,
+                        note_id="skill_history_contract",
+                        relative_path="Alexandria/Skills/Drafts/history-contract.md",
+                        source="human",
+                        frontmatter={
+                            "owner": "library-team",
+                            "created_at": "2000-01-01T00:00:00Z",
+                            "original_source": "forged",
+                            "initial_content_hash": "forged",
+                            "version": 99,
+                        },
+                    ),
+                )
+            )
+            generated_path_peer = await service.save_note(
+                ObsidianSaveNote(
+                    title="History Contract",
+                    body="# Generated Path Peer\n\nmust remain separate",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_history_generated_peer",
+                )
+            )
+            updated = await service.write_note(
+                ObsidianWriteNote(
+                    write_mode=ObsidianWriteMode.UPDATE,
+                    match_by=ObsidianWriteMatchBy.NOTE_ID,
+                    frontmatter_mode=ObsidianFrontmatterMode.MERGE,
+                    note=ObsidianSaveNote(
+                        title="History Contract",
+                        body="# History Contract\n\nsecond",
+                        alexandria_type=AlexandriaNoteType.SKILL,
+                        note_id=created.note.note_id,
+                        source="mcp",
+                        frontmatter={"reviewed": True},
+                    ),
+                )
+            )
+            unchanged = await service.write_note(
+                ObsidianWriteNote(
+                    write_mode=ObsidianWriteMode.UPDATE,
+                    match_by=ObsidianWriteMatchBy.NOTE_ID,
+                    note=ObsidianSaveNote(
+                        title="History Contract",
+                        body="# History Contract\n\nsecond",
+                        alexandria_type=AlexandriaNoteType.SKILL,
+                        note_id=created.note.note_id,
+                        source="mcp",
+                        frontmatter={"reviewed": True},
+                    ),
+                )
+            )
+            peer_after = await service.read_note(generated_path_peer.note_id)
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        created_frontmatter = created.note.frontmatter
+        updated_frontmatter = updated.note.frontmatter
+        assert created.operation is ObsidianWriteOperation.CREATED
+        assert created_frontmatter["created_at"] != "2000-01-01T00:00:00Z"
+        assert created_frontmatter["original_source"] == "human"
+        assert created_frontmatter["initial_content_hash"] != "forged"
+        assert created_frontmatter["version"] == 1
+        assert updated.operation is ObsidianWriteOperation.UPDATED
+        assert unchanged.operation is ObsidianWriteOperation.UNCHANGED
+        assert updated.note.note_id == created.note.note_id
+        assert updated.note.relative_path == created.note.relative_path
+        assert updated_frontmatter["created_at"] == created_frontmatter["created_at"]
+        assert updated_frontmatter["original_source"] == "human"
+        assert (
+            updated_frontmatter["initial_content_hash"]
+            == created_frontmatter["initial_content_hash"]
+        )
+        assert (
+            updated_frontmatter["previous_content_hash"]
+            == created_frontmatter["content_hash"]
+        )
+        assert updated_frontmatter["version"] == 2
+        assert updated_frontmatter["last_modified_by"] == "mcp"
+        assert updated_frontmatter["owner"] == "library-team"
+        assert updated_frontmatter["reviewed"] is True
+        assert unchanged.note.frontmatter["version"] == 2
+        assert unchanged.reindex_required is False
+        assert "must remain separate" in peer_after.body
+
+    anyio.run(scenario)
+
+
+def test_explicit_note_write_rejects_identity_conflict_before_mutation(
+    tmp_path: Path,
+) -> None:
+    """An id and path that select different notes must not mutate either note."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            first = await service.save_note(
+                ObsidianSaveNote(
+                    title="First Identity",
+                    body="# First\n\nretained first",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_identity_first",
+                    relative_path="Alexandria/Skills/Drafts/first.md",
+                )
+            )
+            second = await service.save_note(
+                ObsidianSaveNote(
+                    title="Second Identity",
+                    body="# Second\n\nretained second",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_identity_second",
+                    relative_path="Alexandria/Skills/Drafts/second.md",
+                )
+            )
+            with pytest.raises(ObsidianIdentityConflictError) as caught:
+                await service.write_note(
+                    ObsidianWriteNote(
+                        write_mode=ObsidianWriteMode.UPDATE,
+                        match_by=ObsidianWriteMatchBy.NOTE_ID,
+                        note=ObsidianSaveNote(
+                            title="Ambiguous",
+                            body="# Ambiguous\n\nshould never be written",
+                            alexandria_type=AlexandriaNoteType.SKILL,
+                            note_id=first.note_id,
+                            relative_path=second.relative_path,
+                        ),
+                    )
+                )
+            first_after = await service.read_note(first.note_id)
+            second_after = await service.read_note(second.note_id)
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        detail = caught.value.route_detail()
+        assert detail["error_code"] == "IDENTITY_CONFLICT"
+        assert detail["mutation_performed"] is False
+        assert "retained first" in first_after.body
+        assert "retained second" in second_after.body
+
+    anyio.run(scenario)
+
+
+def test_explicit_update_requires_existing_exact_target(tmp_path: Path) -> None:
+    """Update-only mode should return a typed missing-target failure."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            with pytest.raises(ObsidianWriteTargetNotFoundError):
+                await service.write_note(
+                    ObsidianWriteNote(
+                        write_mode=ObsidianWriteMode.UPDATE,
+                        match_by=ObsidianWriteMatchBy.NOTE_ID,
+                        note=ObsidianSaveNote(
+                            title="Missing",
+                            body="# Missing\n\nno target",
+                            alexandria_type=AlexandriaNoteType.SKILL,
+                            note_id="skill_missing_explicit",
+                        ),
+                    )
+                )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+    anyio.run(scenario)
+
+
+def test_explicit_update_preserves_omitted_optional_fields(tmp_path: Path) -> None:
+    """Presence-aware updates must not replace omitted metadata with API defaults."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            created = await service.save_note(
+                ObsidianSaveNote(
+                    title="Presence Contract",
+                    body="# Presence Contract\n\nfirst",
+                    alexandria_type=AlexandriaNoteType.SKILL,
+                    note_id="skill_presence_contract",
+                    relative_path="Alexandria/Skills/Drafts/presence.md",
+                    tags=("keep-me",),
+                    status="reviewed",
+                    project="alexandria-hermes",
+                    source="human",
+                )
+            )
+            updated = await service.write_note(
+                ObsidianWriteNote(
+                    write_mode=ObsidianWriteMode.UPDATE,
+                    match_by=ObsidianWriteMatchBy.NOTE_ID,
+                    provided_fields=frozenset(
+                        {"title", "body", "alexandria_type", "id", "match_by"}
+                    ),
+                    note=ObsidianSaveNote(
+                        title=created.title,
+                        body="# Presence Contract\n\nsecond",
+                        alexandria_type=created.alexandria_type,
+                        note_id=created.note_id,
+                    ),
+                )
+            )
+        finally:
+            await session.close()
+            await database.shutdown()
+
+        assert updated.note.tags == ("keep-me",)
+        assert updated.note.status == "reviewed"
+        assert updated.note.project == "alexandria-hermes"
+        assert updated.note.source == "human"
+
+    anyio.run(scenario)
+
+
+@pytest.mark.parametrize(
+    ("match_by", "note_id", "relative_path"),
+    [
+        (ObsidianWriteMatchBy.NOTE_ID, None, "Alexandria/Skills/no-id.md"),
+        (ObsidianWriteMatchBy.PATH, "skill_no_path", None),
+    ],
+)
+def test_explicit_create_requires_its_exact_selector(
+    tmp_path: Path,
+    match_by: ObsidianWriteMatchBy,
+    note_id: str | None,
+    relative_path: str | None,
+) -> None:
+    """Create mode must validate its declared exact selector before mutation."""
+
+    async def scenario() -> None:
+        database, session, service = await _service(tmp_path)
+        try:
+            with pytest.raises(ObsidianValidationError):
+                await service.write_note(
+                    ObsidianWriteNote(
+                        write_mode=ObsidianWriteMode.CREATE,
+                        match_by=match_by,
+                        note=ObsidianSaveNote(
+                            title="Missing Selector",
+                            body="# Missing Selector",
+                            alexandria_type=AlexandriaNoteType.SKILL,
+                            note_id=note_id,
+                            relative_path=relative_path,
+                        ),
+                    )
+                )
+            assert not list((tmp_path / "vault").rglob("*.md"))
+        finally:
+            await session.close()
+            await database.shutdown()
 
     anyio.run(scenario)
 

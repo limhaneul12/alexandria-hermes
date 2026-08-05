@@ -237,6 +237,7 @@ class ObsidianVaultLifecycleService:
             )
         files_seen = 0
         files_skipped = 0
+        skip_reasons: dict[str, int] = {}
         diagnostics = _ReindexDiagnostics()
         seen_paths: set[str] = set()
         candidates: list[ContextReindexCandidate] = []
@@ -257,6 +258,9 @@ class ObsidianVaultLifecycleService:
                 )
                 if payload is None:
                     files_skipped += 1
+                    skip_reasons["missing_alexandria_frontmatter"] = (
+                        skip_reasons.get("missing_alexandria_frontmatter", 0) + 1
+                    )
                     continue
                 candidates.append(
                     ContextReindexCandidate(path=validated_path, payload=payload)
@@ -313,7 +317,7 @@ class ObsidianVaultLifecycleService:
                     diagnostics,
                 )
         stale_marked = await self._repository.mark_missing_stale(seen_paths)
-        await self._repository.resolve_edge_targets()
+        edge_targets_resolved = await self._repository.resolve_edge_targets()
         if self._context_reindex_hook is not None:
             await self._context_reindex_hook()
         return ObsidianReindexResult(
@@ -323,6 +327,8 @@ class ObsidianVaultLifecycleService:
             stale_marked=stale_marked,
             errors=tuple(diagnostics.errors),
             error_details=tuple(diagnostics.details),
+            skip_reasons=skip_reasons,
+            edge_targets_resolved=edge_targets_resolved,
         )
 
     async def _record_reindex_error(

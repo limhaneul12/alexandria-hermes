@@ -8,6 +8,9 @@ from app.memory.interface.schemas.context.context_mapping import source_status_p
 from app.memory.interface.schemas.context.context_schema import (
     ContextEmbeddingSourceStatusResponse,
 )
+from app.operations.application.operational_overall_readiness import (
+    overall_readiness_status,
+)
 from app.operations.domain.entities.operational_data_integrity import (
     OperationalDataIntegritySnapshot,
 )
@@ -23,6 +26,7 @@ from app.operations.domain.event_enum.operational_data_integrity_enums import (
     OperationalDataIntegrityWarningCode,
 )
 from app.operations.domain.event_enum.operational_readiness_enums import (
+    OperationalOverallStatus,
     OperationalReadinessStatus,
 )
 from app.shared.schemas.common_schemas import StrictSchemaModel
@@ -245,6 +249,7 @@ class OperationalReadinessSnapshotResponse(StrictSchemaModel):
     """Read-only operational readiness response."""
 
     status: OperationalReadinessStatus
+    overall_status: OperationalOverallStatus
     ready: bool
     checked_at: AwareTimestamp
     duration_ms: int
@@ -276,6 +281,7 @@ class OperationalReadinessSnapshotResponse(StrictSchemaModel):
         """
         return cls(
             status=snapshot.status,
+            overall_status=overall_readiness_status(snapshot),
             ready=snapshot.ready,
             checked_at=snapshot.checked_at,
             duration_ms=snapshot.duration_ms,

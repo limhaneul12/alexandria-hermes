@@ -21,7 +21,7 @@ from app.obsidian.application.notes.obsidian_context_identity import (
 )
 from app.obsidian.domain.entities.obsidian_note import ObsidianNote
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
-from app.shared.types.extra_types import JSONValue
+from app.shared.types.extra_types import JSONObject, JSONValue
 from app.shared.types.types_convert_utils import aware_utc_datetime
 
 OBSIDIAN_CONTEXT_ID_PREFIX = "obsidian:"
@@ -38,7 +38,7 @@ def context_record_from_obsidian_note(note: ObsidianNote) -> ContextRecord:
         Memory Context read model with canonical identity metadata.
     """
     identity = context_identity_from_frontmatter(
-        note.frontmatter,
+        _identity_frontmatter(note),
         project=note.project,
         status=note.status,
         generated_content_hash=context_content_hash(note.body),
@@ -89,6 +89,20 @@ def context_record_from_obsidian_note(note: ObsidianNote) -> ContextRecord:
         access_count=0,
         is_archived=is_archived,
     )
+
+
+def _identity_frontmatter(note: ObsidianNote) -> JSONObject:
+    """Return frontmatter safe for the shared Memory identity boundary.
+
+    Canonical Context notes own ``ContextKind`` and remain strictly validated.
+    Other managed note types may carry their own legacy kind vocabulary, which is
+    mapped separately by :func:`_kind_from_note` and must not invalidate recall.
+    """
+    if note.alexandria_type is AlexandriaNoteType.CONTEXT:
+        return note.frontmatter
+    frontmatter = dict(note.frontmatter)
+    frontmatter.pop("context_kind", None)
+    return frontmatter
 
 
 def _context_metadata(

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from app.container import ApplicationContainer
 from app.obsidian.application.service.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_vault_reindex_service import (
+    ObsidianVaultReindexService,
+)
 from app.obsidian.interface.schemas.obsidian.obsidian_index_error_repair_schema import (
     ObsidianIndexErrorRepairApplyRequest,
     ObsidianIndexErrorRepairPlanResponse,
@@ -86,13 +89,16 @@ async def initialize_obsidian_vault(
     response_model=ObsidianReindexResponse,
     status_code=status.HTTP_200_OK,
     summary="Reindex Obsidian vault",
-    description="Scan Alexandria Markdown notes and rebuild the SQLite search cache.",
+    description=(
+        "Scan Alexandria Markdown notes, rebuild the SQLite search cache, "
+        "then refresh the optional graph projection."
+    ),
 )
 @router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def reindex_obsidian_vault(
-    service: ObsidianService = Depends(
-        Provide[ApplicationContainer.obsidian.obsidian_service]
+    service: ObsidianVaultReindexService = Depends(
+        Provide[ApplicationContainer.obsidian.vault_reindex_service]
     ),
 ) -> ObsidianReindexResponse:
     """Rebuild the Obsidian index cache.
@@ -103,8 +109,8 @@ async def reindex_obsidian_vault(
     Returns:
         Reindex summary response.
     """
-    result = await service.reindex()
-    return ObsidianReindexResponse.from_entity(result)
+    result = await service.rebuild()
+    return ObsidianReindexResponse.from_reindex_report(result)
 
 
 @router.post(

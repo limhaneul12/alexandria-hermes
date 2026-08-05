@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from functools import wraps
-from typing import cast
+from typing import Protocol, cast, runtime_checkable
 
 from app.shared.exceptions.common_exceptions import (
     RedisExceptionArgValue,
@@ -23,6 +23,19 @@ type RouteHandlerResult = object
 # Broad type justified: route decorators wrap many FastAPI handler signatures.
 type RouteAsyncHandler = Callable[..., Awaitable[RouteHandlerResult]]
 type RouteExceptionDecorator = Callable[[RouteAsyncHandler], RouteAsyncHandler]
+
+
+@runtime_checkable
+class RouteExceptionWithDetail(Protocol):
+    """Exception that exposes a structured route-safe detail payload."""
+
+    # Broad type justified: FastAPI HTTPException detail accepts multiple JSON-compatible shapes.
+    def route_detail(self) -> object:
+        """Return content suitable for FastAPI's HTTPException detail.
+
+        Returns:
+            Result produced by route_detail.
+        """
 
 
 def _resolve_redis_exception_policy(
@@ -122,7 +135,11 @@ def router_exception_status(
                             status_code, detail = target
                         else:
                             status_code = target
-                            detail = str(exc) or exception_type.__name__
+                            detail = (
+                                exc.route_detail()
+                                if isinstance(exc, RouteExceptionWithDetail)
+                                else str(exc) or exception_type.__name__
+                            )
                         raise HTTPException(
                             status_code=status_code, detail=detail
                         ) from exc

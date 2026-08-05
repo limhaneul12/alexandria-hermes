@@ -147,6 +147,23 @@ class AlexandriaApiClient:
         response = await self._request("POST", path, payload, None)
         return response
 
+    async def post_query(
+        self,
+        path: str,
+        *,
+        params: JSONObject,
+    ) -> JSONValue:
+        """Send a POST request whose bounded operation inputs are query parameters.
+
+        Args:
+            path: Value supplied to post_query.
+            params: Value supplied to post_query.
+
+        Returns:
+            Result produced by post_query.
+        """
+        return await self._request("POST", path, None, params)
+
     async def delete(self, path: str) -> JSONValue:
         """Send a DELETE request to the backend.
 

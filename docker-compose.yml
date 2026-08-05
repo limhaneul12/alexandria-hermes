@@ -1,5 +1,6 @@
 services:
-  backend:
+  alexandria-backend:
+    container_name: alexandria-backend
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -32,11 +33,12 @@ services:
       - ./backend/data:/app/data
       - ${ALEXANDRIA_HOST_OBSIDIAN_VAULT_PATH:-${HOME}/Desktop/Alexandria}:/vault
     restart: unless-stopped
+    networks:
+      - alexandria-network
 
-  neo4j:
+  alexandria-graph:
+    container_name: alexandria-graph
     image: neo4j:5-community
-    profiles:
-      - "graph"
     environment:
       ALEXANDRIA_NEO4J_PASSWORD:
       NEO4J_server_memory_heap_initial__size: 512m
@@ -69,7 +71,15 @@ services:
       retries: 10
       start_period: 30s
     restart: unless-stopped
+    networks:
+      alexandria-network:
+        aliases:
+          - neo4j
 
 volumes:
   neo4j-data:
   neo4j-logs:
+
+networks:
+  alexandria-network:
+    driver: bridge

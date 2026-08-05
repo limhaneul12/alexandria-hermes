@@ -4,15 +4,29 @@ from __future__ import annotations
 
 from app.container import ApplicationContainer
 from app.obsidian.application.graph.obsidian_graph_service import ObsidianGraphService
+from app.obsidian.application.service.obsidian_canonical_identity_service import (
+    ObsidianCanonicalIdentityService,
+)
+from app.obsidian.application.service.obsidian_report_bundle_service import (
+    ObsidianReportBundleService,
+)
 from app.obsidian.application.service.obsidian_service import ObsidianService
+from app.obsidian.domain.event_enum.obsidian_enums import ObsidianWriteMode
 from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
+    ObsidianCanonicalIdentityRequest,
+    ObsidianCanonicalIdentityResponse,
+    ObsidianExactPathStatusResponse,
     ObsidianNoteResponse,
+    ObsidianNoteWriteResponse,
     ObsidianRelatedNoteResponse,
     ObsidianRelatedNotesResponse,
+    ObsidianReportBundleRequestSchema,
+    ObsidianReportBundleResponse,
     ObsidianSaveNoteRequest,
     ObsidianSearchHitResponse,
     ObsidianSearchRequest,
     ObsidianSearchResponse,
+    ObsidianWriteNoteRequest,
 )
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import (
@@ -114,6 +128,71 @@ async def read_obsidian_note_by_path(
 
 
 @router.get(
+    "/notes/check-path",
+    response_model=ObsidianExactPathStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Check an exact Obsidian path",
+    description="Resolve the managed root and return exact path existence and identity.",
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def check_obsidian_note_path(
+    path: str = Query(min_length=1),
+    service: ObsidianCanonicalIdentityService = Depends(
+        Provide[ApplicationContainer.obsidian.canonical_identity_service]
+    ),
+) -> ObsidianExactPathStatusResponse:
+    """Check one exact canonical managed path without fuzzy matching.
+
+    Args:
+        path: Value supplied to check_obsidian_note_path.
+        service: Value supplied to check_obsidian_note_path.
+
+    Returns:
+        Result produced by check_obsidian_note_path.
+    """
+    result = await service.check_path(path)
+    return ObsidianExactPathStatusResponse.from_entity(result)
+
+
+@router.post(
+    "/notes/resolve-canonical-identity",
+    response_model=ObsidianCanonicalIdentityResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Resolve canonical report identity",
+    description=(
+        "Resolve project/report/date/entity/edition against existing metadata and "
+        "declared aliases without hardcoded product aliases."
+    ),
+)
+@router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def resolve_obsidian_canonical_identity(
+    request: ObsidianCanonicalIdentityRequest,
+    service: ObsidianCanonicalIdentityService = Depends(
+        Provide[ApplicationContainer.obsidian.canonical_identity_service]
+    ),
+) -> ObsidianCanonicalIdentityResponse:
+    """Resolve one logical report identity into a canonical family and path.
+
+    Args:
+        request: Value supplied to resolve_obsidian_canonical_identity.
+        service: Value supplied to resolve_obsidian_canonical_identity.
+
+    Returns:
+        Result produced by resolve_obsidian_canonical_identity.
+    """
+    result = await service.resolve(
+        project=request.project,
+        report=request.report,
+        date=request.date,
+        entity=request.entity,
+        edition=request.edition,
+    )
+    return ObsidianCanonicalIdentityResponse.from_entity(result)
+
+
+@router.get(
     "/notes/{note_id}/related",
     response_model=ObsidianRelatedNotesResponse,
     status_code=status.HTTP_200_OK,
@@ -198,3 +277,124 @@ async def save_obsidian_note(
     """
     note = await service.save_note(request.to_command())
     return ObsidianNoteResponse.from_entity(note)
+
+
+async def _write_obsidian_note(
+    request: ObsidianWriteNoteRequest,
+    service: ObsidianService,
+    write_mode: ObsidianWriteMode,
+) -> ObsidianNoteWriteResponse:
+    result = await service.write_note(request.to_write_command(write_mode))
+    return ObsidianNoteWriteResponse.from_entity(result)
+
+
+@router.post(
+    "/notes/create",
+    response_model=ObsidianNoteWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an Obsidian note",
+    description="Create only; fail before mutation when the exact id or path exists.",
+)
+@router_exception_status(OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def create_obsidian_note(
+    request: ObsidianWriteNoteRequest,
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianNoteWriteResponse:
+    """Create one canonical note with exact identity semantics.
+
+    Args:
+        request: Value supplied to create_obsidian_note.
+        service: Value supplied to create_obsidian_note.
+
+    Returns:
+        Result produced by create_obsidian_note.
+    """
+    return await _write_obsidian_note(request, service, ObsidianWriteMode.CREATE)
+
+
+@router.post(
+    "/notes/update",
+    response_model=ObsidianNoteWriteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update an Obsidian note",
+    description="Update only by exact id or path; never move a note implicitly.",
+)
+@router_exception_status(OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def update_obsidian_note(
+    request: ObsidianWriteNoteRequest,
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianNoteWriteResponse:
+    """Update one existing canonical note with exact identity semantics.
+
+    Args:
+        request: Value supplied to update_obsidian_note.
+        service: Value supplied to update_obsidian_note.
+
+    Returns:
+        Result produced by update_obsidian_note.
+    """
+    return await _write_obsidian_note(request, service, ObsidianWriteMode.UPDATE)
+
+
+@router.post(
+    "/notes/upsert",
+    response_model=ObsidianNoteWriteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Upsert an Obsidian note",
+    description="Create or update by one exact selector; reject selector conflicts.",
+)
+@router_exception_status(OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def upsert_obsidian_note(
+    request: ObsidianWriteNoteRequest,
+    service: ObsidianService = Depends(
+        Provide[ApplicationContainer.obsidian.obsidian_service]
+    ),
+) -> ObsidianNoteWriteResponse:
+    """Create or update one canonical note without ambiguous identity fallback.
+
+    Args:
+        request: Value supplied to upsert_obsidian_note.
+        service: Value supplied to upsert_obsidian_note.
+
+    Returns:
+        Result produced by upsert_obsidian_note.
+    """
+    return await _write_obsidian_note(request, service, ObsidianWriteMode.UPSERT)
+
+
+@router.post(
+    "/report-bundles/upsert",
+    response_model=ObsidianReportBundleResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Upsert an idempotent report bundle",
+    description=(
+        "Preflight owners, upsert one canonical Source, update owner links, "
+        "reindex SQLite and graph projection, then verify incoming edges."
+    ),
+)
+@router_exception_status(OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING)
+@inject
+async def upsert_obsidian_report_bundle(
+    request: ObsidianReportBundleRequestSchema,
+    service: ObsidianReportBundleService = Depends(
+        Provide[ApplicationContainer.obsidian.report_bundle_service]
+    ),
+) -> ObsidianReportBundleResponse:
+    """Execute one durable report bundle operation.
+
+    Args:
+        request: Value supplied to upsert_obsidian_report_bundle.
+        service: Value supplied to upsert_obsidian_report_bundle.
+
+    Returns:
+        Result produced by upsert_obsidian_report_bundle.
+    """
+    result = await service.upsert(request.to_command())
+    return ObsidianReportBundleResponse.from_entity(result)

@@ -8,6 +8,9 @@ from app.memory.application.context_embedding_recovery_service import (
     ContextEmbeddingRecoveryService,
 )
 from app.memory.application.context_service import ContextService
+from app.obsidian.application.graph.obsidian_graph_note_diagnostics_service import (
+    ObsidianGraphNoteDiagnosticsService,
+)
 from app.obsidian.application.graph.obsidian_graph_projection_rebuild_service import (
     ObsidianGraphProjectionRebuildService,
 )
@@ -21,7 +24,16 @@ from app.obsidian.application.librarian.obsidian_librarian_job_service import (
 from app.obsidian.application.librarian.obsidian_librarian_workflow_service import (
     ObsidianLibrarianWorkflowService,
 )
+from app.obsidian.application.service.obsidian_canonical_identity_service import (
+    ObsidianCanonicalIdentityService,
+)
+from app.obsidian.application.service.obsidian_report_bundle_service import (
+    ObsidianReportBundleService,
+)
 from app.obsidian.application.service.obsidian_service import ObsidianService
+from app.obsidian.application.service.obsidian_vault_reindex_service import (
+    ObsidianVaultReindexService,
+)
 from app.obsidian.infrastructure.graph.sqlalchemy_obsidian_graph_projection_source import (
     SqlAlchemyObsidianGraphProjectionSource,
 )
@@ -100,6 +112,14 @@ class ObsidianContainer(containers.DeclarativeContainer):
         default_alexandria_root=app_config.provided.alexandria_obsidian_root,
         config_path=app_config.provided.obsidian_vault_config_path,
     )
+    graph_note_diagnostics_service = providers.Factory(
+        ObsidianGraphNoteDiagnosticsService,
+        repository=index_repo,
+        source=graph_projection_source,
+        projection_service=graph_projection_rebuild_service,
+        vault_config_store=vault_config_store,
+        index_maintenance_coordinator=index_maintenance_coordinator,
+    )
     obsidian_service = providers.Factory(
         ObsidianService,
         repository=index_repo,
@@ -112,10 +132,27 @@ class ObsidianContainer(containers.DeclarativeContainer):
         ),
         index_maintenance_coordinator=index_maintenance_coordinator,
     )
+    vault_reindex_service = providers.Factory(
+        ObsidianVaultReindexService,
+        obsidian_service=obsidian_service,
+        graph_projection_rebuild_service=graph_projection_rebuild_service,
+    )
     graph_service = providers.Factory(
         ObsidianGraphService,
         repository=index_repo,
         graph_repository=graph_projection_repository,
+    )
+    report_bundle_service = providers.Factory(
+        ObsidianReportBundleService,
+        obsidian_service=obsidian_service,
+        vault_reindex_service=vault_reindex_service,
+        graph_service=graph_service,
+        vault_config_store=vault_config_store,
+    )
+    canonical_identity_service = providers.Factory(
+        ObsidianCanonicalIdentityService,
+        obsidian_service=obsidian_service,
+        vault_config_store=vault_config_store,
     )
     job_service = providers.Singleton(
         ObsidianLibrarianJobService,

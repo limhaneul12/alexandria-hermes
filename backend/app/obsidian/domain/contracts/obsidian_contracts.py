@@ -8,7 +8,10 @@ from datetime import datetime
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
     ObsidianEdgeSourceKind,
+    ObsidianFrontmatterMode,
     ObsidianRelationType,
+    ObsidianWriteMatchBy,
+    ObsidianWriteMode,
 )
 from app.shared.types.extra_types import JSONObject
 
@@ -107,6 +110,51 @@ class ObsidianSaveNote:
     def __post_init__(self) -> None:
         """Normalize note tags to an immutable sequence."""
         object.__setattr__(self, "tags", tuple(self.tags))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianWriteNote:
+    """Explicit create, update, or upsert command for one canonical note."""
+
+    note: ObsidianSaveNote
+    write_mode: ObsidianWriteMode
+    match_by: ObsidianWriteMatchBy
+    frontmatter_mode: ObsidianFrontmatterMode = ObsidianFrontmatterMode.MERGE
+    provided_fields: frozenset[str] | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianReportBundleOwner:
+    """Existing note that should own one incoming relation to a report source."""
+
+    path: str
+    relation: ObsidianRelationType = ObsidianRelationType.CONTAINS
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianReportBundleVerify:
+    """Verification stages requested after a report bundle write."""
+
+    index_status: bool = True
+    incoming_edges: bool = True
+    duplicates: bool = True
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianReportBundleRequest:
+    """Idempotent Source/owner/reindex/graph verification operation."""
+
+    idempotency_key: str
+    source: ObsidianSaveNote
+    graph_owners: tuple[ObsidianReportBundleOwner, ...]
+    reindex: bool = True
+    verify: ObsidianReportBundleVerify = field(
+        default_factory=ObsidianReportBundleVerify
+    )
+
+    def __post_init__(self) -> None:
+        """Normalize graph owner inputs to immutable values."""
+        object.__setattr__(self, "graph_owners", tuple(self.graph_owners))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

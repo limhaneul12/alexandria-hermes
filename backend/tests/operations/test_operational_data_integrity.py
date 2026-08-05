@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,8 +17,14 @@ from app.obsidian.domain.event_enum.obsidian_enums import ObsidianIndexErrorCode
 from app.operations.application.operational_data_integrity_service import (
     OperationalDataIntegrityService,
 )
+from app.operations.application.operational_overall_readiness import (
+    overall_readiness_status,
+)
 from app.operations.application.operational_readiness_service import (
     OperationalReadinessService,
+)
+from app.operations.domain.entities.operational_data_integrity import (
+    unchecked_data_integrity_snapshot,
 )
 from app.operations.domain.event_enum.operational_data_integrity_enums import (
     OperationalDataIntegrityStatus,
@@ -173,6 +180,15 @@ def test_integrity_warnings_do_not_change_operational_ready(
             ).snapshot()
             assert snapshot.status is OperationalReadinessStatus.READY
             assert snapshot.ready is True
+            assert (
+                overall_readiness_status(
+                    replace(
+                        snapshot,
+                        data_integrity=unchecked_data_integrity_snapshot(),
+                    )
+                ).value
+                == "READY_WITH_WARNINGS"
+            )
             return OperationalReadinessSnapshotResponse.from_entity(
                 snapshot
             ).model_dump(mode="json")
@@ -182,6 +198,7 @@ def test_integrity_warnings_do_not_change_operational_ready(
     payload = anyio.run(scenario)
 
     assert payload["status"] == "READY"
+    assert payload["overall_status"] == "READY_WITH_WARNINGS"
     assert payload["ready"] is True
     assert payload["warnings"] == []
     assert payload["data_integrity"] == {

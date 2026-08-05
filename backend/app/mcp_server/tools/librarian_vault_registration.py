@@ -11,6 +11,8 @@ from app.mcp_server.tools.librarian_readiness_tools import (
     alexandria_librarian_refresh_current_compact,
 )
 from app.mcp_server.tools.librarian_vault_backend_gateway import (
+    alexandria_get_graph_build_status,
+    alexandria_get_graph_projection_status,
     alexandria_librarian_review_apply_moves,
     alexandria_librarian_review_move_plan,
     alexandria_librarian_review_queue,
@@ -18,7 +20,10 @@ from app.mcp_server.tools.librarian_vault_backend_gateway import (
     alexandria_librarian_vault_inventory,
     alexandria_librarian_vault_move_plan,
     alexandria_librarian_vault_path_search,
+    alexandria_rebuild_graph_projection,
+    alexandria_rebuild_note_graph,
     alexandria_reindex_vault,
+    alexandria_validate_note_links,
 )
 from app.mcp_server.tools.obsidian_backend_gateway import alexandria_search_vault
 from app.shared.types.extra_types import JSONValue
@@ -38,6 +43,49 @@ def register_librarian_vault_tools(
     async def _tool_reindex_vault() -> JSONValue:
         """Rebuild the Obsidian vault index cache."""
         return await alexandria_reindex_vault(api_client)
+
+    @server.tool(name="alexandria_get_graph_projection_status")
+    async def _tool_get_graph_projection_status() -> JSONValue:
+        """Return optional graph projection status."""
+        return await alexandria_get_graph_projection_status(api_client)
+
+    @server.tool(name="alexandria_rebuild_graph_projection")
+    async def _tool_rebuild_graph_projection() -> JSONValue:
+        """Rebuild the optional graph projection from the current SQLite index."""
+        return await alexandria_rebuild_graph_projection(api_client)
+
+    @server.tool(name="alexandria_get_graph_build_status")
+    async def _tool_get_graph_build_status() -> JSONValue:
+        """Return graph build status for snapshot projection diagnostics."""
+        return await alexandria_get_graph_build_status(api_client)
+
+    @server.tool(name="alexandria_validate_note_links")
+    async def _tool_validate_note_links(
+        note_id: str | None = None,
+        path: str | None = None,
+        include_resolved_targets: bool = False,
+    ) -> JSONValue:
+        """Validate outgoing graph links for one indexed Obsidian note."""
+        return await alexandria_validate_note_links(
+            api_client,
+            note_id=note_id,
+            path=path,
+            include_resolved_targets=include_resolved_targets,
+        )
+
+    @server.tool(name="alexandria_rebuild_note_graph")
+    async def _tool_rebuild_note_graph(
+        note_id: str | None = None,
+        path: str | None = None,
+        replace_existing_edges: bool = True,
+    ) -> JSONValue:
+        """Replace one note's SQLite edges and activate a fresh graph snapshot."""
+        return await alexandria_rebuild_note_graph(
+            api_client,
+            note_id=note_id,
+            path=path,
+            replace_existing_edges=replace_existing_edges,
+        )
 
     @server.tool(name="alexandria_search_vault")
     async def _tool_search_vault(

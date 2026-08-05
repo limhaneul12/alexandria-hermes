@@ -16,3 +16,13 @@ class OperationalReadinessStatus(StrEnum):
     VERIFYING = "VERIFYING"
     BLOCKED = "BLOCKED"
     FAILED = "FAILED"
+
+
+class OperationalOverallStatus(StrEnum):
+    """Operator-facing synthesis of service readiness and data integrity."""
+
+    READY = "READY"
+    READY_WITH_WARNINGS = "READY_WITH_WARNINGS"
+    DEGRADED = "DEGRADED"
+    NOT_READY = "NOT_READY"
+    RECOVERING = "RECOVERING"

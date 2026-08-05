@@ -8,6 +8,7 @@ from app.obsidian.interface.schemas.obsidian.obsidian_librarian_workflow_schema 
     ObsidianLibrarianAskRequest,
 )
 from app.obsidian.interface.schemas.obsidian.obsidian_schema import (
+    ObsidianReportBundleRequestSchema,
     ObsidianSaveNoteRequest,
     ObsidianSearchRequest,
 )
@@ -100,3 +101,31 @@ def test_obsidian_save_schema_rejects_ambiguous_boolean_metadata(
             alexandria_type="context",
             frontmatter={"source_of_truth": value},
         )
+
+
+def test_report_bundle_schema_applies_managed_context_defaults() -> None:
+    """The documented compact Source payload should become a valid Context command."""
+    request = ObsidianReportBundleRequestSchema.model_validate(
+        {
+            "idempotency_key": "ethereum:2026-08-03",
+            "source": {
+                "title": "Ethereum Source",
+                "path": "Contexts/Projects/Ethereum Source.md",
+                "body": "# Ethereum Source",
+                "frontmatter": {"project": "crypto-intelligence"},
+            },
+            "graph_owners": [
+                {
+                    "path": "Indexes/Ethereum Month Index.md",
+                    "relation": "contains",
+                }
+            ],
+        }
+    )
+
+    command = request.to_command()
+
+    assert command.source.alexandria_type is AlexandriaNoteType.CONTEXT
+    assert command.source.project == "crypto-intelligence"
+    assert command.source.frontmatter["scope"] == "PROJECT"
+    assert command.graph_owners[0].relation.value == "contains"

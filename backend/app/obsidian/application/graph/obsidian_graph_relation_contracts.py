@@ -21,6 +21,7 @@ _FRONTMATTER_RELATIONS: tuple[tuple[str, ObsidianRelationType], ...] = (
     ("supports", ObsidianRelationType.SUPPORTS),
     ("extends", ObsidianRelationType.EXTENDS),
     ("contradicts", ObsidianRelationType.CONTRADICTS),
+    ("contains", ObsidianRelationType.CONTAINS),
     ("promotes_to", ObsidianRelationType.PROMOTES_TO),
     ("blocks", ObsidianRelationType.BLOCKS),
     ("resolves", ObsidianRelationType.RESOLVES),
@@ -50,4 +51,5 @@ _RELATION_HEADINGS: dict[ObsidianRelationType, str] = {
     ObsidianRelationType.SUPPORTS: "Supports",
     ObsidianRelationType.EXTENDS: "Extends",
     ObsidianRelationType.CONTRADICTS: "Contradicts",
+    ObsidianRelationType.CONTAINS: "Contains",
 }

@@ -144,6 +144,25 @@ def test_graph_relations_ignore_wikilinks_in_comments_and_code() -> None:
     assert [edge.target_path for edge in edges] == ["Alexandria/Contexts/Source.md"]
 
 
+def test_graph_relations_ignore_external_evidence_and_artifact_identifiers() -> None:
+    """Provenance identifiers are not Obsidian note paths or graph nodes."""
+    edges = relation_edges_from_note(
+        note_id="trade-journal",
+        relative_path="Contexts/Projects/Trader/Journal.md",
+        alexandria_root=".",
+        frontmatter={
+            "source_refs": ["evidence:run-123:1", "artifact:report-456"],
+        },
+        body=(
+            "Evidence [[evidence:run-123:1]] and "
+            "artifact [[artifact:report-456]] are external identifiers.\n"
+            "The real note link is [[Contexts/Projects/Trader/Index]].\n"
+        ),
+    )
+
+    assert [edge.target_path for edge in edges] == ["Contexts/Projects/Trader/Index.md"]
+
+
 def test_graph_relations_keep_vault_root_targets_when_root_is_dot() -> None:
     """Root-vault installs should not treat the first folder as Alexandria root."""
     edges = relation_edges_from_note(

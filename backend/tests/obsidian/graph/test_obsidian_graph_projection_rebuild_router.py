@@ -6,8 +6,7 @@ from pathlib import Path
 
 import anyio
 import pytest
-from app.main import app as default_app
-from app.main import create_app
+from app.main import app as default_app, create_app
 from app.obsidian.infrastructure.graph import neo4j_graph_projection_factory
 from app.platform.config.app_config import AppConfig
 from app.shared.infrastructure.database import Database
@@ -75,6 +74,7 @@ def test_disabled_projection_rebuild_and_status_api_do_not_create_neo4j_driver_o
         ):
             status_response = client.get("/obsidian/graph/projection/status")
             rebuild_response = client.post("/obsidian/graph/projection/rebuild")
+            public_reindex_response = client.post("/obsidian/index/rebuild")
             related_response = client.get("/obsidian/notes/missing/related")
     finally:
         default_app.state.container.wire(packages=_ROUTER_PACKAGES)
@@ -107,6 +107,12 @@ def test_disabled_projection_rebuild_and_status_api_do_not_create_neo4j_driver_o
     assert payload["errors"] == []
     assert isinstance(payload["run_id"], str)
     assert payload["duration_seconds"] >= 0.0
+    assert public_reindex_response.status_code == 200
+    public_reindex_payload = public_reindex_response.json()
+    assert public_reindex_payload["files_seen"] == 0
+    assert public_reindex_payload["files_indexed"] == 0
+    assert public_reindex_payload["graph_projection"]["status"] == "disabled"
+    assert public_reindex_payload["graph_projection"]["graph_read_model"] == "disabled"
     assert related_response.status_code == 503
     assert "disabled" in related_response.json()["detail"]
     assert not vault_path.exists()

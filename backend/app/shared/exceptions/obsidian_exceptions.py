@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.shared.types.extra_types import JSONObject
+
 
 class ObsidianDomainError(RuntimeError):
     """Base Obsidian integration exception."""
@@ -25,3 +27,86 @@ class ObsidianIndexWriteError(ObsidianDomainError):
 
 class ObsidianGraphUnavailableError(ObsidianDomainError):
     """Raised when a graph-only read is requested without a graph provider."""
+
+
+class ObsidianIdentityConflictError(ObsidianDomainError):
+    """Raised before mutation when exact note selectors disagree or already exist."""
+
+    def __init__(
+        self,
+        *,
+        operation: str,
+        requested_note_id: str | None,
+        requested_path: str | None,
+        id_target_path: str | None,
+        path_target_id: str | None,
+        recommended_operation: str,
+    ) -> None:
+        """Create a machine-readable identity conflict."""
+        super().__init__("IDENTITY_CONFLICT")
+        self._detail: JSONObject = {
+            "error_code": "IDENTITY_CONFLICT",
+            "operation": operation,
+            "requested_note_id": requested_note_id,
+            "requested_path": requested_path,
+            "id_target_path": id_target_path,
+            "path_target_id": path_target_id,
+            "mutation_performed": False,
+            "recommended_operation": recommended_operation,
+        }
+
+    def route_detail(self) -> JSONObject:
+        """Return the stable HTTP error detail.
+
+        Returns:
+            Result produced by route_detail.
+        """
+        return dict(self._detail)
+
+
+class ObsidianWriteTargetNotFoundError(ObsidianDomainError):
+    """Raised before mutation when an explicit update target does not exist."""
+
+    def __init__(
+        self,
+        *,
+        requested_note_id: str | None,
+        requested_path: str | None,
+    ) -> None:
+        """Create a machine-readable missing-target error."""
+        super().__init__("WRITE_TARGET_NOT_FOUND")
+        self._detail: JSONObject = {
+            "error_code": "WRITE_TARGET_NOT_FOUND",
+            "operation": "update",
+            "requested_note_id": requested_note_id,
+            "requested_path": requested_path,
+            "mutation_performed": False,
+            "recommended_operation": "create_or_upsert",
+        }
+
+    def route_detail(self) -> JSONObject:
+        """Return the stable HTTP error detail.
+
+        Returns:
+            Result produced by route_detail.
+        """
+        return dict(self._detail)
+
+
+class ObsidianIdempotencyConflictError(ObsidianDomainError):
+    """Raised when one idempotency key is reused for a different request."""
+
+    def __init__(self) -> None:
+        super().__init__("IDEMPOTENCY_KEY_REUSED")
+
+    def route_detail(self) -> JSONObject:
+        """Return a secret-free stable HTTP error detail.
+
+        Returns:
+            Result produced by route_detail.
+        """
+        return {
+            "error_code": "IDEMPOTENCY_KEY_REUSED",
+            "mutation_performed": False,
+            "recommended_operation": "use_a_new_idempotency_key",
+        }

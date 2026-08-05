@@ -13,6 +13,10 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     ObsidianLibrarianJobStatus,
     ObsidianLibrarianWorkflowStatus,
     ObsidianRelationType,
+    ObsidianReportBundleCompletionStatus,
+    ObsidianWriteMatchBy,
+    ObsidianWriteMode,
+    ObsidianWriteOperation,
 )
 from app.shared.types.extra_types import JSONObject
 
@@ -54,6 +58,90 @@ class ObsidianNote:
     def __post_init__(self) -> None:
         """Normalize note tags to an immutable sequence."""
         object.__setattr__(self, "tags", tuple(self.tags))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianNoteWriteResult:
+    """Structured outcome and pipeline visibility for an explicit note write."""
+
+    operation: ObsidianWriteOperation
+    write_mode: ObsidianWriteMode
+    match_by: ObsidianWriteMatchBy
+    note: ObsidianNote
+    storage_status: str
+    metadata_status: str
+    fts_status: str
+    sqlite_graph_edge_status: str
+    graph_projection_status: str
+    reindex_required: bool
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize warnings to an immutable sequence."""
+        object.__setattr__(self, "warnings", tuple(self.warnings))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianExactPathStatus:
+    """Existence and identity result for one canonical managed path."""
+
+    exists: bool
+    relative_path: str
+    note_id: str | None = None
+    index_status: ObsidianIndexStatus | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianCanonicalIdentityResult:
+    """Generic frontmatter-backed canonical report identity resolution."""
+
+    canonical_report_family: str
+    canonical_entity: str
+    canonical_path: str
+    existing_note_id: str | None
+    aliases: tuple[str, ...]
+    resolution: str
+    candidate_paths: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize resolver collections to immutable sequences."""
+        object.__setattr__(self, "aliases", tuple(self.aliases))
+        object.__setattr__(self, "candidate_paths", tuple(self.candidate_paths))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianReportBundleGraphResult:
+    """Expected and observed graph state for one report bundle."""
+
+    expected_incoming_edges: int
+    verified_incoming_edges: int
+    unresolved_links: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize unresolved links to an immutable sequence."""
+        object.__setattr__(self, "unresolved_links", tuple(self.unresolved_links))
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ObsidianReportBundleResult:
+    """Checkpointable outcome for an idempotent report bundle operation."""
+
+    completion_status: ObsidianReportBundleCompletionStatus
+    idempotency_key: str
+    replayed: bool
+    source: ObsidianNoteWriteResult | None
+    owner_writes: tuple[ObsidianNoteWriteResult, ...]
+    graph: ObsidianReportBundleGraphResult
+    duplicates: tuple[str, ...] = field(default_factory=tuple)
+    failed_stage: str | None = None
+    rollback_performed: bool = False
+    errors: tuple[JSONObject, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize bundle collections to immutable values."""
+        object.__setattr__(self, "owner_writes", tuple(self.owner_writes))
+        object.__setattr__(self, "duplicates", tuple(self.duplicates))
+        object.__setattr__(self, "errors", tuple(self.errors))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -122,11 +210,14 @@ class ObsidianReindexResult:
     stale_marked: int
     errors: tuple[str, ...] = field(default_factory=tuple)
     error_details: tuple[ObsidianIndexError, ...] = field(default_factory=tuple)
+    skip_reasons: dict[str, int] = field(default_factory=dict)
+    edge_targets_resolved: int = 0
 
     def __post_init__(self) -> None:
         """Normalize reindex diagnostics to immutable sequences."""
         object.__setattr__(self, "errors", tuple(self.errors))
         object.__setattr__(self, "error_details", tuple(self.error_details))
+        object.__setattr__(self, "skip_reasons", dict(self.skip_reasons))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
