@@ -12,8 +12,9 @@ from app.memory.application.retrieval.embedding_fingerprint import (
     EmbeddingFingerprint,
 )
 
-DEFAULT_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 DEFAULT_EMBEDDING_DIMENSIONS = 384
+DEFAULT_EMBEDDING_THREADS = 4
 
 
 class EmbeddingProvider(ABC):

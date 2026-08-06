@@ -56,11 +56,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _build_context_reindex_hook(
+    enabled: bool,
     context_service: ContextService | None,
     recovery_service: ContextEmbeddingRecoveryService | None,
 ) -> Callable[[], Awaitable[None]] | None:
     """Build an async hook that backfills context embeddings after vault reindex."""
-    if context_service is None or recovery_service is None:
+    if not enabled or context_service is None or recovery_service is None:
         return None
 
     async def _hook() -> None:
@@ -127,6 +128,7 @@ class ObsidianContainer(containers.DeclarativeContainer):
         delegate_service=librarian_delegate_service,
         context_reindex_hook=providers.Factory(
             _build_context_reindex_hook,
+            enabled=app_config.provided.rag_embedding_recovery_on_vault_reindex,
             context_service=memory_context_service,
             recovery_service=memory_embedding_recovery_service,
         ),
@@ -148,6 +150,7 @@ class ObsidianContainer(containers.DeclarativeContainer):
         vault_reindex_service=vault_reindex_service,
         graph_service=graph_service,
         vault_config_store=vault_config_store,
+        index_maintenance_coordinator=index_maintenance_coordinator,
     )
     canonical_identity_service = providers.Factory(
         ObsidianCanonicalIdentityService,

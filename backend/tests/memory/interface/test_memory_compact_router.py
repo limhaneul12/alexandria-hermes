@@ -35,6 +35,13 @@ def _open_service(vault_path: Path) -> MemoryCompactService:
     )
 
 
+def _compact_note_path(vault_path: Path, compact_id: str) -> Path:
+    notes_dir = vault_path / "Alexandria" / "Memory Compacts"
+    matches = list(notes_dir.rglob(f"{compact_id}.md"))
+    assert len(matches) == 1
+    return matches[0]
+
+
 def _compact_body(covered_from: str, covered_to: str) -> str:
     return f"""## Durable Decisions
 - Keep this compact as the current project summary.
@@ -94,9 +101,7 @@ def test_memory_compact_api_hard_deletes_obsidian_note(tmp_path: Path) -> None:
     ):
         create_response = client.post("/memory/compacts", json=_payload())
         compact_id = create_response.json()["id"]
-        note_path = (
-            tmp_path / "vault" / "Alexandria" / "Memory Compacts" / f"{compact_id}.md"
-        )
+        note_path = _compact_note_path(tmp_path / "vault", compact_id)
         delete_response = client.delete(f"/memory/compacts/{compact_id}")
         get_response = client.get(f"/memory/compacts/{compact_id}")
         list_response = client.get(
@@ -128,9 +133,7 @@ def test_memory_compact_api_exposes_current_archive_lifecycle(tmp_path: Path) ->
     ):
         create_response = client.post("/memory/compacts", json=_payload())
         compact_id = create_response.json()["id"]
-        note_path = (
-            tmp_path / "vault" / "Alexandria" / "Memory Compacts" / f"{compact_id}.md"
-        )
+        note_path = _compact_note_path(tmp_path / "vault", compact_id)
         current_response = client.get(
             "/memory/compacts/current", params={"project": "alexandria-hermes"}
         )
@@ -189,7 +192,7 @@ def test_memory_compact_api_marks_duplicate_signature_response(
             "/memory/compacts", params={"project": "alexandria-hermes"}
         )
         note_paths = list(
-            (tmp_path / "vault" / "Alexandria" / "Memory Compacts").glob("*.md")
+            (tmp_path / "vault" / "Alexandria" / "Memory Compacts").rglob("*.md")
         )
 
     assert first_response.status_code == 201
@@ -213,9 +216,7 @@ def test_current_memory_compact_response_warns_when_stale(tmp_path: Path) -> Non
     ):
         create_response = client.post("/memory/compacts", json=_payload())
         compact_id = create_response.json()["id"]
-        note_path = (
-            tmp_path / "vault" / "Alexandria" / "Memory Compacts" / f"{compact_id}.md"
-        )
+        note_path = _compact_note_path(tmp_path / "vault", compact_id)
         note = note_path.read_text(encoding="utf-8")
         note = note.replace(
             create_response.json()["updated_at"],
@@ -252,9 +253,7 @@ def test_current_memory_compact_response_warns_when_timestamp_missing(
     ):
         create_response = client.post("/memory/compacts", json=_payload())
         compact_id = create_response.json()["id"]
-        note_path = (
-            tmp_path / "vault" / "Alexandria" / "Memory Compacts" / f"{compact_id}.md"
-        )
+        note_path = _compact_note_path(tmp_path / "vault", compact_id)
         note = note_path.read_text(encoding="utf-8")
         note = "\n".join(
             line

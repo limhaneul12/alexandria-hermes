@@ -107,9 +107,11 @@ def test_report_bundle_is_idempotent_and_verifies_expected_owner_edges(
                 default_alexandria_root="Alexandria",
                 config_path=None,
             )
+            coordinator = IndexMaintenanceCoordinator()
             obsidian = ObsidianService(
                 repository=repository,
                 vault_config_store=store,
+                index_maintenance_coordinator=coordinator,
             )
             graph_repository = _FailingActivationGraphRepository()
             graph_rebuild = ObsidianGraphProjectionRebuildService(
@@ -124,7 +126,7 @@ def test_report_bundle_is_idempotent_and_verifies_expected_owner_edges(
                     source=SqlAlchemyObsidianGraphProjectionSource(session=session)
                 ),
                 repository=graph_repository,
-                index_maintenance_coordinator=IndexMaintenanceCoordinator(),
+                index_maintenance_coordinator=coordinator,
                 run_id_factory=lambda: "bundle-graph-run",
             )
             bundle = ObsidianReportBundleService(
@@ -138,6 +140,7 @@ def test_report_bundle_is_idempotent_and_verifies_expected_owner_edges(
                     graph_repository=graph_repository,
                 ),
                 vault_config_store=store,
+                index_maintenance_coordinator=coordinator,
             )
             index = await obsidian.save_note(
                 ObsidianSaveNote(
@@ -292,9 +295,11 @@ def test_report_bundle_missing_owner_fails_before_source_mutation(
                 default_alexandria_root="Alexandria",
                 config_path=None,
             )
+            coordinator = IndexMaintenanceCoordinator()
             obsidian = ObsidianService(
                 repository=repository,
                 vault_config_store=store,
+                index_maintenance_coordinator=coordinator,
             )
             graph_repository = FakeObsidianGraphProjectionRepository()
             graph_rebuild = ObsidianGraphProjectionRebuildService(
@@ -303,7 +308,7 @@ def test_report_bundle_missing_owner_fails_before_source_mutation(
                     source=SqlAlchemyObsidianGraphProjectionSource(session=session)
                 ),
                 repository=graph_repository,
-                index_maintenance_coordinator=IndexMaintenanceCoordinator(),
+                index_maintenance_coordinator=coordinator,
             )
             bundle = ObsidianReportBundleService(
                 obsidian_service=obsidian,
@@ -316,6 +321,7 @@ def test_report_bundle_missing_owner_fails_before_source_mutation(
                     graph_repository=graph_repository,
                 ),
                 vault_config_store=store,
+                index_maintenance_coordinator=coordinator,
             )
             result = await bundle.upsert(
                 ObsidianReportBundleRequest(

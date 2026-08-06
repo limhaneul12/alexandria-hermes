@@ -9,6 +9,9 @@ from app.obsidian.domain.entities.obsidian_note import ObsidianReindexResult
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
 )
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
+)
 
 
 class _SearchRepository:
@@ -48,6 +51,7 @@ def test_search_uses_existing_index_unless_refresh_is_explicit(tmp_path) -> None
         ),
         reindex=reindex,
         mark_context_superseded=mark_context_superseded,
+        index_maintenance_coordinator=IndexMaintenanceCoordinator(),
     )
 
     async def scenario() -> None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 from dataclasses import replace
@@ -43,6 +42,9 @@ from app.obsidian.infrastructure.obsidian_report_bundle_run_store import (
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
 )
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
+)
 from app.shared.exceptions.common_exceptions import IndexMaintenanceConflictError
 from app.shared.exceptions.obsidian_exceptions import (
     ObsidianDomainError,
@@ -63,12 +65,13 @@ class ObsidianReportBundleService:
         vault_reindex_service: ObsidianVaultReindexService,
         graph_service: ObsidianGraphService,
         vault_config_store: ObsidianVaultConfigStore,
+        index_maintenance_coordinator: IndexMaintenanceCoordinator,
     ) -> None:
         self._obsidian_service = obsidian_service
         self._vault_reindex_service = vault_reindex_service
         self._graph_service = graph_service
         self._vault_config_store = vault_config_store
-        self._lock = asyncio.Lock()
+        self._index_maintenance_coordinator = index_maintenance_coordinator
 
     async def upsert(
         self,
@@ -82,7 +85,9 @@ class ObsidianReportBundleService:
         Returns:
             Result produced by upsert.
         """
-        async with self._lock:
+        async with self._index_maintenance_coordinator.write_operation(
+            "obsidian_report_bundle"
+        ):
             return await self._upsert_serialized(request)
 
     async def _upsert_serialized(

@@ -152,6 +152,7 @@ class ObsidianService:
             vault_config_store=self._vault_config_store,
             reindex=self.reindex,
             mark_context_superseded=self._delegate_mark_context_superseded,
+            index_maintenance_coordinator=self._index_maintenance_coordinator,
         )
         self._vault_inventory_service = ObsidianVaultInventoryService(
             vault_config_store=self._vault_config_store

@@ -71,13 +71,17 @@ class MemoryCompactNoteStore:
         Args:
             compact: Memory Compact entity to persist.
         """
-        self._base_dir.mkdir(parents=True, exist_ok=True)
-        path = self._compact_path(compact.id)
+        existing_paths = self._paths_for_compact_id(compact.id)
+        path = self._compact_path(compact.id, created_at=compact.created_at)
         if path is None:
             raise ValueError("Memory Compact id cannot be used as a note filename")
+        path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = path.with_suffix(f"{NOTE_SUFFIX}.tmp")
         temp_path.write_text(serialize_compact(compact), encoding="utf-8")
         temp_path.replace(path)
+        for existing_path in existing_paths:
+            if existing_path != path and existing_path.exists():
+                existing_path.unlink()
 
     def delete(self, compact_id: str) -> None:
         """Delete one Memory Compact note by stable id.
@@ -85,25 +89,40 @@ class MemoryCompactNoteStore:
         Args:
             compact_id: Memory Compact identifier.
         """
-        path = self._compact_path(compact_id)
-        if path is not None and path.exists():
-            path.unlink()
-            return
-        for candidate in self._note_paths():
-            compact = read_compact_file(candidate)
-            if compact is not None and compact.id == compact_id:
-                candidate.unlink()
-                return
+        for path in self._paths_for_compact_id(compact_id):
+            if path.exists():
+                path.unlink()
 
     def _note_paths(self) -> list[Path]:
         if not self._base_dir.exists():
             return []
-        return sorted(self._base_dir.glob(f"*{NOTE_SUFFIX}"))
+        return sorted(self._base_dir.rglob(f"*{NOTE_SUFFIX}"))
 
-    def _compact_path(self, compact_id: str) -> Path | None:
+    def _compact_path(
+        self,
+        compact_id: str,
+        *,
+        created_at: datetime | None = None,
+    ) -> Path | None:
         if not is_safe_note_id(compact_id):
             return None
-        return self._base_dir / f"{compact_id}{NOTE_SUFFIX}"
+        directory = self._base_dir
+        if created_at is not None:
+            directory = directory / f"{created_at.year:04d}" / f"{created_at.month:02d}"
+        return directory / f"{compact_id}{NOTE_SUFFIX}"
+
+    def _paths_for_compact_id(self, compact_id: str) -> list[Path]:
+        if not is_safe_note_id(compact_id) or not self._base_dir.exists():
+            return []
+        matching_paths: list[Path] = []
+        for candidate in self._note_paths():
+            if candidate.stem == compact_id:
+                matching_paths.append(candidate)
+                continue
+            compact = read_compact_file(candidate)
+            if compact is not None and compact.id == compact_id:
+                matching_paths.append(candidate)
+        return matching_paths
 
 
 def _compact_sort_key(compact: MemoryCompact) -> tuple[datetime, datetime]:

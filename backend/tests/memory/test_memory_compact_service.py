@@ -34,6 +34,13 @@ def _service(vault_path: Path) -> MemoryCompactService:
     )
 
 
+def _compact_note_path(vault_path: Path, compact_id: str) -> Path:
+    notes_dir = vault_path / "Alexandria" / "Memory Compacts"
+    matches = list(notes_dir.rglob(f"{compact_id}.md"))
+    assert len(matches) == 1
+    return matches[0]
+
+
 def _source_ref(
     source_id: str = "ctx-1",
     *,
@@ -95,9 +102,7 @@ def test_memory_compact_service_writes_obsidian_note_when_created(
     async def scenario() -> None:
         service = _service(tmp_path / "vault")
         compact = await service.create(_create(MemoryCompactStatus.CURRENT))
-        note_path = (
-            tmp_path / "vault" / "Alexandria" / "Memory Compacts" / f"{compact.id}.md"
-        )
+        note_path = _compact_note_path(tmp_path / "vault", compact.id)
         note = note_path.read_text(encoding="utf-8")
 
         assert note_path.exists()
@@ -143,9 +148,9 @@ def test_memory_compact_writes_obsidian_property_links_for_note_sources(
             ],
         )
         compact = await service.create(payload)
-        return (
-            tmp_path / "vault" / "Alexandria" / "Memory Compacts" / f"{compact.id}.md"
-        ).read_text(encoding="utf-8")
+        return _compact_note_path(tmp_path / "vault", compact.id).read_text(
+            encoding="utf-8"
+        )
 
     note = anyio.run(scenario)
 
@@ -288,10 +293,10 @@ def test_memory_compact_service_reuses_existing_compact_for_same_signature(
                 source_refs=[_source_ref("ctx-a"), _source_ref("ctx-b")],
             )
         )
-        listed, total = await service.list_compacts(project="alexandria-hermes")
+        _listed, total = await service.list_compacts(project="alexandria-hermes")
         current = await service.current(project="alexandria-hermes")
         note_paths = list(
-            (tmp_path / "vault" / "Alexandria" / "Memory Compacts").glob("*.md")
+            (tmp_path / "vault" / "Alexandria" / "Memory Compacts").rglob("*.md")
         )
 
         return first.id, duplicate.id, total, len(note_paths), current.id
@@ -387,9 +392,9 @@ def test_memory_compact_service_preserves_source_hash_evidence(
             )
         )
         loaded = await service.get(compact.id)
-        note = (
-            tmp_path / "vault" / "Alexandria" / "Memory Compacts" / f"{compact.id}.md"
-        ).read_text(encoding="utf-8")
+        note = _compact_note_path(tmp_path / "vault", compact.id).read_text(
+            encoding="utf-8"
+        )
 
         assert loaded is not None
         return loaded.source_refs[0].source_hash, note
@@ -626,7 +631,7 @@ def test_memory_compact_service_lists_legacy_obsidian_notes(
 
     async def scenario() -> None:
         vault = tmp_path / "vault"
-        notes_dir = vault / "Alexandria" / "Memory Compacts"
+        notes_dir = vault / "Alexandria" / "Memory Compacts" / "2026" / "05"
         notes_dir.mkdir(parents=True)
         (notes_dir / "legacy compact.md").write_text(
             """---
@@ -668,7 +673,7 @@ def test_memory_compact_service_deduplicates_same_id_lifecycle_notes(
 
     async def scenario() -> tuple[int, list[tuple[str, MemoryCompactStatus]], str]:
         vault = tmp_path / "vault"
-        notes_dir = vault / "Alexandria" / "Memory Compacts"
+        notes_dir = vault / "Alexandria" / "Memory Compacts" / "2026" / "07"
         notes_dir.mkdir(parents=True)
         (notes_dir / "old-current-copy.md").write_text(
             """---

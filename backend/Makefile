@@ -10,9 +10,9 @@ format_check:
 type_checking:
 	uv run --no-editable pyrefly check
 
-cli_smoke: install-local
-	uv run --no-editable alexandria-hermes --help >/dev/null
-	uv run --no-editable alex-hermes --help >/dev/null
+cli_smoke:
+	uv run --isolated --with . alexandria-hermes --help >/dev/null
+	uv run --isolated --with . alex-hermes --help >/dev/null
 
 guardrails:
 	uv run --no-editable pytest -q tests/shared/guardrails

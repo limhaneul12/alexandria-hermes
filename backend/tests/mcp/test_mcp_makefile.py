@@ -29,10 +29,10 @@ def test_makefile_keeps_only_build_and_ci_targets() -> None:
         in text
     )
     assert "ci: format_check type_checking cli_smoke guardrails test" in text
-    assert "cli_smoke: install-local" in text
+    assert "cli_smoke:" in text
     assert "uv sync --no-editable --reinstall-package alexandria-hermes" in text
-    assert "uv run --no-editable alexandria-hermes --help >/dev/null" in text
-    assert "uv run --no-editable alex-hermes --help >/dev/null" in text
+    assert "uv run --isolated --with . alexandria-hermes --help >/dev/null" in text
+    assert "uv run --isolated --with . alex-hermes --help >/dev/null" in text
     assert "LOAD_LOCAL_ENV" not in text
     assert "PROJECT ?=" not in text
     assert "REVIEW_LIMIT ?=" not in text

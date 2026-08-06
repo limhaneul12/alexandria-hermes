@@ -107,6 +107,7 @@ class MemoryContainer(containers.DeclarativeContainer):
         model_name=app_config.provided.rag_embedding_model,
         dimensions=app_config.provided.rag_embedding_dimensions,
         cache_dir=app_config.provided.rag_embedding_cache_dir,
+        threads=app_config.provided.rag_embedding_threads,
     )
     context_repo = providers.Factory(SqlAlchemyContextRepository, session=db_session)
     obsidian_context_search_source = providers.Factory(

@@ -70,6 +70,9 @@ from app.obsidian.infrastructure.obsidian_vault_config_store import (
 from app.obsidian.infrastructure.repositories.obsidian_index_repository import (
     SqlAlchemyObsidianIndexRepository,
 )
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
+)
 from app.shared.exceptions.obsidian_exceptions import (
     ObsidianIdentityConflictError,
     ObsidianIndexWriteError,
@@ -94,7 +97,11 @@ def _database_url(path: Path) -> str:
     return f"sqlite+aiosqlite:///{path}"
 
 
-async def _service(tmp_path: Path) -> tuple[Database, AsyncSession, ObsidianService]:
+async def _service(
+    tmp_path: Path,
+    *,
+    coordinator: IndexMaintenanceCoordinator | None = None,
+) -> tuple[Database, AsyncSession, ObsidianService]:
     database = Database(
         database_url=_database_url(tmp_path / "obsidian.db"), create_schema=True
     )
@@ -104,8 +111,67 @@ async def _service(tmp_path: Path) -> tuple[Database, AsyncSession, ObsidianServ
         repository=SqlAlchemyObsidianIndexRepository(session=session),
         vault_path=str(tmp_path / "vault"),
         alexandria_root="Alexandria",
+        index_maintenance_coordinator=coordinator,
     )
     return database, session, service
+
+
+def test_note_write_waits_for_active_vault_reindex_lane(tmp_path: Path) -> None:
+    """Note persistence must not overlap an active vault index writer."""
+
+    async def scenario() -> tuple[bool, str]:
+        coordinator = IndexMaintenanceCoordinator()
+        database, session, service = await _service(
+            tmp_path,
+            coordinator=coordinator,
+        )
+        maintenance_entered = anyio.Event()
+        release_maintenance = anyio.Event()
+        write_finished = anyio.Event()
+        note_path = "Alexandria/Concurrency/Queued Note.md"
+        absolute_path = tmp_path / "vault" / note_path
+
+        async def maintenance() -> None:
+            async with coordinator.operation("vault_reindex"):
+                maintenance_entered.set()
+                await release_maintenance.wait()
+
+        async def writer() -> None:
+            await maintenance_entered.wait()
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="Queued Note",
+                    body="# Queued Note\n",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id="queued-note",
+                    relative_path=note_path,
+                    project="alexandria-hermes",
+                    frontmatter={"scope": "PROJECT"},
+                )
+            )
+            write_finished.set()
+
+        try:
+            async with anyio.create_task_group() as group:
+                group.start_soon(maintenance)
+                group.start_soon(writer)
+                await maintenance_entered.wait()
+                with anyio.move_on_after(0.05):
+                    await write_finished.wait()
+                assert not write_finished.is_set()
+                assert not absolute_path.exists()
+                release_maintenance.set()
+
+            note = await service.read_note("queued-note")
+            return absolute_path.exists(), note.index_status.value
+        finally:
+            await session.close()
+            await database.shutdown()
+
+    exists, index_status = anyio.run(scenario)
+
+    assert exists is True
+    assert index_status == ObsidianIndexStatus.INDEXED.value
 
 
 def test_obsidian_index_bounds_and_overlaps_large_canonical_note_chunks(
@@ -313,10 +379,10 @@ def test_obsidian_reindex_reports_skip_reasons_and_late_edge_resolution(
     anyio.run(scenario)
 
 
-def test_obsidian_search_excludes_stale_notes_after_reindex(tmp_path: Path) -> None:
-    """Search should not surface paths that were marked stale by a later scan."""
+def test_obsidian_reindex_discards_missing_note_indexes(tmp_path: Path) -> None:
+    """Missing Markdown should leave no searchable or stale derived rows."""
 
-    async def scenario() -> list[str]:
+    async def scenario() -> tuple[list[str], int, int]:
         database, session, service = await _service(tmp_path)
         try:
             await service.save_note(
@@ -337,7 +403,7 @@ def test_obsidian_search_excludes_stale_notes_after_reindex(tmp_path: Path) -> N
                 / "Temporary Librarian Chat.md"
             )
             stale_path.unlink()
-            await service.reindex()
+            reindex = await service.reindex()
             hits = await service.search(
                 ObsidianSearchQuery(
                     query="stale search marker",
@@ -345,13 +411,18 @@ def test_obsidian_search_excludes_stale_notes_after_reindex(tmp_path: Path) -> N
                 ),
                 refresh=False,
             )
+            status = await service.status()
         finally:
             await session.close()
             await database.shutdown()
 
-        return [hit.note.relative_path for hit in hits]
+        return (
+            [hit.note.relative_path for hit in hits],
+            reindex.stale_marked,
+            status.stale_notes,
+        )
 
-    assert anyio.run(scenario) == []
+    assert anyio.run(scenario) == ([], 1, 0)
 
 
 def test_obsidian_search_filters_stale_notes_before_fts_limit(
@@ -820,6 +891,56 @@ def test_obsidian_reindex_heals_interrupted_supersede(
     assert rebuild_errors == ()
     assert old_status == "superseded"
     assert new_status == "current"
+
+
+def test_index_error_persistence_failure_does_not_mask_primary_failure(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A secondary diagnostic write must not replace the canonical save error."""
+
+    async def scenario() -> tuple[str, bool]:
+        database, session, service = await _service(tmp_path)
+        repository = service._repository
+
+        async def fail_upsert(_payload: ObsidianNoteIndex):
+            raise ObsidianIndexWriteError("synthetic primary index failure")
+
+        async def fail_error_record(_error) -> None:
+            raise RuntimeError("synthetic diagnostic persistence failure")
+
+        monkeypatch.setattr(repository, "upsert_note", fail_upsert)
+        monkeypatch.setattr(repository, "record_index_error", fail_error_record)
+        path = "Alexandria/Contexts/Projects/Preserved.md"
+        absolute_path = tmp_path / "vault" / path
+        try:
+            error = ""
+            try:
+                await service.save_note(
+                    ObsidianSaveNote(
+                        title="Preserved",
+                        body="# Preserved\n",
+                        alexandria_type=AlexandriaNoteType.CONTEXT,
+                        note_id="ctx_preserved",
+                        relative_path=path,
+                        project="project-a",
+                        frontmatter={"scope": "PROJECT"},
+                    )
+                )
+            except ObsidianValidationError as exc:
+                error = str(exc)
+            return error, absolute_path.exists()
+        finally:
+            await session.close()
+            await database.shutdown()
+
+    caplog.set_level("ERROR")
+    error, markdown_exists = anyio.run(scenario)
+
+    assert error == "INDEX_WRITE_FAILED: canonical Markdown was preserved for reindex"
+    assert markdown_exists is True
+    assert "failed to persist Obsidian index error" in caplog.text
 
 
 def test_obsidian_save_note_writes_markdown_and_reindexes(tmp_path: Path) -> None:
@@ -1307,7 +1428,9 @@ def test_obsidian_roundtrips_memory_skill_prompt_after_sqlite_rebuild(
                 refresh=False,
             )
             memory_note = await rebuilt_service.read_note_by_path(
-                f"Alexandria/Memory Compacts/{compact.id}.md"
+                "Alexandria/Memory Compacts/"
+                f"{compact.created_at.year:04d}/{compact.created_at.month:02d}/"
+                f"{compact.id}.md"
             )
             skill_note = await rebuilt_service.read_note(skill.note_id)
             prompt_note = await rebuilt_service.read_note(prompt.note_id)

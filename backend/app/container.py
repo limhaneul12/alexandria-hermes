@@ -30,6 +30,7 @@ from app.shared.application.index_maintenance_coordinator import (
     IndexMaintenanceCoordinator,
 )
 from app.shared.infrastructure.database import Database
+from app.shared.infrastructure.interprocess_file_lock import InterprocessFileLock
 from app.shared.security.secret_cipher import SecretCipher, SecretCipherSettings
 
 
@@ -61,6 +62,26 @@ def create_session(database: Database) -> AsyncSession:
         AsyncSession: Value produced by create_session.
     """
     return database.session()
+
+
+def create_index_maintenance_coordinator(
+    database: Database,
+) -> IndexMaintenanceCoordinator:
+    """Create one process and cross-process index write coordinator.
+
+    Args:
+        database: Initialized database resource that owns the index SQLite file.
+
+    Returns:
+        Coordinator bound to the database-specific advisory lock when applicable.
+    """
+    sqlite_path = database.sqlite_path
+    process_lock = (
+        None
+        if sqlite_path is None
+        else InterprocessFileLock(f"{sqlite_path}.index-write.lock")
+    )
+    return IndexMaintenanceCoordinator(process_lock=process_lock)
 
 
 def create_secret_cipher(config: AppConfig) -> SecretCipher:
@@ -121,7 +142,10 @@ class ApplicationContainer(containers.DeclarativeContainer):
         database_url=database_config.provided.url,
     )
     db_session = providers.Factory(create_session, database=database)
-    index_maintenance_coordinator = providers.Singleton(IndexMaintenanceCoordinator)
+    index_maintenance_coordinator = providers.Singleton(
+        create_index_maintenance_coordinator,
+        database=database,
+    )
     graph_projection_repository = providers.Resource(
         optional_neo4j_graph_projection_repository,
         config=app_config,

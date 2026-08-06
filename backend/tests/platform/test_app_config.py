@@ -84,6 +84,51 @@ def test_app_config_disables_graph_read_model_when_env_is_absent(
     assert config.graph_read_model == "disabled"
 
 
+def test_app_config_disables_automatic_embedding_recovery_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Long-running embedding recovery must require an explicit operator opt-in."""
+    monkeypatch.delenv("SERVICE_RAG_EMBEDDING_RECOVERY_ON_STARTUP", raising=False)
+    monkeypatch.delenv(
+        "SERVICE_RAG_EMBEDDING_RECOVERY_ON_VAULT_REINDEX",
+        raising=False,
+    )
+
+    config = AppConfig(_env_file=None)
+
+    assert config.rag_embedding_recovery_on_startup is False
+    assert config.rag_embedding_recovery_on_vault_reindex is False
+
+
+def test_app_config_allows_explicit_automatic_embedding_recovery_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Operators may explicitly enable either automatic recovery path."""
+    monkeypatch.setenv("SERVICE_RAG_EMBEDDING_RECOVERY_ON_STARTUP", "true")
+    monkeypatch.setenv(
+        "SERVICE_RAG_EMBEDDING_RECOVERY_ON_VAULT_REINDEX",
+        "true",
+    )
+
+    config = AppConfig(_env_file=None)
+
+    assert config.rag_embedding_recovery_on_startup is True
+    assert config.rag_embedding_recovery_on_vault_reindex is True
+
+
+def test_app_config_defaults_embedding_threads_and_allows_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Local E5 inference should use a balanced default with an operator override."""
+    monkeypatch.delenv("SERVICE_RAG_EMBEDDING_THREADS", raising=False)
+
+    assert AppConfig(_env_file=None).rag_embedding_threads == 4
+
+    monkeypatch.setenv("SERVICE_RAG_EMBEDDING_THREADS", "6")
+
+    assert AppConfig(_env_file=None).rag_embedding_threads == 6
+
+
 def test_app_config_accepts_neo4j_graph_read_model_opt_in(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

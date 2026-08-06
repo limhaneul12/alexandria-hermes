@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from pathlib import Path
@@ -71,6 +71,9 @@ from app.obsidian.infrastructure.markdown.paths import (
 from app.obsidian.infrastructure.obsidian_vault_config_store import (
     ObsidianVaultConfigStore,
 )
+from app.shared.application.index_maintenance_coordinator import (
+    IndexMaintenanceCoordinator,
+)
 from app.shared.exceptions.obsidian_exceptions import (
     ObsidianIdentityConflictError,
     ObsidianIndexWriteError,
@@ -82,6 +85,8 @@ from app.shared.exceptions.obsidian_exceptions import (
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.types_convert_utils import now_utc
 from app.shared.utils.secret_redaction import redact_secret_text
+
+logger = logging.getLogger(__name__)
 
 
 class ObsidianNoteSupersedeHook(Protocol):
@@ -111,6 +116,7 @@ class ObsidianNoteService:
         vault_config_store: ObsidianVaultConfigStore,
         reindex: Callable[[], Awaitable[ObsidianReindexResult]],
         mark_context_superseded: ObsidianNoteSupersedeHook,
+        index_maintenance_coordinator: IndexMaintenanceCoordinator,
     ) -> None:
         """Create the canonical note service.
 
@@ -119,12 +125,13 @@ class ObsidianNoteService:
             vault_config_store: Runtime vault location provider.
             reindex: Vault index refresh callback.
             mark_context_superseded: Context lifecycle reconciliation callback.
+            index_maintenance_coordinator: Process-wide rebuildable-index write lane.
         """
         self._repository = repository
         self._vault_config_store = vault_config_store
         self._reindex = reindex
         self._mark_context_superseded = mark_context_superseded
-        self._write_lock = asyncio.Lock()
+        self._index_maintenance_coordinator = index_maintenance_coordinator
 
     async def search(
         self,
@@ -201,7 +208,9 @@ class ObsidianNoteService:
         Returns:
             Saved note loaded through the index.
         """
-        async with self._write_lock:
+        async with self._index_maintenance_coordinator.write_operation(
+            "obsidian_note_write"
+        ):
             note, _ = await self._save_note_serialized(payload)
             return note
 
@@ -217,7 +226,9 @@ class ObsidianNoteService:
         Returns:
             Result produced by write_note.
         """
-        async with self._write_lock:
+        async with self._index_maintenance_coordinator.write_operation(
+            "obsidian_note_write"
+        ):
             (
                 payload,
                 existing,
@@ -366,7 +377,7 @@ class ObsidianNoteService:
                 error_message=str(exc),
                 detected_at=now_utc(),
             )
-            await self._repository.record_index_error(index_error)
+            await self._record_index_error_best_effort(index_error)
             raise ObsidianValidationError(
                 "INDEX_WRITE_FAILED: canonical Markdown was preserved for reindex"
             ) from exc
@@ -387,12 +398,33 @@ class ObsidianNoteService:
                     error_message=str(exc),
                     detected_at=now_utc(),
                 )
-                await self._repository.record_index_error(index_error)
+                await self._record_index_error_best_effort(index_error)
                 raise ObsidianValidationError(
                     "INDEX_WRITE_FAILED: replacement Markdown was preserved for "
                     "reindex reconciliation"
                 ) from exc
         return note, True
+
+    async def _record_index_error_best_effort(
+        self,
+        index_error: ObsidianIndexError,
+    ) -> None:
+        """Persist diagnostics without replacing the canonical write failure.
+
+        Error persistence uses the same rebuildable SQLite index. If that
+        secondary recovery write also fails, the original domain error remains
+        authoritative and the canonical Markdown stays available for reindex.
+        """
+        try:
+            await self._repository.record_index_error(index_error)
+        except Exception:
+            logger.exception(
+                "failed to persist Obsidian index error",
+                extra={
+                    "note_path": index_error.note_path,
+                    "index_error_code": index_error.error_code.value,
+                },
+            )
 
     async def _resolve_explicit_write_target(
         self,

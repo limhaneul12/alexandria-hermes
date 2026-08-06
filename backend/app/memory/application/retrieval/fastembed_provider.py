@@ -2,24 +2,32 @@
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Sequence
 from importlib.metadata import PackageNotFoundError, version
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Final
 
 from app.memory.application.retrieval.embedding_contract import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_THREADS,
     EmbeddingProvider,
+)
+from app.memory.application.retrieval.embedding_document import (
+    EMBEDDING_DOCUMENT_INPUT_FORMAT,
 )
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
 
-_MEAN_POOLING_ADVISORY_PATTERN = (
-    rf"^The model {DEFAULT_EMBEDDING_MODEL} now uses mean pooling instead of "
-    r"CLS embedding\..*$"
+_MULTILINGUAL_E5_SMALL_MODEL: Final[str] = "intfloat/multilingual-e5-small"
+_E5_QUERY_PREFIX: Final[str] = "query: "
+_E5_PASSAGE_PREFIX: Final[str] = "passage: "
+_E5_DOCUMENT_INPUT_FORMAT: Final[str] = (
+    f"{EMBEDDING_DOCUMENT_INPUT_FORMAT}+e5-passage-prefix-v1"
 )
+_E5_MODEL_FILE: Final[str] = "onnx/model.onnx"
+_FASTEMBED_BATCH_SIZE: Final[int] = 16
 
 
 class FastEmbedEmbeddingProvider(EmbeddingProvider):
@@ -34,6 +42,7 @@ class FastEmbedEmbeddingProvider(EmbeddingProvider):
         model_name: str = DEFAULT_EMBEDDING_MODEL,
         dimensions: int = DEFAULT_EMBEDDING_DIMENSIONS,
         cache_dir: str | None = None,
+        threads: int = DEFAULT_EMBEDDING_THREADS,
     ) -> None:
         """Initialize provider configuration.
 
@@ -41,10 +50,12 @@ class FastEmbedEmbeddingProvider(EmbeddingProvider):
             model_name: FastEmbed-supported model name.
             dimensions: Expected embedding dimensions.
             cache_dir: Optional local model cache directory.
+            threads: ONNX Runtime thread count for the E5 model.
         """
         self._model_name = model_name
         self._dimensions = dimensions
         self._cache_dir = cache_dir
+        self._threads = threads
         self._model: TextEmbedding | None = None
 
     @property
@@ -97,8 +108,21 @@ class FastEmbedEmbeddingProvider(EmbeddingProvider):
         Returns:
             Stable pooling identifier for mismatch detection.
         """
-        pooling_mode = "fastembed-default"
+        pooling_mode = (
+            "mean" if self._uses_multilingual_e5_small else "fastembed-default"
+        )
         return pooling_mode
+
+    @property
+    def document_input_format(self) -> str:
+        """Return the persisted document input composition identifier.
+
+        Returns:
+            Stable document input format including the E5 passage prefix contract.
+        """
+        if self._uses_multilingual_e5_small:
+            return _E5_DOCUMENT_INPUT_FORMAT
+        return EMBEDDING_DOCUMENT_INPUT_FORMAT
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         """Embed document chunks with FastEmbed.
@@ -109,9 +133,22 @@ class FastEmbedEmbeddingProvider(EmbeddingProvider):
         Returns:
             One embedding vector per input text.
         """
-        vectors = [
-            list(vector) for vector in self._embedding_model().embed(list(texts))
-        ]
+        model = self._embedding_model()
+        prepared_texts = list(texts)
+        if self._uses_multilingual_e5_small:
+            prepared_texts = [
+                f"{_E5_PASSAGE_PREFIX}{text.strip()}" for text in prepared_texts
+            ]
+            embedded = model.passage_embed(
+                prepared_texts,
+                batch_size=_FASTEMBED_BATCH_SIZE,
+            )
+        else:
+            embedded = model.embed(
+                prepared_texts,
+                batch_size=_FASTEMBED_BATCH_SIZE,
+            )
+        vectors = [list(vector) for vector in embedded]
         return vectors
 
     def embed_query(self, text: str) -> list[float]:
@@ -123,27 +160,99 @@ class FastEmbedEmbeddingProvider(EmbeddingProvider):
         Returns:
             Query embedding vector.
         """
-        vector = self.embed_documents([text])[0]
-        return vector
+        model = self._embedding_model()
+        if self._uses_multilingual_e5_small:
+            embedded = model.query_embed(f"{_E5_QUERY_PREFIX}{text.strip()}")
+        else:
+            embedded = model.embed([text])
+        return list(next(iter(embedded)))
+
+    @property
+    def _uses_multilingual_e5_small(self) -> bool:
+        return self._model_name == _MULTILINGUAL_E5_SMALL_MODEL
 
     def _embedding_model(self) -> TextEmbedding:
         if self._model is None:
             # lazy import justified: optional FastEmbed dependency loads only when embeddings are requested.
             from fastembed import TextEmbedding
 
-            with warnings.catch_warnings():
-                if self._model_name == DEFAULT_EMBEDDING_MODEL:
-                    warnings.filterwarnings(
-                        "ignore",
-                        message=_MEAN_POOLING_ADVISORY_PATTERN,
-                        category=UserWarning,
-                    )
-                if self._cache_dir is None:
-                    self._model = TextEmbedding(model_name=self._model_name)
-                else:
-                    self._model = TextEmbedding(
-                        model_name=self._model_name,
-                        cache_dir=self._cache_dir,
-                    )
+            if self._uses_multilingual_e5_small:
+                self._register_multilingual_e5_small(TextEmbedding)
+                self._repair_incomplete_multilingual_e5_cache()
+            embedding_threads = (
+                self._threads if self._uses_multilingual_e5_small else None
+            )
+            if self._cache_dir is None:
+                self._model = TextEmbedding(
+                    model_name=self._model_name,
+                    threads=embedding_threads,
+                )
+            else:
+                self._model = TextEmbedding(
+                    model_name=self._model_name,
+                    cache_dir=self._cache_dir,
+                    threads=embedding_threads,
+                )
         model = self._model
         return model
+
+    @staticmethod
+    def _register_multilingual_e5_small(
+        text_embedding_type: type[TextEmbedding],
+    ) -> None:
+        """Register multilingual-e5-small through FastEmbed's custom model API.
+
+        Args:
+            text_embedding_type: FastEmbed TextEmbedding class.
+
+        Returns:
+            None.
+        """
+        # local import justified: custom model descriptors load only for optional model registration.
+        from fastembed.common.model_description import ModelSource, PoolingType
+
+        try:
+            text_embedding_type.add_custom_model(
+                model=_MULTILINGUAL_E5_SMALL_MODEL,
+                pooling=PoolingType.MEAN,
+                normalization=True,
+                sources=ModelSource(hf=_MULTILINGUAL_E5_SMALL_MODEL),
+                dim=DEFAULT_EMBEDDING_DIMENSIONS,
+                model_file=_E5_MODEL_FILE,
+                description="Multilingual E5 small retrieval embeddings",
+                license="mit",
+                size_in_gb=0.47,
+            )
+        except ValueError as exc:
+            if "already registered" not in str(exc):
+                raise
+
+    def _repair_incomplete_multilingual_e5_cache(self) -> None:
+        """Redownload the E5 ONNX artifact when a partial cache is detected."""
+        if self._cache_dir is None:
+            return
+        cache_root = Path(self._cache_dir)
+        if not cache_root.exists():
+            return
+        model_roots = [
+            path
+            for path in cache_root.iterdir()
+            if path.is_dir() and "multilingual-e5-small" in path.name
+        ]
+        if not model_roots:
+            return
+        if any(
+            model_file.is_file() and model_file.stat().st_size > 0
+            for model_root in model_roots
+            for model_file in model_root.rglob(Path(_E5_MODEL_FILE).name)
+        ):
+            return
+        # local import justified: Hugging Face recovery is needed only for a detected partial model cache.
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(
+            repo_id=_MULTILINGUAL_E5_SMALL_MODEL,
+            cache_dir=self._cache_dir,
+            allow_patterns=[_E5_MODEL_FILE],
+            force_download=True,
+        )

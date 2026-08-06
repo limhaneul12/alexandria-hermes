@@ -106,29 +106,27 @@ class ObsidianIndexWriteStore:
         return note_from_model(model)
 
     async def mark_missing_stale(self, relative_paths: set[str]) -> int:
-        """Mark missing indexed notes as stale.
+        """Discard derived index rows for notes absent from canonical Markdown.
 
         Args:
             relative_paths: Paths observed during the current scan.
 
         Returns:
-            Number of notes marked stale.
+            Number of missing note indexes discarded.
         """
-        statement = select(ObsidianFileORM).where(
-            ObsidianFileORM.index_status != ObsidianIndexStatus.STALE.value
-        )
+        statement = select(ObsidianFileORM)
         if relative_paths:
             statement = statement.where(
                 ObsidianFileORM.relative_path.not_in(relative_paths)
             )
         rows = await self._session.execute(statement)
-        stale = 0
+        discarded = 0
         for model in rows.scalars().all():
-            model.index_status = ObsidianIndexStatus.STALE.value
-            model.indexed_at = datetime.now(UTC)
-            stale += 1
+            await discard_obsidian_note_index(self._session, model.note_id)
+            await self._session.delete(model)
+            discarded += 1
         await self._session.flush()
-        return stale
+        return discarded
 
     async def resolve_edge_targets(self) -> int:
         """Resolve late-indexed edge target ids from canonical target paths.

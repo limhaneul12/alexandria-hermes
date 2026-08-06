@@ -13,6 +13,7 @@ from app.mcp_server.type_validate.auth_contracts import McpAuthMode
 from app.memory.application.retrieval.embedding_contract import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_THREADS,
 )
 from app.memory.application.retrieval.embedding_factory import EmbeddingProviderName
 from app.shared.utils.config import settings_model_config
@@ -150,7 +151,9 @@ class AppConfig(BaseSettings):
     rag_embedding_model: str = Field(default=DEFAULT_EMBEDDING_MODEL, min_length=1)
     rag_embedding_dimensions: int = Field(default=DEFAULT_EMBEDDING_DIMENSIONS, ge=1)
     rag_embedding_cache_dir: str | None = Field(default=None)
+    rag_embedding_threads: int = Field(default=DEFAULT_EMBEDDING_THREADS, ge=1, le=32)
     rag_embedding_recovery_on_startup: bool = Field(default=False)
+    rag_embedding_recovery_on_vault_reindex: bool = Field(default=False)
     rag_embedding_recovery_batch_size: int = Field(default=250, ge=1, le=1000)
     rag_embedding_recovery_max_batches: int = Field(default=40, ge=1, le=1000)
 

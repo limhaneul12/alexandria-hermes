@@ -7,6 +7,7 @@ from typing import Literal
 from app.memory.application.retrieval.embedding_contract import (
     DEFAULT_EMBEDDING_DIMENSIONS,
     DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_THREADS,
     EmbeddingProvider,
 )
 from app.memory.application.retrieval.fake_embedding_provider import (
@@ -26,6 +27,7 @@ def create_embedding_provider(
     model_name: str = DEFAULT_EMBEDDING_MODEL,
     dimensions: int = DEFAULT_EMBEDDING_DIMENSIONS,
     cache_dir: str | None = None,
+    threads: int = DEFAULT_EMBEDDING_THREADS,
 ) -> EmbeddingProvider | None:
     """Create the configured local embedding provider.
 
@@ -35,6 +37,7 @@ def create_embedding_provider(
         model_name: Embedding model identifier.
         dimensions: Embedding vector dimension count.
         cache_dir: Optional model cache directory.
+        threads: ONNX Runtime thread count for local E5 inference.
 
     Returns:
         EmbeddingProvider | None: Provider instance when vector recall can embed text.
@@ -47,4 +50,5 @@ def create_embedding_provider(
         model_name=model_name,
         dimensions=dimensions,
         cache_dir=cache_dir,
+        threads=threads,
     )
