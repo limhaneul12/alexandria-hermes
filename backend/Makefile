@@ -15,9 +15,9 @@ cli_smoke:
 	uv run --isolated --with . alex-hermes --help >/dev/null
 
 guardrails:
-	uv run --no-editable pytest -q tests/shared/guardrails
+	uv run --no-editable pytest -q --confcutdir=tests/shared/guardrails tests/shared/guardrails
 
 test:
-	uv run --no-editable pytest -q
+	./scripts/run-postgres-tests.sh -q
 
 ci: format_check type_checking cli_smoke guardrails test

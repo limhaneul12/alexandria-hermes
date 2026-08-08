@@ -7,7 +7,7 @@ repos:
     hooks:
       - id: backend-github-actions-gate
         name: backend github actions gate
-        entry: bash -lc 'cd backend && uv sync --group dev && make ci'
+        entry: bash -lc 'unset VIRTUAL_ENV; cd backend && uv sync --group dev && make ci'
         language: system
         pass_filenames: false
         stages: [pre-push]

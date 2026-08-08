@@ -40,6 +40,31 @@ def test_makefile_keeps_only_build_and_ci_targets() -> None:
         assert f"\n{target}:" not in text
 
 
+def test_ci_gate_uses_ephemeral_postgres_without_runtime_dns_dependency() -> None:
+    """Local pre-push and GitHub Actions should share a portable PostgreSQL gate."""
+    backend_root = Path(__file__).resolve().parents[2]
+    repository_root = backend_root.parent
+    makefile_text = (backend_root / "Makefile").read_text()
+    runner = backend_root / "scripts" / "run-postgres-tests.sh"
+    runner_text = runner.read_text()
+    pre_commit_text = (repository_root / ".pre-commit-config.yaml").read_text()
+    workflow_text = (
+        repository_root / ".github" / "workflows" / "backend.yml"
+    ).read_text()
+
+    assert (
+        "--confcutdir=tests/shared/guardrails tests/shared/guardrails" in makefile_text
+    )
+    assert "./scripts/run-postgres-tests.sh -q" in makefile_text
+    assert runner.is_file()
+    assert runner.stat().st_mode & 0o111
+    assert "--publish 127.0.0.1::5432" in runner_text
+    assert "docker rm -f" in runner_text
+    assert "@127.0.0.1:${postgres_port}/" in runner_text
+    assert "unset VIRTUAL_ENV" in pre_commit_text
+    assert "run: make ci" in workflow_text
+
+
 def test_package_cli_declares_direct_typer_dependency() -> None:
     """Typer CLI package should not rely on transitive dependency exposure."""
     pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"

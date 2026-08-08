@@ -53,11 +53,15 @@ def test_app_config_keeps_codex_oauth_env_overrides(
     assert config.codex_oauth_min_poll_interval_seconds == 5
 
 
-def test_app_config_defaults_mcp_auth_to_local_oauth() -> None:
-    """MCP should default to the local OAuth boundary used by ChatGPT connections."""
+def test_app_config_defaults_mcp_auth_to_none_when_env_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MCP should default to localhost-only auth until an operator opts into OAuth."""
+    monkeypatch.delenv("SERVICE_MCP_AUTH_MODE", raising=False)
+
     config = AppConfig(_env_file=None)
 
-    assert config.mcp_auth_mode == "local_oauth2"
+    assert config.mcp_auth_mode == "none"
     assert config.mcp_transport_host == "0.0.0.0"
     assert config.mcp_oauth_required_scopes() == ("alexandria:mcp",)
 

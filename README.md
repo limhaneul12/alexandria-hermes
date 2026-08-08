@@ -541,10 +541,17 @@ Backend development uses `uv` and the backend Makefile:
 ```bash
 cd backend
 uv sync
-uv run ruff check .
-uv run pyrefly check
-uv run pytest -q
+make format_check
+make type_checking
+make guardrails
+make test
 ```
+
+`make guardrails` is intentionally database-free. `make test` starts an
+ephemeral localhost-only PostgreSQL/pgvector container on a random host port,
+runs the full test suite against a session-owned test database, and removes the
+container on exit. It does not depend on the runtime Compose `postgres` network
+alias or the private repository `.env`.
 
 The GitHub Actions parity gate is:
 
@@ -554,7 +561,8 @@ make ci
 ```
 
 `make ci` also runs a no-editable package CLI smoke check for both
-`alexandria-hermes` and `alex-hermes`.
+`alexandria-hermes` and `alex-hermes`, then runs the same ephemeral-PostgreSQL
+test contract used by the pre-push hook and GitHub Actions.
 
 Health check:
 
