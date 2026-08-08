@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 from threading import Event
 
@@ -50,7 +52,7 @@ def test_create_app_runs_enabled_embedding_recovery_after_startup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The startup task must await async container providers before recovery."""
-    database_url = f"sqlite+aiosqlite:///{tmp_path / 'startup-recovery.db'}"
+    database_url = os.environ["DATABASE_URL"]
 
     async def prepare_database() -> None:
         database = Database(database_url=database_url, create_schema=True)
@@ -64,9 +66,6 @@ def test_create_app_runs_enabled_embedding_recovery_after_startup(
         rag_embedding_recovery_on_startup=True,
         obsidian_vault_path=str(tmp_path / "vault"),
         obsidian_vault_config_path=str(tmp_path / "vault-config.json"),
-        obsidian_librarian_langgraph_checkpoint_path=str(
-            tmp_path / "librarian-checkpoint.sqlite"
-        ),
     )
     app = create_app(config)
     completed = Event()

@@ -1,4 +1,4 @@
-"""Shared asynchronous database bootstrap and session management."""
+"""Shared PostgreSQL asynchronous database bootstrap and session management."""
 
 from __future__ import annotations
 
@@ -6,29 +6,26 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 
 from app.shared.infrastructure.database_session_scope import DatabaseSessionScope
-from app.shared.infrastructure.sqlite_database_policy import (
-    SQLITE_BUSY_TIMEOUT_MS,
-    SQLITE_CORRUPTION_ERROR_MARKERS,
-    ensure_sqlite_parent,
-    install_sqlite_connection_pragmas,
-    is_sqlite_corruption_error,
-    sqlite_path_from_url,
+from app.shared.infrastructure.postgres_database_policy import (
+    POSTGRES_MAX_OVERFLOW,
+    POSTGRES_POOL_RECYCLE_SECONDS,
+    POSTGRES_POOL_SIZE,
+    POSTGRES_POOL_TIMEOUT_SECONDS,
+    postgres_connect_args,
 )
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 __all__ = (
-    "SQLITE_BUSY_TIMEOUT_MS",
-    "SQLITE_CORRUPTION_ERROR_MARKERS",
     "Base",
     "Database",
-    "is_sqlite_corruption_error",
 )
 
 
@@ -37,12 +34,7 @@ class Base(DeclarativeBase):
 
 
 class Database:
-    """Coordinate database lifecycle while focused policies own local concerns.
-
-    The public surface combines lifecycle, health, session-factory, and request
-    session entrypoints because they share one SQLAlchemy engine lifecycle. SQLite
-    policy and session-scope behavior remain delegated to focused collaborators.
-    """
+    """Coordinate the PostgreSQL engine and request-scoped async sessions."""
 
     def __init__(
         self,
@@ -50,29 +42,43 @@ class Database:
         database_url: str,
         create_schema: bool = False,
     ) -> None:
-        """Create database coordinator.
+        """Create a PostgreSQL database coordinator.
 
         Args:
-            database_url: Async SQLAlchemy URL.
+            database_url: PostgreSQL async SQLAlchemy URL.
             create_schema: Create ORM tables directly for isolated tests.
+
+        Raises:
+            ValueError: If a non-PostgreSQL database URL is supplied.
         """
         self._database_url = database_url
         self._create_schema = create_schema
-        self._sqlite_path = sqlite_path_from_url(database_url)
-        if self._sqlite_path is None:
-            self.engine: AsyncEngine = create_async_engine(
+        self._dialect_name = make_url(database_url).get_backend_name()
+        if self._dialect_name != "postgresql":
+            raise ValueError("Alexandria-Hermes runtime supports PostgreSQL only")
+        if create_schema:
+            # Test-only coordinators must not retain asyncpg connections across
+            # independent event loops used by sync TestClient/anyio boundaries.
+            self.engine = create_async_engine(
                 database_url,
                 echo=False,
                 future=True,
+                pool_pre_ping=True,
+                connect_args=postgres_connect_args(),
+                poolclass=NullPool,
             )
         else:
             self.engine = create_async_engine(
                 database_url,
                 echo=False,
                 future=True,
-                connect_args={"timeout": SQLITE_BUSY_TIMEOUT_MS / 1000},
+                pool_pre_ping=True,
+                connect_args=postgres_connect_args(),
+                pool_size=POSTGRES_POOL_SIZE,
+                max_overflow=POSTGRES_MAX_OVERFLOW,
+                pool_timeout=POSTGRES_POOL_TIMEOUT_SECONDS,
+                pool_recycle=POSTGRES_POOL_RECYCLE_SECONDS,
             )
-            install_sqlite_connection_pragmas(self.engine)
         self._session_factory = async_sessionmaker(
             self.engine,
             expire_on_commit=False,
@@ -89,7 +95,6 @@ class Database:
         Runtime schema creation remains Alembic-owned. Direct metadata creation is
         available only through the explicit test-only option.
         """
-        ensure_sqlite_parent(self._sqlite_path)
         async with self.engine.begin() as connection:
             if not self._create_schema:
                 await connection.execute(text("SELECT 1"))
@@ -110,32 +115,26 @@ class Database:
             async with self._session_factory() as session:
                 await session.execute(text("SELECT 1"))
             return True
-        except Exception as exc:
-            await self.recover_from_error(exc)
+        except Exception:
             return False
-
-    async def recover_from_error(self, exc: BaseException) -> bool:
-        """Drop stale SQLite connections after file-level database failures.
-
-        Args:
-            exc: Exception observed at a database boundary.
-
-        Returns:
-            Whether a SQLite recovery action was applied.
-        """
-        if self._sqlite_path is None or not is_sqlite_corruption_error(exc):
-            return False
-        await self.engine.dispose()
-        return True
 
     @property
-    def sqlite_path(self) -> str | None:
-        """Return the local SQLite path when configured.
+    def dialect_name(self) -> str:
+        """Return the normalized SQLAlchemy backend name.
 
         Returns:
-            SQLite file path for local file-backed URLs, otherwise ``None``.
+            PostgreSQL backend name.
         """
-        return self._sqlite_path
+        return self._dialect_name
+
+    @property
+    def is_postgresql(self) -> bool:
+        """Return true for the only supported runtime backend.
+
+        Returns:
+            True because Alexandria-Hermes runtime persistence is PostgreSQL-only.
+        """
+        return True
 
     def session(self) -> AsyncSession:
         """Create or reuse a SQLAlchemy session.

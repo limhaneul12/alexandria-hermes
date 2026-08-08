@@ -9,7 +9,6 @@ from app.memory.application.retrieval.embedding_contract import EmbeddingProvide
 from app.memory.application.retrieval.embedding_document import (
     build_embedding_document_text,
 )
-from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.memory.domain.entities.context_read_models import ContextRecord
 from app.memory.domain.event_enum.context_enums import (
     ContextContentFormat,
@@ -21,49 +20,10 @@ from app.memory.domain.event_enum.context_enums import (
 )
 from app.memory.domain.types.context_payload_types import ContextMetadataPayload
 from app.memory.infrastructure.models.context_models import ContextChunkORM, ContextORM
-from app.memory.infrastructure.repositories.contexts.fts import (
-    ensure_context_chunk_fts_table,
-)
 from app.memory.infrastructure.repositories.contexts.mapping import map_context_row
+from app.shared.types.embedding_types import normalize_embedding_vector
 from app.shared.types.types_convert_utils import now_utc
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-INSERT_CONTEXT_CHUNK_FTS_SQL = """
-INSERT INTO context_chunk_fts (
-    chunk_id,
-    context_id,
-    title,
-    summary,
-    content,
-    kind,
-    project,
-    source_agent,
-    tags,
-    scope,
-    workspace_id,
-    agent_id,
-    user_id,
-    session_id,
-    heading
-) VALUES (
-    :chunk_id,
-    :context_id,
-    :title,
-    :summary,
-    :content,
-    :kind,
-    :project,
-    :source_agent,
-    :tags,
-    :scope,
-    :workspace_id,
-    :agent_id,
-    :user_id,
-    :session_id,
-    :heading
-)
-"""
 
 
 async def seed_context(
@@ -170,7 +130,9 @@ async def seed_context(
             content=chunk.content,
             token_count=chunk.token_count,
             content_hash=chunk.content_hash,
-            embedding=None if embedding is None else vector_to_sqlite_json(embedding),
+            embedding=None
+            if embedding is None
+            else normalize_embedding_vector(embedding),
             embedding_model=None
             if embedding is None or embedding_provider is None
             else embedding_provider.model_name,
@@ -199,26 +161,4 @@ async def seed_context(
     session.add_all(chunk_rows)
     await session.flush()
 
-    await ensure_context_chunk_fts_table(session=session)
-    for chunk_row in chunk_rows:
-        await session.execute(
-            text(INSERT_CONTEXT_CHUNK_FTS_SQL),
-            {
-                "chunk_id": chunk_row.id,
-                "context_id": model.id,
-                "title": model.title,
-                "summary": model.summary,
-                "content": chunk_row.content,
-                "kind": model.kind,
-                "project": model.project or "",
-                "source_agent": model.source_agent,
-                "tags": " ".join(str(tag) for tag in model.tags),
-                "scope": model.scope,
-                "workspace_id": model.workspace_id or "",
-                "agent_id": model.agent_id or "",
-                "user_id": model.user_id or "",
-                "session_id": model.session_id or "",
-                "heading": chunk_row.heading or "",
-            },
-        )
     return map_context_row(model)

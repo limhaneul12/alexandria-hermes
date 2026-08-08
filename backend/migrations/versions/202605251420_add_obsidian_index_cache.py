@@ -69,28 +69,30 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_obsidian_chunks_note_id", "obsidian_chunks", ["note_id"])
-    op.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS obsidian_chunk_fts USING fts5(
-            chunk_id UNINDEXED,
-            note_id UNINDEXED,
-            title,
-            body,
-            heading_path,
-            alexandria_type,
-            project,
-            status,
-            tags,
-            relative_path,
-            tokenize='porter'
+    if op.get_bind().dialect.name == "sqlite":
+        op.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS obsidian_chunk_fts USING fts5(
+                chunk_id UNINDEXED,
+                note_id UNINDEXED,
+                title,
+                body,
+                heading_path,
+                alexandria_type,
+                project,
+                status,
+                tags,
+                relative_path,
+                tokenize='porter'
+            )
+            """
         )
-        """
-    )
 
 
 def downgrade() -> None:
     """Drop rebuildable Obsidian index cache tables."""
-    op.execute("DROP TABLE IF EXISTS obsidian_chunk_fts")
+    if op.get_bind().dialect.name == "sqlite":
+        op.execute("DROP TABLE IF EXISTS obsidian_chunk_fts")
     op.drop_index("ix_obsidian_chunks_note_id", table_name="obsidian_chunks")
     op.drop_table("obsidian_chunks")
     op.drop_index("ix_obsidian_files_index_status", table_name="obsidian_files")

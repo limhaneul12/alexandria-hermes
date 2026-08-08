@@ -26,7 +26,7 @@ PRD, 회의록, 기능 요구사항은 개발 규칙이 아닙니다. 사용자�
 
 - 기존 구조를 먼저 조사하고 재사용합니다.
 - 내부 object DTO는 dataclass, 외부 I/O DTO는 Pydantic v2 schema, dictionary payload contract는 TypedDict를 기본값으로 사용합니다.
-- Obsidian Markdown은 Canonical Storage이며 SQLite, FTS, Vector, Embedding, Graph는 재구축 가능한 Index 또는 Read Model입니다.
+- Obsidian Markdown은 Canonical Storage이며 PostgreSQL의 FTS/pgvector/Embedding 파생 상태와 Neo4j Graph Projection은 재구축 가능한 Index 또는 Read Model입니다. Runtime persistence는 PostgreSQL만 허용하며 SQLite compatibility/fallback은 금지합니다.
 - 새로운 Backend 패턴을 도입하기 전에 규칙과 기존 구현의 충돌 여부를 확인합니다.
 - 규칙과 실제 구현이 어긋나면 임의로 우회하지 않고 Source of Truth를 먼저 정리합니다.
 - 상위 시스템, 개발자, 사용자 지시가 있으면 해당 지시가 우선합니다.

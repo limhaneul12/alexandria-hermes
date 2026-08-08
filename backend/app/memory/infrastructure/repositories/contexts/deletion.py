@@ -7,7 +7,6 @@ from app.memory.infrastructure.models.context_models import (
     ContextChunkORM,
     ContextORM,
 )
-from app.memory.infrastructure.repositories.contexts.fts_sync import remove_context_fts
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +24,6 @@ async def delete_context_rows(
     Returns:
         None.
     """
-    await remove_context_fts(session=session, context_id=context_id)
     await session.execute(
         delete(ContextAccessEventORM).where(
             ContextAccessEventORM.context_id == context_id

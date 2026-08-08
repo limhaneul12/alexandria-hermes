@@ -108,64 +108,12 @@ async def alexandria_get_memory_compact(
     return await client.get(f"/memory/compacts/{quote(compact_id, safe='')}")
 
 
-async def alexandria_delete_memory_compact(
-    client: AlexandriaApiClient,
-    compact_id: str,
-) -> JSONValue:
-    """Hard delete one selected Memory Compact by id.
-
-    Args:
-        client: Backend HTTP client.
-        compact_id: Memory Compact identifier.
-
-    Returns:
-        Backend delete response, typically None for HTTP 204.
-    """
-    return await client.delete(f"/memory/compacts/{quote(compact_id, safe='')}")
-
-
-async def alexandria_mark_memory_compact_current(
-    client: AlexandriaApiClient,
-    compact_id: str,
-) -> JSONValue:
-    """Promote one compact to CURRENT.
-
-    Args:
-        client: Backend HTTP client.
-        compact_id: Memory Compact identifier.
-
-    Returns:
-        Backend Memory Compact response.
-    """
-    return await client.post(
-        f"/memory/compacts/{quote(compact_id, safe='')}/mark-current", {}
-    )
-
-
-async def alexandria_archive_memory_compact(
-    client: AlexandriaApiClient,
-    compact_id: str,
-) -> JSONValue:
-    """Archive one selected Memory Compact by id without deleting it.
-
-    Args:
-        client: Backend HTTP client.
-        compact_id: Memory Compact identifier.
-
-    Returns:
-        Backend Memory Compact response.
-    """
-    return await client.post(
-        f"/memory/compacts/{quote(compact_id, safe='')}/archive", {}
-    )
-
-
 async def alexandria_review_memory_compact(
     client: AlexandriaApiClient,
     compact_id: str,
     source_observations: Sequence[Mapping[str, JSONValue]] | None = None,
 ) -> JSONValue:
-    """Review one Memory Compact with the librarian quality rubric.
+    """Review one Memory Compact with the Memory Steward quality rubric.
 
     Args:
         client: Backend HTTP client.

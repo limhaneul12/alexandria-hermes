@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -248,7 +249,8 @@ def test_validate_note_links_does_not_mask_missing_explicit_id_with_path() -> No
 
 
 def _database_url(path: Path) -> str:
-    return f"sqlite+aiosqlite:///{path}"
+    del path
+    return os.environ["DATABASE_URL"]
 
 
 def _orm_note(note_id: str, path: str) -> ObsidianFileORM:
@@ -298,12 +300,9 @@ def test_graph_note_diagnostics_rest_contract_reports_validation_only_status(
         await database.initialize()
         session = database.session()
         try:
-            session.add_all(
-                [
-                    _orm_note("source", "Alexandria/Source.md"),
-                    _orm_edge("edge-missing"),
-                ]
-            )
+            session.add(_orm_note("source", "Alexandria/Source.md"))
+            await session.flush()
+            session.add(_orm_edge("edge-missing"))
             await session.commit()
         finally:
             await session.close()
@@ -318,9 +317,6 @@ def test_graph_note_diagnostics_rest_contract_reports_validation_only_status(
             graph_read_model="disabled",
             obsidian_vault_path=str(tmp_path / "vault"),
             obsidian_vault_config_path=str(tmp_path / "vault-config.json"),
-            obsidian_librarian_langgraph_checkpoint_path=str(
-                tmp_path / "librarian.sqlite"
-            ),
             operational_backup_root=str(tmp_path / "backups"),
         )
     )

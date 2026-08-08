@@ -9,7 +9,10 @@ from app.operations.application.operational_readiness_service import (
 )
 from app.operations.application.recovery_run_contracts import (
     ContextRecoveryService,
+    ContextRecoveryServiceFactory,
     ObsidianRecoveryService,
+    ObsidianRecoveryServiceFactory,
+    resolve_recovery_service,
 )
 from app.operations.application.recovery_run_source_preservation import (
     _source_preservation_result,
@@ -35,6 +38,8 @@ class RecoveryRunVerificationService:
         database: Database,
         context_service: ContextRecoveryService,
         obsidian_service: ObsidianRecoveryService,
+        context_service_factory: ContextRecoveryServiceFactory | None = None,
+        obsidian_service_factory: ObsidianRecoveryServiceFactory | None = None,
     ) -> None:
         """Initialize recovery verification dependencies.
 
@@ -44,17 +49,35 @@ class RecoveryRunVerificationService:
             obsidian_service: Obsidian readiness, search, and read boundary.
         """
         self._database = database
-        self._context_service = context_service
-        self._obsidian_service = obsidian_service
+        self._context_service_factory = context_service_factory or (
+            lambda: context_service
+        )
+        self._obsidian_service_factory = obsidian_service_factory or (
+            lambda: obsidian_service
+        )
 
     async def verify_readiness(self, plan: RecoveryPlan) -> JSONObject:
-        snapshot = await OperationalReadinessService(
-            database=self._database,
-            context_service=self._context_service,
-            obsidian_service=self._obsidian_service,
-            ignore_active_recovery_run_id=plan.id,
-        ).snapshot()
-        representative = await self.verify_representative_search()
+        async with self._database.request_session() as session:
+            try:
+                context_service = await resolve_recovery_service(
+                    self._context_service_factory
+                )
+                obsidian_service = await resolve_recovery_service(
+                    self._obsidian_service_factory
+                )
+                snapshot = await OperationalReadinessService(
+                    database=self._database,
+                    context_service=context_service,
+                    obsidian_service=obsidian_service,
+                    ignore_active_recovery_run_id=plan.id,
+                ).snapshot()
+                representative = await self.verify_representative_search(
+                    obsidian_service
+                )
+            except Exception:
+                await session.rollback()
+                raise
+            await session.commit()
         source_preservation = _source_preservation_result(plan.source_snapshot)
         warnings = list(snapshot.warnings)
         blockers = list(snapshot.blockers)
@@ -77,8 +100,11 @@ class RecoveryRunVerificationService:
             "representative_search": representative,
         }
 
-    async def verify_representative_search(self) -> JSONObject:
-        hits = await self._obsidian_service.search(
+    async def verify_representative_search(
+        self,
+        obsidian_service: ObsidianRecoveryService,
+    ) -> JSONObject:
+        hits = await obsidian_service.search(
             ObsidianSearchQuery(query=_REPRESENTATIVE_QUERY, limit=5),
             refresh=True,
         )
@@ -99,7 +125,10 @@ class RecoveryRunVerificationService:
             ),
             None,
         )
-        readback = await self.verify_representative_readback(matched_path)
+        readback = await self.verify_representative_readback(
+            obsidian_service,
+            matched_path,
+        )
         matched = matched_path is not None and readback["matched"] is True
         return {
             "query": _REPRESENTATIVE_QUERY,
@@ -112,6 +141,7 @@ class RecoveryRunVerificationService:
 
     async def verify_representative_readback(
         self,
+        obsidian_service: ObsidianRecoveryService,
         matched_path: str | None,
     ) -> JSONObject:
         if matched_path is None:
@@ -122,8 +152,8 @@ class RecoveryRunVerificationService:
                 "error": None,
             }
         try:
-            by_id = await self._obsidian_service.read_note(_REPRESENTATIVE_NOTE_ID)
-            by_path = await self._obsidian_service.read_note_by_path(matched_path)
+            by_id = await obsidian_service.read_note(_REPRESENTATIVE_NOTE_ID)
+            by_path = await obsidian_service.read_note_by_path(matched_path)
         except Exception as exc:  # pragma: no cover - exact read failures vary
             return {
                 "matched": False,

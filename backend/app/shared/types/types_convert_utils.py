@@ -25,8 +25,8 @@ def aware_utc_datetime(value: datetime) -> datetime:
         value: Datetime from an internal or persistence boundary.
 
     Returns:
-        UTC-aware datetime. Naive values are treated as UTC because SQLite
-        drops timezone metadata for ``DateTime(timezone=True)`` values.
+        UTC-aware datetime. Naive legacy values are normalized to UTC at the
+        compatibility boundary.
     """
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=UTC)

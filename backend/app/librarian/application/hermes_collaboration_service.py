@@ -20,20 +20,15 @@ from app.librarian.application.delegate_execution_planning import (
     representative_resolution,
 )
 from app.librarian.application.delegate_route_preview import build_route_preview
-from app.librarian.application.hermes_collaboration_action_service import (
-    HermesCollaborationActionService,
-)
 from app.librarian.application.hermes_collaboration_delegate_policy import (
     completed_delegate_count,
     delegate_decision,
 )
 from app.librarian.application.hermes_collaboration_identity import (
     collaboration_job_id,
-    is_collaboration_job_id,
 )
 from app.librarian.application.hermes_collaboration_payload_mapper import (
     ask_payload,
-    job_status_payload,
 )
 from app.librarian.application.hermes_collaboration_provider_selector import (
     HermesCollaborationProviderSelector,
@@ -42,18 +37,11 @@ from app.librarian.application.profile_routing import LibrarianProfileRouter
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskCommand,
     HermesLibrarianAskResult,
-    LibrarianJobStatusResult,
-)
-from app.librarian.domain.event_enum.collaboration_enums import (
-    LibrarianDelegationStatus,
 )
 from app.librarian.domain.repositories.agent_repository import IAgentRepository
 from app.librarian.domain.types.hermes_collaboration_payload_types import (
     HermesLibrarianAskPayload,
-    LibrarianJobStatusPayload,
 )
-from app.memory.application.memory_compact_service import MemoryCompactService
-from app.shared.exceptions.librarian_exceptions import LibrarianResourceNotFoundError
 from app.shared.types.types_convert_utils import now_utc
 
 
@@ -67,7 +55,6 @@ class HermesCollaborationService:
         secret_repo: IProviderSecretRepository,
         now_provider: Callable[[], datetime] = now_utc,
         delegate_executor: LibrarianDelegateExecutor | None = None,
-        memory_compact_service: MemoryCompactService | None = None,
     ) -> None:
         """Initialize collaboration orchestration dependencies.
 
@@ -77,7 +64,6 @@ class HermesCollaborationService:
             secret_repo: Provider secret repository used for execution readiness.
             now_provider: Clock boundary for deterministic job ids.
             delegate_executor: Optional provider-backed delegate executor.
-            memory_compact_service: Optional durable Memory Compact action service.
         """
         self._now_provider = now_provider
         self._delegate_executor = delegate_executor
@@ -86,9 +72,6 @@ class HermesCollaborationService:
             provider_repository=provider_repo,
             credential_repository=secret_repo,
             now_provider=now_provider,
-        )
-        self._action_service = HermesCollaborationActionService(
-            memory_compact_service,
         )
 
     async def ask_librarian(
@@ -131,21 +114,12 @@ class HermesCollaborationService:
             command=command,
             executor=self._delegate_executor,
         )
-        action_preview: list[str] = []
-        if should_delegate:
-            delegates, action_preview = await self._action_service.run(
-                delegates=delegates,
-                command=command,
-                covered_to=now,
-                job_id=job_id,
-            )
         route_preview = build_route_preview(
             representative_plan=representative_plan,
             routing=routing,
             delegated=should_delegate,
             executable_count=completed_delegate_count(delegates),
         )
-        route_preview.extend(action_preview)
         result = HermesLibrarianAskResult(
             job_id=job_id,
             status=status,
@@ -169,28 +143,3 @@ class HermesCollaborationService:
             delegates=tuple(delegates),
         )
         return ask_payload(result)
-
-    async def job_status(self, job_id: str) -> LibrarianJobStatusPayload:
-        """Return non-durable status for an ask-librarian request id.
-
-        Args:
-            job_id: Job id returned by ``ask_librarian``.
-
-        Returns:
-            Public job status payload.
-
-        Raises:
-            LibrarianResourceNotFoundError: If the identifier is not a collaboration id.
-        """
-        if not is_collaboration_job_id(job_id):
-            raise LibrarianResourceNotFoundError(f"Librarian job not found: {job_id}")
-        result = LibrarianJobStatusResult(
-            job_id=job_id,
-            status=LibrarianDelegationStatus.GUIDANCE_ONLY,
-            result_available=False,
-            message=(
-                "No durable librarian job is queued; ask responses use "
-                "synchronous delegates and return results inline."
-            ),
-        )
-        return job_status_payload(result)

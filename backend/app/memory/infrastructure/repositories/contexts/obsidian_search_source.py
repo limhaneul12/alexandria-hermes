@@ -37,7 +37,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
         self._embedding_store = ObsidianContextEmbeddingStore(session)
 
     async def search_fts(self, recall: ContextFtsRecall) -> list[ContextSearchMatch]:
-        """Search indexed Obsidian note chunks through SQLite FTS5.
+        """Search indexed Obsidian note chunks through the active lexical backend.
 
         Args:
             recall: Validated FTS query and recall filters.
@@ -50,7 +50,7 @@ class SqlAlchemyObsidianContextSearchSource(IContextSearchSource):
     async def search_vector(
         self, recall: ContextVectorRecall
     ) -> list[ContextSearchMatch]:
-        """Search indexed Obsidian note chunks through sqlite-vec.
+        """Search indexed Obsidian note chunks through the active vector backend.
 
         Args:
             recall: Validated vector query and recall filters.

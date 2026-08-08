@@ -10,11 +10,7 @@ from app.mcp_server.tools.backend_gateway_policy import (
     DEFAULT_CONTEXT_SEARCH_STRATEGY,
     _bounded_search_limit,
 )
-from app.mcp_server.tools.context_backend_gateway import (
-    alexandria_rag_context,
-    alexandria_recall_context,
-    alexandria_search,
-)
+from app.mcp_server.tools.context_backend_gateway import alexandria_search
 from app.memory.domain.event_enum.context_enums import (
     ContextKind,
     ContextRecallLifecycleStatus,
@@ -86,71 +82,4 @@ def register_context_recall_tools(
                     else include_lifecycle_statuses
                 ),
             ),
-        )
-
-    @server.tool(name="alexandria_recall_context")
-    async def _tool_recall_context(
-        query: str,
-        limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
-        project: str | None = None,
-        kind: ContextKind | None = None,
-        include_scopes: list[ContextScope] | None = None,
-        workspace_id: str | None = None,
-        agent_id: str | None = None,
-        user_id: str | None = None,
-        session_id: str | None = None,
-    ) -> JSONValue:
-        """Recall durable context by query.
-
-        Args:
-            query: Search query.
-            limit: Maximum number of matching contexts.
-            project: Optional project filter.
-            kind: Optional context kind filter.
-            include_scopes: Optional recall scopes.
-            workspace_id: Optional workspace filter.
-            agent_id: Optional agent filter.
-            user_id: Optional user filter.
-            session_id: Optional session filter.
-
-        Returns:
-            Backend Context Pack response.
-        """
-        return await alexandria_recall_context(
-            api_client,
-            query,
-            limit,
-            project,
-            kind,
-            include_scopes,
-            workspace_id,
-            agent_id,
-            user_id,
-            session_id,
-        )
-
-    @server.tool(name="alexandria_rag_context")
-    async def _tool_rag_context(
-        query: str,
-        strategy: RagStrategy = DEFAULT_CONTEXT_SEARCH_STRATEGY,
-        limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
-        project: str | None = None,
-        kind: ContextKind | None = None,
-        include_scopes: list[ContextScope] | None = None,
-    ) -> JSONValue:
-        """Retrieve a RAG Context Pack by query and strategy.
-
-        Args:
-            query: Search query.
-            strategy: Retrieval strategy.
-            limit: Maximum number of matching contexts.
-            project: Optional project filter.
-            kind: Optional context kind filter.
-            include_scopes: Optional recall scopes.
-
-        Returns:
-            Backend Context Pack response.
-        """
-        return await alexandria_rag_context(
-            api_client, query, strategy, limit, project, kind, include_scopes
         )

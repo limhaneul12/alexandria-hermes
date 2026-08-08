@@ -4,7 +4,9 @@
 
 Obsidian Markdown이 Canonical Storage다.
 
-SQLite와 모든 검색 구조는 재구축 가능해야 한다.
+PostgreSQL의 검색·벡터·임베딩 파생 상태와 Neo4j Graph Projection은 Canonical Markdown에서 재구축 가능해야 한다.
+
+Runtime persistence는 PostgreSQL만 허용한다. SQLite runtime, fallback, test compatibility path를 추가하지 않는다. Redis는 queue/cache/coordination을 위한 비영속 파생 상태로만 사용한다.
 
 ## Write Order
 
@@ -63,6 +65,6 @@ Mapper를 통해 ORM Entity와 Internal DTO를 변환한다.
 
 ## Transaction
 
-SQLite Transaction과 File System Atomicity를 동일한 Transaction으로 간주하지 않는다.
+PostgreSQL Transaction과 File System Atomicity를 동일한 Transaction으로 간주하지 않는다.
 
 여러 저장소를 넘는 상태 전환은 Commit Point, Journal, Reconciliation 또는 Idempotent Recovery 중 적절한 방식을 검토한다.

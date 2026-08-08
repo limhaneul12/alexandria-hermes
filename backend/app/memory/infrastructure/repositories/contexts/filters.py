@@ -6,7 +6,8 @@ from datetime import datetime
 
 from app.memory.domain.event_enum.context_enums import ContextKind, ContextScope
 from app.memory.infrastructure.models.context_models import ContextORM
-from sqlalchemy import Select, bindparam, exists, func, select
+from sqlalchemy import Select, bindparam, cast, select
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 def filtered_context_statement(
@@ -43,7 +44,6 @@ def filtered_context_statement(
         updated_after: Optional inclusive updated-at lower bound.
         updated_before: Optional inclusive updated-at upper bound.
         include_archived: Whether archived entries are included.
-
     Returns:
         SQLAlchemy select statement with requested filters applied.
     """
@@ -75,12 +75,9 @@ def filtered_context_statement(
     if updated_before is not None:
         statement = statement.where(ContextORM.updated_at <= updated_before)
     if tag is not None:
-        tag_values = func.json_each(ContextORM.tags).table_valued("value")
         statement = statement.where(
-            exists(
-                select(1)
-                .select_from(tag_values)
-                .where(tag_values.c.value == bindparam("context_tag", tag))
+            cast(ContextORM.tags, JSONB).contains(
+                bindparam("context_tag", [tag], type_=JSONB)
             )
         )
     return statement

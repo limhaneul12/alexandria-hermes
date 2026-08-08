@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -42,7 +44,8 @@ NESTED_METADATA = (
 
 
 def _database_url(path: Path) -> str:
-    return f"sqlite+aiosqlite:///{path}"
+    del path
+    return os.environ["DATABASE_URL"]
 
 
 async def _service(tmp_path: Path) -> tuple[Database, AsyncSession, ObsidianService]:

@@ -17,7 +17,7 @@ from app.shared.serialization.orjson_codec import loads_json
 from app.shared.types.extra_types import JSONValue
 from app.shared.types.types_convert_utils import now_utc, optional_iso_utc_datetime
 from openai import OpenAI
-from openai.types.responses import ResponseTextDeltaEvent
+from openai.types.responses import ResponseTextDeltaEvent, WebSearchToolParam
 
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_USER_AGENT = "codex_cli_rs/0.0.0 (Alexandria Hermes)"
@@ -41,6 +41,8 @@ class OpenAIResponseSummaryFetcher:
         model: str,
         prompt: str,
         instructions: str,
+        *,
+        enable_web_search: bool = False,
     ) -> str:
         """Fetch a non-streaming OpenAI Responses API summary.
 
@@ -53,11 +55,24 @@ class OpenAIResponseSummaryFetcher:
         Returns:
             Provider response text.
         """
-        response = client.responses.create(
-            model=model,
-            input=prompt,
-            instructions=instructions,
-        )
+        if enable_web_search:
+            response = client.responses.create(
+                model=model,
+                input=prompt,
+                instructions=instructions,
+                tools=[
+                    WebSearchToolParam(
+                        type="web_search",
+                        search_context_size="medium",
+                    )
+                ],
+            )
+        else:
+            response = client.responses.create(
+                model=model,
+                input=prompt,
+                instructions=instructions,
+            )
         text = response.output_text
         if self.strip_text_response:
             return text.strip()

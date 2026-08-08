@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.obsidian.application.librarian.obsidian_librarian_approval_policy import (
-    _interrupt_payload,
     _pending_actions_from_state,
 )
 from app.obsidian.application.librarian.obsidian_librarian_delegate_payloads import (
@@ -17,7 +16,6 @@ from app.obsidian.application.librarian.obsidian_librarian_graph_contracts impor
     ObsidianLibrarianGraphState,
 )
 from app.obsidian.application.librarian.obsidian_librarian_graph_state_codec import (
-    _approved_actions,
     _ask_from_state,
     _initial_graph_state,
     _pending_action_ids,
@@ -40,12 +38,10 @@ __all__ = (
     "ObsidianLibrarianGraphResult",
     "ObsidianLibrarianGraphState",
     "_append_delegate_summary",
-    "_approved_actions",
     "_ask_from_state",
     "_delegate_status",
     "_delegate_unavailable_payload",
     "_initial_graph_state",
-    "_interrupt_payload",
     "_pending_action_ids",
     "_pending_actions_from_state",
     "_result_from_graph_output",

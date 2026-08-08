@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import anyio
@@ -48,7 +50,7 @@ def test_rebuild_note_graph_replaces_cached_edges_and_activates_projection(
 
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'obsidian.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

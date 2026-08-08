@@ -376,7 +376,7 @@ async def upsert_obsidian_note(
     summary="Upsert an idempotent report bundle",
     description=(
         "Preflight owners, upsert one canonical Source, update owner links, "
-        "reindex SQLite and graph projection, then verify incoming edges."
+        "reindex PostgreSQL and graph projection, then verify incoming edges."
     ),
 )
 @router_exception_status(OBSIDIAN_SAVE_ROUTE_EXCEPTION_MAPPING)

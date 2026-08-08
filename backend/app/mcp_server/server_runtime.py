@@ -16,9 +16,8 @@ from app.mcp_server.tools.context_lifecycle_registration import (
 from app.mcp_server.tools.context_recall_registration import (
     register_context_recall_tools,
 )
-from app.mcp_server.tools.librarian_registration import register_librarian_tools
-from app.mcp_server.tools.librarian_vault_registration import (
-    register_librarian_vault_tools,
+from app.mcp_server.tools.maintenance_registration import (
+    register_maintenance_tools,
 )
 from app.mcp_server.tools.memory_compact_registration import (
     register_memory_compact_tools,
@@ -26,9 +25,17 @@ from app.mcp_server.tools.memory_compact_registration import (
 from app.mcp_server.tools.memory_reconciliation_registration import (
     register_memory_reconciliation_tools,
 )
-from app.mcp_server.tools.oauth_registration import register_librarian_oauth_tools
+from app.mcp_server.tools.memory_steward_registration import (
+    register_memory_steward_tools,
+)
 from app.mcp_server.tools.obsidian_note_registration import register_obsidian_note_tools
 from app.mcp_server.tools.operations_registration import register_operations_tools
+from app.mcp_server.tools.skill_acquisition_registration import (
+    register_skill_acquisition_tools,
+)
+from app.mcp_server.tools.vault_maintenance_registration import (
+    register_vault_maintenance_tools,
+)
 from app.mcp_server.type_validate.transport_contracts import McpTransport
 
 DEFAULT_MCP_TRANSPORT_HOST = "0.0.0.0"
@@ -57,9 +64,13 @@ def build_mcp_server(
         else client
     )
     instructions = (
-        "Use these tools for Context Vault, Memory Compact, and librarian "
-        "workflows through the backend HTTP API. Do not hard delete unless "
-        "a tool name explicitly says delete."
+        "Use these tools for Context Vault, Memory Steward operations, focused "
+        "skill acquisition, and Alexandria vault maintenance through the backend "
+        "HTTP API. Do not hard delete unless "
+        "a tool name explicitly says delete. Submit embedding reindex work "
+        "through the maintenance queue and poll its job id. For incidents, "
+        "inspect operational readiness and create a recovery plan before "
+        "starting or retrying a recovery run."
     )
     if local_oauth_runtime is None:
         server = FastMCP(
@@ -86,11 +97,12 @@ def build_mcp_server(
     register_memory_reconciliation_tools(server, api_client)
     register_context_recall_tools(server, api_client)
     register_memory_compact_tools(server, api_client)
-    register_librarian_tools(server, api_client)
-    register_librarian_oauth_tools(server, api_client)
+    register_memory_steward_tools(server, api_client)
+    register_skill_acquisition_tools(server, api_client)
     register_context_lifecycle_tools(server, api_client)
     register_operations_tools(server, api_client)
-    register_librarian_vault_tools(server, api_client)
+    register_maintenance_tools(server, api_client)
+    register_vault_maintenance_tools(server, api_client)
     register_obsidian_note_tools(server, api_client)
     return server
 

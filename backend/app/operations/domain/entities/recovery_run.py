@@ -7,7 +7,6 @@ from datetime import datetime
 
 from app.operations.domain.entities.recovery_plan import (
     RecoveryPlanStep,
-    RecoveryQuarantineArtifactPlan,
     RecoverySourceSnapshot,
 )
 from app.operations.domain.event_enum.operational_recovery_enums import (
@@ -46,7 +45,6 @@ class RecoveryRun:
     finished_at: datetime | None
     source_snapshot: RecoverySourceSnapshot
     diagnosis: tuple[str, ...]
-    quarantine_artifacts: tuple[RecoveryQuarantineArtifactPlan, ...]
     planned_steps: tuple[RecoveryPlanStep, ...]
     step_results: tuple[RecoveryRunStepResult, ...]
     rebuild_results: JSONObject
@@ -59,22 +57,6 @@ class RecoveryRun:
     def __post_init__(self) -> None:
         """Normalize recovery run collections to immutable values."""
         object.__setattr__(self, "diagnosis", tuple(self.diagnosis))
-        object.__setattr__(
-            self, "quarantine_artifacts", tuple(self.quarantine_artifacts)
-        )
         object.__setattr__(self, "planned_steps", tuple(self.planned_steps))
         object.__setattr__(self, "step_results", tuple(self.step_results))
         object.__setattr__(self, "next_actions", tuple(self.next_actions))
-
-
-@dataclass(frozen=True, slots=True)
-class RecoveryQuarantineInventoryItem:
-    """One quarantined recovery artifact inventory item."""
-
-    run_id: str
-    run_status: RecoveryRunStatus
-    source_path: str
-    quarantine_path: str
-    exists: bool
-    size_bytes: int | None
-    sha256: str | None

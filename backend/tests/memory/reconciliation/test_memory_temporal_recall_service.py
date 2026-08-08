@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -205,7 +207,7 @@ def test_temporal_recall_separates_current_historical_and_all_modes(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'temporal-recall.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -275,7 +277,7 @@ def test_temporal_recall_separates_current_historical_and_all_modes(
 def test_historical_recall_requires_explicit_aware_as_of(tmp_path: Path) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'temporal-invalid.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

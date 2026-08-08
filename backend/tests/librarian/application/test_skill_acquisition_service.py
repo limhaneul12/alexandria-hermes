@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -187,7 +189,7 @@ async def _service(
     providers: list[LibrarianProvider],
     secrets: dict[tuple[str, str], str],
 ) -> tuple[Database, AsyncSession, SkillAcquisitionService]:
-    database = Database(database_url=f"sqlite+aiosqlite:///{path}", create_schema=True)
+    database = Database(database_url=os.environ["DATABASE_URL"], create_schema=True)
     await database.initialize()
     session = database.session()
     service = SkillAcquisitionService(

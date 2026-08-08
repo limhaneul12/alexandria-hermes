@@ -26,7 +26,7 @@ async def alexandria_operational_readiness(
     return response
 
 
-async def alexandria_recovery_plan(
+async def _recovery_plan(
     client: AlexandriaApiClient,
     trigger: str = "manual",
     actor: str = DEFAULT_SOURCE_AGENT,
@@ -57,7 +57,7 @@ async def alexandria_recovery_plan(
     return response
 
 
-async def alexandria_recovery_run(
+async def _recovery_run(
     client: AlexandriaApiClient,
     trigger: str = "manual",
     actor: str = DEFAULT_SOURCE_AGENT,
@@ -105,48 +105,40 @@ async def alexandria_recovery_run_status(
     return response
 
 
-async def alexandria_recovery_retry(
+async def alexandria_recover(
     client: AlexandriaApiClient,
-    run_id: str,
-    trigger: str = "retry",
+    *,
+    dry_run: bool = True,
+    trigger: str = "manual",
     actor: str = DEFAULT_SOURCE_AGENT,
     idempotency_key: str | None = None,
+    parent_run_id: str | None = None,
 ) -> JSONValue:
-    """Start or return a parent-linked operational recovery retry.
+    """Plan recovery by default, or apply an explicit idempotent repair.
 
     Args:
         client: Backend HTTP client.
-        run_id: Parent recovery run identifier.
-        trigger: Recovery retry trigger source.
-        actor: Operator or agent requesting retry.
-        idempotency_key: Optional retry idempotency key.
+        dry_run: Return a read-only plan when true; apply recovery when false.
+        trigger: Recovery trigger source.
+        actor: Operator or agent requesting recovery.
+        idempotency_key: Optional idempotency key for planning and required for apply.
+        parent_run_id: Optional parent recovery run identifier.
 
     Returns:
-        Recovery retry run response.
+        Recovery plan or recovery run response.
     """
-    payload: JSONObject = {
-        "trigger": trigger,
-        "actor": actor,
-    }
-    if idempotency_key is not None:
-        payload["idempotency_key"] = idempotency_key
-    response = await client.post(
-        f"/operations/recovery/runs/{_path_segment(run_id)}/retry",
-        payload,
+    if dry_run:
+        return await _recovery_plan(
+            client,
+            trigger=trigger,
+            actor=actor,
+            idempotency_key=idempotency_key,
+            parent_run_id=parent_run_id,
+        )
+    return await _recovery_run(
+        client,
+        trigger=trigger,
+        actor=actor,
+        idempotency_key=idempotency_key,
+        parent_run_id=parent_run_id,
     )
-    return response
-
-
-async def alexandria_recovery_quarantine(
-    client: AlexandriaApiClient,
-) -> JSONValue:
-    """Return stored recovery quarantine artifacts.
-
-    Args:
-        client: Backend HTTP client.
-
-    Returns:
-        Recovery quarantine inventory response.
-    """
-    response = await client.get("/operations/recovery/quarantine")
-    return response

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from app.connections.domain.entities.read_models import LibrarianProvider
+from app.connections.domain.event_enum.provider_enums import ProviderType
 from app.connections.domain.repositories.librarian_repository import (
     ILibrarianProviderRepository,
     IProviderSecretRepository,
@@ -46,10 +47,13 @@ class SkillAcquisitionProviderSelector:
         if provider_id is not None:
             return await self._provider_repository.get(provider_id)
         providers = await self._provider_repository.list_all()
-        for provider in providers:
-            if await self.is_executable(provider):
+        executable = [
+            provider for provider in providers if await self.is_executable(provider)
+        ]
+        for provider in executable:
+            if provider.provider_type is ProviderType.OPENAI:
                 return provider
-        return None
+        return executable[0] if executable else None
 
     async def is_executable(self, provider: LibrarianProvider) -> bool:
         """Return whether one provider can execute with current credentials.

@@ -12,8 +12,7 @@ from sqlalchemy.types import TypeDecorator
 class UTCDateTime(TypeDecorator[datetime]):
     """Persist and restore datetimes as timezone-aware UTC values.
 
-    SQLite drops timezone metadata even when SQLAlchemy columns use
-    ``DateTime(timezone=True)``. This type keeps the invariant at the
+    The persistence layer keeps UTC timezone metadata. This type also keeps the invariant at the
     persistence boundary: application code must bind aware datetimes, and values
     read back from the database are restored as UTC-aware datetimes.
     """

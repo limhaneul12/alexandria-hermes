@@ -88,9 +88,17 @@ async def update_chunk_embeddings(
     Returns:
         Number of chunks updated.
     """
+    if not updates:
+        return 0
+    rows = await session.scalars(
+        select(ContextChunkORM).where(
+            ContextChunkORM.id.in_(update.chunk_id for update in updates)
+        )
+    )
+    chunks_by_id = {chunk.id: chunk for chunk in rows.all()}
     updated = 0
     for update in updates:
-        chunk = await session.get(ContextChunkORM, update.chunk_id)
+        chunk = chunks_by_id.get(update.chunk_id)
         if chunk is None:
             continue
         chunk.embedding = update.embedding

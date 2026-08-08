@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import anyio
+import pytest
 from app.memory.domain.entities.context_read_models import RagDependencyHealth
 from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
 from app.obsidian.domain.entities.obsidian_note import (
@@ -13,6 +16,9 @@ from app.obsidian.domain.entities.obsidian_note import (
     ObsidianVaultStatus,
 )
 from app.obsidian.domain.event_enum.obsidian_enums import ObsidianIndexErrorCode
+from app.operations.application.operational_database_probe import (
+    OperationalDatabaseProbe,
+)
 from app.operations.application.operational_readiness_service import (
     OperationalReadinessService,
 )
@@ -38,6 +44,35 @@ class _FakeObsidianService:
         return self._status
 
 
+class _HealthyPostgresSession:
+    async def __aenter__(self) -> _HealthyPostgresSession:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        return None
+
+    async def execute(self, statement: object) -> None:
+        if str(statement) != "SELECT 1":
+            raise AssertionError(f"Unexpected SQL: {statement}")
+
+    async def scalar(self, statement: object) -> str | int | None:
+        rendered = str(statement)
+        if rendered == "SELECT 1":
+            return 1
+        if "to_regclass" in rendered:
+            return "alembic_version"
+        if rendered == "SELECT version_num FROM alembic_version":
+            return "202608062130_pg_search"
+        raise AssertionError(f"Unexpected SQL: {rendered}")
+
+
+class _HealthyPostgresDatabase:
+    dialect_name = "postgresql"
+
+    def session_factory(self):
+        return _HealthyPostgresSession
+
+
 def _healthy_rag() -> RagDependencyHealth:
     return RagDependencyHealth(
         fts=RagHealthState.HEALTHY,
@@ -47,7 +82,7 @@ def _healthy_rag() -> RagDependencyHealth:
         model_name="test-model",
         dimensions=3,
         fingerprint={"provider": "test"},
-        warnings=[],
+        warnings=(),
     )
 
 
@@ -60,7 +95,7 @@ def _degraded_embedding_rag() -> RagDependencyHealth:
         model_name="test-model",
         dimensions=3,
         fingerprint={"provider": "test"},
-        warnings=["embedding fingerprint mismatch"],
+        warnings=("embedding fingerprint mismatch",),
     )
 
 
@@ -73,7 +108,7 @@ def _healthy_components_fts_only_rag() -> RagDependencyHealth:
         model_name="test-model",
         dimensions=3,
         fingerprint={"provider": "test"},
-        warnings=[],
+        warnings=(),
     )
 
 
@@ -86,7 +121,7 @@ def _healthy_components_warning_rag() -> RagDependencyHealth:
         model_name="test-model",
         dimensions=3,
         fingerprint={"provider": "test"},
-        warnings=["vector index is stale"],
+        warnings=("vector index is stale",),
     )
 
 
@@ -117,9 +152,9 @@ def test_operational_readiness_reports_ready_when_all_dependencies_are_healthy(
 ) -> None:
     """Healthy database, vault, and RAG should produce READY/HYBRID."""
 
-    async def scenario() -> tuple[str, bool, str, list[str]]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'ready.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -148,14 +183,35 @@ def test_operational_readiness_reports_ready_when_all_dependencies_are_healthy(
     assert warnings == ()
 
 
+def test_operational_database_probe_uses_server_health_for_postgres() -> None:
+    """PostgreSQL readiness should not execute SQLite integrity statements."""
+
+    async def scenario():
+        probe = OperationalDatabaseProbe(cast(Database, _HealthyPostgresDatabase()))
+        snapshot = await probe.snapshot()
+        return (
+            snapshot.reachable,
+            snapshot.integrity,
+            snapshot.corruption_detected,
+            snapshot.schema_version,
+        )
+
+    assert anyio.run(scenario) == (
+        True,
+        "HEALTHY",
+        False,
+        "202608062130_pg_search",
+    )
+
+
 def test_operational_readiness_blocks_when_rag_strategy_is_not_hybrid(
     tmp_path: Path,
 ) -> None:
     """All RAG components healthy still requires HYBRID default strategy."""
 
-    async def scenario() -> tuple[str, bool, str, list[str], list[str]]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'fts-only.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -191,9 +247,9 @@ def test_operational_readiness_blocks_when_rag_health_reports_warnings(
 ) -> None:
     """RAG health warnings should prevent operational READY."""
 
-    async def scenario() -> tuple[str, bool, list[str], list[str]]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'rag-warning.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -222,9 +278,9 @@ def test_operational_readiness_degrades_to_fts_only_when_embedding_reindex_requi
 ) -> None:
     """Embedding mismatch should be visible as DEGRADED_FTS_ONLY, not READY."""
 
-    async def scenario() -> tuple[str, bool, str, list[str], list[str]]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'degraded.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -260,9 +316,9 @@ def test_operational_readiness_blocks_when_vault_has_index_errors(
 ) -> None:
     """Vault stale/error notes should prevent READY until reindex repair succeeds."""
 
-    async def scenario() -> tuple[str, bool, list[str], list[str]]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'blocked.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -298,9 +354,9 @@ def test_operational_readiness_routes_frontmatter_errors_to_repair_planning(
 ) -> None:
     """Known structural index errors need repair guidance, not another blind scan."""
 
-    async def scenario() -> tuple[str, ...]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'repair.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -330,48 +386,20 @@ def test_operational_readiness_routes_frontmatter_errors_to_repair_planning(
     assert anyio.run(scenario) == ("plan_index_error_repairs",)
 
 
-def test_operational_readiness_marks_sqlite_corruption_as_recovery_required(
-    tmp_path: Path,
+def test_operational_readiness_reports_active_recovery_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Non-database SQLite bytes should become RECOVERY_REQUIRED diagnostics."""
-
-    async def scenario() -> tuple[str, bool, str, list[str]]:
-        database_path = tmp_path / "corrupt.db"
-        database_path.write_bytes(b"not a sqlite database")
-        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
-        service = OperationalReadinessService(
-            database=database,
-            context_service=_FakeContextService(_healthy_rag()),
-            obsidian_service=_FakeObsidianService(_obsidian_status(tmp_path)),
-        )
-
-        snapshot = await service.snapshot()
-        return (
-            snapshot.status,
-            snapshot.ready,
-            snapshot.database.integrity,
-            snapshot.warnings,
-        )
-
-    status, ready, integrity, warnings = anyio.run(scenario)
-
-    assert status == OperationalReadinessStatus.RECOVERY_REQUIRED
-    assert ready is False
-    assert integrity == "CORRUPTION_DETECTED"
-    assert warnings == ("sqlite_corruption_detected",)
-
-
-def test_operational_readiness_reports_active_recovery_lock(tmp_path: Path) -> None:
     """Active recovery lock should fail closed as RECOVERING."""
+    monkeypatch.chdir(tmp_path)
 
-    async def scenario() -> tuple[str, bool, str | None, list[str], list[str]]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'active.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
-        recovery_dir = tmp_path / ".alexandria-recovery"
-        recovery_dir.mkdir()
+        recovery_dir = tmp_path / "data" / ".alexandria-recovery"
+        recovery_dir.mkdir(parents=True)
         (recovery_dir / "active-run.json").write_text(
             '{"run_id":"active-run","idempotency_key":"active-key"}',
             encoding="utf-8",
@@ -404,18 +432,19 @@ def test_operational_readiness_reports_active_recovery_lock(tmp_path: Path) -> N
 
 
 def test_operational_readiness_reports_unreadable_active_recovery_lock(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Corrupt restart state should still fail closed as recovery in progress."""
+    monkeypatch.chdir(tmp_path)
 
-    async def scenario() -> tuple[str, bool, str | None, list[str], list[str]]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'corrupt-lock.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
-        recovery_dir = tmp_path / ".alexandria-recovery"
-        recovery_dir.mkdir()
+        recovery_dir = tmp_path / "data" / ".alexandria-recovery"
+        recovery_dir.mkdir(parents=True)
         (recovery_dir / "active-run.json").write_text("{not-json", encoding="utf-8")
         try:
             service = OperationalReadinessService(
@@ -445,17 +474,18 @@ def test_operational_readiness_reports_unreadable_active_recovery_lock(
 
 
 def test_operational_readiness_reports_last_successful_recovery_run(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Readiness should expose the most recent completed recovery run id."""
+    monkeypatch.chdir(tmp_path)
 
-    async def scenario() -> tuple[str, str | None]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'last.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
-        recovery_dir = tmp_path / ".alexandria-recovery"
+        recovery_dir = tmp_path / "data" / ".alexandria-recovery"
         (recovery_dir / "failed-run").mkdir(parents=True)
         (recovery_dir / "failed-run" / "recovery-run.json").write_text(
             '{"id":"failed-run","status":"FAILED","finished_at":"2026-07-16T00:00:00+00:00"}',

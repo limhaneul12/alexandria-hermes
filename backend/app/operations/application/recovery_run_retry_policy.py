@@ -10,9 +10,6 @@ from app.operations.application.recovery_run_manifest import (
     _manifest_path_by_id,
     _run_from_manifest,
 )
-from app.operations.application.recovery_run_source_preservation import (
-    _quarantine_artifacts_for_run,
-)
 from app.operations.domain.entities.recovery_plan import (
     RecoveryPlan,
     RecoveryPlanStep,
@@ -28,15 +25,10 @@ from app.operations.domain.event_enum.operational_recovery_enums import (
 )
 
 
-def _parent_run_for_retry(
-    *, database_path: str | None, parent_run_id: str | None
-) -> RecoveryRun | None:
+def _parent_run_for_retry(*, parent_run_id: str | None) -> RecoveryRun | None:
     if parent_run_id is None:
         return None
-    manifest_path = _manifest_path_by_id(
-        database_path=database_path,
-        run_id=parent_run_id,
-    )
+    manifest_path = _manifest_path_by_id(run_id=parent_run_id)
     if not manifest_path.exists():
         return None
     return _run_from_manifest(manifest_path)
@@ -57,13 +49,6 @@ def _successful_parent_steps(
 def _recovery_steps() -> list[RecoveryPlanStep]:
     return [
         RecoveryPlanStep("snapshot_sources", "Snapshot source vault metadata", False),
-        RecoveryPlanStep("dispose_connections", "Dispose database connections", True),
-        RecoveryPlanStep(
-            "quarantine_sqlite_files", "Move SQLite files to quarantine", True
-        ),
-        RecoveryPlanStep(
-            "rebuild_database_schema", "Rebuild migration-managed schema", True
-        ),
         RecoveryPlanStep("reindex_vault", "Rebuild Obsidian index cache", True),
         RecoveryPlanStep("reindex_embeddings", "Rebuild retrieval embeddings", True),
         RecoveryPlanStep("verify_readiness", "Verify operational readiness", False),
@@ -85,7 +70,6 @@ def _blocked_run(*, plan: RecoveryPlan, manifest_path: Path) -> RecoveryRun:
         finished_at=now,
         source_snapshot=plan.source_snapshot,
         diagnosis=plan.diagnosis,
-        quarantine_artifacts=plan.quarantine_artifacts,
         planned_steps=plan.steps,
         step_results=(),
         rebuild_results={},
@@ -99,7 +83,6 @@ def _blocked_run(*, plan: RecoveryPlan, manifest_path: Path) -> RecoveryRun:
 
 def _interrupted_active_run(
     *,
-    database_path: str | None,
     active_lock: RecoveryActiveLockPayload,
     source_snapshot: RecoverySourceSnapshot,
     manifest_path: Path,
@@ -119,13 +102,6 @@ def _interrupted_active_run(
         finished_at=now,
         source_snapshot=source_snapshot,
         diagnosis=("RECOVERY_INTERRUPTED_AFTER_RESTART",),
-        quarantine_artifacts=tuple(
-            _quarantine_artifacts_for_run(
-                database_path=database_path,
-                run_id=active_lock.run_id,
-                created_at=started_at,
-            )
-        ),
         planned_steps=tuple(_recovery_steps()),
         step_results=(),
         rebuild_results={},

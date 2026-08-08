@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import anyio
@@ -55,7 +57,8 @@ _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
 
 
 def _database_url(path: Path) -> str:
-    return f"sqlite+aiosqlite:///{path}"
+    del path
+    return os.environ["DATABASE_URL"]
 
 
 async def _services(
@@ -76,7 +79,6 @@ async def _services(
     workflow = ObsidianLibrarianWorkflowService.from_services(
         workflow_repository=SqlAlchemyObsidianWorkflowRepository(session=session),
         obsidian_service=obsidian,
-        checkpoint_path=str(tmp_path / "langgraph-checkpoints.sqlite"),
         delegate_service=delegate_service,
     )
     return database, session, obsidian, workflow
@@ -371,7 +373,7 @@ def test_librarian_workflow_keeps_local_result_when_gpt_profile_is_missing(
 def test_librarian_workflow_resumes_after_service_recreation(
     tmp_path: Path,
 ) -> None:
-    """LangGraph SQLite checkpoints should survive a new service instance."""
+    """PostgreSQL-compatible workflow rows should survive service recreation."""
 
     async def scenario() -> tuple[str, list[str]]:
         database, session, _obsidian, workflow_service = await _services(tmp_path)
@@ -392,7 +394,6 @@ def test_librarian_workflow_resumes_after_service_recreation(
                     session=session
                 ),
                 obsidian_service=obsidian,
-                checkpoint_path=str(tmp_path / "langgraph-checkpoints.sqlite"),
             )
             resumed = await restarted.resume_workflow(
                 ObsidianLibrarianWorkflowResume(

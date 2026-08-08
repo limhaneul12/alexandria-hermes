@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,9 @@ from app.memory.domain.entities.memory_reconciliation_diagnostics import (
 )
 from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
 from app.obsidian.domain.entities.obsidian_note import ObsidianVaultStatus
+from app.operations.application.operational_readiness_cache import (
+    NoopOperationalReadinessCache,
+)
 from app.operations.interface.routers.operational_readiness_router import (
     operational_capabilities,
     operational_readiness,
@@ -129,7 +133,7 @@ def test_operational_readiness_route_returns_snapshot_payload(tmp_path: Path) ->
 
     async def scenario() -> dict[str, object]:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'route.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -139,6 +143,7 @@ def test_operational_readiness_route_returns_snapshot_payload(tmp_path: Path) ->
                 context_service=_FakeContextService(),
                 obsidian_service=_FakeObsidianService(tmp_path),
                 reconciliation_service=None,
+                readiness_cache=NoopOperationalReadinessCache(),
             )
             return response.model_dump(mode="json")
         finally:
@@ -148,12 +153,12 @@ def test_operational_readiness_route_returns_snapshot_payload(tmp_path: Path) ->
 
     assert payload["status"] == "DEGRADED_FTS_ONLY"
     assert payload["ready"] is False
-    assert payload["database"] == {
-        "reachable": True,
-        "integrity": "HEALTHY",
-        "schema_version": "unknown",
-        "corruption_detected": False,
-    }
+    database_payload = payload["database"]
+    assert isinstance(database_payload, dict)
+    assert database_payload["reachable"] is True
+    assert database_payload["integrity"] == "HEALTHY"
+    assert isinstance(database_payload["schema_version"], str)
+    assert database_payload["corruption_detected"] is False
     assert payload["vault"]["indexed_notes"] == 3
     assert payload["rag"]["effective_strategy"] == "FTS_ONLY"
     assert payload["rag"]["source_statuses"] == [
@@ -181,7 +186,7 @@ def test_operational_capabilities_keep_core_ready_without_embeddings(
 
     async def scenario() -> dict[str, object]:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'capabilities.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -191,6 +196,7 @@ def test_operational_capabilities_keep_core_ready_without_embeddings(
                 context_service=_FakeContextService(),
                 obsidian_service=_FakeObsidianService(tmp_path),
                 reconciliation_service=None,
+                readiness_cache=NoopOperationalReadinessCache(),
             )
             return response.model_dump(mode="json")
         finally:
@@ -217,7 +223,7 @@ def test_fastapi_resolves_readiness_and_recovery_dependencies(
 ) -> None:
     """FastAPI requests must never leak dependency-injector Provide markers."""
 
-    database_url = f"sqlite+aiosqlite:///{tmp_path / 'app-route.db'}"
+    database_url = os.environ["DATABASE_URL"]
     database = Database(
         database_url=database_url,
         create_schema=True,
@@ -229,9 +235,6 @@ def test_fastapi_resolves_readiness_and_recovery_dependencies(
         _env_file=None,
         obsidian_vault_path=str(tmp_path / "vault"),
         obsidian_vault_config_path=str(tmp_path / "vault-config.json"),
-        obsidian_librarian_langgraph_checkpoint_path=str(
-            tmp_path / "librarian-checkpoint.sqlite"
-        ),
         operational_backup_root=str(tmp_path / "backups"),
     )
     app = create_app(config)
@@ -252,11 +255,6 @@ def test_fastapi_resolves_readiness_and_recovery_dependencies(
         ):
             readiness_response = client.get("/operations/readiness")
             capabilities_response = client.get("/operations/capabilities")
-            backup_response = client.post("/operations/backups")
-            restore_response = client.post(
-                "/operations/backups/"
-                f"{backup_response.json().get('backup_id', 'missing')}/restore-drill"
-            )
             recovery_response = client.post(
                 "/operations/recovery/plan",
                 json={"idempotency_key": "fastapi-di-contract"},
@@ -268,46 +266,5 @@ def test_fastapi_resolves_readiness_and_recovery_dependencies(
     assert readiness_response.json()["reconciliation"]["configured"] is True
     assert capabilities_response.status_code == 200
     assert capabilities_response.json()["core_memory"]["ready"] is True
-    assert backup_response.status_code == 201
-    assert backup_response.json()["artifact_count"] == 1
-    assert restore_response.status_code == 200
-    assert restore_response.json()["sqlite_integrity"] == "HEALTHY"
     assert recovery_response.status_code == 200
     assert recovery_response.json()["idempotency_key"] == "fastapi-di-contract"
-
-
-def test_operational_backup_reads_vault_location_without_index_status_query(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Online SQLite backup must not keep a prior index read transaction open."""
-    database_url = f"sqlite+aiosqlite:///{tmp_path / 'backup-route.db'}"
-    database = Database(database_url=database_url, create_schema=True)
-    anyio.run(database.initialize)
-    anyio.run(database.shutdown)
-    monkeypatch.setenv("DATABASE_URL", database_url)
-    config = AppConfig(
-        _env_file=None,
-        obsidian_vault_path=str(tmp_path / "vault"),
-        obsidian_vault_config_path=str(tmp_path / "vault-config.json"),
-        obsidian_librarian_langgraph_checkpoint_path=str(
-            tmp_path / "missing-librarian-checkpoint.sqlite"
-        ),
-        operational_backup_root=str(tmp_path / "backups"),
-    )
-    app = create_app(config)
-    root_container = app.state.container
-
-    try:
-        with (
-            root_container.obsidian.obsidian_service.override(
-                providers.Object(_BackupOnlyObsidianService(tmp_path))
-            ),
-            TestClient(app, raise_server_exceptions=False) as client,
-        ):
-            response = client.post("/operations/backups")
-    finally:
-        default_app.state.container.wire(packages=_ROUTER_PACKAGES)
-
-    assert response.status_code == 201
-    assert response.json()["artifact_count"] == 1

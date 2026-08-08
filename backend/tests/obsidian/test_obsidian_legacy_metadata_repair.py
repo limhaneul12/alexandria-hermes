@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import anyio
@@ -27,7 +29,8 @@ _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
 
 
 def _database_url(path: Path) -> str:
-    return f"sqlite+aiosqlite:///{path}"
+    del path
+    return os.environ["DATABASE_URL"]
 
 
 def test_legacy_metadata_repair_is_dry_run_hash_locked_and_body_preserving(

@@ -10,7 +10,9 @@ Alexandria-Hermes는 단순 API Adapter가 아니다.
 - Pydantic Validation Contract
 - SQLAlchemy Persistence
 - Obsidian Markdown Canonical Storage
-- SQLite, FTS, Vector, Embedding Index
+- PostgreSQL FTS, pgvector, Embedding Index
+- Neo4j Graph Projection
+- Redis Queue / Cache / Coordination
 - Context와 Memory Lifecycle
 - Librarian 실행
 - Skill과 Knowledge Graph 관리

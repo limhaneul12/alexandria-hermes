@@ -103,9 +103,7 @@ def _warnings(
     reconciliation: OperationalReconciliationSnapshot,
 ) -> list[str]:
     warnings: list[str] = []
-    if database.corruption_detected:
-        warnings.append("sqlite_corruption_detected")
-    elif not database.reachable:
+    if not database.reachable:
         warnings.append("database_unreachable")
     elif database.integrity != "HEALTHY":
         warnings.append("database_integrity_not_healthy")
@@ -162,7 +160,6 @@ def _blockers(warnings: list[str]) -> list[str]:
     blocking_codes = {
         "database_unreachable",
         "database_integrity_not_healthy",
-        "sqlite_corruption_detected",
         "vault_not_found",
         "alexandria_root_not_found",
         "obsidian_stale_notes_present",
@@ -189,8 +186,6 @@ def _status(
 ) -> OperationalReadinessStatus:
     if active_recovery_run_id is not None:
         return OperationalReadinessStatus.RECOVERING
-    if database.corruption_detected:
-        return OperationalReadinessStatus.RECOVERY_REQUIRED
     blockers = _blockers(warnings)
     if blockers:
         return OperationalReadinessStatus.BLOCKED
@@ -215,8 +210,6 @@ def _next_actions(
 ) -> list[str]:
     actions: list[str] = []
     warning_set = set(warnings)
-    if "sqlite_corruption_detected" in warning_set:
-        actions.append("plan_recovery")
     if {"vault_not_found", "alexandria_root_not_found"} & warning_set:
         actions.append("inspect_vault_configuration")
     if "obsidian_stale_notes_present" in warning_set:

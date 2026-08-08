@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from logging.config import fileConfig
 
 import app.connections.infrastructure.models.librarian_provider_models as _librarian_provider_models  # noqa: F401
@@ -14,8 +13,9 @@ import app.memory.infrastructure.models.context_models as _context_models  # noq
 import app.memory.infrastructure.models.reconciliation_models as _reconciliation_models  # noqa: F401
 import app.obsidian.infrastructure.models.obsidian_index_models as _obsidian_index_models  # noqa: F401
 from alembic import context
+from app.platform.config.database_config import DatabaseConfig
 from app.shared.infrastructure.database import Base
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -24,9 +24,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.environ.get("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+config.set_main_option("sqlalchemy.url", DatabaseConfig().url)
 
 target_metadata = Base.metadata
 
@@ -47,6 +45,16 @@ def run_migrations_offline() -> None:
 
 def do_run_migrations(connection: Connection) -> None:
     """Run migrations on an existing sync connection."""
+    if connection.dialect.name == "postgresql":
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS alembic_version (
+                    version_num VARCHAR(255) NOT NULL PRIMARY KEY
+                )
+                """
+            )
+        )
     context.configure(connection=connection, target_metadata=target_metadata)
 
     with context.begin_transaction():
@@ -61,7 +69,7 @@ async def run_async_migrations() -> None:
         poolclass=pool.NullPool,
     )
 
-    async with connectable.connect() as connection:
+    async with connectable.begin() as connection:
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()

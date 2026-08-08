@@ -157,25 +157,27 @@ def upgrade() -> None:
         unique=False,
     )
 
-    op.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS item_search_fts USING fts5(
-            item_id UNINDEXED,
-            item_type,
-            title,
-            summary,
-            content,
-            tags,
-            details,
-            tokenize='porter'
+    if op.get_bind().dialect.name == "sqlite":
+        op.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS item_search_fts USING fts5(
+                item_id UNINDEXED,
+                item_type,
+                title,
+                summary,
+                content,
+                tags,
+                details,
+                tokenize='porter'
+            )
+            """
         )
-        """
-    )
 
 
 def downgrade() -> None:
     """Drop backend archive tables."""
-    op.execute("DROP TABLE IF EXISTS item_search_fts")
+    if op.get_bind().dialect.name == "sqlite":
+        op.execute("DROP TABLE IF EXISTS item_search_fts")
     op.drop_index(op.f("ix_usage_histories_item_id"), table_name="usage_histories")
     op.drop_table("usage_histories")
     op.drop_index(

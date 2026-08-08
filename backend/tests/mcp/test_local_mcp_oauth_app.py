@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import anyio
@@ -28,7 +30,7 @@ def test_create_app_exposes_local_oauth_routes_without_shadowing_rest_routes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Root fallback mounting should preserve FastAPI and expose OAuth endpoints."""
-    database_url = f"sqlite+aiosqlite:///{tmp_path / 'app-local-oauth.db'}"
+    database_url = os.environ["DATABASE_URL"]
 
     async def prepare_database() -> None:
         database = Database(database_url=database_url, create_schema=True)

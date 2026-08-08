@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -253,7 +255,7 @@ def test_candidate_service_rejects_missing_scope_identity_and_invalid_interval()
 def test_preview_without_matches_creates_unrelated_context_plan(tmp_path: Path) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'empty-preview.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -286,7 +288,7 @@ def test_contradiction_preview_is_review_required_and_idempotent(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'conflict-preview.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

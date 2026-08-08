@@ -7,9 +7,6 @@ from app.obsidian.infrastructure.models.obsidian_index_models import (
     ObsidianEdgeORM,
     ObsidianFileORM,
 )
-from app.obsidian.infrastructure.repositories.obsidian_fts import (
-    delete_obsidian_fts_statement,
-)
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,10 +42,6 @@ async def discard_obsidian_note_index(session: AsyncSession, note_id: str) -> No
     """
     await session.execute(
         delete(ObsidianChunkORM).where(ObsidianChunkORM.note_id == note_id)
-    )
-    await session.execute(
-        delete_obsidian_fts_statement(),
-        {"note_id": note_id},
     )
     await session.execute(
         delete(ObsidianEdgeORM).where(

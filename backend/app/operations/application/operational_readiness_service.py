@@ -12,6 +12,9 @@ from app.operations.application.operational_data_integrity_service import (
 from app.operations.application.operational_database_probe import (
     OperationalDatabaseProbe,
 )
+from app.operations.application.operational_readiness_cache import (
+    OperationalReadinessCache,
+)
 from app.operations.application.operational_readiness_contracts import (
     ContextReadinessService,
     ObsidianDataIntegrityService,
@@ -61,6 +64,7 @@ class OperationalReadinessService:
         context_service: ContextReadinessService,
         obsidian_service: ObsidianReadinessService,
         reconciliation_service: ReconciliationReadinessService | None = None,
+        readiness_cache: OperationalReadinessCache | None = None,
         ignore_active_recovery_run_id: str | None = None,
     ) -> None:
         """Create service.
@@ -70,6 +74,7 @@ class OperationalReadinessService:
             context_service: Context/RAG service.
             obsidian_service: Obsidian vault service.
             reconciliation_service: Optional reconciliation diagnostics service.
+            readiness_cache: Optional fail-open short-lived snapshot cache.
             ignore_active_recovery_run_id: Active run id to ignore for internal
                 verification.
         """
@@ -78,6 +83,7 @@ class OperationalReadinessService:
         self._context_service = context_service
         self._obsidian_service = obsidian_service
         self._reconciliation_service = reconciliation_service
+        self._readiness_cache = readiness_cache
         self._ignore_active_recovery_run_id = ignore_active_recovery_run_id
 
     async def snapshot(self) -> OperationalReadinessSnapshot:
@@ -86,6 +92,32 @@ class OperationalReadinessService:
         Returns:
             Snapshot composed from database, vault, and RAG diagnostics.
         """
+        active_recovery_run_id = _active_recovery_run_id()
+        if active_recovery_run_id == self._ignore_active_recovery_run_id:
+            active_recovery_run_id = None
+        cache = (
+            self._readiness_cache
+            if self._ignore_active_recovery_run_id is None
+            and active_recovery_run_id is None
+            else None
+        )
+        if cache is not None:
+            cached = await cache.get()
+            if cached is not None:
+                return cached
+        snapshot = await self._build_snapshot(
+            active_recovery_run_id=active_recovery_run_id
+        )
+        if cache is not None:
+            await cache.set(snapshot)
+        return snapshot
+
+    async def _build_snapshot(
+        self,
+        *,
+        active_recovery_run_id: str | None,
+    ) -> OperationalReadinessSnapshot:
+        """Probe authoritative dependencies and build one fresh snapshot."""
         started = datetime.now(UTC)
         database = await self._database_probe.snapshot()
         vault_status = await self._obsidian_service.status()
@@ -116,12 +148,7 @@ class OperationalReadinessService:
                     reconciliation_diagnostics,
                     configured=True,
                 )
-        active_recovery_run_id = _active_recovery_run_id(self._database.sqlite_path)
-        if active_recovery_run_id == self._ignore_active_recovery_run_id:
-            active_recovery_run_id = None
-        last_successful_recovery_run_id = _last_successful_recovery_run_id(
-            self._database.sqlite_path
-        )
+        last_successful_recovery_run_id = _last_successful_recovery_run_id()
         warnings = _warnings(
             database=database,
             vault=vault,
@@ -139,7 +166,7 @@ class OperationalReadinessService:
             active_recovery_run_id=active_recovery_run_id,
         )
         finished = datetime.now(UTC)
-        return OperationalReadinessSnapshot(
+        snapshot = OperationalReadinessSnapshot(
             status=status,
             ready=status is OperationalReadinessStatus.READY,
             checked_at=finished,
@@ -157,3 +184,4 @@ class OperationalReadinessService:
             ),
             data_integrity=data_integrity,
         )
+        return snapshot

@@ -59,6 +59,9 @@ from app.memory.application.reconciliation.obsidian_memory_canonical_mutation_ga
     ObsidianMemoryCanonicalMutationGateway,
 )
 from app.memory.application.retrieval.embedding_factory import create_embedding_provider
+from app.memory.infrastructure.context_embedding_batch_transaction import (
+    SqlAlchemyContextEmbeddingBatchTransaction,
+)
 from app.memory.infrastructure.repositories.context_repository import (
     SqlAlchemyContextRepository,
 )
@@ -100,6 +103,7 @@ class MemoryContainer(containers.DeclarativeContainer):
     index_maintenance_coordinator = providers.Dependency(
         instance_of=IndexMaintenanceCoordinator
     )
+    external_api_rate_limiter = providers.Dependency()
     embedding_provider = providers.Factory(
         create_embedding_provider,
         vector_enabled=app_config.provided.rag_vector_enabled,
@@ -112,6 +116,10 @@ class MemoryContainer(containers.DeclarativeContainer):
     context_repo = providers.Factory(SqlAlchemyContextRepository, session=db_session)
     obsidian_context_search_source = providers.Factory(
         SqlAlchemyObsidianContextSearchSource,
+        session=db_session,
+    )
+    context_embedding_batch_transaction = providers.Factory(
+        SqlAlchemyContextEmbeddingBatchTransaction,
         session=db_session,
     )
     obsidian_vault_config_store = providers.Singleton(
@@ -147,6 +155,7 @@ class MemoryContainer(containers.DeclarativeContainer):
         canonical_context_repository=canonical_context_gateway,
         graph_signal_provider=graph_signal_provider,
         index_maintenance_coordinator=index_maintenance_coordinator,
+        embedding_batch_transaction=context_embedding_batch_transaction,
     )
     context_embedding_recovery_service = providers.Singleton(
         ContextEmbeddingRecoveryService,
@@ -184,6 +193,7 @@ class MemoryContainer(containers.DeclarativeContainer):
         timeout_seconds=(
             app_config.provided.memory_reconciliation_provider_timeout_seconds
         ),
+        rate_limiter=external_api_rate_limiter,
     )
     reconciliation_classifier = providers.Factory(
         MemoryRelationClassifier,

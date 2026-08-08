@@ -1,335 +1,137 @@
-"""Operational recovery dry-run plan contracts."""
+"""PostgreSQL-native operational recovery planning policy tests."""
 
 from __future__ import annotations
 
-from pathlib import Path
+from datetime import UTC, datetime
+from types import SimpleNamespace
 
-import anyio
-import app.operations.application.recovery_plan_service as recovery_plan_module
-import pytest
-from app.memory.domain.entities.context_read_models import RagDependencyHealth
-from app.memory.domain.entities.memory_reconciliation_diagnostics import (
-    MemoryReconciliationDiagnostics,
+from app.memory.domain.event_enum.context_enums import RagStrategy
+from app.operations.application.recovery_plan_policy import (
+    _blocked_reasons,
+    _next_actions,
+    _steps,
 )
-from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
-from app.obsidian.domain.entities.obsidian_note import ObsidianVaultStatus
-from app.operations.application.recovery_plan_service import RecoveryPlanService
-from app.operations.application.recovery_plan_contracts import RecoveryPlanRequest
+from app.operations.domain.entities.recovery_plan import RecoverySourceSnapshot
 from app.operations.domain.event_enum.operational_readiness_enums import (
     OperationalReadinessStatus,
 )
-from app.shared.infrastructure.database import Database
 
 
-class _FakeContextService:
-    async def rag_health_with_index_status(self) -> RagDependencyHealth:
-        return RagDependencyHealth(
-            fts=RagHealthState.HEALTHY,
-            vector=RagHealthState.HEALTHY,
-            embedding=RagHealthState.HEALTHY,
-            default_strategy=RagStrategy.HYBRID,
-            model_name="test-model",
-            dimensions=3,
-            fingerprint={"provider": "test"},
-            warnings=[],
-        )
-
-
-class _FakeObsidianService:
-    def __init__(self, vault: Path, *, root_exists: bool = True) -> None:
-        self._vault = vault
-        self._root_exists = root_exists
-
-    async def status(self) -> ObsidianVaultStatus:
-        return ObsidianVaultStatus(
-            vault_path=str(self._vault),
-            alexandria_root="Alexandria",
-            vault_exists=self._vault.exists(),
-            alexandria_root_exists=self._root_exists
-            and (self._vault / "Alexandria").exists(),
-            indexed_notes=1,
-            stale_notes=0,
-            error_notes=0,
-        )
-
-
-class _FakeReconciliationService:
-    async def snapshot(self) -> MemoryReconciliationDiagnostics:
-        return MemoryReconciliationDiagnostics(
-            reachable=True,
-            total_contexts=10,
-            temporal_state_count=7,
-            missing_temporal_states=3,
-            total_plans=2,
-            pending_review_plans=1,
-            total_results=1,
-            partial_apply_results=1,
-            failed_results=0,
-            open_conflicts=1,
-            reviewing_conflicts=0,
-            hard_delete_results=0,
-            latest_failure_code="PARTIAL_APPLY",
-            latest_failure_at=None,
-        )
-
-
-def _write_vault_note(tmp_path: Path) -> tuple[Path, bytes]:
-    note = tmp_path / "vault" / "Alexandria" / "Contexts" / "Projects" / "note.md"
-    note.parent.mkdir(parents=True)
-    body = b"---\nid: note\n---\n# Note\n"
-    note.write_bytes(body)
-    return note, body
-
-
-def test_recovery_plan_for_sqlite_corruption_is_read_only_and_actionable(
-    tmp_path: Path,
-) -> None:
-    """Dry-run should plan quarantine/rebuild without moving DB or editing vault files."""
-
-    async def scenario() -> tuple[
-        str, bool, list[str], list[str], list[str], bytes, bytes
-    ]:
-        database_path = tmp_path / "corrupt.db"
-        corrupt_bytes = b"not a sqlite database"
-        database_path.write_bytes(corrupt_bytes)
-        wal_path = tmp_path / "corrupt.db-wal"
-        shm_path = tmp_path / "corrupt.db-shm"
-        wal_path.write_bytes(b"wal")
-        shm_path.write_bytes(b"shm")
-        note, _note_before = _write_vault_note(tmp_path)
-        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
-        service = RecoveryPlanService(
-            database=database,
-            context_service=_FakeContextService(),
-            obsidian_service=_FakeObsidianService(tmp_path / "vault"),
-        )
-
-        plan = await service.plan(
-            RecoveryPlanRequest(
-                trigger="manual",
-                actor="pytest",
-                idempotency_key="plan-key-1",
-            )
-        )
-
-        return (
-            plan.status,
-            plan.automatic_execution_allowed,
-            [artifact.source_path for artifact in plan.quarantine_artifacts],
-            [step.code for step in plan.steps],
-            plan.blocked_reasons,
-            database_path.read_bytes(),
-            note.read_bytes(),
-        )
-
-    status, automatic, source_paths, steps, blocked, db_after, note_after = anyio.run(
-        scenario
+def _readiness(
+    *,
+    reachable: bool = True,
+    warnings: tuple[str, ...] = (),
+    vault_exists: bool = True,
+    root_exists: bool = True,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        status=(
+            OperationalReadinessStatus.READY
+            if not warnings and reachable
+            else OperationalReadinessStatus.RECOVERY_REQUIRED
+        ),
+        database=SimpleNamespace(reachable=reachable),
+        vault=SimpleNamespace(
+            exists=vault_exists,
+            alexandria_root_exists=root_exists,
+            indexed_notes=3,
+        ),
+        rag=SimpleNamespace(effective_strategy=RagStrategy.HYBRID),
+        warnings=warnings,
     )
 
-    assert status == OperationalReadinessStatus.RECOVERY_REQUIRED
-    assert automatic is True
-    assert blocked == ()
-    assert source_paths == [
-        str(tmp_path / "corrupt.db"),
-        str(tmp_path / "corrupt.db-wal"),
-        str(tmp_path / "corrupt.db-shm"),
-    ]
-    assert steps == [
+
+def _source(
+    *, count: int = 1, access_error: str | None = None
+) -> RecoverySourceSnapshot:
+    return RecoverySourceSnapshot(
+        vault_path="/vault",
+        alexandria_root="Alexandria",
+        managed_markdown_count=count,
+        representative_path="/vault/Alexandria/note.md" if count else None,
+        representative_sha256="abc" if count else None,
+        disk_free_bytes=1_000_000,
+        access_error=access_error,
+        markdown_manifest={"Alexandria/note.md": "1:1"} if count else {},
+    )
+
+
+def test_unreachable_postgres_is_blocked_and_requires_external_restore() -> None:
+    readiness = _readiness(reachable=False, warnings=("database_unreachable",))
+
+    blocked = _blocked_reasons(readiness, _source())
+    steps = _steps(readiness)
+
+    assert blocked == ["postgresql_server_recovery_required"]
+    assert [step.code for step in steps] == ["inspect_postgresql_backup_restore"]
+    assert all(step.mutates_state is False for step in steps)
+    assert _next_actions(
+        OperationalReadinessStatus.BLOCKED, blocked, list(readiness.warnings)
+    ) == ["restore_postgresql_from_backup"]
+
+
+def test_fts_failure_rebuilds_only_vault_then_verifies() -> None:
+    readiness = _readiness(warnings=("rag_fts_not_healthy",))
+
+    assert [step.code for step in _steps(readiness)] == [
         "snapshot_sources",
-        "dispose_connections",
-        "quarantine_sqlite_files",
-        "rebuild_database_schema",
+        "reindex_vault",
+        "verify_readiness",
+    ]
+
+
+def test_vector_failure_rebuilds_only_embeddings_then_verifies() -> None:
+    readiness = _readiness(warnings=("rag_vector_not_healthy",))
+
+    assert [step.code for step in _steps(readiness)] == [
+        "snapshot_sources",
+        "reindex_embeddings",
+        "verify_readiness",
+    ]
+
+
+def test_combined_search_failure_rebuilds_each_required_projection_once() -> None:
+    readiness = _readiness(
+        warnings=("rag_fts_not_healthy", "rag_embedding_reindex_required")
+    )
+
+    assert [step.code for step in _steps(readiness)] == [
+        "snapshot_sources",
         "reindex_vault",
         "reindex_embeddings",
         "verify_readiness",
     ]
-    assert db_after == b"not a sqlite database"
-    assert note_after == b"---\nid: note\n---\n# Note\n"
 
 
-def test_recovery_plan_blocks_without_readable_vault_source(tmp_path: Path) -> None:
-    """Plan should not be executable when source Markdown preconditions fail."""
+def test_reconciliation_only_issue_never_rebuilds_storage() -> None:
+    readiness = _readiness(warnings=("memory_reconciliation_open_conflicts",))
 
-    async def scenario() -> tuple[str, bool, list[str], list[str]]:
-        database_path = tmp_path / "corrupt.db"
-        database_path.write_bytes(b"not a sqlite database")
-        vault = tmp_path / "vault"
-        vault.mkdir()
-        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
-        service = RecoveryPlanService(
-            database=database,
-            context_service=_FakeContextService(),
-            obsidian_service=_FakeObsidianService(vault, root_exists=False),
-        )
+    steps = _steps(readiness)
 
-        plan = await service.plan(RecoveryPlanRequest())
-        return (
-            plan.status,
-            plan.automatic_execution_allowed,
-            plan.blocked_reasons,
-            plan.next_actions,
-        )
-
-    status, automatic, blocked, next_actions = anyio.run(scenario)
-
-    assert status == OperationalReadinessStatus.BLOCKED
-    assert automatic is False
-    assert blocked == ("alexandria_root_not_found", "managed_markdown_not_found")
-    assert next_actions == ("inspect_vault_configuration",)
+    assert [step.code for step in steps] == ["inspect_memory_reconciliation"]
+    assert all(step.mutates_state is False for step in steps)
 
 
-def test_recovery_plan_blocks_when_source_snapshot_access_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Plan should fail closed without mutation when source snapshot cannot be read."""
+def test_vault_source_failures_block_automatic_recovery() -> None:
+    readiness = _readiness(vault_exists=False, root_exists=False)
 
-    def fail_disk_usage(path: Path):  # type: ignore[no-untyped-def]
-        raise OSError(f"cannot inspect source path: {path}")
-
-    async def scenario() -> tuple[
-        str,
-        bool,
-        list[str],
-        list[str],
-        str | None,
-        bytes,
-        bytes,
-        bytes,
-    ]:
-        database_path = tmp_path / "corrupt.db"
-        corrupt_bytes = b"not a sqlite database"
-        database_path.write_bytes(corrupt_bytes)
-        note, note_before = _write_vault_note(tmp_path)
-        monkeypatch.setattr(recovery_plan_module, "disk_usage", fail_disk_usage)
-        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
-        service = RecoveryPlanService(
-            database=database,
-            context_service=_FakeContextService(),
-            obsidian_service=_FakeObsidianService(tmp_path / "vault"),
-        )
-
-        plan = await service.plan(
-            RecoveryPlanRequest(
-                trigger="manual",
-                actor="pytest",
-                idempotency_key="source-snapshot-access-failure",
-            )
-        )
-        return (
-            plan.status,
-            plan.automatic_execution_allowed,
-            plan.blocked_reasons,
-            plan.next_actions,
-            plan.source_snapshot.access_error,
-            database_path.read_bytes(),
-            note.read_bytes(),
-            note_before,
-        )
-
-    (
-        status,
-        automatic,
-        blocked,
-        next_actions,
-        access_error,
-        db_after,
-        note_after,
-        note_before,
-    ) = anyio.run(scenario)
-
-    assert status == OperationalReadinessStatus.BLOCKED
-    assert automatic is False
-    assert blocked == ("source_snapshot_unreadable",)
-    assert next_actions == ("inspect_vault_configuration",)
-    assert access_error == "source_snapshot_unreadable"
-    assert db_after == b"not a sqlite database"
-    assert note_after == note_before
+    assert _blocked_reasons(readiness, _source(count=0)) == [
+        "vault_not_found",
+        "alexandria_root_not_found",
+        "managed_markdown_not_found",
+    ]
+    assert _blocked_reasons(
+        readiness, _source(access_error="source_snapshot_unreadable")
+    ) == [
+        "source_snapshot_unreadable",
+        "vault_not_found",
+        "alexandria_root_not_found",
+    ]
 
 
-def test_recovery_plan_does_not_rebuild_for_non_corruption_database_error(
-    tmp_path: Path,
-) -> None:
-    """Non-corruption SQLite errors should not trigger quarantine/rebuild execution."""
+def test_source_snapshot_uses_lightweight_inventory_tokens() -> None:
+    snapshot = _source()
 
-    async def scenario() -> tuple[str, bool, list[str], list[str]]:
-        database_path = tmp_path / "runtime-as-directory.db"
-        database_path.mkdir()
-        _write_vault_note(tmp_path)
-        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
-        service = RecoveryPlanService(
-            database=database,
-            context_service=_FakeContextService(),
-            obsidian_service=_FakeObsidianService(tmp_path / "vault"),
-        )
-
-        plan = await service.plan(
-            RecoveryPlanRequest(
-                trigger="manual",
-                actor="pytest",
-                idempotency_key="non-corruption-db-error",
-            )
-        )
-        return (
-            plan.status,
-            plan.automatic_execution_allowed,
-            plan.diagnosis,
-            plan.next_actions,
-        )
-
-    status, automatic, diagnosis, next_actions = anyio.run(scenario)
-
-    assert status == OperationalReadinessStatus.BLOCKED
-    assert automatic is False
-    assert diagnosis == ("database_unreachable",)
-    assert next_actions == ("inspect_database",)
-
-
-def test_recovery_plan_never_maps_reconciliation_only_issues_to_database_rebuild(
-    tmp_path: Path,
-) -> None:
-    """Reconciliation blockers require manual diagnosis, not destructive recovery."""
-
-    async def scenario() -> tuple[str, bool, list[str], list[str], list[str]]:
-        database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'healthy.db'}",
-            create_schema=True,
-        )
-        await database.initialize()
-        _write_vault_note(tmp_path)
-        try:
-            service = RecoveryPlanService(
-                database=database,
-                context_service=_FakeContextService(),
-                obsidian_service=_FakeObsidianService(tmp_path / "vault"),
-                reconciliation_service=_FakeReconciliationService(),
-            )
-
-            plan = await service.plan(
-                RecoveryPlanRequest(
-                    trigger="manual",
-                    actor="pytest",
-                    idempotency_key="reconciliation-only-issue",
-                )
-            )
-            return (
-                plan.status,
-                plan.automatic_execution_allowed,
-                [step.code for step in plan.steps],
-                plan.next_actions,
-                plan.blocked_reasons,
-            )
-        finally:
-            await database.shutdown()
-
-    status, automatic, steps, next_actions, blocked_reasons = anyio.run(scenario)
-
-    assert status == OperationalReadinessStatus.BLOCKED
-    assert automatic is False
-    assert steps == ["inspect_memory_reconciliation"]
-    assert next_actions == (
-        "inspect_memory_reconciliation_failures",
-        "preview_existing_memory_reconciliation",
-        "review_memory_reconciliation",
-    )
-    assert blocked_reasons == ()
+    assert snapshot.markdown_manifest == {"Alexandria/note.md": "1:1"}
+    assert snapshot.representative_sha256 == "abc"
+    assert datetime.now(UTC).tzinfo is not None

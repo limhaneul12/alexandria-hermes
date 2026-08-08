@@ -24,14 +24,12 @@ from app.obsidian.domain.event_enum.obsidian_enums import (
     ObsidianLibrarianWorkflowStatus,
 )
 from app.shared.types.extra_types import JSONObject, JSONValue
-from langgraph.types import Interrupt
 
 
 def _initial_graph_state(
     *,
     thread_id: str,
     ask: ObsidianLibrarianAsk,
-    checkpoint_path: str,
 ) -> ObsidianLibrarianGraphState:
     """Build the first serializable LangGraph state."""
     return {
@@ -51,7 +49,6 @@ def _initial_graph_state(
         "completed_actions": [],
         "transcript_path": None,
         "workflow_status": "created",
-        "langgraph_checkpoint_path": checkpoint_path,
         "delegate_payload": None,
     }
 
@@ -61,11 +58,6 @@ def _result_from_graph_output(
 ) -> ObsidianLibrarianGraphResult:
     """Convert raw LangGraph output into the service boundary result."""
     state = _json_state(output)
-    interrupts = _interrupts_from_output(output)
-    if interrupts:
-        state["langgraph_interrupts"] = interrupts
-        state["workflow_status"] = "waiting_for_approval"
-        return {"state": state, "status": "waiting_for_approval"}
     status = _state_optional_string(output, "workflow_status") or "completed"
     return {"state": state, "status": status}
 
@@ -78,28 +70,6 @@ def _json_state(output: ObsidianLibrarianGraphState) -> JSONObject:
             continue
         state[key] = cast(JSONValue, value)
     return state
-
-
-def _interrupts_from_output(output: ObsidianLibrarianGraphState) -> list[JSONObject]:
-    """Extract human-in-the-loop interrupt payloads from LangGraph output."""
-    value = output.get("__interrupt__")
-    if not isinstance(value, list):
-        return []
-    return [
-        {"id": item.id, "value": cast(JSONValue, item.value)}
-        for item in value
-        if isinstance(item, Interrupt)
-    ]
-
-
-def _approved_actions(value: JSONValue) -> list[str]:
-    """Normalize approved action ids supplied to LangGraph resume."""
-    if not isinstance(value, dict):
-        return []
-    raw_actions = value.get("approved_actions")
-    if not isinstance(raw_actions, list):
-        return []
-    return sorted(item for item in raw_actions if isinstance(item, str))
 
 
 def _pending_action_ids(state: ObsidianLibrarianGraphState) -> set[str]:

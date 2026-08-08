@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import base64
 import hashlib
 from pathlib import Path
@@ -80,7 +82,7 @@ def _client() -> OAuthClientInformationFull:
 
 async def _provider(tmp_path: Path) -> tuple[Database, LocalMcpOAuthProvider]:
     database = Database(
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'local-oauth.db'}",
+        database_url=os.environ["DATABASE_URL"],
         create_schema=True,
     )
     await database.initialize()

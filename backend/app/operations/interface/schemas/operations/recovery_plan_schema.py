@@ -8,7 +8,6 @@ from app.operations.application.recovery_plan_contracts import RecoveryPlanReque
 from app.operations.domain.entities.recovery_plan import (
     RecoveryPlan,
     RecoveryPlanStep,
-    RecoveryQuarantineArtifactPlan,
     RecoverySourceSnapshot,
 )
 from app.operations.domain.event_enum.operational_readiness_enums import (
@@ -80,37 +79,6 @@ class RecoverySourceSnapshotResponse(StrictSchemaModel):
         )
 
 
-class RecoveryQuarantineArtifactPlanResponse(StrictSchemaModel):
-    """Planned SQLite quarantine artifact response."""
-
-    source_path: str
-    quarantine_path: str
-    exists: bool
-    size_bytes: int | None
-    sha256: str | None
-
-    @classmethod
-    def from_entity(
-        cls,
-        artifact: RecoveryQuarantineArtifactPlan,
-    ) -> RecoveryQuarantineArtifactPlanResponse:
-        """Create response schema from read model.
-
-        Args:
-            artifact: Quarantine artifact read model.
-
-        Returns:
-            Quarantine artifact response schema.
-        """
-        return cls(
-            source_path=artifact.source_path,
-            quarantine_path=artifact.quarantine_path,
-            exists=artifact.exists,
-            size_bytes=artifact.size_bytes,
-            sha256=artifact.sha256,
-        )
-
-
 class RecoveryPlanStepResponse(StrictSchemaModel):
     """Planned recovery step response."""
 
@@ -141,16 +109,11 @@ class RecoveryPlanResponse(StrictSchemaModel):
     actor: str
     status: OperationalReadinessStatus
     created_at: AwareTimestamp
-    target_database_path: str | None
     dry_run: bool
-    deletion_performed: bool
     automatic_execution_allowed: bool
     diagnosis: list[str] = Field(default_factory=list)
     blocked_reasons: list[str] = Field(default_factory=list)
     source_snapshot: RecoverySourceSnapshotResponse
-    quarantine_artifacts: list[RecoveryQuarantineArtifactPlanResponse] = Field(
-        default_factory=list
-    )
     steps: list[RecoveryPlanStepResponse] = Field(default_factory=list)
     estimated_reindex_scope: dict[str, int | str | None]
     service_impact: list[str] = Field(default_factory=list)
@@ -176,19 +139,13 @@ class RecoveryPlanResponse(StrictSchemaModel):
             actor=plan.actor,
             status=plan.status,
             created_at=plan.created_at,
-            target_database_path=plan.target_database_path,
             dry_run=plan.dry_run,
-            deletion_performed=plan.deletion_performed,
             automatic_execution_allowed=plan.automatic_execution_allowed,
             diagnosis=list(plan.diagnosis),
             blocked_reasons=list(plan.blocked_reasons),
             source_snapshot=RecoverySourceSnapshotResponse.from_entity(
                 plan.source_snapshot
             ),
-            quarantine_artifacts=[
-                RecoveryQuarantineArtifactPlanResponse.from_entity(artifact)
-                for artifact in plan.quarantine_artifacts
-            ],
             steps=[RecoveryPlanStepResponse.from_entity(step) for step in plan.steps],
             estimated_reindex_scope=dict(plan.estimated_reindex_scope),
             service_impact=list(plan.service_impact),

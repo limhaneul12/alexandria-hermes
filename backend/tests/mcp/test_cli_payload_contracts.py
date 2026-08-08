@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.cli.type_validate.librarian_payload_views import (
+from app.cli.type_validate.maintenance_payload_views import (
     check_summary,
     preflight_ready,
     review_queue_summary,
@@ -67,11 +67,11 @@ def test_mcp_tool_names_uses_validated_tool_objects_only() -> None:
     payload = {
         "result": {
             "tools": [
-                {"name": "alexandria_librarian_readiness"},
+                {"name": "alexandria_memory_steward_readiness"},
                 {"title": "missing name"},
                 "not-an-object",
             ]
         }
     }
 
-    assert mcp_tool_names(payload) == {"alexandria_librarian_readiness"}
+    assert mcp_tool_names(payload) == {"alexandria_memory_steward_readiness"}

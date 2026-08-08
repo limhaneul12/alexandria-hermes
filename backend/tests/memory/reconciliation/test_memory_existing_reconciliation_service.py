@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
@@ -228,7 +230,7 @@ def _request() -> ExistingMemoryReconciliationRequest:
 def test_existing_memory_preview_is_write_free(tmp_path: Path) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'preview.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -265,7 +267,7 @@ def test_existing_memory_apply_backfills_recorded_at_without_inventing_validity(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'apply.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -300,7 +302,7 @@ def test_existing_memory_apply_persists_only_reviewable_relation_plans_idempoten
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'plans.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

@@ -71,7 +71,7 @@ class ObsidianNoteWriteResult:
     storage_status: str
     metadata_status: str
     fts_status: str
-    sqlite_graph_edge_status: str
+    graph_edge_index_status: str
     graph_projection_status: str
     reindex_required: bool
     warnings: tuple[str, ...] = field(default_factory=tuple)

@@ -16,7 +16,9 @@ from app.memory.domain.event_enum.context_enums import (
 )
 from app.shared.infrastructure.database import Base
 from app.shared.infrastructure.datetime_types import UTCDateTime
+from app.shared.infrastructure.embedding_vector_type import EmbeddingVectorType
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
+from app.shared.types.embedding_types import EmbeddingVector
 from app.shared.types.extra_types import JSONValue
 from sqlalchemy import (
     JSON,
@@ -139,7 +141,9 @@ class ContextChunkORM(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding: Mapped[EmbeddingVector | None] = mapped_column(
+        EmbeddingVectorType(), nullable=True
+    )
     embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     embedding_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)

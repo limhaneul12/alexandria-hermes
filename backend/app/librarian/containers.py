@@ -19,7 +19,6 @@ from app.librarian.application.agent_service import AgentService
 from app.librarian.application.hermes_collaboration_service import (
     HermesCollaborationService,
 )
-from app.librarian.application.knowledge_packet_compiler import KnowledgePacketCompiler
 from app.librarian.application.skill_acquisition_runner import SkillAcquisitionRunner
 from app.librarian.application.skill_acquisition_service import SkillAcquisitionService
 from app.librarian.infrastructure.repositories.agent_repository import (
@@ -28,7 +27,6 @@ from app.librarian.infrastructure.repositories.agent_repository import (
 from app.librarian.infrastructure.repositories.skill_acquisition_job_repository import (
     SqlAlchemySkillAcquisitionJobRepository,
 )
-from app.memory.application.memory_compact_service import MemoryCompactService
 
 
 class LibrarianContainer(containers.DeclarativeContainer):
@@ -44,12 +42,12 @@ class LibrarianContainer(containers.DeclarativeContainer):
         instance_of=ILibrarianProviderRepository
     )
     provider_secret_repo = providers.Dependency(instance_of=IProviderSecretRepository)
-    memory_compact_service = providers.Dependency(instance_of=MemoryCompactService)
+    external_api_rate_limiter = providers.Dependency()
     delegate_executor = providers.Factory(
         OpenAIProviderDelegateExecutor,
         secret_repo=provider_secret_repo,
+        rate_limiter=external_api_rate_limiter,
     )
-    knowledge_packet_compiler = providers.Factory(KnowledgePacketCompiler)
     skill_acquisition_service = providers.Factory(
         SkillAcquisitionService,
         repository=skill_acquisition_job_repo,
@@ -60,6 +58,7 @@ class LibrarianContainer(containers.DeclarativeContainer):
         OpenAISkillAcquisitionExecutor,
         provider_repo=librarian_provider_repo,
         secret_repo=provider_secret_repo,
+        rate_limiter=external_api_rate_limiter,
     )
     skill_acquisition_runner = providers.Factory(
         SkillAcquisitionRunner,
@@ -78,5 +77,4 @@ class LibrarianContainer(containers.DeclarativeContainer):
         agent_repo=agent_repo,
         secret_repo=provider_secret_repo,
         delegate_executor=delegate_executor,
-        memory_compact_service=memory_compact_service,
     )

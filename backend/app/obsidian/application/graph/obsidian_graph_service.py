@@ -17,7 +17,7 @@ from app.shared.exceptions.obsidian_exceptions import (
 
 
 class ObsidianGraphService:
-    """Hydrate graph-provider relationships from the SQLite note index."""
+    """Hydrate graph-provider relationships from the PostgreSQL note index."""
 
     def __init__(
         self,

@@ -6,6 +6,7 @@ from app.memory.application.context_embedding_health_service import (
     ContextEmbeddingHealthService,
 )
 from app.memory.application.context_embedding_reindex_service import (
+    ContextEmbeddingBatchTransaction,
     ContextEmbeddingReindexService,
 )
 from app.memory.application.context_vector_recall_service import (
@@ -31,6 +32,7 @@ class ContextEmbeddingService:
         provider: EmbeddingProvider | None,
         vector_retrieval_enabled: bool,
         search_sources: list[IContextSearchSource],
+        batch_transaction: ContextEmbeddingBatchTransaction | None = None,
     ) -> None:
         """Create focused embedding collaborators.
 
@@ -38,6 +40,7 @@ class ContextEmbeddingService:
             provider: Optional local embedding provider.
             vector_retrieval_enabled: Whether vector retrieval is wired.
             search_sources: Configured Context retrieval and index sources.
+            batch_transaction: Optional production transaction boundary per batch.
         """
         self._health_service = ContextEmbeddingHealthService(
             provider=provider,
@@ -48,6 +51,7 @@ class ContextEmbeddingService:
             provider=provider,
             search_sources=search_sources,
             health_service=self._health_service,
+            batch_transaction=batch_transaction,
         )
         self._vector_recall_service = ContextVectorRecallService(
             provider=provider,

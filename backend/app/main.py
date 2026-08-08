@@ -10,6 +10,7 @@ from typing import cast
 
 from dependency_injector import providers
 from fastapi import FastAPI
+from redis.asyncio import Redis
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.connections.interface.routers.connection_hub_router import (
@@ -23,11 +24,8 @@ from app.connections.interface.routers.librarian_router import (
 )
 from app.container import ApplicationContainer
 from app.librarian.interface.routers.agent_router import router as agent_router
-from app.librarian.interface.routers.librarian_brief_router import (
-    router as librarian_brief_router,
-)
-from app.librarian.interface.routers.librarian_ops_router import (
-    router as librarian_ops_router,
+from app.librarian.interface.routers.skill_acquisition_router import (
+    router as skill_acquisition_router,
 )
 from app.mcp_server.backend_api_client import AlexandriaApiClient, AlexandriaApiSettings
 from app.mcp_server.http_auth_factory import build_mcp_http_auth_gate
@@ -65,8 +63,8 @@ from app.obsidian.interface.routers.obsidian_router import router as obsidian_ro
 from app.obsidian.interface.routers.obsidian_settings_router import (
     router as obsidian_settings_router,
 )
-from app.operations.interface.routers.operational_backup_router import (
-    router as operational_backup_router,
+from app.operations.interface.routers.maintenance_job_router import (
+    router as maintenance_job_router,
 )
 from app.operations.interface.routers.operational_readiness_router import (
     router as operational_readiness_router,
@@ -78,6 +76,7 @@ from app.operations.interface.routers.recovery_run_router import (
     router as recovery_run_router,
 )
 from app.platform.config.app_config import AppConfig
+from app.platform.config.redis_config import RedisConfig
 from app.platform.health_router import install_health_routes
 from app.platform.lifecycle.dependency_health import PlatformDependency
 from app.platform.lifecycle.state import LifecycleState
@@ -85,6 +84,9 @@ from app.platform.logging.formatter.config import configure_logging
 from app.platform.middleware.database_session import install_database_session_middleware
 from app.platform.middleware.public_surface_access import (
     install_public_surface_access_middleware,
+)
+from app.platform.middleware.redis_status_cache import (
+    install_redis_status_cache_middleware,
 )
 from app.platform.middleware.request_logging import install_request_logging_middleware
 from app.shared.infrastructure.database import Database
@@ -262,6 +264,15 @@ def create_app(app_config: AppConfig) -> FastAPI:
         database = await cast(Awaitable[Database], container.database())
         return database
 
+    async def resolve_redis_client() -> Redis | None:
+        """Resolve the lifecycle-owned shared Redis client for middleware.
+
+        Returns:
+            Initialized shared Redis client, or None while Redis is disabled.
+        """
+        client = await cast(Awaitable[Redis | None], container.redis_client())
+        return client
+
     container.wire(
         packages=[
             "app.connections.interface.routers",
@@ -273,6 +284,11 @@ def create_app(app_config: AppConfig) -> FastAPI:
     )
 
     install_database_session_middleware(app, resolve_database=resolve_database)
+    install_redis_status_cache_middleware(
+        app,
+        cast(RedisConfig, container.redis_config()),
+        resolve_redis_client,
+    )
     install_public_surface_access_middleware(app)
     install_request_logging_middleware(app, logger=logger)
     install_health_routes(
@@ -291,14 +307,13 @@ def create_app(app_config: AppConfig) -> FastAPI:
     app.include_router(obsidian_librarian_execution_router)
     app.include_router(obsidian_settings_router)
     app.include_router(operational_readiness_router)
-    app.include_router(operational_backup_router)
     app.include_router(recovery_plan_router)
     app.include_router(recovery_run_router)
     app.include_router(agent_router)
     app.include_router(librarian_router)
     app.include_router(librarian_oauth_router)
-    app.include_router(librarian_ops_router)
-    app.include_router(librarian_brief_router)
+    app.include_router(skill_acquisition_router)
+    app.include_router(maintenance_job_router)
 
     @app.get("/")
     def root() -> dict[str, str]:

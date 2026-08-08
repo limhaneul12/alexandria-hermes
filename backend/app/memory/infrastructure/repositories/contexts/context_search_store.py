@@ -7,9 +7,6 @@ from app.memory.domain.contracts.context_recall_contracts import (
     ContextVectorRecall,
 )
 from app.memory.domain.entities.context_read_models import ContextSearchMatch
-from app.memory.infrastructure.repositories.contexts.fts import (
-    ensure_context_chunk_fts_table,
-)
 from app.memory.infrastructure.repositories.contexts.fts_search import (
     search_context_fts,
 )
@@ -30,15 +27,11 @@ class ContextSearchStore:
         """
         self._session = session
 
-    async def ensure_search_tables(self) -> None:
-        """Create virtual search tables not represented by ORM metadata."""
-        await ensure_context_chunk_fts_table(session=self._session)
-
     async def search_fts(
         self,
         recall: ContextFtsRecall,
     ) -> list[ContextSearchMatch]:
-        """Search Context chunks with SQLite FTS.
+        """Search Context chunks with PostgreSQL full-text search.
 
         Args:
             recall: Structured FTS recall contract.
@@ -46,7 +39,6 @@ class ContextSearchStore:
         Returns:
             Ranked Context matches.
         """
-        await self.ensure_search_tables()
         return await search_context_fts(self._session, recall)
 
     async def search_vector(

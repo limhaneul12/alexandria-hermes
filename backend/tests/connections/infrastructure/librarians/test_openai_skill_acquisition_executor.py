@@ -37,7 +37,7 @@ from app.shared.exceptions.librarian_exceptions import (
 from app.shared.serialization.orjson_codec import dumps_json
 from app.shared.types.extra_types import JSONValue
 from openai import OpenAIError
-from openai.types.responses import ResponseTextDeltaEvent
+from openai.types.responses import ResponseTextDeltaEvent, WebSearchToolParam
 
 
 class FakeProviderRepository:
@@ -108,6 +108,7 @@ class FakeResponsesResource:
         instructions: str,
         store: bool | None = None,
         stream: bool = False,
+        tools: list[WebSearchToolParam] | None = None,
     ) -> FakeResponse | list[ResponseTextDeltaEvent]:
         self.calls.append(
             {
@@ -116,6 +117,7 @@ class FakeResponsesResource:
                 "instructions": instructions,
                 "store": store,
                 "stream": stream,
+                "tools": [] if tools is None else tools,
             }
         )
         if stream:
@@ -156,6 +158,7 @@ class BlockingResponsesResource(FakeResponsesResource):
         instructions: str,
         store: bool | None = None,
         stream: bool = False,
+        tools: list[WebSearchToolParam] | None = None,
     ) -> FakeResponse | list[ResponseTextDeltaEvent]:
         self.started.set()
         self._release.wait()
@@ -165,6 +168,7 @@ class BlockingResponsesResource(FakeResponsesResource):
             instructions=instructions,
             store=store,
             stream=stream,
+            tools=tools,
         )
 
     def release(self) -> None:
@@ -190,6 +194,7 @@ class FailingResponsesResource:
         instructions: str,
         store: bool | None = None,
         stream: bool = False,
+        tools: list[WebSearchToolParam] | None = None,
     ) -> FakeResponse | list[ResponseTextDeltaEvent]:
         raise OpenAIError("provider failed with token SECRET-TOKEN")
 
@@ -358,6 +363,12 @@ def test_openai_skill_executor_parses_strict_json_from_openai_response() -> None
         assert artifact.activate is True
         assert artifact.version == "1.1.0"
         assert artifact.status.value == "ACTIVE"
+        assert client.responses.calls[0]["tools"] == [
+            {"type": "web_search", "search_context_size": "medium"}
+        ]
+        assert "Research the requested capability" in str(
+            client.responses.calls[0]["instructions"]
+        )
         assert artifact.risk_level.value == "LOW"
         assert client.responses.calls[0]["model"] == "gpt-5.5"
         instructions = str(client.responses.calls[0]["instructions"])

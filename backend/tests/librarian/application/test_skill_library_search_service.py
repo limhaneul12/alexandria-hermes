@@ -269,6 +269,6 @@ def test_skill_library_search_reports_unavailable_index_distinct_from_not_found(
     assert result.handoff is not None
     assert result.handoff["decision"] == "skill_search_repair_required"
     assert result.handoff["repair"]["tools"] == [
-        "alexandria_librarian_readiness",
+        "alexandria_memory_steward_readiness",
         "alexandria_reindex_vault",
     ]

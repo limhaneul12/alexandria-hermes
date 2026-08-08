@@ -7,13 +7,11 @@ from mcp.server.fastmcp import FastMCP
 from app.mcp_server.backend_api_client import AlexandriaApiClient
 from app.mcp_server.tools.backend_gateway_policy import DEFAULT_CONTEXT_SEARCH_LIMIT
 from app.mcp_server.tools.obsidian_backend_gateway import (
-    alexandria_ask_obsidian_librarian,
     alexandria_check_path_exists,
     alexandria_create_note,
     alexandria_get_related_notes,
     alexandria_read_note,
     alexandria_resolve_canonical_identity,
-    alexandria_save_note,
     alexandria_update_note,
     alexandria_upsert_note,
     alexandria_upsert_report_bundle,
@@ -70,34 +68,6 @@ def register_obsidian_note_tools(
     ) -> JSONValue:
         """Read graph-related Obsidian notes by id or path."""
         return await alexandria_get_related_notes(api_client, note_id, path, limit)
-
-    @server.tool(name="alexandria_save_note")
-    async def _tool_save_note(
-        title: str,
-        body: str,
-        alexandria_type: str,
-        note_id: str | None = None,
-        path: str | None = None,
-        project: str | None = None,
-        tags: list[str] | str | None = None,
-        status: str = "active",
-        source: str = "mcp",
-        frontmatter: dict[str, JSONValue] | None = None,
-    ) -> JSONValue:
-        """Legacy path-upsert save; note_id is create identity, not an update selector."""
-        return await alexandria_save_note(
-            api_client,
-            title,
-            body,
-            alexandria_type,
-            note_id,
-            path,
-            project,
-            tags,
-            status,
-            source,
-            frontmatter,
-        )
 
     @server.tool(name="alexandria_create_note")
     async def _tool_create_note(
@@ -219,30 +189,4 @@ def register_obsidian_note_tools(
             verify_index_status,
             verify_incoming_edges,
             verify_duplicates,
-        )
-
-    @server.tool(name="alexandria_ask_obsidian_librarian")
-    async def _tool_ask_obsidian_librarian(
-        query: str,
-        active_note_path: str | None = None,
-        selection: str | None = None,
-        project: str | None = None,
-        save_transcript: bool = False,
-        preferred_alexandria_types: list[str] | None = None,
-        delegate_to_librarian: bool = False,
-        provider_id: str | None = None,
-        profile_id: str | None = None,
-    ) -> JSONValue:
-        """Ask the Obsidian-aware Alexandria librarian."""
-        return await alexandria_ask_obsidian_librarian(
-            api_client,
-            query,
-            active_note_path,
-            selection,
-            project,
-            save_transcript,
-            preferred_alexandria_types,
-            delegate_to_librarian,
-            provider_id,
-            profile_id,
         )

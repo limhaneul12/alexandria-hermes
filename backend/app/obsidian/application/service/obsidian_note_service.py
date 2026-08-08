@@ -121,7 +121,7 @@ class ObsidianNoteService:
         """Create the canonical note service.
 
         Args:
-            repository: Rebuildable SQLite index repository.
+            repository: Rebuildable PostgreSQL index repository.
             vault_config_store: Runtime vault location provider.
             reindex: Vault index refresh callback.
             mark_context_superseded: Context lifecycle reconciliation callback.
@@ -139,7 +139,7 @@ class ObsidianNoteService:
         *,
         refresh: bool = False,
     ) -> list[ObsidianSearchHit]:
-        """Search Obsidian notes through the SQLite index.
+        """Search Obsidian notes through the PostgreSQL index.
 
         Args:
             query: Search filters and query text.
@@ -226,8 +226,9 @@ class ObsidianNoteService:
         Returns:
             Result produced by write_note.
         """
-        async with self._index_maintenance_coordinator.write_operation(
-            "obsidian_note_write"
+        async with self._index_maintenance_coordinator.operation(
+            "obsidian_explicit_note_write",
+            wait=True,
         ):
             (
                 payload,
@@ -248,7 +249,7 @@ class ObsidianNoteService:
             storage_status="stored" if mutated else "unchanged",
             metadata_status="indexed",
             fts_status="indexed",
-            sqlite_graph_edge_status="indexed",
+            graph_edge_index_status="indexed",
             graph_projection_status="stale" if mutated else "unknown",
             reindex_required=mutated,
         )
@@ -411,7 +412,7 @@ class ObsidianNoteService:
     ) -> None:
         """Persist diagnostics without replacing the canonical write failure.
 
-        Error persistence uses the same rebuildable SQLite index. If that
+        Error persistence uses the same rebuildable PostgreSQL index. If that
         secondary recovery write also fails, the original domain error remains
         authoritative and the canonical Markdown stays available for reindex.
         """

@@ -100,7 +100,7 @@ def _fused_context_match(evidence: _ContextFusionEvidence) -> ContextSearchMatch
     why_retrieved = representative.why_retrieved
     if has_fts and has_vector:
         why_retrieved = (
-            "Context ranked across SQLite FTS5 and semantic sqlite-vec evidence "
+            "Context ranked across lexical and semantic vector evidence "
             "using reciprocal rank fusion."
         )
     return ContextSearchMatch(

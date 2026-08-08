@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from shutil import disk_usage, move
+from shutil import disk_usage
 
 from app.operations.domain.entities.recovery_plan import (
     RecoveryPlan,
-    RecoveryQuarantineArtifactPlan,
     RecoverySourceSnapshot,
 )
 from app.shared.types.extra_types import JSONObject
@@ -77,10 +75,18 @@ def _current_markdown_manifest(snapshot: RecoverySourceSnapshot) -> dict[str, st
 
 def _markdown_manifest(vault: Path, markdown_files: list[Path]) -> dict[str, str]:
     return {
-        str(path.relative_to(vault)): file_hash
+        str(path.relative_to(vault)): inventory_token
         for path in markdown_files
-        if (file_hash := _file_sha256(path)) is not None
+        if (inventory_token := _file_inventory_token(path)) is not None
     }
+
+
+def _file_inventory_token(path: Path) -> str | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return f"{stat.st_size}:{stat.st_mtime_ns}"
 
 
 def _file_sha256(path: Path | None) -> str | None:
@@ -91,54 +97,3 @@ def _file_sha256(path: Path | None) -> str | None:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _quarantine_artifacts_for_run(
-    *,
-    database_path: str | None,
-    run_id: str,
-    created_at: datetime,
-) -> list[RecoveryQuarantineArtifactPlan]:
-    if database_path is None:
-        return []
-    timestamp = created_at.strftime("%Y%m%dT%H%M%SZ")
-    source_paths = [
-        Path(database_path),
-        Path(f"{database_path}-wal"),
-        Path(f"{database_path}-shm"),
-    ]
-    quarantine_dir = Path(database_path).parent / ".alexandria-recovery" / run_id
-    return [
-        RecoveryQuarantineArtifactPlan(
-            source_path=str(source_path),
-            quarantine_path=str(
-                quarantine_dir / f"{timestamp}-{source_path.name}-{run_id}"
-            ),
-            exists=source_path.exists(),
-            size_bytes=source_path.stat().st_size if source_path.exists() else None,
-            sha256=_file_sha256(source_path) if source_path.exists() else None,
-        )
-        for source_path in source_paths
-    ]
-
-
-async def _quarantine_files(
-    artifacts: list[RecoveryQuarantineArtifactPlan],
-) -> JSONObject:
-    moved: list[JSONObject] = []
-    for artifact in artifacts:
-        if not artifact.exists:
-            continue
-        source = Path(artifact.source_path)
-        destination = Path(artifact.quarantine_path)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        move(str(source), str(destination))
-        moved.append(
-            {
-                "source_path": artifact.source_path,
-                "quarantine_path": artifact.quarantine_path,
-                "sha256": artifact.sha256,
-                "size_bytes": artifact.size_bytes,
-            }
-        )
-    return {"moved": moved}

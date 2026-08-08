@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import replace
 from pathlib import Path
 
@@ -86,7 +88,8 @@ class _FailingActivationGraphRepository(FakeObsidianGraphProjectionRepository):
 
 
 def _database_url(path: Path) -> str:
-    return f"sqlite+aiosqlite:///{path}"
+    del path
+    return os.environ["DATABASE_URL"]
 
 
 def test_report_bundle_is_idempotent_and_verifies_expected_owner_edges(

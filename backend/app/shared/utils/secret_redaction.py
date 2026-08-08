@@ -18,6 +18,7 @@ AUTHORIZATION_HEADER_PATTERN = re.compile(r"(?im)^(\s*authorization\s*:\s*)([^\r
 BEARER_TOKEN_PATTERN = re.compile(r"(?i)\bbearer(\s+)[A-Za-z0-9._~+/=-]{4,}")
 LONG_TOKEN_PATTERN = re.compile(r"\b[A-Za-z0-9+/._=-]{48,}\b")
 URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+WIKILINK_PATTERN = re.compile(r"\[\[(?P<inner>[^\]\r\n]+)\]\]")
 CREDENTIAL_QUERY_PARAMETER_NAMES = frozenset(
     {
         "token",
@@ -87,7 +88,7 @@ def _redact_text_preserving_urls(content: str) -> tuple[str, int]:
     redaction_count = 0
     previous_end = 0
     for match in URL_PATTERN.finditer(content):
-        text_part, text_count = _redact_non_url_text(
+        text_part, text_count = _redact_non_url_text_preserving_wikilinks(
             content[previous_end : match.start()]
         )
         url, trailing_text = _split_url_trailing_text(match.group(0))
@@ -96,9 +97,71 @@ def _redact_text_preserving_urls(content: str) -> tuple[str, int]:
         redaction_count += text_count + url_count
         previous_end = match.end()
 
+    text_part, text_count = _redact_non_url_text_preserving_wikilinks(
+        content[previous_end:]
+    )
+    redacted_parts.append(text_part)
+    return "".join(redacted_parts), redaction_count + text_count
+
+
+def _redact_non_url_text_preserving_wikilinks(content: str) -> tuple[str, int]:
+    redacted_parts: list[str] = []
+    redaction_count = 0
+    previous_end = 0
+    for match in WIKILINK_PATTERN.finditer(content):
+        text_part, text_count = _redact_non_url_text(
+            content[previous_end : match.start()]
+        )
+        wikilink_part, wikilink_count = _redact_wikilink(match.group("inner"))
+        redacted_parts.extend((text_part, wikilink_part))
+        redaction_count += text_count + wikilink_count
+        previous_end = match.end()
+
     text_part, text_count = _redact_non_url_text(content[previous_end:])
     redacted_parts.append(text_part)
     return "".join(redacted_parts), redaction_count + text_count
+
+
+def _redact_wikilink(inner: str) -> tuple[str, int]:
+    target, separator, label = inner.partition("|")
+    redacted_target, target_count = _redact_wikilink_target(target)
+    if not separator:
+        return f"[[{redacted_target}]]", target_count
+
+    redacted_label, label_count = _redact_non_url_text(label)
+    return (
+        f"[[{redacted_target}|{redacted_label}]]",
+        target_count + label_count,
+    )
+
+
+def _redact_wikilink_target(target: str) -> tuple[str, int]:
+    if not _is_internal_wikilink_path(target):
+        return _redact_non_url_text(target)
+
+    redacted_segments: list[str] = []
+    redaction_count = 0
+    for segment in target.split("/"):
+        redacted_segment, segment_count = _redact_non_url_text(segment)
+        redacted_segments.append(redacted_segment)
+        redaction_count += segment_count
+    return "/".join(redacted_segments), redaction_count
+
+
+def _is_internal_wikilink_path(target: str) -> bool:
+    candidate = target.strip()
+    if (
+        not candidate
+        or "://" in candidate
+        or candidate.startswith("/")
+        or "\\" in candidate
+    ):
+        return False
+    path, _fragment_separator, _fragment = candidate.partition("#")
+    segments = path.split("/")
+    return len(segments) > 1 and all(
+        segment.strip() not in {"", ".", ".."} for segment in segments
+    )
 
 
 def _redact_non_url_text(content: str) -> tuple[str, int]:

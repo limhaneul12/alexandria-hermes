@@ -190,15 +190,11 @@ class ContextSearchRepositoryDelegate:
 
     _search_store: ContextSearchStore
 
-    async def ensure_search_tables(self) -> None:
-        """Create virtual search tables not represented by ORM metadata."""
-        await self._search_store.ensure_search_tables()
-
     async def search_fts(
         self,
         recall: ContextFtsRecall,
     ) -> list[ContextSearchMatch]:
-        """Search Context chunks with SQLite FTS.
+        """Search Context chunks with PostgreSQL full-text search.
 
         Args:
             recall: Validated FTS query and recall filters.

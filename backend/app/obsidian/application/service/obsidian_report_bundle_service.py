@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import replace
 
 from app.obsidian.application.graph.obsidian_graph_service import ObsidianGraphService
@@ -52,6 +51,7 @@ from app.shared.exceptions.obsidian_exceptions import (
     ObsidianNotFoundError,
     ObsidianValidationError,
 )
+from app.shared.serialization.orjson_codec import dumps_canonical_json
 from app.shared.types.extra_types import JSONObject, JSONValue
 
 
@@ -85,8 +85,9 @@ class ObsidianReportBundleService:
         Returns:
             Result produced by upsert.
         """
-        async with self._index_maintenance_coordinator.write_operation(
-            "obsidian_report_bundle"
+        async with self._index_maintenance_coordinator.operation(
+            "obsidian_report_bundle",
+            wait=True,
         ):
             return await self._upsert_serialized(request)
 
@@ -486,7 +487,7 @@ class ObsidianReportBundleService:
                     storage_status="unchanged",
                     metadata_status="indexed",
                     fts_status="indexed",
-                    sqlite_graph_edge_status="indexed",
+                    graph_edge_index_status="indexed",
                     graph_projection_status="ready",
                     reindex_required=False,
                 )
@@ -499,7 +500,7 @@ class ObsidianReportBundleService:
             storage_status="unchanged",
             metadata_status="indexed",
             fts_status="indexed",
-            sqlite_graph_edge_status="indexed",
+            graph_edge_index_status="indexed",
             graph_projection_status="ready",
             reindex_required=False,
         )
@@ -580,39 +581,36 @@ class ObsidianReportBundleService:
 
 
 def _request_hash(request: ObsidianReportBundleRequest) -> str:
-    payload = {
-        "source": {
-            "title": request.source.title,
-            "body": request.source.body,
-            "alexandria_type": request.source.alexandria_type.value,
-            "note_id": request.source.note_id,
-            "path": request.source.relative_path,
-            "tags": list(request.source.tags),
-            "status": request.source.status,
-            "project": request.source.project,
-            "source": request.source.source,
-            "frontmatter": request.source.frontmatter,
-            "expected_content_hash": request.source.expected_content_hash,
-        },
-        "graph_owners": [
-            {"path": owner.path, "relation": owner.relation.value}
-            for owner in request.graph_owners
-        ],
-        "reindex": request.reindex,
-        "verify": {
-            "index_status": request.verify.index_status,
-            "incoming_edges": request.verify.incoming_edges,
-            "duplicates": request.verify.duplicates,
-        },
+    tags: list[JSONValue] = list(request.source.tags)
+    source_payload: JSONObject = {
+        "title": request.source.title,
+        "body": request.source.body,
+        "alexandria_type": request.source.alexandria_type.value,
+        "note_id": request.source.note_id,
+        "path": request.source.relative_path,
+        "tags": tags,
+        "status": request.source.status,
+        "project": request.source.project,
+        "source": request.source.source,
+        "frontmatter": request.source.frontmatter,
+        "expected_content_hash": request.source.expected_content_hash,
     }
-    canonical = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        default=str,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    graph_owners: list[JSONValue] = [
+        {"path": owner.path, "relation": owner.relation.value}
+        for owner in request.graph_owners
+    ]
+    verify_payload: JSONObject = {
+        "index_status": request.verify.index_status,
+        "incoming_edges": request.verify.incoming_edges,
+        "duplicates": request.verify.duplicates,
+    }
+    payload: JSONObject = {
+        "source": source_payload,
+        "graph_owners": graph_owners,
+        "reindex": request.reindex,
+        "verify": verify_payload,
+    }
+    return hashlib.sha256(dumps_canonical_json(payload)).hexdigest()
 
 
 def _relation_field(relation: ObsidianRelationType) -> str:

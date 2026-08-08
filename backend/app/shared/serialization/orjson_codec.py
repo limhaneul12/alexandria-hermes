@@ -53,6 +53,38 @@ def dumps_pretty_json(value: JSONValue) -> bytes:
     )
 
 
+def dumps_canonical_json(value: JSONValue) -> bytes:
+    """Serialize compact JSON with deterministic key ordering.
+
+    Args:
+        value: JSON-compatible value.
+
+    Returns:
+        Canonical UTF-8 JSON bytes suitable for hashing.
+    """
+    return orjson.dumps(
+        value,
+        default=_json_default,
+        option=orjson.OPT_SORT_KEYS | orjson.OPT_UTC_Z,
+    )
+
+
+def dumps_sorted_pretty_json(value: JSONValue) -> bytes:
+    """Serialize indented JSON with deterministic key ordering.
+
+    Args:
+        value: JSON-compatible value.
+
+    Returns:
+        Stable, indented UTF-8 JSON bytes.
+    """
+    return orjson.dumps(
+        value,
+        default=_json_default,
+        option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS | orjson.OPT_UTC_Z,
+    )
+
+
 def loads_json(value: bytes | str) -> JSONValue:
     """Deserialize JSON bytes or text through the shared codec.
 

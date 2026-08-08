@@ -39,6 +39,11 @@ from app.librarian.application.skill_acquisition_runner import (
 from app.librarian.domain.contracts.skill_acquisition_contracts import (
     SkillAcquisitionArtifact,
 )
+from app.operations.application.external_api_rate_limit import (
+    ExternalApiRateLimiter,
+    ExternalApiRateLimitError,
+    NoopExternalApiRateLimiter,
+)
 from app.shared.exceptions.librarian_exceptions import (
     LibrarianSkillAcquisitionExecutionError,
     LibrarianSkillAcquisitionProviderError,
@@ -50,6 +55,11 @@ _DEFAULT_MODEL = "gpt-5.5"
 _DEFAULT_SKILL_ACQUISITION_TIMEOUT_SECONDS = 120.0
 _SKILL_ACQUISITION_TIMEOUT_CONFIG_KEY = "skill_acquisition_timeout_seconds"
 _DEFAULT_INSTRUCTIONS = """
+Research the requested capability before drafting the skill. When web search is
+available, prefer official documentation, primary repositories, standards, and
+first-party examples. Use current sources and distinguish verified behavior from
+inference.
+
 Return only strict JSON with these fields:
 title, purpose, content, summary, tags, required_tools, evidence_urls,
 evidence_items, source_summary, next_steps, risk_level, version, activate, status.
@@ -68,10 +78,10 @@ class OpenAISkillAcquisitionExecutor:
 
     def __init__(
         self,
-        *,
         provider_repo: ILibrarianProviderRepository,
         secret_repo: IProviderSecretRepository,
         openai_client_builder: OpenAIClientBuilder = build_openai_client,
+        rate_limiter: ExternalApiRateLimiter | None = None,
     ) -> None:
         """Initialize provider-backed skill-acquisition executor.
 
@@ -84,6 +94,7 @@ class OpenAISkillAcquisitionExecutor:
         self.secret_repo = secret_repo
         self._codex_config_builder = OpenAICodexClientConfigBuilder(secret_repo)
         self.openai_client_builder = openai_client_builder
+        self._rate_limiter = rate_limiter or NoopExternalApiRateLimiter()
 
     async def acquire_skill(
         self,
@@ -111,6 +122,10 @@ class OpenAISkillAcquisitionExecutor:
         instructions = _acquisition_instructions()
         timeout_seconds = _skill_acquisition_timeout_seconds(provider)
         try:
+            await self._rate_limiter.acquire(
+                _provider_scope(provider_type),
+                f"skill-acquisition:{provider.id}",
+            )
             with anyio.fail_after(timeout_seconds):
                 if provider_type is ProviderType.OPENAI_CODEX:
                     summary = await asyncify(
@@ -131,6 +146,7 @@ class OpenAISkillAcquisitionExecutor:
                         model,
                         request.prompt,
                         instructions,
+                        enable_web_search=True,
                     )
         except TimeoutError as error:
             _log_provider_timeout(
@@ -141,7 +157,7 @@ class OpenAISkillAcquisitionExecutor:
             raise LibrarianSkillAcquisitionExecutionError(
                 "Skill acquisition execution timed out"
             ) from error
-        except OpenAIError as error:
+        except (ExternalApiRateLimitError, OpenAIError) as error:
             _log_provider_execution_failure(
                 provider_id=provider.id,
                 provider_type=provider_type,
@@ -219,6 +235,10 @@ def _parse_provider_type(provider: LibrarianProvider) -> ProviderType:
     return provider_type
 
 
+def _provider_scope(provider_type: ProviderType) -> str:
+    return provider_type.value
+
+
 def _parse_auth_type(provider: LibrarianProvider) -> AuthType:
     try:
         auth_type = parse_auth_type(provider.auth_type)
@@ -272,7 +292,7 @@ def _log_provider_execution_failure(
     *,
     provider_id: str,
     provider_type: ProviderType | None,
-    error: OpenAIError,
+    error: Exception,
 ) -> None:
     logger.warning(
         "Skill acquisition provider execution failed",

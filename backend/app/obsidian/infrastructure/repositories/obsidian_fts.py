@@ -1,4 +1,4 @@
-"""SQLite FTS helpers for Obsidian vault search."""
+"""PostgreSQL full-text helpers for Obsidian vault search."""
 
 from __future__ import annotations
 
@@ -8,75 +8,17 @@ from types import MappingProxyType
 from typing import cast
 
 from app.obsidian.domain.event_enum.obsidian_enums import AlexandriaNoteType
-from app.shared.utils.text_metrics import extract_word_tokens
-from sqlalchemy import (
-    Select,
-    bindparam,
-    column,
-    delete,
-    exists,
-    func,
-    select,
-    table,
-    text,
+from app.obsidian.infrastructure.models.obsidian_index_models import (
+    ObsidianChunkORM,
+    ObsidianFileORM,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.dml import Delete
+from app.shared.utils.text_metrics import extract_word_tokens
+from sqlalchemy import Select, bindparam, cast as sql_cast, func, literal_column, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql.elements import ColumnElement
 
 MAX_FTS_TOKEN_COUNT = 32
 MAX_FTS_TOKEN_LENGTH = 64
-OBSIDIAN_FTS_COLUMN_WEIGHTS = (
-    0.0,
-    0.0,
-    8.0,
-    1.0,
-    5.0,
-    0.5,
-    1.5,
-    0.25,
-    2.0,
-    1.0,
-)
-
-OBSIDIAN_CHUNK_FTS_SQL = """
-CREATE VIRTUAL TABLE IF NOT EXISTS obsidian_chunk_fts USING fts5(
-    chunk_id UNINDEXED,
-    note_id UNINDEXED,
-    title,
-    body,
-    heading_path,
-    alexandria_type,
-    project,
-    status,
-    tags,
-    relative_path,
-    tokenize='porter'
-);
-"""
-
-OBSIDIAN_CHUNK_FTS_TABLE = table(
-    "obsidian_chunk_fts",
-    column("chunk_id"),
-    column("note_id"),
-    column("title"),
-    column("body"),
-    column("heading_path"),
-    column("alexandria_type"),
-    column("project"),
-    column("status"),
-    column("tags"),
-    column("relative_path"),
-)
-
-OBSIDIAN_FILES_TABLE = table(
-    "obsidian_files",
-    column("note_id"),
-    column("index_status"),
-    column("project"),
-    column("tags"),
-    column("frontmatter_json"),
-)
 
 type ObsidianFtsRow = tuple[str, str, float]
 type ObsidianFtsStatement = Select[ObsidianFtsRow]
@@ -85,61 +27,18 @@ type ObsidianFtsParameter = str | int | list[str]
 
 @dataclass(frozen=True, slots=True)
 class ObsidianFtsQuery:
-    """SQL statement and parameters for one Obsidian FTS query."""
+    """SQL statement and parameters for one Obsidian PostgreSQL FTS query."""
 
     statement: ObsidianFtsStatement
     parameters: Mapping[str, ObsidianFtsParameter]
 
     def __post_init__(self) -> None:
         """Freeze SQL bind parameters after query construction."""
-        object.__setattr__(
-            self,
-            "parameters",
-            MappingProxyType(dict(self.parameters)),
-        )
-
-
-def normalize_fts_query(raw_query: str) -> str | None:
-    """Normalize untrusted text into a safe FTS5 prefix query.
-
-    Args:
-        raw_query: Raw user query text.
-
-    Returns:
-        Safe FTS5 query string, or None when no searchable terms remain.
-    """
-    tokens = extract_word_tokens(
-        raw_query.strip(),
-        max_tokens=MAX_FTS_TOKEN_COUNT,
-        max_token_length=MAX_FTS_TOKEN_LENGTH,
-    )
-    if not tokens:
-        return None
-    return " ".join(f'"{token}"*' for token in tokens)
-
-
-async def ensure_obsidian_chunk_fts_table(*, session: AsyncSession) -> None:
-    """Create the Obsidian FTS table if needed.
-
-    Args:
-        session: Active SQLAlchemy session.
-    """
-    await session.execute(text(OBSIDIAN_CHUNK_FTS_SQL))
-
-
-def delete_obsidian_fts_statement() -> Delete:
-    """Build a delete statement for all FTS rows for one note.
-
-    Returns:
-        SQLAlchemy delete statement parameterized by note_id.
-    """
-    return delete(OBSIDIAN_CHUNK_FTS_TABLE).where(
-        OBSIDIAN_CHUNK_FTS_TABLE.c.note_id == bindparam("note_id")
-    )
+        object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
 
 
 def build_obsidian_fts_query(
-    query: str,
+    query_text: str,
     *,
     limit: int,
     alexandria_type: AlexandriaNoteType | None = None,
@@ -150,41 +49,65 @@ def build_obsidian_fts_query(
     project: str | None = None,
     tags: Sequence[str] | None = None,
 ) -> ObsidianFtsQuery | None:
-    """Build a safe Obsidian FTS query from user input.
+    """Build a bound PostgreSQL full-text query from validated search input.
 
     Args:
-        query: User query text.
-        limit: Maximum result count.
+        query_text: User search text.
+        limit: Maximum number of ranked chunk matches.
         alexandria_type: Optional note type filter.
-        excluded_alexandria_types: Optional note types to omit.
-        excluded_statuses: Optional lifecycle statuses to omit.
-        included_statuses: Optional lifecycle statuses to include exclusively.
-        excluded_path_prefixes: Optional relative path prefixes to omit.
+        excluded_alexandria_types: Note types to exclude.
+        excluded_statuses: Note statuses to exclude.
+        included_statuses: Note statuses to include.
+        excluded_path_prefixes: Vault path prefixes to exclude.
         project: Optional project filter.
         tags: Optional required tags.
 
     Returns:
-        SQL statement bundle, or None when query has no searchable terms.
+        Bound PostgreSQL FTS query, or None when no searchable tokens remain.
     """
-    normalized = normalize_fts_query(query)
-    if normalized is None:
+    tokens = extract_word_tokens(
+        query_text.strip(),
+        max_tokens=MAX_FTS_TOKEN_COUNT,
+        max_token_length=MAX_FTS_TOKEN_LENGTH,
+    )
+    if not tokens:
         return None
-    fts_table = OBSIDIAN_CHUNK_FTS_TABLE
-    fts_match_target = fts_table.table_valued()
+    normalized = " & ".join(f"{token}:*" for token in tokens)
+    config = literal_column("'simple'")
+    empty_text = literal_column("''")
+    separator = literal_column("' '")
+    query = func.to_tsquery(config, bindparam("query"))
+    chunk_document = func.to_tsvector(
+        config,
+        func.coalesce(ObsidianChunkORM.heading_path, empty_text)
+        + separator
+        + ObsidianChunkORM.text,
+    )
+    note_document = func.to_tsvector(
+        config,
+        ObsidianFileORM.title
+        + separator
+        + ObsidianFileORM.body
+        + separator
+        + func.coalesce(ObsidianFileORM.project, empty_text)
+        + separator
+        + ObsidianFileORM.relative_path,
+    )
     rank = cast(
         ColumnElement[float],
-        func.bm25(
-            fts_match_target,
-            *OBSIDIAN_FTS_COLUMN_WEIGHTS,
+        (
+            func.ts_rank_cd(chunk_document, query)
+            + (func.ts_rank_cd(note_document, query) * 0.5)
         ).label("rank"),
     )
-    statement = select(fts_table.c.chunk_id, fts_table.c.note_id, rank).where(
-        fts_match_target.op("MATCH")(bindparam("query"))
+    statement = (
+        select(ObsidianChunkORM.id, ObsidianChunkORM.note_id, rank)
+        .join(ObsidianFileORM, ObsidianFileORM.note_id == ObsidianChunkORM.note_id)
+        .where(
+            ObsidianFileORM.index_status == bindparam("indexed_status"),
+            chunk_document.op("@@")(query) | note_document.op("@@")(query),
+        )
     )
-    statement = statement.join(
-        OBSIDIAN_FILES_TABLE,
-        fts_table.c.note_id == OBSIDIAN_FILES_TABLE.c.note_id,
-    ).where(OBSIDIAN_FILES_TABLE.c.index_status == bindparam("indexed_status"))
     parameters: dict[str, ObsidianFtsParameter] = {
         "query": normalized,
         "limit": limit,
@@ -192,12 +115,12 @@ def build_obsidian_fts_query(
     }
     if alexandria_type is not None:
         statement = statement.where(
-            fts_table.c.alexandria_type == bindparam("alexandria_type")
+            ObsidianFileORM.alexandria_type == bindparam("alexandria_type")
         )
         parameters["alexandria_type"] = alexandria_type.value
     if excluded_alexandria_types:
         statement = statement.where(
-            fts_table.c.alexandria_type.not_in(
+            ObsidianFileORM.alexandria_type.not_in(
                 bindparam("excluded_alexandria_types", expanding=True)
             )
         )
@@ -206,7 +129,7 @@ def build_obsidian_fts_query(
         ]
     if excluded_statuses:
         statement = statement.where(
-            func.lower(fts_table.c.status).not_in(
+            func.lower(ObsidianFileORM.status).not_in(
                 bindparam("excluded_statuses", expanding=True)
             )
         )
@@ -215,7 +138,7 @@ def build_obsidian_fts_query(
         ]
     if included_statuses:
         normalized_status = func.coalesce(
-            func.nullif(func.lower(func.trim(fts_table.c.status)), ""),
+            func.nullif(func.lower(func.trim(ObsidianFileORM.status)), ""),
             "active",
         )
         statement = statement.where(
@@ -228,30 +151,24 @@ def build_obsidian_fts_query(
         for index, prefix in enumerate(excluded_path_prefixes):
             parameter_name = f"excluded_path_prefix_{index}"
             statement = statement.where(
-                ~fts_table.c.relative_path.like(
+                ~ObsidianFileORM.relative_path.like(
                     bindparam(parameter_name),
                     escape="\\",
                 )
             )
             parameters[parameter_name] = f"{_escape_like_pattern(prefix)}%"
     if project is not None:
-        statement = statement.where(fts_table.c.project == bindparam("project"))
+        statement = statement.where(ObsidianFileORM.project == bindparam("project"))
         parameters["project"] = project
     if tags:
+        tags_jsonb = sql_cast(ObsidianFileORM.tags, JSONB)
         for index, tag in enumerate(tags):
             parameter_name = f"required_tag_{index}"
-            tag_values = func.json_each(OBSIDIAN_FILES_TABLE.c.tags).table_valued(
-                "value"
-            )
             statement = statement.where(
-                exists(
-                    select(1)
-                    .select_from(tag_values)
-                    .where(tag_values.c.value == bindparam(parameter_name))
-                )
+                tags_jsonb.contains(bindparam(parameter_name, type_=JSONB))
             )
-            parameters[parameter_name] = tag
-    statement = statement.order_by(rank.asc()).limit(bindparam("limit"))
+            parameters[parameter_name] = [tag]
+    statement = statement.order_by(rank.desc()).limit(bindparam("limit"))
     return ObsidianFtsQuery(
         statement=cast(ObsidianFtsStatement, statement),
         parameters=parameters,

@@ -124,7 +124,7 @@ class ObsidianVaultLifecycleService:
         """Create the vault lifecycle service.
 
         Args:
-            repository: Rebuildable SQLite index repository.
+            repository: Rebuildable PostgreSQL index repository.
             vault_config_store: Runtime vault location provider.
             save_note: Canonical note save callback.
             read_note_by_path: Canonical note read callback.

@@ -185,24 +185,6 @@ async def alexandria_apply_memory_reconciliation(
     )
 
 
-async def alexandria_get_memory_reconciliation_result(
-    client: AlexandriaApiClient,
-    reconciliation_id: str,
-) -> JSONValue:
-    """Read one persisted reconciliation execution result.
-
-    Args:
-        client: Client.
-        reconciliation_id: Reconciliation id.
-
-    Returns:
-        JSONValue: Operation result.
-    """
-    return await client.get(
-        f"/memory/reconciliation/results/{_path_segment(reconciliation_id)}"
-    )
-
-
 async def alexandria_list_memory_conflicts(
     client: AlexandriaApiClient,
     *,
@@ -240,25 +222,6 @@ async def alexandria_get_memory_conflict(
     """
     return await client.get(
         f"/memory/reconciliation/conflicts/{_path_segment(conflict_set_id)}"
-    )
-
-
-async def alexandria_mark_memory_conflict_reviewing(
-    client: AlexandriaApiClient,
-    conflict_set_id: str,
-) -> JSONValue:
-    """Mark one open memory conflict as under review.
-
-    Args:
-        client: Client.
-        conflict_set_id: Conflict set id.
-
-    Returns:
-        JSONValue: Operation result.
-    """
-    return await client.post(
-        f"/memory/reconciliation/conflicts/{_path_segment(conflict_set_id)}/reviewing",
-        {},
     )
 
 

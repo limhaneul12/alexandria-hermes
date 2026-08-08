@@ -254,17 +254,16 @@ class ContextFrontmatterBoundary(BaseModel):
         nested = self.provenance
         if nested is None:
             return self
-        for field_name in (
-            "source_actor_id",
-            "source_actor_type",
-            "source_run_id",
-            "external_run_id",
-            "artifact_refs",
-            "evidence_refs",
-            "confidence",
-        ):
-            flat_value = getattr(self, field_name)
-            nested_value = getattr(nested, field_name)
+        provenance_pairs = (
+            ("source_actor_id", self.source_actor_id, nested.source_actor_id),
+            ("source_actor_type", self.source_actor_type, nested.source_actor_type),
+            ("source_run_id", self.source_run_id, nested.source_run_id),
+            ("external_run_id", self.external_run_id, nested.external_run_id),
+            ("artifact_refs", self.artifact_refs, nested.artifact_refs),
+            ("evidence_refs", self.evidence_refs, nested.evidence_refs),
+            ("confidence", self.confidence, nested.confidence),
+        )
+        for field_name, flat_value, nested_value in provenance_pairs:
             if flat_value not in (None, ()) and flat_value != nested_value:
                 raise ValueError(
                     f"conflicting flat and nested provenance field: {field_name}"

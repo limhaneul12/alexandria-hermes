@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from hashlib import sha256
 
-from app.operations.application.recovery_plan_source_policy import (
-    _quarantine_artifacts,
-)
 from app.operations.domain.entities.operational_readiness import (
     OperationalReadinessSnapshot,
 )
@@ -21,20 +17,21 @@ from app.operations.domain.event_enum.operational_readiness_enums import (
 
 
 def _default_idempotency_key(
-    *, database_path: str | None, trigger: str, actor: str
+    *,
+    trigger: str,
+    actor: str,
 ) -> str:
-    seed = f"{database_path or 'non-sqlite'}:{trigger}:{actor}"
+    seed = f"postgresql:{trigger}:{actor}"
     return sha256(seed.encode("utf-8")).hexdigest()[:24]
 
 
 def _blocked_reasons(
     readiness: OperationalReadinessSnapshot,
     source_snapshot: RecoverySourceSnapshot,
-    database_path: str | None,
 ) -> list[str]:
     reasons: list[str] = []
-    if database_path is None:
-        reasons.append("sqlite_database_path_unavailable")
+    if not readiness.database.reachable:
+        reasons.append("postgresql_server_recovery_required")
     if source_snapshot.access_error is not None:
         reasons.append(source_snapshot.access_error)
     if not readiness.vault.exists:
@@ -43,17 +40,6 @@ def _blocked_reasons(
         reasons.append("alexandria_root_not_found")
     if source_snapshot.managed_markdown_count == 0:
         reasons.append("managed_markdown_not_found")
-    if source_snapshot.disk_free_bytes is not None and database_path is not None:
-        existing_size = sum(
-            artifact.size_bytes or 0
-            for artifact in _quarantine_artifacts(
-                database_path=database_path,
-                run_id="space-check",
-                created_at=datetime.now(UTC),
-            )
-        )
-        if source_snapshot.disk_free_bytes < max(existing_size * 2, 1):
-            reasons.append("insufficient_disk_space")
     return reasons
 
 
@@ -68,13 +54,17 @@ def _plan_status(
     return readiness.status
 
 
-def _diagnosis(readiness: OperationalReadinessSnapshot) -> list[str]:
-    if readiness.database.corruption_detected:
-        return ["SQLITE_CORRUPTION_DETECTED"]
+def _diagnosis(
+    readiness: OperationalReadinessSnapshot,
+) -> list[str]:
+    if not readiness.database.reachable:
+        return ["POSTGRESQL_DATABASE_UNREACHABLE"]
     return list(readiness.warnings)
 
 
-def _steps(readiness: OperationalReadinessSnapshot) -> list[RecoveryPlanStep]:
+def _steps(
+    readiness: OperationalReadinessSnapshot,
+) -> list[RecoveryPlanStep]:
     if _reconciliation_only_issue(list(readiness.warnings)):
         return [
             RecoveryPlanStep(
@@ -83,19 +73,43 @@ def _steps(readiness: OperationalReadinessSnapshot) -> list[RecoveryPlanStep]:
                 False,
             )
         ]
-    return [
-        RecoveryPlanStep("snapshot_sources", "Snapshot source vault metadata", False),
-        RecoveryPlanStep("dispose_connections", "Dispose database connections", True),
-        RecoveryPlanStep(
-            "quarantine_sqlite_files", "Move SQLite files to quarantine", True
-        ),
-        RecoveryPlanStep(
-            "rebuild_database_schema", "Rebuild migration-managed schema", True
-        ),
-        RecoveryPlanStep("reindex_vault", "Rebuild Obsidian index cache", True),
-        RecoveryPlanStep("reindex_embeddings", "Rebuild retrieval embeddings", True),
-        RecoveryPlanStep("verify_readiness", "Verify operational readiness", False),
+    if not readiness.database.reachable:
+        return [
+            RecoveryPlanStep(
+                "inspect_postgresql_backup_restore",
+                "Inspect PostgreSQL server backup and restore state",
+                False,
+            )
+        ]
+    warning_set = set(readiness.warnings)
+    steps = [
+        RecoveryPlanStep("snapshot_sources", "Snapshot source vault metadata", False)
     ]
+    if {
+        "obsidian_stale_notes_present",
+        "obsidian_error_notes_present",
+        "rag_fts_not_healthy",
+    } & warning_set:
+        steps.append(
+            RecoveryPlanStep(
+                "reindex_vault", "Rebuild Obsidian and lexical indexes", True
+            )
+        )
+    if {
+        "rag_vector_not_healthy",
+        "rag_embedding_reindex_required",
+        "rag_embedding_not_healthy",
+        "rag_default_strategy_not_hybrid",
+        "rag_status_warnings_present",
+    } & warning_set:
+        steps.append(
+            RecoveryPlanStep("reindex_embeddings", "Rebuild retrieval embeddings", True)
+        )
+    if len(steps) > 1:
+        steps.append(
+            RecoveryPlanStep("verify_readiness", "Verify operational readiness", False)
+        )
+    return steps
 
 
 def _next_actions(
@@ -104,6 +118,8 @@ def _next_actions(
     warnings: list[str],
 ) -> list[str]:
     if blocked_reasons:
+        if "postgresql_server_recovery_required" in blocked_reasons:
+            return ["restore_postgresql_from_backup"]
         if {
             "vault_not_found",
             "alexandria_root_not_found",

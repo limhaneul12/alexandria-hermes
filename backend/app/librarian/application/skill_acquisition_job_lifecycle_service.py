@@ -84,7 +84,7 @@ class SkillAcquisitionJobLifecycleService:
             result_summary: Sanitized result summary.
             evidence_urls: Optional source URLs.
             skill_id: Deprecated persisted skill identifier; normally None after
-                SQLite skill CRUD removal.
+                legacy relational skill CRUD removal.
             context_id: Optional persisted resume context identifier.
             skill_note_path: Optional Obsidian note path for the saved skill.
             stage: Observable completion-loop stage.

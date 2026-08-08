@@ -23,7 +23,7 @@ NOTE_SUFFIX_GLOB = f"*{NOTE_SUFFIX}"
 
 
 class ObsidianVaultInventoryService:
-    """Inventory and search managed Markdown paths without using the SQLite index."""
+    """Inventory and search managed Markdown paths without using the PostgreSQL index."""
 
     def __init__(self, *, vault_config_store: ObsidianVaultConfigStore) -> None:
         """Create the inventory service.

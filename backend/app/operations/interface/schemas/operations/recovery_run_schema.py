@@ -1,4 +1,4 @@
-"""HTTP schemas for recovery run execution."""
+"""HTTP schemas for PostgreSQL-native recovery run execution."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from pydantic import Field
 
 from app.operations.application.recovery_plan_contracts import RecoveryPlanRequest
 from app.operations.domain.entities.recovery_run import (
-    RecoveryQuarantineInventoryItem,
     RecoveryRun,
     RecoveryRunStepResult,
 )
@@ -17,7 +16,6 @@ from app.operations.domain.event_enum.operational_recovery_enums import (
 from app.operations.interface.schemas.operations.recovery_plan_schema import (
     RecoveryPlanRequestSchema,
     RecoveryPlanStepResponse,
-    RecoveryQuarantineArtifactPlanResponse,
     RecoverySourceSnapshotResponse,
 )
 from app.shared.schemas.common_schemas import StrictSchemaModel
@@ -32,7 +30,7 @@ class RecoveryRunRequestSchema(RecoveryPlanRequestSchema):
         """Convert schema to application request contract.
 
         Returns:
-            Recovery plan/start request contract.
+            Application recovery-plan request contract.
         """
         return RecoveryPlanRequest(
             trigger=self.trigger,
@@ -52,7 +50,7 @@ class RecoveryRunRetryRequestSchema(RecoveryRunRequestSchema):
         """Convert schema to application retry contract.
 
         Returns:
-            Recovery retry request contract.
+            Application retry request contract with no parent override.
         """
         return RecoveryPlanRequest(
             trigger=self.trigger,
@@ -78,13 +76,13 @@ class RecoveryRunStepResultResponse(StrictSchemaModel):
         cls,
         step: RecoveryRunStepResult,
     ) -> RecoveryRunStepResultResponse:
-        """Create response schema from read model.
+        """Create response schema from a recovery step result.
 
         Args:
-            step: Recovery step execution result.
+            step: Recovery step domain result.
 
         Returns:
-            Step result response schema.
+            Serialized recovery step response.
         """
         return cls(
             code=step.code,
@@ -112,9 +110,6 @@ class RecoveryRunResponse(StrictSchemaModel):
     finished_at: AwareTimestamp | None
     source_snapshot: RecoverySourceSnapshotResponse
     diagnosis: list[str] = Field(default_factory=list)
-    quarantine_artifacts: list[RecoveryQuarantineArtifactPlanResponse] = Field(
-        default_factory=list
-    )
     planned_steps: list[RecoveryPlanStepResponse] = Field(default_factory=list)
     step_results: list[RecoveryRunStepResultResponse] = Field(default_factory=list)
     rebuild_results: JSONObject = Field(default_factory=dict)
@@ -126,13 +121,13 @@ class RecoveryRunResponse(StrictSchemaModel):
 
     @classmethod
     def from_entity(cls, run: RecoveryRun) -> RecoveryRunResponse:
-        """Create response schema from read model.
+        """Create response schema from a recovery run.
 
         Args:
-            run: Recovery run read model.
+            run: Recovery run domain entity.
 
         Returns:
-            Recovery run response schema.
+            Serialized recovery run response.
         """
         return cls(
             id=run.id,
@@ -149,10 +144,6 @@ class RecoveryRunResponse(StrictSchemaModel):
                 run.source_snapshot
             ),
             diagnosis=list(run.diagnosis),
-            quarantine_artifacts=[
-                RecoveryQuarantineArtifactPlanResponse.from_entity(artifact)
-                for artifact in run.quarantine_artifacts
-            ],
             planned_steps=[
                 RecoveryPlanStepResponse.from_entity(step) for step in run.planned_steps
             ],
@@ -167,63 +158,3 @@ class RecoveryRunResponse(StrictSchemaModel):
             next_actions=list(run.next_actions),
             manifest_path=run.manifest_path,
         )
-
-
-class RecoveryQuarantineInventoryItemResponse(StrictSchemaModel):
-    """One quarantined recovery artifact inventory item."""
-
-    run_id: str
-    run_status: RecoveryRunStatus
-    source_path: str
-    quarantine_path: str
-    exists: bool
-    size_bytes: int | None
-    sha256: str | None
-
-    @classmethod
-    def from_entity(
-        cls,
-        item: RecoveryQuarantineInventoryItem,
-    ) -> RecoveryQuarantineInventoryItemResponse:
-        """Create response schema from read model.
-
-        Args:
-            item: Quarantine inventory item.
-
-        Returns:
-            Quarantine inventory item response schema.
-        """
-        return cls(
-            run_id=item.run_id,
-            run_status=item.run_status,
-            source_path=item.source_path,
-            quarantine_path=item.quarantine_path,
-            exists=item.exists,
-            size_bytes=item.size_bytes,
-            sha256=item.sha256,
-        )
-
-
-class RecoveryQuarantineInventoryResponse(StrictSchemaModel):
-    """Quarantine inventory response."""
-
-    items: list[RecoveryQuarantineInventoryItemResponse] = Field(default_factory=list)
-    total: int
-
-    @classmethod
-    def from_entities(
-        cls,
-        items: list[RecoveryQuarantineInventoryItem],
-    ) -> RecoveryQuarantineInventoryResponse:
-        """Create response schema from inventory read models.
-
-        Args:
-            items: Quarantine inventory items.
-
-        Returns:
-            Quarantine inventory response schema.
-        """
-        response_items = [
-            RecoveryQuarantineInventoryItemResponse.from_entity(item) for item in items
-        ]
-        return cls(items=response_items, total=len(response_items))

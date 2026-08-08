@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Awaitable, Callable
+from inspect import isawaitable
+from typing import Protocol, cast
 
 from app.memory.domain.entities.context_read_models import ContextReindexResult
 from app.obsidian.domain.contracts.obsidian_contracts import ObsidianSearchQuery
@@ -82,3 +84,28 @@ class ObsidianRecoveryService(ObsidianReadinessService, Protocol):
         Returns:
             Indexed Obsidian note.
         """
+
+
+type ContextRecoveryServiceFactory = Callable[
+    [], ContextRecoveryService | Awaitable[ContextRecoveryService]
+]
+type ObsidianRecoveryServiceFactory = Callable[
+    [], ObsidianRecoveryService | Awaitable[ObsidianRecoveryService]
+]
+
+
+async def resolve_recovery_service[RecoveryServiceT](
+    factory: Callable[[], RecoveryServiceT | Awaitable[RecoveryServiceT]],
+) -> RecoveryServiceT:
+    """Resolve a synchronous or asynchronous recovery service provider.
+
+    Args:
+        factory: Provider that constructs the service in the active DB session.
+
+    Returns:
+        Resolved recovery service instance.
+    """
+    candidate = factory()
+    if isawaitable(candidate):
+        return await cast(Awaitable[RecoveryServiceT], candidate)
+    return candidate

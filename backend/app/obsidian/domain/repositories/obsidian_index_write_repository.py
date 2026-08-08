@@ -9,11 +9,7 @@ from app.obsidian.domain.entities.obsidian_note import ObsidianNote
 
 
 class IObsidianIndexWriteRepository(ABC):
-    """Create index tables and mutate rebuildable note index state."""
-
-    @abstractmethod
-    async def ensure_search_tables(self) -> None:
-        """Create search support tables that are not represented by ORM metadata."""
+    """Mutate rebuildable PostgreSQL note index state."""
 
     @abstractmethod
     async def upsert_note(self, payload: ObsidianNoteIndex) -> ObsidianNote:

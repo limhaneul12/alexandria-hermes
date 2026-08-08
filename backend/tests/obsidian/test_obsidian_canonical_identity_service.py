@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import anyio
@@ -32,7 +34,7 @@ def test_canonical_identity_resolves_declared_report_alias_and_exact_path(
 
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'obsidian.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -116,7 +118,7 @@ def test_canonical_identity_matches_frontmatter_not_inventory_search_fields(
 
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'obsidian.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

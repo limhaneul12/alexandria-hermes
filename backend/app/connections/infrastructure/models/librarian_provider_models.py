@@ -8,7 +8,7 @@ from app.shared.infrastructure.database import Base
 from app.shared.infrastructure.datetime_types import UTCDateTime
 from app.shared.infrastructure.identifiers import ID_LENGTH, new_uuid
 from app.shared.types.extra_types import JSONObject
-from sqlalchemy import JSON, Boolean, ForeignKey, String
+from sqlalchemy import JSON, Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -52,7 +52,7 @@ class ProviderSecretORM(Base):
         index=True,
     )
     key_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    value: Mapped[str] = mapped_column(String(2048), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
     provider: Mapped[LibrarianProviderORM] = relationship(
         "LibrarianProviderORM",
         back_populates="secrets",

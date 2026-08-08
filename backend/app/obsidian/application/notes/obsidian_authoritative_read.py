@@ -26,7 +26,7 @@ def authoritative_note_from_path(
         vault_path: Absolute Obsidian vault root.
         relative_path: Vault-relative Markdown path.
         alexandria_root: Managed Alexandria folder inside the vault.
-        indexed: Existing SQLite index row used for index status metadata.
+        indexed: Existing PostgreSQL index row used for index status metadata.
 
     Returns:
         Authoritative note body/frontmatter loaded from Markdown.

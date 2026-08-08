@@ -37,11 +37,14 @@ def _obsidian_scope_recall_clause(
     project_column: ColumnElement[str | None],
     scope_filter: ScopeIdentity,
 ) -> ColumnElement[bool]:
-    scope_column = func.upper(func.json_extract(frontmatter_column, "$.scope"))
-    workspace_id_column = func.json_extract(frontmatter_column, "$.workspace_id")
-    agent_id_column = func.json_extract(frontmatter_column, "$.agent_id")
-    user_id_column = func.json_extract(frontmatter_column, "$.user_id")
-    session_id_column = func.json_extract(frontmatter_column, "$.session_id")
+    def extract(key: str) -> ColumnElement[str | None]:
+        return func.json_extract_path_text(frontmatter_column, key)
+
+    scope_column = func.upper(extract("scope"))
+    workspace_id_column = extract("workspace_id")
+    agent_id_column = extract("agent_id")
+    user_id_column = extract("user_id")
+    session_id_column = extract("session_id")
     return scope_recall_clause(
         ScopeRecallColumns(
             scope=scope_column,

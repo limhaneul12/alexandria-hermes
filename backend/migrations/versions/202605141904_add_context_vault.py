@@ -119,28 +119,30 @@ def upgrade() -> None:
         unique=False,
     )
 
-    op.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS context_chunk_fts USING fts5(
-            chunk_id UNINDEXED,
-            context_id UNINDEXED,
-            title,
-            summary,
-            content,
-            kind,
-            project,
-            source_agent,
-            tags,
-            heading,
-            tokenize='porter'
+    if op.get_bind().dialect.name == "sqlite":
+        op.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS context_chunk_fts USING fts5(
+                chunk_id UNINDEXED,
+                context_id UNINDEXED,
+                title,
+                summary,
+                content,
+                kind,
+                project,
+                source_agent,
+                tags,
+                heading,
+                tokenize='porter'
+            )
+            """
         )
-        """
-    )
 
 
 def downgrade() -> None:
     """Drop Context Vault tables."""
-    op.execute("DROP TABLE IF EXISTS context_chunk_fts")
+    if op.get_bind().dialect.name == "sqlite":
+        op.execute("DROP TABLE IF EXISTS context_chunk_fts")
     op.drop_index(op.f("ix_context_chunks_context_id"), table_name="context_chunks")
     op.drop_table("context_chunks")
     op.drop_index(op.f("ix_contexts_source_agent"), table_name="contexts")

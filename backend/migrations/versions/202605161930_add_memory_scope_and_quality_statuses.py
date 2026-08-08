@@ -71,7 +71,10 @@ def _in_constraint(values: tuple[str, ...]) -> str:
 
 def upgrade() -> None:
     """Add recall scope columns and expand item quality statuses."""
-    with op.batch_alter_table("contexts", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "contexts",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.add_column(
             sa.Column(
                 "scope", sa.String(length=16), nullable=False, server_default="PROJECT"
@@ -101,14 +104,18 @@ def upgrade() -> None:
             "ck_contexts_visibility",
             f"visibility IN ({_in_constraint(CONTEXT_SCOPES)})",
         )
-    with op.batch_alter_table("library_items", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "library_items",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_library_items_status", type_="check")
         batch_op.create_check_constraint(
             "ck_library_items_status",
             f"status IN ({_in_constraint(NEW_ITEM_STATUSES)})",
         )
-    op.execute("DROP TABLE IF EXISTS context_chunk_fts")
-    op.execute(NEW_CONTEXT_FTS_SQL)
+    if op.get_bind().dialect.name == "sqlite":
+        op.execute("DROP TABLE IF EXISTS context_chunk_fts")
+        op.execute(NEW_CONTEXT_FTS_SQL)
 
 
 def downgrade() -> None:
@@ -119,13 +126,19 @@ def downgrade() -> None:
     op.execute(
         "UPDATE library_items SET status = 'DEPRECATED' WHERE status = 'SUPERSEDED'"
     )
-    with op.batch_alter_table("library_items", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "library_items",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_library_items_status", type_="check")
         batch_op.create_check_constraint(
             "ck_library_items_status",
             f"status IN ({_in_constraint(OLD_ITEM_STATUSES)})",
         )
-    with op.batch_alter_table("contexts", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "contexts",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_contexts_visibility", type_="check")
         batch_op.drop_constraint("ck_contexts_scope", type_="check")
         batch_op.drop_column("visibility")
@@ -134,5 +147,6 @@ def downgrade() -> None:
         batch_op.drop_column("agent_id")
         batch_op.drop_column("workspace_id")
         batch_op.drop_column("scope")
-    op.execute("DROP TABLE IF EXISTS context_chunk_fts")
-    op.execute(OLD_CONTEXT_FTS_SQL)
+    if op.get_bind().dialect.name == "sqlite":
+        op.execute("DROP TABLE IF EXISTS context_chunk_fts")
+        op.execute(OLD_CONTEXT_FTS_SQL)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -47,7 +49,7 @@ def test_conflict_service_lists_reviews_and_resolves_preserving_contexts(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'conflicts.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -84,7 +86,7 @@ def test_conflict_service_rejects_invalid_resolution_and_missing_conflict(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'invalid-conflicts.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

@@ -134,6 +134,7 @@ def test_mcp_protected_resource_metadata_uses_injected_oauth_config() -> None:
         mcp_oauth_issuer="https://auth.example.com",
         mcp_oauth_audience="https://mcp.example.com/mcp",
         mcp_oauth_jwks_url="https://auth.example.com/.well-known/jwks.json",
+        mcp_oauth_resource="https://mcp.example.com/mcp",
     )
 
     assert protected_resource_metadata(request, config) == {

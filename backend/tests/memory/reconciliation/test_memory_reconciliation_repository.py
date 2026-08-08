@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -93,7 +95,7 @@ def test_reconciliation_repository_round_trips_all_audit_records(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'reconciliation.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

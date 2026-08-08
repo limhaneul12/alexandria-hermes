@@ -15,7 +15,7 @@ from app.obsidian.domain.entities.obsidian_note import (
 
 
 class IObsidianIndexQueryRepository(ABC):
-    """Read and search the rebuildable SQLite Obsidian index."""
+    """Read and search the rebuildable PostgreSQL Obsidian index."""
 
     @abstractmethod
     async def get_by_id(self, note_id: str) -> ObsidianNote | None:
@@ -55,7 +55,7 @@ class IObsidianIndexQueryRepository(ABC):
 
     @abstractmethod
     async def search(self, query: ObsidianSearchQuery) -> list[ObsidianSearchHit]:
-        """Search indexed notes using the SQLite FTS cache.
+        """Search indexed notes using the PostgreSQL FTS index.
 
         Args:
             query: Search filters and query text.

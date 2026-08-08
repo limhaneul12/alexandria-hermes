@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 from typing import cast
 
@@ -41,7 +43,8 @@ _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
 
 
 def _database_url(path: Path) -> str:
-    return f"sqlite+aiosqlite:///{path}"
+    del path
+    return os.environ["DATABASE_URL"]
 
 
 def _context_markdown(note_id: str, title: str, body: str) -> str:

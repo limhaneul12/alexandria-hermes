@@ -59,7 +59,10 @@ def upgrade() -> None:
     Returns:
         None.
     """
-    with op.batch_alter_table("contexts", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "contexts",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_contexts_kind", type_="check")
         batch_op.create_check_constraint(
             "ck_contexts_kind",
@@ -74,7 +77,10 @@ def downgrade() -> None:
         None.
     """
     op.execute("DELETE FROM contexts WHERE kind = 'HARNESS'")
-    with op.batch_alter_table("contexts", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "contexts",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_contexts_kind", type_="check")
         batch_op.create_check_constraint(
             "ck_contexts_kind",

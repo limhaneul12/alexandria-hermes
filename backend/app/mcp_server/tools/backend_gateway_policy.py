@@ -40,7 +40,7 @@ def _path_segment(value: str) -> str:
 
 def _required_recovery_run_idempotency_key(value: str | None) -> str:
     if value is None or not value.strip():
-        raise ValueError("idempotency_key is required for alexandria_recovery_run")
+        raise ValueError("idempotency_key is required when recovery dry_run is false")
     return value.strip()
 
 

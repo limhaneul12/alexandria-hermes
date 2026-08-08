@@ -12,6 +12,9 @@ from app.memory.application.reconciliation.memory_reconciliation_readiness_servi
 )
 from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.operations.application.operational_capability_policy import capability_snapshot
+from app.operations.application.operational_readiness_cache import (
+    OperationalReadinessCache,
+)
 from app.operations.application.operational_readiness_service import (
     OperationalReadinessService,
 )
@@ -45,6 +48,9 @@ async def operational_readiness(
     obsidian_service: ObsidianService = Depends(
         Provide[ApplicationContainer.obsidian.obsidian_service]
     ),
+    readiness_cache: OperationalReadinessCache = Depends(
+        Provide[ApplicationContainer.operational_readiness_cache]
+    ),
     reconciliation_service: MemoryReconciliationReadinessService | None = Depends(
         Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
     ),
@@ -65,6 +71,7 @@ async def operational_readiness(
         context_service=context_service,
         obsidian_service=obsidian_service,
         reconciliation_service=reconciliation_service,
+        readiness_cache=readiness_cache,
     )
     snapshot = await service.snapshot()
     return OperationalReadinessSnapshotResponse.from_entity(snapshot)
@@ -89,6 +96,9 @@ async def operational_capabilities(
     obsidian_service: ObsidianService = Depends(
         Provide[ApplicationContainer.obsidian.obsidian_service]
     ),
+    readiness_cache: OperationalReadinessCache = Depends(
+        Provide[ApplicationContainer.operational_readiness_cache]
+    ),
     reconciliation_service: MemoryReconciliationReadinessService | None = Depends(
         Provide[ApplicationContainer.memory.memory_reconciliation_readiness_service]
     ),
@@ -109,6 +119,7 @@ async def operational_capabilities(
         context_service=context_service,
         obsidian_service=obsidian_service,
         reconciliation_service=reconciliation_service,
+        readiness_cache=readiness_cache,
     )
     readiness = await service.snapshot()
     return OperationalCapabilitySnapshotResponse.from_entity(

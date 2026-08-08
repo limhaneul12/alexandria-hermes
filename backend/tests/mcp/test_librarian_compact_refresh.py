@@ -15,8 +15,8 @@ from app.memory.domain.repositories.memory_compact_repository_contracts import (
 from app.memory.infrastructure.repositories.memory_compact_repository import (
     ObsidianMemoryCompactRepository,
 )
-from app.mcp_server.tools.librarian_compact_refresh import refresh_compact_payload
-from app.mcp_server.type_validate.librarian_readiness_schemas import (
+from app.mcp_server.tools.memory_steward_compact_refresh import refresh_compact_payload
+from app.mcp_server.type_validate.memory_steward_readiness_schemas import (
     CurrentCompactPayload,
     RagStatusPayload,
     ReadinessSummaryPayload,

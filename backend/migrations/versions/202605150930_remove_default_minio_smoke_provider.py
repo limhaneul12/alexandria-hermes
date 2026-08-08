@@ -16,30 +16,37 @@ down_revision: str | None = "202605141904_add_context_vault"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-LEGACY_DEFAULT_MINIO_PROVIDER_IDS = """
-    SELECT id
-    FROM librarian_providers
-    WHERE name = 'default-minio'
-      AND provider_type = 'MINIO'
-      AND auth_type = 'API_KEY'
-      AND enabled = 0
-      AND config LIKE '%localhost:9000%'
-      AND config LIKE '%alexandria-smoke%'
-"""
+
+def _legacy_default_minio_provider_ids() -> str:
+    """Build a dialect-correct legacy provider selector."""
+    is_sqlite = op.get_bind().dialect.name == "sqlite"
+    enabled_literal = "0" if is_sqlite else "FALSE"
+    config_expression = "config" if is_sqlite else "CAST(config AS TEXT)"
+    return f"""
+        SELECT id
+        FROM librarian_providers
+        WHERE name = 'default-minio'
+          AND provider_type = 'MINIO'
+          AND auth_type = 'API_KEY'
+          AND enabled = {enabled_literal}
+          AND {config_expression} LIKE '%localhost:9000%'
+          AND {config_expression} LIKE '%alexandria-smoke%'
+    """
 
 
 def upgrade() -> None:
     """Delete the legacy local MINIO smoke credential from existing dev DBs."""
+    provider_ids = _legacy_default_minio_provider_ids()
     op.execute(
         f"""
         DELETE FROM librarian_provider_secrets
-        WHERE provider_id IN ({LEGACY_DEFAULT_MINIO_PROVIDER_IDS})
+        WHERE provider_id IN ({provider_ids})
         """
     )
     op.execute(
         f"""
         DELETE FROM librarian_providers
-        WHERE id IN ({LEGACY_DEFAULT_MINIO_PROVIDER_IDS})
+        WHERE id IN ({provider_ids})
         """
     )
 

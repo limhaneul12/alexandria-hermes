@@ -51,8 +51,6 @@ class ObsidianLibrarianGraphState(TypedDict, total=False):
     completed_actions: list[str]
     transcript_path: str | None
     workflow_status: str
-    langgraph_interrupts: list[JSONObject]
-    langgraph_checkpoint_path: str
     delegate_payload: JSONObject | None
 
 

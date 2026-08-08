@@ -154,7 +154,7 @@ class ObsidianReindexResponse(StrictSchemaModel):
         """Create schema from a public composite reindex report.
 
         Args:
-            report: Combined SQLite and optional graph projection report.
+            report: Combined PostgreSQL and optional graph projection report.
 
         Returns:
             HTTP response schema with fresh graph projection evidence.
@@ -513,7 +513,7 @@ class ObsidianWritePipelineResponse(StrictSchemaModel):
     storage_status: str
     metadata_status: str
     fts_status: str
-    sqlite_graph_edge_status: str
+    graph_edge_index_status: str
     graph_projection_status: str
 
 
@@ -550,7 +550,7 @@ class ObsidianNoteWriteResponse(StrictSchemaModel):
                 storage_status=result.storage_status,
                 metadata_status=result.metadata_status,
                 fts_status=result.fts_status,
-                sqlite_graph_edge_status=result.sqlite_graph_edge_status,
+                graph_edge_index_status=result.graph_edge_index_status,
                 graph_projection_status=result.graph_projection_status,
             ),
             reindex_required=result.reindex_required,

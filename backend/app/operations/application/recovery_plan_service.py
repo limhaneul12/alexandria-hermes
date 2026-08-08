@@ -23,10 +23,7 @@ from app.operations.application.recovery_plan_policy import (
     _plan_status,
     _steps,
 )
-from app.operations.application.recovery_plan_source_policy import (
-    _quarantine_artifacts,
-    _source_snapshot,
-)
+from app.operations.application.recovery_plan_source_policy import _source_snapshot
 from app.operations.domain.entities.recovery_plan import RecoveryPlan
 from app.operations.domain.event_enum.operational_readiness_enums import (
     OperationalReadinessStatus,
@@ -80,16 +77,14 @@ class RecoveryPlanService:
         )
         readiness = await readiness_service.snapshot()
         created_at = datetime.now(UTC)
-        database_path = self._database.sqlite_path
         idempotency_key = request.idempotency_key or _default_idempotency_key(
-            database_path=database_path,
             trigger=request.trigger,
             actor=request.actor,
         )
         run_id = str(
             uuid5(
                 NAMESPACE_URL,
-                f"alexandria-hermes:recovery:{database_path}:{idempotency_key}",
+                f"alexandria-hermes:recovery:postgresql:{idempotency_key}",
             )
         )
         source_snapshot = _source_snapshot(
@@ -97,18 +92,21 @@ class RecoveryPlanService:
             alexandria_root=readiness.vault.alexandria_root,
             disk_usage_provider=disk_usage,
         )
-        quarantine_artifacts = _quarantine_artifacts(
-            database_path=database_path,
-            run_id=run_id,
-            created_at=created_at,
+        blocked_reasons = _blocked_reasons(
+            readiness,
+            source_snapshot,
         )
-        blocked_reasons = _blocked_reasons(readiness, source_snapshot, database_path)
+        steps = _steps(readiness)
         status = _plan_status(readiness, blocked_reasons)
+        has_automatic_repair = any(step.mutates_state for step in steps)
         automatic_execution_allowed = (
-            status is OperationalReadinessStatus.RECOVERY_REQUIRED
+            self._database.is_postgresql
+            and readiness.database.reachable
+            and has_automatic_repair
             and not blocked_reasons
-            and database_path is not None
         )
+        if automatic_execution_allowed:
+            status = OperationalReadinessStatus.RECOVERY_REQUIRED
         return RecoveryPlan(
             id=run_id,
             parent_run_id=request.parent_run_id,
@@ -117,15 +115,12 @@ class RecoveryPlanService:
             actor=request.actor,
             status=status,
             created_at=created_at,
-            target_database_path=database_path,
             dry_run=True,
-            deletion_performed=False,
             automatic_execution_allowed=automatic_execution_allowed,
             diagnosis=tuple(_diagnosis(readiness)),
             blocked_reasons=tuple(blocked_reasons),
             source_snapshot=source_snapshot,
-            quarantine_artifacts=tuple(quarantine_artifacts),
-            steps=tuple(_steps(readiness)),
+            steps=tuple(steps),
             estimated_reindex_scope={
                 "vault_indexed_notes": readiness.vault.indexed_notes,
                 "managed_markdown_count": source_snapshot.managed_markdown_count,

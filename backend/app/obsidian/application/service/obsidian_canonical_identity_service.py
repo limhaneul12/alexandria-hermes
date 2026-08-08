@@ -93,6 +93,7 @@ class ObsidianCanonicalIdentityService:
             ObsidianVaultInventoryRequest()
         )
         matches: list[tuple[ObsidianNote, str, tuple[str, ...]]] = []
+        family_candidates: list[ObsidianNote] = []
         for candidate in candidates:
             try:
                 note = await self._obsidian_service.read_note_by_path(
@@ -103,8 +104,19 @@ class ObsidianCanonicalIdentityService:
             family = _text(note.frontmatter.get("report_family")) or _text(
                 note.frontmatter.get("report")
             )
+            if not family:
+                continue
             aliases = _aliases(note)
-            if not family or not _identity_matches(
+            if _family_matches(
+                note,
+                project=project,
+                family=family,
+                requested_report=report,
+                entity=entity,
+                aliases=aliases,
+            ):
+                family_candidates.append(note)
+            if not _identity_matches(
                 note,
                 project=project,
                 family=family,
@@ -133,6 +145,7 @@ class ObsidianCanonicalIdentityService:
             parsed_date=parsed_date,
             entity=entity,
             edition=edition,
+            family_candidates=family_candidates,
         )
         if len(matches) > 1:
             return ObsidianCanonicalIdentityResult(
@@ -167,7 +180,15 @@ class ObsidianCanonicalIdentityService:
         parsed_date: calendar_date,
         entity: str,
         edition: str | None,
+        family_candidates: list[ObsidianNote],
     ) -> str:
+        inherited_path = _latest_inherited_path(
+            family_candidates,
+            target_date=parsed_date,
+        )
+        if inherited_path is not None:
+            return self._canonical_path(inherited_path)
+
         title_parts = [project, report, entity, parsed_date.isoformat()]
         if edition:
             title_parts.append(edition)
@@ -187,6 +208,96 @@ class ObsidianCanonicalIdentityService:
         return self._canonical_path(relative)
 
 
+def _family_matches(
+    note: ObsidianNote,
+    *,
+    project: str,
+    family: str,
+    requested_report: str,
+    entity: str,
+    aliases: tuple[str, ...],
+) -> bool:
+    note_project = note.project or _text(note.frontmatter.get("project"))
+    note_entity = _text(note.frontmatter.get("entity"))
+    report_names = {_normalized(family), *(_normalized(alias) for alias in aliases)}
+    return (
+        _normalized(note_project) == _normalized(project)
+        and _normalized(note_entity) == _normalized(entity)
+        and _normalized(requested_report) in report_names
+    )
+
+
+def _latest_inherited_path(
+    candidates: list[ObsidianNote],
+    *,
+    target_date: calendar_date,
+) -> str | None:
+    dated_candidates: list[tuple[calendar_date, str]] = []
+    for note in candidates:
+        source_date_text = _text(note.frontmatter.get("date"))
+        if source_date_text is None:
+            continue
+        try:
+            source_date = calendar_date.fromisoformat(source_date_text)
+        except ValueError:
+            continue
+        if source_date >= target_date:
+            continue
+        rendered_path = _render_inherited_path(
+            note.relative_path,
+            source_date=source_date,
+            target_date=target_date,
+        )
+        if rendered_path is not None:
+            dated_candidates.append((source_date, rendered_path))
+
+    if not dated_candidates:
+        return None
+    latest_date = max(item[0] for item in dated_candidates)
+    latest_paths = {
+        path for source_date, path in dated_candidates if source_date == latest_date
+    }
+    if len(latest_paths) != 1:
+        return None
+    return latest_paths.pop()
+
+
+def _render_inherited_path(
+    relative_path: str,
+    *,
+    source_date: calendar_date,
+    target_date: calendar_date,
+) -> str | None:
+    parts = relative_path.split("/")
+    if not parts:
+        return None
+
+    source_iso = source_date.isoformat()
+    target_iso = target_date.isoformat()
+    filename = parts[-1]
+    if filename.count(source_iso) != 1:
+        return None
+    parts[-1] = filename.replace(source_iso, target_iso, 1)
+
+    source_year = f"{source_date.year:04d}"
+    source_month = f"{source_date.month:02d}"
+    target_year = f"{target_date.year:04d}"
+    target_month = f"{target_date.month:02d}"
+    period_updated = False
+    for index in range(len(parts) - 2):
+        if parts[index] == source_year and parts[index + 1] == source_month:
+            parts[index] = target_year
+            parts[index + 1] = target_month
+            period_updated = True
+            break
+
+    if not period_updated and (
+        source_date.year != target_date.year or source_date.month != target_date.month
+    ):
+        return None
+    return "/".join(parts)
+
+
 def _identity_matches(
     note: ObsidianNote,
     *,
@@ -198,16 +309,18 @@ def _identity_matches(
     edition: str | None,
     aliases: tuple[str, ...],
 ) -> bool:
-    note_project = note.project or _text(note.frontmatter.get("project"))
     note_date = _text(note.frontmatter.get("date"))
-    note_entity = _text(note.frontmatter.get("entity"))
     note_edition = _text(note.frontmatter.get("edition"))
-    report_names = {_normalized(family), *(_normalized(alias) for alias in aliases)}
     return (
-        _normalized(note_project) == _normalized(project)
+        _family_matches(
+            note,
+            project=project,
+            family=family,
+            requested_report=requested_report,
+            entity=entity,
+            aliases=aliases,
+        )
         and note_date == date
-        and _normalized(note_entity) == _normalized(entity)
-        and _normalized(requested_report) in report_names
         and (edition is None or _normalized(note_edition) == _normalized(edition))
     )
 

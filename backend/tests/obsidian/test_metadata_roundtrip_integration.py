@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import anyio
@@ -34,7 +36,7 @@ def test_dogfood_metadata_round_trips_through_markdown_index_and_search(
 
     async def scenario() -> tuple[str, dict[str, object], dict[str, object], int, int]:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'metadata.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -88,13 +89,13 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from tests.shared.provider_overrides import override_library_provider
 
 _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
 
 
 def _database_url(path: Path) -> str:
-    return f"sqlite+aiosqlite:///{path}"
+    del path
+    return os.environ["DATABASE_URL"]
 
 
 async def _service(
@@ -471,6 +472,76 @@ def test_obsidian_search_filters_stale_notes_before_fts_limit(
         return [hit.note.note_id for hit in hits]
 
     assert anyio.run(scenario) == ["ctx_durable_crowdout"]
+
+
+def test_obsidian_fts_search_does_not_select_embedding_column(
+    tmp_path: Path,
+) -> None:
+    """FTS search should hydrate only chunk fields required for its response."""
+
+    async def scenario() -> tuple[list[str], list[str], tuple[str, ...]]:
+        database, session, service = await _service(tmp_path)
+        statements: list[str] = []
+
+        def capture_statement(
+            _connection: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            statements.append(statement)
+
+        try:
+            note_id = "ctx_fts_projection"
+            await service.save_note(
+                ObsidianSaveNote(
+                    title="FTS projection",
+                    body="# FTS projection\n\nprojectionguardtoken",
+                    alexandria_type=AlexandriaNoteType.CONTEXT,
+                    note_id=note_id,
+                    frontmatter={"scope": "GLOBAL"},
+                )
+            )
+            event.listen(
+                database.engine.sync_engine,
+                "before_cursor_execute",
+                capture_statement,
+            )
+            hits = await service.search(
+                ObsidianSearchQuery(query="projectionguardtoken", limit=1),
+                refresh=False,
+            )
+        finally:
+            event.remove(
+                database.engine.sync_engine,
+                "before_cursor_execute",
+                capture_statement,
+            )
+            await session.close()
+            await database.shutdown()
+
+        return (
+            [hit.note.note_id for hit in hits],
+            [hit.excerpt for hit in hits],
+            tuple(statements),
+        )
+
+    note_ids, excerpts, statements = anyio.run(scenario)
+
+    assert note_ids == ["ctx_fts_projection"]
+    assert excerpts == ["# FTS projection projectionguardtoken"]
+    chunk_selects = tuple(
+        statement
+        for statement in statements
+        if "FROM obsidian_chunks" in statement
+        and statement.lstrip().startswith("SELECT")
+    )
+    assert chunk_selects
+    assert all(
+        "obsidian_chunks.embedding" not in statement for statement in chunk_selects
+    )
 
 
 def test_obsidian_reindex_triggers_embedding_reindex_when_hook_is_configured(
@@ -1126,29 +1197,18 @@ def test_obsidian_save_rejects_dangling_superseded_by_reference(
 
 def test_obsidian_context_save_scope_validation_returns_422(tmp_path: Path) -> None:
     """Context identity violations must use the API validation status contract."""
-    database, session, service = anyio.run(_service, tmp_path)
-
-    async def close_resources() -> None:
-        await session.close()
-        await database.shutdown()
-
-    try:
-        with (
-            override_library_provider("obsidian_service", service),
-            TestClient(app, raise_server_exceptions=False) as client,
-        ):
-            response = client.post(
-                "/obsidian/notes",
-                json={
-                    "title": "Invalid Agent Context",
-                    "body": "# Invalid\n\nagent_id is intentionally absent",
-                    "alexandria_type": "context",
-                    "project": "project-a",
-                    "frontmatter": {"scope": "AGENT"},
-                },
-            )
-    finally:
-        anyio.run(close_resources)
+    del tmp_path
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/obsidian/notes",
+            json={
+                "title": "Invalid Agent Context",
+                "body": "# Invalid\n\nagent_id is intentionally absent",
+                "alexandria_type": "context",
+                "project": "project-a",
+                "frontmatter": {"scope": "AGENT"},
+            },
+        )
 
     assert response.status_code == 422
 
@@ -1157,11 +1217,7 @@ def test_explicit_note_routes_return_outcome_and_structured_conflict(
     tmp_path: Path,
 ) -> None:
     """HTTP callers should receive stage visibility and machine-readable conflicts."""
-    database, session, service = anyio.run(_service, tmp_path)
-
-    async def close_resources() -> None:
-        await session.close()
-        await database.shutdown()
+    del tmp_path
 
     first_request = {
         "title": "Route First",
@@ -1179,34 +1235,28 @@ def test_explicit_note_routes_return_outcome_and_structured_conflict(
         "path": "Alexandria/Skills/Drafts/route-second.md",
         "match_by": "path",
     }
-    try:
-        with (
-            override_library_provider("obsidian_service", service),
-            TestClient(app, raise_server_exceptions=False) as client,
-        ):
-            created = client.post("/obsidian/notes/create", json=first_request)
-            updated_by_id = client.post(
-                "/obsidian/notes/update",
-                json={
-                    **first_request,
-                    "body": "# Route First\n\nupdated by id",
-                    "path": None,
-                    "match_by": "note_id",
-                },
-            )
-            second = client.post("/obsidian/notes/create", json=second_request)
-            conflict = client.post(
-                "/obsidian/notes/update",
-                json={
-                    **first_request,
-                    "title": "Ambiguous Route Update",
-                    "body": "# Ambiguous\n\nnot written",
-                    "path": second_request["path"],
-                    "match_by": "note_id",
-                },
-            )
-    finally:
-        anyio.run(close_resources)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        created = client.post("/obsidian/notes/create", json=first_request)
+        updated_by_id = client.post(
+            "/obsidian/notes/update",
+            json={
+                **first_request,
+                "body": "# Route First\n\nupdated by id",
+                "path": None,
+                "match_by": "note_id",
+            },
+        )
+        second = client.post("/obsidian/notes/create", json=second_request)
+        conflict = client.post(
+            "/obsidian/notes/update",
+            json={
+                **first_request,
+                "title": "Ambiguous Route Update",
+                "body": "# Ambiguous\n\nnot written",
+                "path": second_request["path"],
+                "match_by": "note_id",
+            },
+        )
 
     assert created.status_code == 201
     assert second.status_code == 201

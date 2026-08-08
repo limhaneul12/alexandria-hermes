@@ -6,10 +6,7 @@ from app.obsidian.application.librarian.obsidian_librarian_graph_contracts impor
     ObsidianLibrarianGraphState,
 )
 from app.obsidian.application.librarian.obsidian_librarian_state_access import (
-    state_json_object_list as _state_json_object_list,
-    state_object as _state_object,
     state_optional_string as _state_optional_string,
-    state_string as _state_string,
 )
 from app.shared.types.extra_types import JSONObject
 
@@ -30,16 +27,6 @@ def _pending_actions_from_state(
             _action("ask_oauth_librarian", "Ask GPT OAuth librarian", "delegate")
         )
     return actions
-
-
-def _interrupt_payload(state: ObsidianLibrarianGraphState) -> JSONObject:
-    """Build the approval payload emitted by the interrupt node."""
-    return {
-        "thread_id": _state_string(state, "thread_id"),
-        "response": _state_object(state, "response"),
-        "pending_actions": _state_json_object_list(state, "pending_actions"),
-        "approval_contract": "Command(resume={'approved_actions': [...]})",
-    }
 
 
 def _action(action_id: str, label: str, action_type: str) -> JSONObject:

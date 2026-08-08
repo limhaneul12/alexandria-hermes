@@ -81,13 +81,3 @@ class HermesLibrarianAskResult:
         object.__setattr__(self, "selected_profiles", tuple(self.selected_profiles))
         object.__setattr__(self, "matched_specialties", tuple(self.matched_specialties))
         object.__setattr__(self, "delegates", tuple(self.delegates))
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class LibrarianJobStatusResult:
-    """Guidance-only job status result returned by job-status reads."""
-
-    job_id: str
-    status: LibrarianDelegationStatus
-    result_available: bool
-    message: str

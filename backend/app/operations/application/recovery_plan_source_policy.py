@@ -1,17 +1,13 @@
-"""Vault snapshot, file hashing, and quarantine artifact planning."""
+"""Canonical Vault source snapshot helpers for operational recovery planning."""
 
 from __future__ import annotations
 
-from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from shutil import disk_usage
 from typing import Protocol
 
-from app.operations.domain.entities.recovery_plan import (
-    RecoveryQuarantineArtifactPlan,
-    RecoverySourceSnapshot,
-)
+from app.operations.domain.entities.recovery_plan import RecoverySourceSnapshot
 
 
 class DiskUsageSnapshot(Protocol):
@@ -22,7 +18,7 @@ class DiskUsageSnapshot(Protocol):
         """Return free filesystem bytes.
 
         Returns:
-            Available filesystem bytes.
+            Available bytes on the inspected filesystem.
         """
 
 
@@ -30,14 +26,7 @@ class DiskUsageProvider(Protocol):
     """Callable boundary for filesystem capacity inspection."""
 
     def __call__(self, path: Path) -> DiskUsageSnapshot:
-        """Return capacity values for one filesystem path.
-
-        Args:
-            path: Filesystem path whose capacity should be inspected.
-
-        Returns:
-            Filesystem capacity values.
-        """
+        """Return capacity values for one filesystem path."""
 
 
 def _source_snapshot(
@@ -46,8 +35,9 @@ def _source_snapshot(
     alexandria_root: str,
     disk_usage_provider: DiskUsageProvider = disk_usage,
 ) -> RecoverySourceSnapshot:
+    """Capture bounded canonical Markdown evidence for recovery planning."""
     vault = Path(vault_path)
-    root = Path(vault_path) / alexandria_root
+    root = vault / alexandria_root
     access_error: str | None = None
     try:
         markdown_files = sorted(root.rglob("*.md")) if root.exists() else []
@@ -79,37 +69,21 @@ def _source_snapshot(
 
 
 def _markdown_manifest(vault: Path, markdown_files: list[Path]) -> dict[str, str]:
+    """Return a metadata inventory without rereading every Markdown file."""
     return {
-        str(path.relative_to(vault)): file_hash
+        str(path.relative_to(vault)): inventory_token
         for path in markdown_files
-        if (file_hash := _file_sha256(path)) is not None
+        if (inventory_token := _file_inventory_token(path)) is not None
     }
 
 
-def _quarantine_artifacts(
-    *, database_path: str | None, run_id: str, created_at: datetime
-) -> list[RecoveryQuarantineArtifactPlan]:
-    if database_path is None:
-        return []
-    timestamp = created_at.strftime("%Y%m%dT%H%M%SZ")
-    source_paths = [
-        Path(database_path),
-        Path(f"{database_path}-wal"),
-        Path(f"{database_path}-shm"),
-    ]
-    quarantine_dir = Path(database_path).parent / ".alexandria-recovery" / run_id
-    return [
-        RecoveryQuarantineArtifactPlan(
-            source_path=str(source_path),
-            quarantine_path=str(
-                quarantine_dir / f"{timestamp}-{source_path.name}-{run_id}"
-            ),
-            exists=source_path.exists(),
-            size_bytes=source_path.stat().st_size if source_path.exists() else None,
-            sha256=_file_sha256(source_path) if source_path.exists() else None,
-        )
-        for source_path in source_paths
-    ]
+def _file_inventory_token(path: Path) -> str | None:
+    """Return a cheap token that detects ordinary file writes."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return f"{stat.st_size}:{stat.st_mtime_ns}"
 
 
 def _file_sha256(path: Path | None) -> str | None:

@@ -4,15 +4,7 @@ from __future__ import annotations
 
 from app.mcp_server.backend_api_client import AlexandriaApiClient
 from app.mcp_server.tools.backend_gateway_policy import (
-    DEFAULT_CONTEXT_SEARCH_LIMIT,
-    DEFAULT_CONTEXT_SEARCH_STRATEGY,
-    _bounded_search_limit,
     _path_segment,
-)
-from app.memory.domain.event_enum.context_enums import (
-    ContextKind,
-    ContextScope,
-    RagStrategy,
 )
 from app.memory.interface.schemas.context.context_schema import (
     ContextSearchRequest,
@@ -41,82 +33,6 @@ async def alexandria_search(
     if payload.get("include_lifecycle_statuses") == []:
         del payload["include_lifecycle_statuses"]
     response = await client.post("/memory/contexts/retrieval/search", payload)
-    return response
-
-
-async def alexandria_recall_context(
-    client: AlexandriaApiClient,
-    query: str,
-    limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
-    project: str | None = None,
-    kind: ContextKind | None = None,
-    include_scopes: list[ContextScope] | None = None,
-    workspace_id: str | None = None,
-    agent_id: str | None = None,
-    user_id: str | None = None,
-    session_id: str | None = None,
-) -> JSONValue:
-    """Recall durable context with default hybrid retrieval.
-
-    Args:
-        client: Backend HTTP client.
-        query: Search query.
-        limit: Maximum matches.
-        project: Optional project filter.
-        kind: Optional context kind filter.
-
-    Returns:
-        Backend Context Pack response.
-    """
-    response = await alexandria_search(
-        client,
-        ContextSearchRequest(
-            query=query,
-            limit=_bounded_search_limit(limit),
-            strategy=DEFAULT_CONTEXT_SEARCH_STRATEGY,
-            project=project,
-            kind=kind,
-            include_scopes=[] if include_scopes is None else include_scopes,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            session_id=session_id,
-        ),
-    )
-    return response
-
-
-async def alexandria_rag_context(
-    client: AlexandriaApiClient,
-    query: str,
-    strategy: RagStrategy = DEFAULT_CONTEXT_SEARCH_STRATEGY,
-    limit: int = DEFAULT_CONTEXT_SEARCH_LIMIT,
-    project: str | None = None,
-    kind: ContextKind | None = None,
-    include_scopes: list[ContextScope] | None = None,
-) -> JSONValue:
-    """Retrieve a RAG Context Pack with explicit strategy.
-
-    Args:
-        client: Backend HTTP client.
-        query: Search query.
-        strategy: Retrieval strategy.
-        limit: Maximum matches.
-
-    Returns:
-        Backend Context Pack response.
-    """
-    response = await alexandria_search(
-        client,
-        ContextSearchRequest(
-            query=query,
-            strategy=strategy,
-            limit=_bounded_search_limit(limit),
-            project=project,
-            kind=kind,
-            include_scopes=[] if include_scopes is None else include_scopes,
-        ),
-    )
     return response
 
 

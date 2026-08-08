@@ -23,7 +23,7 @@ from app.obsidian.domain.repositories.obsidian_graph_projection_source_repositor
 
 
 class ObsidianGraphProjectionSourceBuilder:
-    """Map typed SQLite index rows into deterministic projection batches."""
+    """Map typed relational-index rows into deterministic projection batches."""
 
     def __init__(
         self,

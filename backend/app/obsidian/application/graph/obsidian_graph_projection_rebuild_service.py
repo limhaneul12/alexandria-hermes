@@ -126,7 +126,7 @@ class ObsidianGraphProjectionRebuildService:
 
         Args:
             config: Typed application configuration.
-            source_builder: Read-only builder over the current SQLite index/cache.
+            source_builder: Read-only builder over the current relational index/cache.
             repository: Optional graph projection adapter; absent when disabled.
             run_id_factory: Optional deterministic run id source for tests.
             monotonic_seconds: Optional monotonic clock for duration measurement.

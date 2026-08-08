@@ -32,17 +32,17 @@ class ObsidianVaultReindexService:
         """Create the public reindex orchestrator.
 
         Args:
-            obsidian_service: Canonical Markdown to SQLite reindex service.
+            obsidian_service: Canonical Markdown to PostgreSQL reindex service.
             graph_projection_rebuild_service: Optional graph projection rebuild service.
         """
         self._obsidian_service = obsidian_service
         self._graph_projection_rebuild_service = graph_projection_rebuild_service
 
     async def rebuild(self) -> ObsidianVaultReindexReport:
-        """Rebuild SQLite first, then rebuild the optional graph projection.
+        """Rebuild the PostgreSQL index first, then rebuild the optional graph projection.
 
         The underlying services each own their maintenance lease. Calling them
-        sequentially here ensures the graph projection reads the fresh SQLite
+        sequentially here ensures the graph projection reads the fresh PostgreSQL index
         source after the vault reindex lock has been released.
 
         Returns:

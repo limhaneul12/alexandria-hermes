@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import anyio
@@ -27,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 async def _service(tmp_path: Path) -> tuple[Database, AsyncSession, ObsidianService]:
     database = Database(
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'security.db'}",
+        database_url=os.environ["DATABASE_URL"],
         create_schema=True,
     )
     await database.initialize()

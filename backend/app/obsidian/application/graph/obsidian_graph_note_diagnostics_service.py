@@ -130,7 +130,7 @@ class ObsidianGraphNoteLinkValidationReport:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ObsidianGraphNoteRebuildReport:
-    """Focused SQLite edge refresh followed by snapshot projection activation."""
+    """Focused indexed-edge refresh followed by snapshot projection activation."""
 
     replace_existing_edges: bool
     validation: ObsidianGraphNoteLinkValidationReport

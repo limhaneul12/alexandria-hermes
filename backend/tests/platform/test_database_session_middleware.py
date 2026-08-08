@@ -2,24 +2,27 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import cast
 
-from app.platform.middleware.database_session import install_database_session_middleware
+from app.platform.middleware.database_session import (
+    install_database_session_middleware,
+    mark_database_transaction_independent,
+)
 from app.shared.infrastructure.database import Database
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.pool import QueuePool
 
 
-def test_request_session_returns_connection_to_pool_when_route_uses_unclosed_session(
-    tmp_path: Path,
-) -> None:
+def test_request_session_returns_connection_to_pool_when_route_uses_unclosed_session() -> (
+    None
+):
     """Route-created sessions should be closed by the request lifecycle."""
-    database = Database(database_url=f"sqlite+aiosqlite:///{tmp_path / 'app.db'}")
+    database = Database(database_url=os.environ["DATABASE_URL"])
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -49,15 +52,17 @@ def test_request_session_returns_connection_to_pool_when_route_uses_unclosed_ses
         assert cast(QueuePool, database.engine.sync_engine.pool).checkedout() == 0
 
 
-def test_request_session_commits_successful_route_changes(tmp_path: Path) -> None:
+def test_request_session_commits_successful_route_changes() -> None:
     """Successful responses should commit work made through the request session."""
-    database = Database(database_url=f"sqlite+aiosqlite:///{tmp_path / 'app.db'}")
+    database = Database(database_url=os.environ["DATABASE_URL"])
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await database.initialize()
         async with database.engine.begin() as connection:
-            await connection.execute(text("CREATE TABLE messages (value TEXT)"))
+            await connection.execute(
+                text("CREATE TABLE IF NOT EXISTS messages (value TEXT)")
+            )
         try:
             yield
         finally:
@@ -90,15 +95,17 @@ def test_request_session_commits_successful_route_changes(tmp_path: Path) -> Non
         assert count_response.json() == {"count": 1}
 
 
-def test_request_session_rolls_back_failed_route_changes(tmp_path: Path) -> None:
+def test_request_session_rolls_back_failed_route_changes() -> None:
     """Error responses should roll back work made through the request session."""
-    database = Database(database_url=f"sqlite+aiosqlite:///{tmp_path / 'app.db'}")
+    database = Database(database_url=os.environ["DATABASE_URL"])
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await database.initialize()
         async with database.engine.begin() as connection:
-            await connection.execute(text("CREATE TABLE messages (value TEXT)"))
+            await connection.execute(
+                text("CREATE TABLE IF NOT EXISTS messages (value TEXT)")
+            )
         try:
             yield
         finally:
@@ -128,4 +135,48 @@ def test_request_session_rolls_back_failed_route_changes(tmp_path: Path) -> None
         count_response = client.get("/message-count")
 
         assert response.json() == {"detail": "bad message"}
+        assert count_response.json() == {"count": 0}
+
+
+def test_independent_transaction_request_skips_middleware_commit() -> None:
+    """Recovery-style handlers should own commit boundaries after DB replacement."""
+    database = Database(database_url=os.environ["DATABASE_URL"])
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        await database.initialize()
+        async with database.engine.begin() as connection:
+            await connection.execute(
+                text("CREATE TABLE IF NOT EXISTS messages (value TEXT)")
+            )
+        try:
+            yield
+        finally:
+            await database.shutdown()
+
+    app = FastAPI(lifespan=lifespan)
+
+    async def resolve_database() -> Database:
+        return database
+
+    install_database_session_middleware(app, resolve_database=resolve_database)
+
+    @app.post("/independent")
+    async def independent(request: Request) -> dict[str, bool]:
+        mark_database_transaction_independent(request)
+        session = database.session()
+        await session.execute(text("INSERT INTO messages (value) VALUES ('owned')"))
+        return {"ok": True}
+
+    @app.get("/message-count")
+    async def message_count() -> dict[str, int]:
+        session = database.session()
+        count = await session.scalar(text("SELECT COUNT(*) FROM messages"))
+        return {"count": int(count or 0)}
+
+    with TestClient(app) as client:
+        response = client.post("/independent")
+        count_response = client.get("/message-count")
+
+        assert response.json() == {"ok": True}
         assert count_response.json() == {"count": 0}

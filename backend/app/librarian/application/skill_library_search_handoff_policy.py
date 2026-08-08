@@ -73,7 +73,7 @@ def _repair_handoff(*, error_message: str) -> JSONObject:
             ),
             "error": error_message,
             "tools": [
-                "alexandria_librarian_readiness",
+                "alexandria_memory_steward_readiness",
                 "alexandria_reindex_vault",
             ],
         },

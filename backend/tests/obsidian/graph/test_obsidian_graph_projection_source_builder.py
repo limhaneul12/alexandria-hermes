@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -84,14 +85,14 @@ def _edge(
     )
 
 
-def test_builder_returns_deterministic_typed_batches_from_sqlite_index(
+def test_builder_returns_deterministic_typed_batches_from_postgresql_index(
     tmp_path: Path,
 ) -> None:
     """Only healthy indexed rows should appear in stable projection batches."""
 
-    async def scenario() -> tuple[object, object, tuple[int, int]]:
+    async def scenario():
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'projection.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -107,6 +108,11 @@ def test_builder_returns_deterministic_typed_batches_from_sqlite_index(
                     ),
                     _note("note-a"),
                     _note("note-stale", index_status=ObsidianIndexStatus.STALE),
+                ]
+            )
+            await session.flush()
+            session.add_all(
+                [
                     _edge(
                         "edge-z",
                         source_note_id="note-z",
@@ -174,7 +180,7 @@ def test_builder_returns_deterministic_typed_batches_from_sqlite_index(
 def test_builder_resolves_unique_obsidian_filename_targets() -> None:
     """A unique filename match should resolve bare/source-relative wikilink paths."""
 
-    async def scenario() -> object:
+    async def scenario():
         class _Source:
             async def list_projection_notes(self) -> tuple[object, ...]:
                 target = _note("target")

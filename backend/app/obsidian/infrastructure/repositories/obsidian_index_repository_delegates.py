@@ -18,9 +18,6 @@ from app.obsidian.infrastructure.repositories.obsidian_index_error_store import 
 from app.obsidian.infrastructure.repositories.obsidian_index_query_store import (
     ObsidianIndexQueryStore,
 )
-from app.obsidian.infrastructure.repositories.obsidian_index_schema import (
-    ensure_obsidian_index_search_tables,
-)
 from app.obsidian.infrastructure.repositories.obsidian_index_write_store import (
     ObsidianIndexWriteStore,
 )
@@ -35,10 +32,6 @@ class ObsidianIndexWriteRepositoryDelegate:
     _session: AsyncSession
     _write_store: ObsidianIndexWriteStore
 
-    async def ensure_search_tables(self) -> None:
-        """Create virtual search tables for Obsidian search."""
-        await ensure_obsidian_index_search_tables(self._session)
-
     async def upsert_note(self, payload: ObsidianNoteIndex) -> ObsidianNote:
         """Create or update one indexed note and its chunks.
 
@@ -49,7 +42,6 @@ class ObsidianIndexWriteRepositoryDelegate:
             Persisted note entity.
         """
         try:
-            await self.ensure_search_tables()
             async with self._session.begin_nested():
                 return await self._upsert_note(payload)
         except SQLAlchemyError as exc:
@@ -122,7 +114,7 @@ class ObsidianIndexQueryRepositoryDelegate:
         return await self._query_store.find_context_duplicate(query)
 
     async def search(self, query: ObsidianSearchQuery) -> list[ObsidianSearchHit]:
-        """Search indexed notes using the SQLite FTS cache.
+        """Search indexed notes using the PostgreSQL FTS index.
 
         Args:
             query: Search filters and query text.

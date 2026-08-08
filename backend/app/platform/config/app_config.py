@@ -167,10 +167,6 @@ class AppConfig(BaseSettings):
         default="Alexandria/Memory Compacts",
         min_length=1,
     )
-    obsidian_librarian_langgraph_checkpoint_path: str = Field(
-        default="./data/obsidian_librarian_langgraph.sqlite",
-        min_length=1,
-    )
     operational_backup_root: str = Field(
         default="./data/operational-backups",
         min_length=1,

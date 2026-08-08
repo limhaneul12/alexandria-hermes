@@ -46,15 +46,3 @@ def collaboration_job_id(
         ).encode()
     ).hexdigest()[:12]
     return f"{_JOB_PREFIX}{digest}"
-
-
-def is_collaboration_job_id(job_id: str) -> bool:
-    """Return whether an identifier belongs to synchronous collaboration.
-
-    Args:
-        job_id: Candidate job identifier.
-
-    Returns:
-        Whether the identifier has the collaboration prefix.
-    """
-    return job_id.startswith(_JOB_PREFIX)

@@ -36,6 +36,11 @@ from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     LibrarianDelegateResult,
 )
 from app.librarian.domain.event_enum.collaboration_enums import LibrarianDelegateStatus
+from app.operations.application.external_api_rate_limit import (
+    ExternalApiRateLimiter,
+    ExternalApiRateLimitError,
+    NoopExternalApiRateLimiter,
+)
 from asyncer import asyncify
 from openai import OpenAIError
 
@@ -63,14 +68,9 @@ Operating rules:
 - Do not dump the full inventory unless the user explicitly asks for the full
   list or a larger limit; explain that the remaining results can be continued or
   expanded in natural product language.
-- If the user explicitly asks to create, update, compact, condense, summarize,
-  or persist durable/long-term/project memory in any language, prepare a daily
-  Memory Compact candidate instead of giving a generic chat answer.
-- Daily Memory Compact candidates must begin with exactly
-  `ACTION: DAILY_MEMORY_COMPACT`, followed by a blank line and then the compact
-  Markdown body. Use the current Memory Compact and supplied source refs first,
-  cover the last 24 hours by default, and do not claim the artifact was saved;
-  backend policy validates and persists the candidate after your response.
+- Do not create, update, compact, or persist durable Memory Compact artifacts.
+  Memory lifecycle and compaction belong to Memory Steward; when such work is
+  requested, return evidence and a concise handoff for Memory Steward instead.
 - Do not expose raw API routes, backend endpoints, UI paths, headers, or
   implementation-only identifiers in ordinary user answers unless the user
   explicitly asks for API/endpoint details.
@@ -88,9 +88,9 @@ class OpenAIProviderDelegateExecutor(LibrarianDelegateExecutor):
 
     def __init__(
         self,
-        *,
         secret_repo: IProviderSecretRepository,
         openai_client_builder: OpenAIClientBuilder = build_openai_client,
+        rate_limiter: ExternalApiRateLimiter | None = None,
     ) -> None:
         """Initialize the provider-backed executor.
 
@@ -101,6 +101,7 @@ class OpenAIProviderDelegateExecutor(LibrarianDelegateExecutor):
         self.secret_repo = secret_repo
         self._codex_config_builder = OpenAICodexClientConfigBuilder(secret_repo)
         self.openai_client_builder = openai_client_builder
+        self._rate_limiter = rate_limiter or NoopExternalApiRateLimiter()
 
     async def execute(
         self,
@@ -136,6 +137,10 @@ class OpenAIProviderDelegateExecutor(LibrarianDelegateExecutor):
         instructions = _instructions_for_plan(plan)
         prompt = _delegate_prompt(command)
         try:
+            await self._rate_limiter.acquire(
+                _provider_scope(provider_type),
+                f"librarian-delegate:{plan.provider.id}",
+            )
             if provider_type is ProviderType.OPENAI_CODEX:
                 summary = await asyncify(
                     _SUMMARY_FETCHER.fetch_codex_stream_summary,
@@ -156,7 +161,7 @@ class OpenAIProviderDelegateExecutor(LibrarianDelegateExecutor):
                     prompt,
                     instructions,
                 )
-        except OpenAIError as error:
+        except (ExternalApiRateLimitError, OpenAIError) as error:
             _log_provider_execution_failure(
                 provider_id=plan.provider.id,
                 provider_type=provider_type,
@@ -210,11 +215,17 @@ def _delegate_prompt(command: HermesLibrarianAskCommand) -> str:
     )
 
 
+def _provider_scope(provider_type: ProviderType | None) -> str:
+    if provider_type is None:
+        return "openai-compatible"
+    return provider_type.value
+
+
 def _log_provider_execution_failure(
     *,
     provider_id: str,
     provider_type: ProviderType | None,
-    error: OpenAIError,
+    error: Exception,
 ) -> None:
     logger.warning(
         "Librarian delegate provider execution failed",

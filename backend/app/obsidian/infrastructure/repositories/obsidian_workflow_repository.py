@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SqlAlchemyObsidianWorkflowRepository(IObsidianWorkflowRepository):
-    """Persist Obsidian librarian workflow checkpoints in SQLite."""
+    """Persist Obsidian librarian workflow checkpoints through SQLAlchemy."""
 
     def __init__(self, *, session: AsyncSession) -> None:
         self._session = session

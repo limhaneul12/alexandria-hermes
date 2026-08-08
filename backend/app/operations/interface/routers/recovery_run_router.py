@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.container import ApplicationContainer
 from app.memory.application.context_service import ContextService
@@ -11,10 +13,12 @@ from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.operations.application.recovery_run_errors import RecoveryInProgressError
 from app.operations.application.recovery_run_service import RecoveryRunService
 from app.operations.interface.schemas.operations.recovery_run_schema import (
-    RecoveryQuarantineInventoryResponse,
     RecoveryRunRequestSchema,
     RecoveryRunResponse,
     RecoveryRunRetryRequestSchema,
+)
+from app.platform.middleware.database_session import (
+    mark_database_transaction_independent,
 )
 from app.shared.infrastructure.database import Database
 
@@ -31,6 +35,7 @@ router = APIRouter(prefix="/operations/recovery", tags=["operations"])
 @inject
 async def recovery_run(
     request: RecoveryRunRequestSchema,
+    http_request: Request,
     database: Database = Depends(Provide[ApplicationContainer.database]),
     context_service: ContextService = Depends(
         Provide[ApplicationContainer.memory.context_service]
@@ -38,6 +43,12 @@ async def recovery_run(
     obsidian_service: ObsidianService = Depends(
         Provide[ApplicationContainer.obsidian.obsidian_service]
     ),
+    context_service_factory: Callable[
+        [], ContextService | Awaitable[ContextService]
+    ] = Depends(Provide[ApplicationContainer.memory.context_service.provider]),
+    obsidian_service_factory: Callable[
+        [], ObsidianService | Awaitable[ObsidianService]
+    ] = Depends(Provide[ApplicationContainer.obsidian.obsidian_service.provider]),
 ) -> RecoveryRunResponse:
     """Start or return an idempotent recovery run.
 
@@ -50,10 +61,13 @@ async def recovery_run(
     Returns:
         Recovery run response.
     """
+    mark_database_transaction_independent(http_request)
     service = RecoveryRunService(
         database=database,
         context_service=context_service,
         obsidian_service=obsidian_service,
+        context_service_factory=context_service_factory,
+        obsidian_service_factory=obsidian_service_factory,
     )
     try:
         run = await service.start(request.to_contract())
@@ -80,6 +94,7 @@ async def recovery_run(
 async def retry_recovery_run(
     run_id: str,
     request: RecoveryRunRetryRequestSchema,
+    http_request: Request,
     database: Database = Depends(Provide[ApplicationContainer.database]),
     context_service: ContextService = Depends(
         Provide[ApplicationContainer.memory.context_service]
@@ -87,6 +102,12 @@ async def retry_recovery_run(
     obsidian_service: ObsidianService = Depends(
         Provide[ApplicationContainer.obsidian.obsidian_service]
     ),
+    context_service_factory: Callable[
+        [], ContextService | Awaitable[ContextService]
+    ] = Depends(Provide[ApplicationContainer.memory.context_service.provider]),
+    obsidian_service_factory: Callable[
+        [], ObsidianService | Awaitable[ObsidianService]
+    ] = Depends(Provide[ApplicationContainer.obsidian.obsidian_service.provider]),
 ) -> RecoveryRunResponse:
     """Retry a persisted recovery run.
 
@@ -100,10 +121,13 @@ async def retry_recovery_run(
     Returns:
         Recovery run response.
     """
+    mark_database_transaction_independent(http_request)
     service = RecoveryRunService(
         database=database,
         context_service=context_service,
         obsidian_service=obsidian_service,
+        context_service_factory=context_service_factory,
+        obsidian_service_factory=obsidian_service_factory,
     )
     try:
         run = await service.retry(run_id, request.to_contract())
@@ -171,39 +195,3 @@ async def get_recovery_run(
             },
         )
     return RecoveryRunResponse.from_entity(run)
-
-
-@router.get(
-    "/quarantine",
-    response_model=RecoveryQuarantineInventoryResponse,
-    status_code=status.HTTP_200_OK,
-    summary="List recovery quarantine artifacts",
-    description="Return stored recovery quarantine artifacts without deleting files.",
-)
-@inject
-async def recovery_quarantine(
-    database: Database = Depends(Provide[ApplicationContainer.database]),
-    context_service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-    obsidian_service: ObsidianService = Depends(
-        Provide[ApplicationContainer.obsidian.obsidian_service]
-    ),
-) -> RecoveryQuarantineInventoryResponse:
-    """Return recovery quarantine inventory.
-
-    Args:
-        database: Shared database coordinator.
-        context_service: Context/RAG service.
-        obsidian_service: Obsidian vault service.
-
-    Returns:
-        Quarantine inventory response.
-    """
-    service = RecoveryRunService(
-        database=database,
-        context_service=context_service,
-        obsidian_service=obsidian_service,
-    )
-    items = await service.quarantine_inventory()
-    return RecoveryQuarantineInventoryResponse.from_entities(items)

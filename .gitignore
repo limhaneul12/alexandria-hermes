@@ -157,6 +157,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Encrypted local PostgreSQL backup archives and restore-drill reports
+backups/postgres/
+
 # Spyder project settings
 .spyderproject
 .spyproject

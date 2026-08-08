@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -102,7 +104,7 @@ def test_readiness_surfaces_backfill_and_review_work_as_nonblocking_warnings(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'warnings.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -147,7 +149,7 @@ def test_readiness_blocks_partial_failed_or_hard_delete_reconciliation_state(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'blocked.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()
@@ -186,7 +188,7 @@ def test_readiness_blocks_when_reconciliation_diagnostics_are_unreachable(
 ) -> None:
     async def scenario() -> None:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'unreachable.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

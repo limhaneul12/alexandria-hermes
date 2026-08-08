@@ -86,7 +86,7 @@ async def graph_build_status(
     description=(
         "Report note index existence, outgoing cached edge resolution, explicit "
         "unresolved targets, and current graph projection status. This endpoint "
-        "does not mutate Markdown, SQLite, or Neo4j."
+        "does not mutate Markdown, PostgreSQL, or Neo4j."
     ),
 )
 @router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)
@@ -124,7 +124,7 @@ async def validate_note_graph_links(
     status_code=status.HTTP_200_OK,
     summary="Rebuild graph edges for one Obsidian note",
     description=(
-        "Reparse one canonical note, replace its cached outgoing SQLite edges, "
+        "Reparse one canonical note, replace its cached outgoing indexed edges, "
         "resolve targets, and activate a fresh full graph projection snapshot."
     ),
 )
@@ -164,7 +164,7 @@ async def rebuild_note_graph(
     summary="Rebuild optional graph projection",
     description=(
         "Explicitly rebuild the optional Neo4j graph projection from the "
-        "existing read-only Obsidian/SQLite index state."
+        "existing read-only Obsidian relational-index state."
     ),
 )
 @router_exception_status(OBSIDIAN_ROUTE_EXCEPTION_MAPPING)

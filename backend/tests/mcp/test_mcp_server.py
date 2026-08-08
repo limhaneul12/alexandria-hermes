@@ -21,49 +21,23 @@ from app.mcp_server.tools.context_backend_gateway import (
     alexandria_search,
     alexandria_supersede_context,
 )
-from app.mcp_server.tools.librarian_readiness_tools import (
-    alexandria_librarian_readiness,
-    alexandria_librarian_refresh_current_compact,
-)
-from app.mcp_server.tools.librarian_vault_backend_gateway import (
-    alexandria_get_graph_build_status,
-    alexandria_get_graph_projection_status,
-    alexandria_librarian_review_apply_moves,
-    alexandria_librarian_review_move_plan,
-    alexandria_librarian_review_queue,
-    alexandria_librarian_vault_apply_moves,
-    alexandria_librarian_vault_inventory,
-    alexandria_librarian_vault_move_plan,
-    alexandria_librarian_vault_path_search,
-    alexandria_rebuild_graph_projection,
-    alexandria_rebuild_note_graph,
-    alexandria_reindex_vault,
-    alexandria_validate_note_links,
-)
 from app.mcp_server.tools.memory_compact_tools import (
-    alexandria_archive_memory_compact,
     alexandria_create_memory_compact,
-    alexandria_delete_memory_compact,
     alexandria_get_current_memory_compact,
     alexandria_get_memory_compact,
     alexandria_list_memory_compact_artifacts,
-    alexandria_mark_memory_compact_current,
     alexandria_review_memory_compact,
 )
-from app.mcp_server.tools.oauth_backend_gateway import (
-    alexandria_librarian_oauth_poll,
-    alexandria_librarian_oauth_refresh,
-    alexandria_librarian_oauth_start,
-    alexandria_librarian_oauth_status,
+from app.mcp_server.tools.memory_steward_readiness_tools import (
+    alexandria_memory_steward_readiness,
+    alexandria_memory_steward_refresh_current_compact,
 )
 from app.mcp_server.tools.obsidian_backend_gateway import (
-    alexandria_ask_obsidian_librarian,
     alexandria_check_path_exists,
     alexandria_create_note,
     alexandria_get_related_notes,
     alexandria_read_note,
     alexandria_resolve_canonical_identity,
-    alexandria_save_note,
     alexandria_search_vault,
     alexandria_update_note,
     alexandria_upsert_note,
@@ -71,21 +45,28 @@ from app.mcp_server.tools.obsidian_backend_gateway import (
 )
 from app.mcp_server.tools.operations_backend_gateway import (
     alexandria_operational_readiness,
-    alexandria_recovery_plan,
-    alexandria_recovery_quarantine,
-    alexandria_recovery_retry,
-    alexandria_recovery_run,
+    alexandria_recover,
     alexandria_recovery_run_status,
 )
 from app.mcp_server.tools.skill_backend_gateway import (
-    alexandria_ask_librarian,
-    alexandria_complete_skill_acquisition,
-    alexandria_librarian_brief_preview,
-    alexandria_librarian_job_status,
-    alexandria_librarian_route_preview,
     alexandria_search_skills,
     alexandria_skill_acquisition_job_status,
     alexandria_start_skill_acquisition,
+)
+from app.mcp_server.tools.vault_maintenance_backend_gateway import (
+    alexandria_get_graph_build_status,
+    alexandria_get_graph_projection_status,
+    alexandria_rebuild_graph_projection,
+    alexandria_rebuild_note_graph,
+    alexandria_reindex_vault,
+    alexandria_validate_note_links,
+    alexandria_vault_apply_moves,
+    alexandria_vault_inventory,
+    alexandria_vault_move_plan,
+    alexandria_vault_path_search,
+    alexandria_vault_review_apply_moves,
+    alexandria_vault_review_move_plan,
+    alexandria_vault_review_queue,
 )
 from app.memory.domain.event_enum.context_enums import (
     ContextRecallLifecycleStatus,
@@ -177,8 +158,82 @@ def _compact_review_payload(
     }
 
 
+def test_mcp_vault_search_compacts_and_deduplicates_note_hits() -> None:
+    """Vault search should return one metadata-only hit per note."""
+    client, _ = _client_with_payload(
+        {
+            "items": [
+                {
+                    "note": {
+                        "id": "note-1",
+                        "alexandria_type": "context",
+                        "path": "Contexts/Projects/One.md",
+                        "title": "One",
+                        "status": "active",
+                        "tags": ["search"],
+                        "project": "alexandria-hermes",
+                        "content_hash": "a" * 64,
+                        "index_status": "indexed",
+                        "wikilink": "[[Contexts/Projects/One]]",
+                        "body": "full markdown body must not cross the MCP boundary",
+                        "frontmatter": {"large": "payload"},
+                    },
+                    "excerpt": "best matching excerpt",
+                    "score": 0.9,
+                    "chunk_id": "chunk-1",
+                    "heading_path": "Summary",
+                },
+                {
+                    "note": {
+                        "id": "note-1",
+                        "alexandria_type": "context",
+                        "path": "Contexts/Projects/One.md",
+                        "title": "One",
+                        "status": "active",
+                        "tags": ["search"],
+                        "project": "alexandria-hermes",
+                        "content_hash": "a" * 64,
+                        "index_status": "indexed",
+                    },
+                    "excerpt": "lower ranked duplicate chunk",
+                    "score": 0.7,
+                    "chunk_id": "chunk-2",
+                    "heading_path": "Details",
+                },
+            ],
+            "total": 2,
+        }
+    )
+
+    response = _run_json(alexandria_search_vault(client, query="one", limit=5))
+
+    assert response == {
+        "items": [
+            {
+                "note": {
+                    "note_id": "note-1",
+                    "alexandria_type": "context",
+                    "path": "Contexts/Projects/One.md",
+                    "title": "One",
+                    "status": "active",
+                    "tags": ["search"],
+                    "project": "alexandria-hermes",
+                    "content_hash": "a" * 64,
+                    "index_status": "indexed",
+                    "wikilink": "[[Contexts/Projects/One]]",
+                },
+                "excerpt": "best matching excerpt",
+                "score": 0.9,
+                "chunk_id": "chunk-1",
+                "heading_path": "Summary",
+            }
+        ],
+        "total": 1,
+    }
+
+
 def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
-    """MCP tool HTTP calls should expose async handlers to FastMCP."""
+    """Public MCP HTTP gateways should remain async boundaries."""
     async_tools = [
         alexandria_search,
         alexandria_search_vault,
@@ -192,43 +247,24 @@ def test_mcp_backend_tool_gateway_are_async_http_boundaries() -> None:
         alexandria_rebuild_graph_projection,
         alexandria_get_graph_build_status,
         alexandria_validate_note_links,
-        alexandria_ask_librarian,
-        alexandria_librarian_brief_preview,
-        alexandria_librarian_job_status,
-        alexandria_librarian_oauth_start,
-        alexandria_librarian_oauth_poll,
-        alexandria_librarian_oauth_status,
-        alexandria_librarian_oauth_refresh,
-        alexandria_librarian_route_preview,
-        alexandria_librarian_readiness,
-        alexandria_librarian_refresh_current_compact,
         alexandria_operational_readiness,
-        alexandria_recovery_plan,
-        alexandria_recovery_quarantine,
-        alexandria_recovery_retry,
-        alexandria_recovery_run,
+        alexandria_recover,
         alexandria_recovery_run_status,
-        alexandria_librarian_review_queue,
-        alexandria_librarian_review_move_plan,
-        alexandria_librarian_review_apply_moves,
-        alexandria_librarian_vault_inventory,
-        alexandria_librarian_vault_path_search,
-        alexandria_librarian_vault_move_plan,
-        alexandria_librarian_vault_apply_moves,
-        alexandria_ask_obsidian_librarian,
+        alexandria_vault_review_queue,
+        alexandria_vault_review_move_plan,
+        alexandria_vault_review_apply_moves,
+        alexandria_vault_inventory,
+        alexandria_vault_path_search,
+        alexandria_vault_move_plan,
+        alexandria_vault_apply_moves,
         alexandria_list_memory_compact_artifacts,
         alexandria_search_skills,
         alexandria_start_skill_acquisition,
-        alexandria_save_note,
         alexandria_skill_acquisition_job_status,
-        alexandria_complete_skill_acquisition,
         alexandria_get_current_memory_compact,
         alexandria_create_memory_compact,
         alexandria_get_memory_compact,
-        alexandria_mark_memory_compact_current,
-        alexandria_archive_memory_compact,
         alexandria_review_memory_compact,
-        alexandria_delete_memory_compact,
     ]
 
     assert all(iscoroutinefunction(tool) for tool in async_tools)
@@ -342,7 +378,7 @@ def test_mcp_search_skills_preserves_search_first_decision_payload() -> None:
             "decision": "skill_search_repair_required",
             "repair": {
                 "tools": [
-                    "alexandria_librarian_readiness",
+                    "alexandria_memory_steward_readiness",
                     "alexandria_reindex_vault",
                 ],
                 "error": "disk I/O error",
@@ -384,7 +420,7 @@ def test_mcp_search_skills_preserves_search_first_decision_payload() -> None:
             "decision": "skill_search_repair_required",
             "repair": {
                 "tools": [
-                    "alexandria_librarian_readiness",
+                    "alexandria_memory_steward_readiness",
                     "alexandria_reindex_vault",
                 ],
                 "error": "disk I/O error",
@@ -402,26 +438,21 @@ def test_mcp_tools_map_to_non_destructive_backend_endpoints() -> None:
         await alexandria_archive_context(client, "ctx-1")
         await alexandria_rag_status(client)
         await alexandria_operational_readiness(client)
-        await alexandria_recovery_plan(
+        await alexandria_recover(
             client,
+            dry_run=True,
             trigger="manual",
             actor="pytest",
             idempotency_key="mcp-plan-key",
         )
-        await alexandria_recovery_run(
+        await alexandria_recover(
             client,
+            dry_run=False,
             trigger="manual",
             actor="pytest",
             idempotency_key="mcp-run-key",
         )
         await alexandria_recovery_run_status(client, "run/1")
-        await alexandria_recovery_retry(
-            client,
-            "run/1",
-            actor="pytest",
-            idempotency_key="mcp-retry-key",
-        )
-        await alexandria_recovery_quarantine(client)
 
     anyio.run(run_tools)
 
@@ -436,8 +467,6 @@ def test_mcp_tools_map_to_non_destructive_backend_endpoints() -> None:
         ("POST", "/operations/recovery/plan"),
         ("POST", "/operations/recovery/runs"),
         ("GET", "/operations/recovery/runs/run%2F1"),
-        ("POST", "/operations/recovery/runs/run%2F1/retry"),
-        ("GET", "/operations/recovery/quarantine"),
     ]
     recovery_body = loads_json(calls[3].content or b"{}")
     assert recovery_body == {
@@ -451,12 +480,6 @@ def test_mcp_tools_map_to_non_destructive_backend_endpoints() -> None:
         "actor": "pytest",
         "idempotency_key": "mcp-run-key",
     }
-    retry_body = loads_json(calls[6].content or b"{}")
-    assert retry_body == {
-        "trigger": "retry",
-        "actor": "pytest",
-        "idempotency_key": "mcp-retry-key",
-    }
     assert all(method != "DELETE" for method, _ in methods_and_paths)
 
 
@@ -465,21 +488,21 @@ def test_mcp_recovery_run_requires_explicit_idempotency_key() -> None:
     client, calls = _client()
 
     async def run_tool() -> None:
-        await alexandria_recovery_run(client, idempotency_key=None)
+        await alexandria_recover(client, dry_run=False, idempotency_key=None)
 
     try:
         anyio.run(run_tool)
     except ValueError as exc:
         error_message = str(exc)
     else:  # pragma: no cover - failure path for the guard assertion
-        raise AssertionError("alexandria_recovery_run accepted a missing key")
+        raise AssertionError("alexandria_recover accepted apply without a key")
 
-    assert error_message == "idempotency_key is required for alexandria_recovery_run"
+    assert error_message == "idempotency_key is required when recovery dry_run is false"
     assert calls == []
 
 
 def test_mcp_async_skill_acquisition_tools_use_durable_job_endpoints() -> None:
-    """Async skill-acquisition tools should use durable job APIs."""
+    """Skill acquisition MCP should expose only autonomous start and polling."""
     client, calls = _client()
 
     async def run_tools() -> None:
@@ -488,34 +511,12 @@ def test_mcp_async_skill_acquisition_tools_use_durable_job_endpoints() -> None:
             prompt="Need browser automation skill",
             project="alexandria-hermes",
             task_summary="Browser test blocked.",
-            provider_id="provider-1",
             search_snapshot={
                 "decision": "NOT_FOUND",
                 "gaps": ["No matching browser automation skill."],
             },
         )
         await alexandria_skill_acquisition_job_status(client, "job/1")
-        await alexandria_complete_skill_acquisition(
-            client,
-            job_id="job/1",
-            title="Browser automation skill",
-            purpose="Automate browser checks safely.",
-            content="Use stable selectors and bounded waits.",
-            evidence_urls=["https://example.com/browser"],
-            evidence_items=[
-                {
-                    "url_or_path": "https://example.com/browser",
-                    "title": "Browser automation reference",
-                    "source_kind": "documentation",
-                    "supports_claims": ["Stable selectors reduce flake risk."],
-                    "freshness": "current",
-                }
-            ],
-            source_summary="Provider returned a sanitized artifact.",
-            next_steps=["Retry the blocked browser test."],
-            tags=["browser"],
-            required_tools=["playwright"],
-        )
 
     anyio.run(run_tools)
 
@@ -523,37 +524,23 @@ def test_mcp_async_skill_acquisition_tools_use_durable_job_endpoints() -> None:
         (request.method, str(request.url).removeprefix("http://backend:8000"))
         for request in calls
     ]
-    start_body = loads_json(calls[0].content or b"{}")
-    completion_body = loads_json(calls[2].content or b"{}")
     assert methods_and_paths == [
         ("POST", "/librarians/skill-acquisition-jobs"),
         ("GET", "/librarians/skill-acquisition-jobs/job%2F1"),
-        ("POST", "/librarians/skill-acquisition-jobs/job%2F1/complete"),
     ]
+    start_body = loads_json(calls[0].content or b"{}")
     assert start_body == {
         "prompt": "Need browser automation skill",
         "agent_name": "Hermes",
         "project": "alexandria-hermes",
         "task_summary": "Browser test blocked.",
-        "provider_id": "provider-1",
         "search_snapshot": {
             "decision": "NOT_FOUND",
             "gaps": ["No matching browser automation skill."],
         },
     }
-    assert completion_body["title"] == "Browser automation skill"
-    assert completion_body["evidence_urls"] == ["https://example.com/browser"]
-    assert completion_body["evidence_items"] == [
-        {
-            "url_or_path": "https://example.com/browser",
-            "title": "Browser automation reference",
-            "source_kind": "documentation",
-            "supports_claims": ["Stable selectors reduce flake risk."],
-            "freshness": "current",
-        }
-    ]
-    assert completion_body["next_steps"] == ["Retry the blocked browser test."]
-    assert completion_body["required_tools"] == ["playwright"]
+    assert "provider_id" not in start_body
+    assert "librarian_profile_id" not in start_body
 
 
 def test_mcp_skill_acquisition_status_polling_returns_job_status() -> None:
@@ -640,7 +627,7 @@ def test_mcp_path_parameters_are_percent_encoded() -> None:
     async def run_tools() -> None:
         await alexandria_archive_context(client, "ctx/1?archive=false")
         await alexandria_get_memory_compact(client, "compact/1#anchor")
-        await alexandria_librarian_job_status(client, "job/1")
+        await alexandria_skill_acquisition_job_status(client, "job/1")
 
     anyio.run(run_tools)
 
@@ -648,12 +635,12 @@ def test_mcp_path_parameters_are_percent_encoded() -> None:
     assert paths == [
         "/memory/contexts/ctx%2F1%3Farchive%3Dfalse/archive",
         "/memory/compacts/compact%2F1%23anchor",
-        "/librarians/jobs/job%2F1",
+        "/librarians/skill-acquisition-jobs/job%2F1",
     ]
 
 
-def test_mcp_memory_compact_tools_map_to_selected_artifact_endpoints() -> None:
-    """Memory Compact MCP tools should use first-class compact endpoints."""
+def test_memory_compact_gateway_supports_agent_reads_and_steward_primitives() -> None:
+    """Compact gateway should preserve reads plus internal Steward create/review."""
     client, calls = _client()
 
     async def run_tools() -> None:
@@ -708,9 +695,6 @@ def test_mcp_memory_compact_tools_map_to_selected_artifact_endpoints() -> None:
                 }
             ],
         )
-        await alexandria_mark_memory_compact_current(client, "compact/1")
-        await alexandria_archive_memory_compact(client, "compact/1")
-        await alexandria_delete_memory_compact(client, "compact/1")
 
     anyio.run(run_tools)
 
@@ -727,9 +711,6 @@ def test_mcp_memory_compact_tools_map_to_selected_artifact_endpoints() -> None:
         ("POST", "/memory/compacts"),
         ("GET", "/memory/compacts/compact%2F1"),
         ("POST", "/memory/compacts/compact%2F1/review"),
-        ("POST", "/memory/compacts/compact%2F1/mark-current"),
-        ("POST", "/memory/compacts/compact%2F1/archive"),
-        ("DELETE", "/memory/compacts/compact%2F1"),
     ]
     create_body = loads_json(calls[2].content or b"{}")
     assert create_body == {
@@ -776,7 +757,7 @@ def test_mcp_memory_compact_tools_map_to_selected_artifact_endpoints() -> None:
 
 
 def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
-    """Obsidian MCP tools should call the vault API wrappers."""
+    """Obsidian MCP tools should expose core vault maintenance, not generic delegation."""
     client, calls = _client()
 
     async def run_tools() -> None:
@@ -789,13 +770,13 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
             project="alexandria-hermes",
             tags=["obsidian"],
         )
-        await alexandria_librarian_review_queue(
+        await alexandria_vault_review_queue(
             client,
             project="alexandria-hermes",
             scope_path="Alexandria/_Inbox",
             limit=3,
         )
-        await alexandria_librarian_review_move_plan(
+        await alexandria_vault_review_move_plan(
             client,
             project="alexandria-hermes",
             scope_path="Alexandria/_Inbox",
@@ -805,23 +786,6 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
         await alexandria_get_related_notes(
             client, path="Alexandria/START_HERE.md", limit=2
         )
-        await alexandria_save_note(
-            client,
-            title="Web Research",
-            body="# Skill",
-            alexandria_type="skill",
-            note_id="skill_web_research",
-            tags=["research"],
-        )
-        await alexandria_ask_obsidian_librarian(
-            client,
-            query="canonical storage",
-            active_note_path="Alexandria/START_HERE.md",
-            save_transcript=True,
-            delegate_to_librarian=True,
-            provider_id="codex-oauth",
-            profile_id="research-critic",
-        )
 
     anyio.run(run_tools)
 
@@ -829,11 +793,6 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
         (request.method, str(request.url).removeprefix("http://backend:8000"))
         for request in calls
     ]
-    search_body = loads_json(calls[1].content or b"{}")
-    queue_body = loads_json(calls[2].content or b"{}")
-    move_plan_body = loads_json(calls[3].content or b"{}")
-    save_body = loads_json(calls[6].content or b"{}")
-    ask_body = loads_json(calls[7].content or b"{}")
     assert methods_and_paths == [
         ("POST", "/obsidian/index/rebuild"),
         ("POST", "/obsidian/search"),
@@ -844,27 +803,21 @@ def test_mcp_obsidian_tools_map_to_vault_endpoints() -> None:
             "GET",
             "/obsidian/notes/by-path/related?path=Alexandria%2FSTART_HERE.md&limit=2",
         ),
-        ("POST", "/obsidian/notes"),
-        ("POST", "/obsidian/librarian/ask"),
     ]
-    assert search_body == {
+    assert loads_json(calls[1].content or b"{}") == {
         "query": "canonical markdown",
         "limit": 2,
         "tags": ["obsidian"],
         "alexandria_type": "context",
         "project": "alexandria-hermes",
     }
+    queue_body = loads_json(calls[2].content or b"{}")
     assert queue_body == {
         "limit": 3,
         "project": "alexandria-hermes",
         "scope_path": "Alexandria/_Inbox",
     }
-    assert move_plan_body == queue_body
-    assert save_body["id"] == "skill_web_research"
-    assert ask_body["save_transcript"] is True
-    assert ask_body["delegate_to_librarian"] is True
-    assert ask_body["provider_id"] == "codex-oauth"
-    assert ask_body["profile_id"] == "research-critic"
+    assert loads_json(calls[3].content or b"{}") == queue_body
 
 
 def test_mcp_graph_projection_tools_map_to_backend_endpoints() -> None:
@@ -910,18 +863,21 @@ def test_mcp_graph_projection_tools_map_to_backend_endpoints() -> None:
     assert loads_json(calls[1].content or b"{}") == {}
 
 
-def test_mcp_save_note_normalizes_collection_input_before_http_forwarding() -> None:
-    """MCP saves should forward canonical arrays instead of repr strings."""
+def test_mcp_explicit_note_write_normalizes_collection_input_before_http_forwarding() -> (
+    None
+):
+    """Explicit MCP writes should forward canonical arrays instead of repr strings."""
     client, calls = _client()
 
     anyio.run(
-        alexandria_save_note,
+        alexandria_create_note,
         client,
         "Metadata Integrity",
         "# Metadata Integrity",
         "context",
+        "path",
         None,
-        None,
+        "Contexts/Projects/Metadata Integrity.md",
         "Evidence Intelligence",
         " Evidence Intelligence ",
         "active",
@@ -1060,19 +1016,20 @@ def test_mcp_exact_path_and_canonical_identity_map_without_fuzzy_search() -> Non
     }
 
 
-def test_mcp_save_note_rejects_legacy_collection_repr() -> None:
-    """MCP saves must not reintroduce migrated repr strings."""
+def test_mcp_explicit_note_write_rejects_legacy_collection_repr() -> None:
+    """Explicit MCP writes must not reintroduce migrated repr strings."""
     client, calls = _client()
 
     with pytest.raises(ValueError, match="legacy"):
         anyio.run(
-            alexandria_save_note,
+            alexandria_create_note,
             client,
             "Metadata Integrity",
             "# Metadata Integrity",
             "context",
+            "path",
             None,
-            None,
+            "Contexts/Projects/Metadata Integrity.md",
             "Evidence Intelligence",
             "('Evidence Intelligence', 'Market')",
             "active",
@@ -1083,7 +1040,7 @@ def test_mcp_save_note_rejects_legacy_collection_repr() -> None:
     assert calls == []
 
 
-def test_mcp_librarian_review_apply_requires_confirmation_when_plan_has_moves() -> None:
+def test_mcp_vault_review_apply_requires_confirmation_when_plan_has_moves() -> None:
     """Review apply gateway should fail closed before mutating planned moves."""
     calls: list[RecordedCall] = []
     move_plan: JSONValue = {
@@ -1112,7 +1069,7 @@ def test_mcp_librarian_review_apply_requires_confirmation_when_plan_has_moves() 
     )
 
     payload = _run_json(
-        alexandria_librarian_review_apply_moves(
+        alexandria_vault_review_apply_moves(
             client,
             project="alexandria-hermes",
             scope_path="Alexandria/_Inbox",
@@ -1135,7 +1092,7 @@ def test_mcp_librarian_review_apply_requires_confirmation_when_plan_has_moves() 
     }
 
 
-def test_mcp_librarian_review_apply_confirmed_calls_apply_endpoint() -> None:
+def test_mcp_vault_review_apply_confirmed_calls_apply_endpoint() -> None:
     """Confirmed review apply should plan first and then call the apply endpoint."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1176,7 +1133,7 @@ def test_mcp_librarian_review_apply_confirmed_calls_apply_endpoint() -> None:
     )
 
     payload = _run_json(
-        alexandria_librarian_review_apply_moves(
+        alexandria_vault_review_apply_moves(
             client,
             project="alexandria-hermes",
             scope_path="Alexandria/_Inbox",
@@ -1207,7 +1164,9 @@ def test_mcp_librarian_review_apply_confirmed_calls_apply_endpoint() -> None:
     assert payload["status"] == "applied"
 
 
-def test_mcp_librarian_readiness_combines_health_compact_and_review_queue() -> None:
+def test_mcp_memory_steward_readiness_combines_health_compact_and_review_queue() -> (
+    None
+):
     """Readiness should summarize second-brain health in one MCP response."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1242,7 +1201,7 @@ def test_mcp_librarian_readiness_combines_health_compact_and_review_queue() -> N
     )
 
     payload = _run_json(
-        alexandria_librarian_readiness(
+        alexandria_memory_steward_readiness(
             client, project="alexandria-hermes", max_compact_age_days=365_000
         )
     )
@@ -1271,7 +1230,7 @@ def test_mcp_librarian_readiness_combines_health_compact_and_review_queue() -> N
     assert payload["next_actions"] == []
 
 
-def test_mcp_librarian_readiness_flags_stale_current_compact() -> None:
+def test_mcp_memory_steward_readiness_flags_stale_current_compact() -> None:
     """Readiness should fail closed when the current compact is too old."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1301,7 +1260,7 @@ def test_mcp_librarian_readiness_flags_stale_current_compact() -> None:
     )
 
     payload = _run_json(
-        alexandria_librarian_readiness(
+        alexandria_memory_steward_readiness(
             client, project="alexandria-hermes", max_compact_age_days=30
         )
     )
@@ -1316,14 +1275,14 @@ def test_mcp_librarian_readiness_flags_stale_current_compact() -> None:
         {
             "priority": 20,
             "code": "refresh_current_memory_compact",
-            "tool": "alexandria_librarian_refresh_current_compact",
+            "tool": "alexandria_memory_steward_refresh_current_compact",
             "summary": "Refresh the CURRENT Memory Compact from readiness evidence.",
             "dry_run_first": True,
         }
     ]
 
 
-def test_mcp_librarian_readiness_flags_missing_current_compact_timestamp() -> None:
+def test_mcp_memory_steward_readiness_flags_missing_current_compact_timestamp() -> None:
     """Readiness should preserve missing timestamp warnings from compact API."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1352,7 +1311,7 @@ def test_mcp_librarian_readiness_flags_missing_current_compact_timestamp() -> No
     )
 
     payload = _run_json(
-        alexandria_librarian_readiness(
+        alexandria_memory_steward_readiness(
             client, project="alexandria-hermes", max_compact_age_days=365_000
         )
     )
@@ -1365,14 +1324,16 @@ def test_mcp_librarian_readiness_flags_missing_current_compact_timestamp() -> No
         {
             "priority": 20,
             "code": "refresh_current_memory_compact",
-            "tool": "alexandria_librarian_refresh_current_compact",
+            "tool": "alexandria_memory_steward_refresh_current_compact",
             "summary": "Refresh the CURRENT Memory Compact from readiness evidence.",
             "dry_run_first": True,
         }
     ]
 
 
-def test_mcp_librarian_readiness_flags_source_hash_changed_current_compact() -> None:
+def test_mcp_memory_steward_readiness_flags_source_hash_changed_current_compact() -> (
+    None
+):
     """Readiness should mark CURRENT stale when source evidence hash changed."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1410,7 +1371,7 @@ def test_mcp_librarian_readiness_flags_source_hash_changed_current_compact() -> 
     )
 
     payload = _run_json(
-        alexandria_librarian_readiness(
+        alexandria_memory_steward_readiness(
             client, project="alexandria-hermes", max_compact_age_days=30
         )
     )
@@ -1427,7 +1388,7 @@ def test_mcp_librarian_readiness_flags_source_hash_changed_current_compact() -> 
     )
 
 
-def test_mcp_librarian_readiness_flags_blocked_current_compact_review() -> None:
+def test_mcp_memory_steward_readiness_flags_blocked_current_compact_review() -> None:
     """Readiness should surface the latest CURRENT compact review verdict."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1455,7 +1416,7 @@ def test_mcp_librarian_readiness_flags_blocked_current_compact_review() -> None:
     )
 
     payload = _run_json(
-        alexandria_librarian_readiness(
+        alexandria_memory_steward_readiness(
             client, project="alexandria-hermes", max_compact_age_days=30
         )
     )
@@ -1477,14 +1438,14 @@ def test_mcp_librarian_readiness_flags_blocked_current_compact_review() -> None:
         {
             "priority": 20,
             "code": "refresh_current_memory_compact",
-            "tool": "alexandria_librarian_refresh_current_compact",
+            "tool": "alexandria_memory_steward_refresh_current_compact",
             "summary": "Refresh the CURRENT Memory Compact from readiness evidence.",
             "dry_run_first": True,
         }
     ]
 
 
-def test_mcp_librarian_readiness_returns_blocked_payload_when_rag_status_fails() -> (
+def test_mcp_memory_steward_readiness_returns_blocked_payload_when_rag_status_fails() -> (
     None
 ):
     """Readiness should fail closed when RAG status cannot be loaded."""
@@ -1503,7 +1464,7 @@ def test_mcp_librarian_readiness_returns_blocked_payload_when_rag_status_fails()
     )
 
     payload = _run_json(
-        alexandria_librarian_readiness(
+        alexandria_memory_steward_readiness(
             client, project="alexandria-hermes", max_compact_age_days=30
         )
     )
@@ -1525,7 +1486,7 @@ def test_mcp_librarian_readiness_returns_blocked_payload_when_rag_status_fails()
     ]
 
 
-def test_mcp_librarian_readiness_flags_attention_items() -> None:
+def test_mcp_memory_steward_readiness_flags_attention_items() -> None:
     """Readiness should surface degraded RAG, missing compact, and queue backlog."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1562,14 +1523,14 @@ def test_mcp_librarian_readiness_flags_attention_items() -> None:
         transport=httpx.MockTransport(fake_transport),
     )
 
-    payload = _run_json(alexandria_librarian_readiness(client))
+    payload = _run_json(alexandria_memory_steward_readiness(client))
 
     assert payload["ready"] is False
     assert payload["status"] == "needs_attention"
     assert payload["warnings"] == [
         "rag_vector_not_healthy",
         "current_memory_compact_missing",
-        "librarian_review_queue_not_empty",
+        "vault_review_queue_not_empty",
     ]
     assert payload["review_queue"]["total"] == 2
     assert payload["review_queue"]["auto_move_candidates"] == 1
@@ -1585,28 +1546,28 @@ def test_mcp_librarian_readiness_flags_attention_items() -> None:
         {
             "priority": 20,
             "code": "refresh_current_memory_compact",
-            "tool": "alexandria_librarian_refresh_current_compact",
+            "tool": "alexandria_memory_steward_refresh_current_compact",
             "summary": "Refresh the CURRENT Memory Compact from readiness evidence.",
             "dry_run_first": True,
         },
         {
             "priority": 30,
-            "code": "curate_librarian_review_queue",
-            "tool": "alexandria_librarian_review_move_plan",
+            "code": "curate_vault_review_queue",
+            "tool": "alexandria_vault_review_move_plan",
             "summary": "Plan safe vault moves for automatic review candidates.",
             "dry_run_first": True,
         },
         {
             "priority": 40,
-            "code": "review_manual_librarian_queue",
-            "tool": "alexandria_librarian_review_queue",
-            "summary": "Inspect queue items that require human or librarian judgment.",
+            "code": "review_manual_vault_queue",
+            "tool": "alexandria_vault_review_queue",
+            "summary": "Inspect queue items that require human judgment.",
             "dry_run_first": True,
         },
     ]
 
 
-def test_mcp_librarian_readiness_separates_manual_review_queue_action() -> None:
+def test_mcp_memory_steward_readiness_separates_manual_review_queue_action() -> None:
     """Manual-only review queues should not recommend an automatic move plan."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1643,7 +1604,7 @@ def test_mcp_librarian_readiness_separates_manual_review_queue_action() -> None:
     )
 
     payload = _run_json(
-        alexandria_librarian_readiness(
+        alexandria_memory_steward_readiness(
             client,
             project="alexandria-hermes",
             max_compact_age_days=365_000,
@@ -1651,21 +1612,23 @@ def test_mcp_librarian_readiness_separates_manual_review_queue_action() -> None:
     )
 
     assert payload["ready"] is False
-    assert payload["warnings"] == ["librarian_review_queue_not_empty"]
+    assert payload["warnings"] == ["vault_review_queue_not_empty"]
     assert payload["review_queue"]["auto_move_candidates"] == 0
     assert payload["review_queue"]["manual_review_required"] == 1
     assert payload["next_actions"] == [
         {
             "priority": 40,
-            "code": "review_manual_librarian_queue",
-            "tool": "alexandria_librarian_review_queue",
-            "summary": "Inspect queue items that require human or librarian judgment.",
+            "code": "review_manual_vault_queue",
+            "tool": "alexandria_vault_review_queue",
+            "summary": "Inspect queue items that require human judgment.",
             "dry_run_first": True,
         }
     ]
 
 
-def test_mcp_librarian_refresh_current_compact_plans_stale_compact_refresh() -> None:
+def test_mcp_memory_steward_refresh_current_compact_plans_stale_compact_refresh() -> (
+    None
+):
     """Refresh tool should draft a CURRENT compact without mutating by default."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1693,7 +1656,7 @@ def test_mcp_librarian_refresh_current_compact_plans_stale_compact_refresh() -> 
     )
 
     payload = _run_json(
-        alexandria_librarian_refresh_current_compact(
+        alexandria_memory_steward_refresh_current_compact(
             client,
             project="alexandria-hermes",
             max_compact_age_days=30,
@@ -1717,7 +1680,9 @@ def test_mcp_librarian_refresh_current_compact_plans_stale_compact_refresh() -> 
     assert "current_memory_compact_stale" in payload["readiness"]["warnings"]
 
 
-def test_mcp_librarian_refresh_current_compact_applies_stale_compact_refresh() -> None:
+def test_mcp_memory_steward_refresh_current_compact_applies_stale_compact_refresh() -> (
+    None
+):
     """Refresh tool should create a CURRENT compact and re-check readiness when applied."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1755,7 +1720,7 @@ def test_mcp_librarian_refresh_current_compact_applies_stale_compact_refresh() -
     )
 
     payload = _run_json(
-        alexandria_librarian_refresh_current_compact(
+        alexandria_memory_steward_refresh_current_compact(
             client,
             project="alexandria-hermes",
             max_compact_age_days=30,
@@ -1790,7 +1755,7 @@ def test_mcp_librarian_refresh_current_compact_applies_stale_compact_refresh() -
     assert payload["post_refresh_readiness"]["ready"] is True
 
 
-def test_mcp_librarian_refresh_current_compact_blocks_apply_when_rag_unhealthy() -> (
+def test_mcp_memory_steward_refresh_current_compact_blocks_apply_when_rag_unhealthy() -> (
     None
 ):
     """Refresh apply should fail closed on RAG health even when force is requested."""
@@ -1820,7 +1785,7 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_when_rag_unhealthy()
     )
 
     payload = _run_json(
-        alexandria_librarian_refresh_current_compact(
+        alexandria_memory_steward_refresh_current_compact(
             client,
             project="alexandria-hermes",
             max_compact_age_days=30,
@@ -1854,7 +1819,9 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_when_rag_unhealthy()
     ]
 
 
-def test_mcp_librarian_refresh_current_compact_blocks_apply_on_rag_warnings() -> None:
+def test_mcp_memory_steward_refresh_current_compact_blocks_apply_on_rag_warnings() -> (
+    None
+):
     """Refresh apply should fail closed when RAG status includes warnings."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1887,7 +1854,7 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_on_rag_warnings() ->
     )
 
     payload = _run_json(
-        alexandria_librarian_refresh_current_compact(
+        alexandria_memory_steward_refresh_current_compact(
             client,
             project="alexandria-hermes",
             max_compact_age_days=30,
@@ -1916,7 +1883,7 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_on_rag_warnings() ->
     ]
 
 
-def test_mcp_librarian_refresh_current_compact_blocks_apply_when_rag_status_fails() -> (
+def test_mcp_memory_steward_refresh_current_compact_blocks_apply_when_rag_status_fails() -> (
     None
 ):
     """Refresh apply should return a blocked plan when RAG status lookup fails."""
@@ -1935,7 +1902,7 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_when_rag_status_fail
     )
 
     payload = _run_json(
-        alexandria_librarian_refresh_current_compact(
+        alexandria_memory_steward_refresh_current_compact(
             client,
             project="alexandria-hermes",
             max_compact_age_days=30,
@@ -1956,7 +1923,9 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_when_rag_status_fail
     assert payload["readiness"]["warnings"] == ["rag_status_unavailable"]
 
 
-def test_mcp_librarian_refresh_current_compact_blocks_apply_for_manual_review() -> None:
+def test_mcp_memory_steward_refresh_current_compact_blocks_apply_for_manual_review() -> (
+    None
+):
     """Refresh apply should not run while librarian review is blocked."""
     calls: list[RecordedCall] = []
     responses: list[JSONValue] = [
@@ -1992,7 +1961,7 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_for_manual_review() 
     )
 
     payload = _run_json(
-        alexandria_librarian_refresh_current_compact(
+        alexandria_memory_steward_refresh_current_compact(
             client,
             project="alexandria-hermes",
             max_compact_age_days=30,
@@ -2011,21 +1980,21 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_for_manual_review() 
         ("POST", "/obsidian/librarian/review-queue"),
         ("POST", "/memory/compacts/compact-old/review"),
     ]
-    assert payload["status"] == "blocked_by_librarian_review"
+    assert payload["status"] == "blocked_by_vault_review"
     assert payload["created"] is None
-    assert payload["blocked_reasons"] == ["librarian_manual_review_required"]
+    assert payload["blocked_reasons"] == ["vault_manual_review_required"]
     assert payload["blocked_next_actions"] == [
         {
             "priority": 40,
-            "code": "review_manual_librarian_queue",
-            "tool": "alexandria_librarian_review_queue",
-            "summary": "Inspect queue items that require human or librarian judgment.",
+            "code": "review_manual_vault_queue",
+            "tool": "alexandria_vault_review_queue",
+            "summary": "Inspect queue items that require human judgment.",
             "dry_run_first": True,
         }
     ]
 
 
-def test_mcp_librarian_refresh_current_compact_blocks_apply_for_review_verdict() -> (
+def test_mcp_memory_steward_refresh_current_compact_blocks_apply_for_review_verdict() -> (
     None
 ):
     """Refresh apply should not run when CURRENT compact review is blocked."""
@@ -2055,7 +2024,7 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_for_review_verdict()
     )
 
     payload = _run_json(
-        alexandria_librarian_refresh_current_compact(
+        alexandria_memory_steward_refresh_current_compact(
             client,
             project="alexandria-hermes",
             max_compact_age_days=30,
@@ -2074,7 +2043,7 @@ def test_mcp_librarian_refresh_current_compact_blocks_apply_for_review_verdict()
         ("POST", "/obsidian/librarian/review-queue"),
         ("POST", "/memory/compacts/compact-blocked/review"),
     ]
-    assert payload["status"] == "blocked_by_librarian_review"
+    assert payload["status"] == "blocked_by_vault_review"
     assert payload["created"] is None
     assert payload["blocked_reasons"] == ["current_memory_compact_review_blocked"]
     assert payload["blocked_next_actions"] == []
@@ -2092,14 +2061,12 @@ def test_mcp_librarian_vault_operation_tools_map_to_safe_vault_endpoints() -> No
     ]
 
     async def run_tools() -> None:
-        await alexandria_librarian_vault_inventory(
-            client, scope_path="Alexandria/_Inbox"
-        )
-        await alexandria_librarian_vault_path_search(
+        await alexandria_vault_inventory(client, scope_path="Alexandria/_Inbox")
+        await alexandria_vault_path_search(
             client, query="Loose", scope_path="Alexandria/_Inbox"
         )
-        await alexandria_librarian_vault_move_plan(client, moves=moves)
-        await alexandria_librarian_vault_apply_moves(
+        await alexandria_vault_move_plan(client, moves=moves)
+        await alexandria_vault_apply_moves(
             client,
             moves=moves,
             report_path="Alexandria/_Ops/Librarian/Reports/manual-apply",
@@ -2168,133 +2135,6 @@ def test_mcp_context_supersede_tool_maps_to_canonical_endpoint() -> None:
     }
 
 
-def test_mcp_librarian_brief_preview_uses_budgeted_packet_contract() -> None:
-    """MCP brief preview should call the compact/source-ref preview endpoint."""
-    client, calls = _client()
-
-    _run_json(
-        alexandria_librarian_brief_preview(
-            client,
-            prompt="Need OAuth callback evidence",
-            project="alexandria-hermes",
-            max_input_chars=3000,
-            max_source_refs=4,
-        )
-    )
-
-    request_body = loads_json(calls[0].content or b"{}")
-    assert calls[0].method == "POST"
-    assert str(calls[0].url) == "http://backend:8000/librarians/brief-preview"
-    assert request_body == {
-        "prompt": "Need OAuth callback evidence",
-        "project": "alexandria-hermes",
-        "budget": {
-            "max_input_chars": 3000,
-            "max_source_refs": 4,
-            "max_preview_chars": 800,
-        },
-    }
-
-
-def test_mcp_collaboration_tools_map_to_librarian_backend_contracts() -> None:
-    """MCP collaboration tools should call librarian APIs without usage CRUD."""
-    client, calls = _client()
-
-    async def run_tools() -> None:
-        await alexandria_ask_librarian(
-            client,
-            prompt="Need OAuth skill",
-            delegate_to_librarian=True,
-            project="alexandria-hermes",
-            librarian_profile_id="profile-1",
-            librarian_model="gpt-5.5",
-            librarian_role_prompt="Use project memory first.",
-            max_librarian_agents=2,
-        )
-        await alexandria_librarian_route_preview(
-            client,
-            prompt="Need OAuth skill",
-            project="alexandria-hermes",
-            librarian_profile_id="profile-1",
-        )
-        await alexandria_librarian_job_status(client, "job/1")
-
-    anyio.run(run_tools)
-
-    methods_and_paths = [
-        (request.method, str(request.url).removeprefix("http://backend:8000"))
-        for request in calls
-    ]
-    ask_body = loads_json(calls[0].content or b"{}")
-    route_preview_body = loads_json(calls[1].content or b"{}")
-    assert methods_and_paths == [
-        ("POST", "/librarians/ask"),
-        ("POST", "/librarians/route-preview"),
-        ("GET", "/librarians/jobs/job%2F1"),
-    ]
-    assert ask_body == {
-        "prompt": "Need OAuth skill",
-        "agent_name": "Hermes",
-        "project": "alexandria-hermes",
-        "delegate_to_librarian": True,
-        "librarian_profile_id": "profile-1",
-        "librarian_model": "gpt-5.5",
-        "librarian_role_prompt": "Use project memory first.",
-        "max_librarian_agents": 2,
-        "routing_specialties": [],
-    }
-    assert route_preview_body == {
-        "prompt": "Need OAuth skill",
-        "agent_name": "Hermes",
-        "project": "alexandria-hermes",
-        "delegate_to_librarian": False,
-        "librarian_profile_id": "profile-1",
-        "routing_specialties": [],
-    }
-
-
-def test_mcp_librarian_oauth_tools_map_to_safe_backend_lifecycle() -> None:
-    """MCP OAuth lifecycle tools should call provider routes without leaking codes."""
-    client, calls = _client_with_payload(
-        {
-            "provider_id": "provider-1",
-            "status": "pending",
-            "user_code": "SECRET-CODE",
-            "verification_uri": "https://login.example/device",
-            "verification_uri_complete": (
-                "https://login.example/device?user_code=SECRET-CODE"
-            ),
-            "oauth_access_token": "secret-token",
-            "connected": False,
-        }
-    )
-
-    async def run_tools() -> list[JSONValue]:
-        return [
-            await alexandria_librarian_oauth_start(client, "provider/1"),
-            await alexandria_librarian_oauth_poll(client, "provider/1"),
-            await alexandria_librarian_oauth_status(client, "provider/1"),
-            await alexandria_librarian_oauth_refresh(client, "provider/1"),
-        ]
-
-    payloads = anyio.run(run_tools)
-
-    methods_and_paths = [
-        (request.method, str(request.url).removeprefix("http://backend:8000"))
-        for request in calls
-    ]
-    serialized_payloads = dumps_json(payloads).decode("utf-8")
-    assert methods_and_paths == [
-        ("POST", "/settings/connections/provider%2F1/oauth/start"),
-        ("POST", "/settings/connections/provider%2F1/oauth/poll"),
-        ("GET", "/settings/connections/provider%2F1/oauth/status"),
-        ("POST", "/settings/connections/provider%2F1/oauth/refresh"),
-    ]
-    assert "SECRET-CODE" not in serialized_payloads
-    assert "verification_uri_complete" not in serialized_payloads
-    assert "oauth_access_token" not in serialized_payloads
-
-
 def test_fastapi_app_accepts_tunnel_host_for_streamable_http_mcp() -> None:
     """FastAPI should expose MCP to reverse-tunnel hosts without 421."""
     app = create_app(AppConfig(_env_file=None, mcp_auth_mode="none"))
@@ -2335,28 +2175,37 @@ def test_fastmcp_server_uses_tunnel_compatible_transport_host() -> None:
 
 
 def test_fastmcp_server_registers_required_alexandria_tools() -> None:
-    """FastMCP registration should expose the durable tool contract names."""
+    """FastMCP should expose focused acquisition and core maintenance contracts."""
     client, _ = _client()
     server = build_mcp_server(client=client)
 
     tools = anyio.run(server.list_tools)
-
     names = {tool.name for tool in tools}
+
+    assert len(names) == 52
     assert {
         "alexandria_search",
-        "alexandria_recall_context",
-        "alexandria_rag_context",
-        "alexandria_list_memory_compact_artifacts",
-        "alexandria_get_current_memory_compact",
-        "alexandria_create_memory_compact",
-        "alexandria_get_memory_compact",
-        "alexandria_review_memory_compact",
-        "alexandria_mark_memory_compact_current",
-        "alexandria_archive_memory_compact",
-        "alexandria_delete_memory_compact",
         "alexandria_search_skills",
         "alexandria_start_skill_acquisition",
         "alexandria_skill_acquisition_job_status",
+        "alexandria_memory_steward_readiness",
+        "alexandria_memory_steward_refresh_current_compact",
+        "alexandria_vault_review_queue",
+        "alexandria_vault_review_move_plan",
+        "alexandria_vault_review_apply_moves",
+        "alexandria_vault_inventory",
+        "alexandria_vault_path_search",
+        "alexandria_vault_move_plan",
+        "alexandria_vault_apply_moves",
+        "alexandria_operational_readiness",
+        "alexandria_recover",
+        "alexandria_read_note",
+        "alexandria_search_vault",
+        "alexandria_create_note",
+        "alexandria_update_note",
+        "alexandria_upsert_note",
+    } <= names
+    assert {
         "alexandria_complete_skill_acquisition",
         "alexandria_ask_librarian",
         "alexandria_librarian_brief_preview",
@@ -2368,23 +2217,6 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_librarian_oauth_refresh",
         "alexandria_librarian_readiness",
         "alexandria_librarian_refresh_current_compact",
-        "alexandria_archive_context",
-        "alexandria_supersede_context",
-        "alexandria_delete_context",
-        "alexandria_rag_status",
-        "alexandria_operational_readiness",
-        "alexandria_recovery_plan",
-        "alexandria_recovery_quarantine",
-        "alexandria_recovery_retry",
-        "alexandria_recovery_run",
-        "alexandria_recovery_run_status",
-        "alexandria_reindex_vault",
-        "alexandria_get_graph_projection_status",
-        "alexandria_rebuild_graph_projection",
-        "alexandria_get_graph_build_status",
-        "alexandria_validate_note_links",
-        "alexandria_rebuild_note_graph",
-        "alexandria_search_vault",
         "alexandria_librarian_review_queue",
         "alexandria_librarian_review_move_plan",
         "alexandria_librarian_review_apply_moves",
@@ -2392,28 +2224,12 @@ def test_fastmcp_server_registers_required_alexandria_tools() -> None:
         "alexandria_librarian_vault_path_search",
         "alexandria_librarian_vault_move_plan",
         "alexandria_librarian_vault_apply_moves",
-        "alexandria_read_note",
-        "alexandria_check_path_exists",
-        "alexandria_resolve_canonical_identity",
-        "alexandria_save_note",
-        "alexandria_create_note",
-        "alexandria_update_note",
-        "alexandria_upsert_note",
-        "alexandria_upsert_report_bundle",
         "alexandria_ask_obsidian_librarian",
-    } <= names
-    assert {
-        "alexandria_get_skill",
-        "alexandria_get_prompt",
-        "alexandria_search_library",
-        "alexandria_search_prompts",
-        "alexandria_capture_harness",
-        "alexandria_check_harness",
-        "alexandria_list_harnesses",
-        "alexandria_get_harness",
-        "alexandria_archive_harness",
-        "alexandria_submit_skill_candidate",
-        "alexandria_record_usage",
-        "alexandria_capture_context",
-        "alexandria_prepare_compact",
+        "alexandria_create_memory_compact",
+        "alexandria_mark_memory_compact_current",
+        "alexandria_archive_memory_compact",
+        "alexandria_review_memory_compact",
+        "alexandria_delete_memory_compact",
+        "alexandria_get_memory_reconciliation_result",
+        "alexandria_mark_memory_conflict_reviewing",
     }.isdisjoint(names)

@@ -164,7 +164,7 @@ def connection_hub_status(request: Request) -> ConnectionHubStatusResponse:
     Returns:
         Public connection state without credentials.
     """
-    config = getattr(request.app.state, "app_config", AppConfig())
+    config = _request_app_config(request, AppConfig())
     host = request.url.hostname or ""
     request_mcp_endpoint = str(request.base_url).rstrip("/") + "/mcp"
     return ConnectionHubStatusResponse(
@@ -198,13 +198,13 @@ async def create_mcp_pairing_code(
         One-time pairing code and expiration.
     """
     _require_local_management_request(request)
-    config = getattr(request.app.state, "app_config", configured_app)
+    config = _request_app_config(request, configured_app)
     if config.mcp_auth_mode is not McpAuthMode.LOCAL_OAUTH2:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="MCP local OAuth is not enabled",
         )
-    provider = getattr(request.app.state, "local_mcp_oauth_provider", None)
+    provider = _request_oauth_provider(request)
     if not isinstance(provider, LocalMcpOAuthProvider):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -313,19 +313,35 @@ def _local_oauth_provider(
     configured_app: AppConfig,
 ) -> LocalMcpOAuthProvider:
     _require_local_management_request(request)
-    config = getattr(request.app.state, "app_config", configured_app)
+    config = _request_app_config(request, configured_app)
     if config.mcp_auth_mode is not McpAuthMode.LOCAL_OAUTH2:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="MCP local OAuth is not enabled",
         )
-    provider = getattr(request.app.state, "local_mcp_oauth_provider", None)
+    provider = _request_oauth_provider(request)
     if not isinstance(provider, LocalMcpOAuthProvider):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="MCP local OAuth is still starting",
         )
     return provider
+
+
+def _request_app_config(request: Request, fallback: AppConfig) -> AppConfig:
+    try:
+        config = request.app.state.app_config
+    except AttributeError:
+        return fallback
+    return config if isinstance(config, AppConfig) else fallback
+
+
+def _request_oauth_provider(request: Request) -> LocalMcpOAuthProvider | None:
+    try:
+        provider = request.app.state.local_mcp_oauth_provider
+    except AttributeError:
+        return None
+    return provider if isinstance(provider, LocalMcpOAuthProvider) else None
 
 
 def _require_local_management_request(request: Request) -> None:

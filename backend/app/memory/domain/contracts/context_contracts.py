@@ -9,6 +9,7 @@ from app.memory.domain.event_enum.context_enums import (
     ContextAccessActorType,
     ContextAccessMethod,
 )
+from app.shared.types.embedding_types import EmbeddingVector
 from app.shared.types.extra_types import JSONObject
 
 
@@ -17,7 +18,7 @@ class ContextChunkEmbeddingUpdate:
     """Fields required to update one context chunk embedding."""
 
     chunk_id: str
-    embedding: str
+    embedding: EmbeddingVector
     embedding_model: str
     embedding_dimensions: int
     embedding_provider: str

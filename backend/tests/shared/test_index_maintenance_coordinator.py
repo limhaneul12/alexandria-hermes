@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 import anyio
 import pytest
 from app.shared.application.index_maintenance_coordinator import (
     IndexMaintenanceCoordinator,
 )
 from app.shared.exceptions.common_exceptions import IndexMaintenanceConflictError
-from app.shared.infrastructure.interprocess_file_lock import InterprocessFileLock
+
+
+class _RecordingProcessLock:
+    def __init__(self) -> None:
+        self.calls: list[tuple[bool, bool]] = []
+
+    @asynccontextmanager
+    async def operation(self, *, wait: bool, shared: bool) -> AsyncIterator[None]:
+        self.calls.append((wait, shared))
+        yield
 
 
 def test_coordinator_is_reentrant_for_one_task_and_rejects_parallel_work() -> None:
@@ -92,57 +104,141 @@ def test_write_operation_waits_until_active_maintenance_releases() -> None:
     ]
 
 
-def test_separate_coordinators_share_one_interprocess_write_lane(tmp_path) -> None:
-    """Two application processes must coordinate through the same lock path."""
+def test_postgres_mode_allows_independent_short_writes_to_overlap() -> None:
+    """Compatible short writers should not be globally serialized on PostgreSQL."""
 
-    async def scenario() -> tuple[str, list[str]]:
-        lock_path = tmp_path / "alexandria.db.index-write.lock"
-        first = IndexMaintenanceCoordinator(
-            process_lock=InterprocessFileLock(lock_path)
-        )
-        second = IndexMaintenanceCoordinator(
-            process_lock=InterprocessFileLock(lock_path)
-        )
-        entered = anyio.Event()
+    async def scenario() -> tuple[int, list[str]]:
+        coordinator = IndexMaintenanceCoordinator(allow_concurrent_writes=True)
+        first_entered = anyio.Event()
+        second_entered = anyio.Event()
         release = anyio.Event()
-        queued_entered = anyio.Event()
+        active = 0
+        peak_active = 0
         events: list[str] = []
-        conflict = ""
 
-        async def owner() -> None:
-            async with first.operation("vault_reindex"):
-                events.append("owner-entered")
+        async def writer(name: str, entered: anyio.Event) -> None:
+            nonlocal active, peak_active
+            async with coordinator.write_operation(name):
+                active += 1
+                peak_active = max(peak_active, active)
+                events.append(f"{name}-entered")
                 entered.set()
                 await release.wait()
-                events.append("owner-released")
-
-        async def queued_writer() -> None:
-            await entered.wait()
-            async with second.write_operation("obsidian_note_write"):
-                events.append("queued-entered")
-                queued_entered.set()
-
-        async def fail_fast_maintenance() -> None:
-            nonlocal conflict
-            await entered.wait()
-            with pytest.raises(IndexMaintenanceConflictError) as exc_info:
-                async with second.operation("graph_rebuild"):
-                    raise AssertionError("external process lease was not enforced")
-            conflict = str(exc_info.value)
+                active -= 1
+                events.append(f"{name}-released")
 
         async with anyio.create_task_group() as group:
-            group.start_soon(owner)
-            await entered.wait()
-            group.start_soon(fail_fast_maintenance)
-            group.start_soon(queued_writer)
-            with anyio.move_on_after(0.05):
-                await queued_entered.wait()
-            assert not queued_entered.is_set()
+            group.start_soon(writer, "writer-a", first_entered)
+            group.start_soon(writer, "writer-b", second_entered)
+            await first_entered.wait()
+            await second_entered.wait()
             release.set()
 
-        return conflict, events
+        return peak_active, events
 
-    conflict, events = anyio.run(scenario)
+    peak_active, events = anyio.run(scenario)
 
-    assert "another process owns" in conflict
-    assert events == ["owner-entered", "owner-released", "queued-entered"]
+    assert peak_active == 2
+    assert {event for event in events if event.endswith("-entered")} == {
+        "writer-a-entered",
+        "writer-b-entered",
+    }
+
+
+def test_waiting_maintenance_prevents_new_writer_starvation() -> None:
+    """Once maintenance queues, later writers should wait behind it."""
+
+    async def scenario() -> list[str]:
+        coordinator = IndexMaintenanceCoordinator(allow_concurrent_writes=True)
+        first_writer_entered = anyio.Event()
+        release_first_writer = anyio.Event()
+        maintenance_entered = anyio.Event()
+        release_maintenance = anyio.Event()
+        later_writer_entered = anyio.Event()
+        events: list[str] = []
+
+        async def first_writer() -> None:
+            async with coordinator.write_operation("writer-a"):
+                events.append("writer-a-entered")
+                first_writer_entered.set()
+                await release_first_writer.wait()
+                events.append("writer-a-released")
+
+        async def maintenance() -> None:
+            await first_writer_entered.wait()
+            async with coordinator.operation("vault-reindex", wait=True):
+                events.append("maintenance-entered")
+                maintenance_entered.set()
+                await release_maintenance.wait()
+                events.append("maintenance-released")
+
+        async def later_writer() -> None:
+            await first_writer_entered.wait()
+            await anyio.sleep(0)
+            async with coordinator.write_operation("writer-b"):
+                events.append("writer-b-entered")
+                later_writer_entered.set()
+
+        async with anyio.create_task_group() as group:
+            group.start_soon(first_writer)
+            group.start_soon(maintenance)
+            await first_writer_entered.wait()
+            await anyio.sleep(0)
+            group.start_soon(later_writer)
+            with anyio.move_on_after(0.05):
+                await later_writer_entered.wait()
+            assert not later_writer_entered.is_set()
+            release_first_writer.set()
+            await maintenance_entered.wait()
+            with anyio.move_on_after(0.05):
+                await later_writer_entered.wait()
+            assert not later_writer_entered.is_set()
+            release_maintenance.set()
+
+        return events
+
+    events = anyio.run(scenario)
+
+    assert events == [
+        "writer-a-entered",
+        "writer-a-released",
+        "maintenance-entered",
+        "maintenance-released",
+        "writer-b-entered",
+    ]
+
+
+def test_shared_writer_cannot_upgrade_to_exclusive_maintenance() -> None:
+    """A nested maintenance step must enter through an exclusive outer operation."""
+
+    async def scenario() -> str:
+        coordinator = IndexMaintenanceCoordinator(allow_concurrent_writes=True)
+        async with coordinator.write_operation("note-write"):
+            with pytest.raises(RuntimeError) as exc_info:
+                async with coordinator.operation("vault-reindex", wait=True):
+                    raise AssertionError("shared lease unexpectedly upgraded")
+        return str(exc_info.value)
+
+    error = anyio.run(scenario)
+
+    assert "cannot upgrade from shared to exclusive" in error
+
+
+def test_process_lock_receives_shared_and_exclusive_modes() -> None:
+    """The coordinator should propagate the narrowest cross-process lock mode."""
+
+    async def scenario() -> list[tuple[bool, bool]]:
+        process_lock = _RecordingProcessLock()
+        coordinator = IndexMaintenanceCoordinator(
+            process_lock=process_lock,
+            allow_concurrent_writes=True,
+        )
+        async with coordinator.write_operation("note-write"):
+            pass
+        async with coordinator.operation("vault-reindex", wait=False):
+            pass
+        return process_lock.calls
+
+    calls = anyio.run(scenario)
+
+    assert calls == [(True, True), (False, False)]

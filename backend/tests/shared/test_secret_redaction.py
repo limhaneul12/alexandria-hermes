@@ -106,6 +106,33 @@ def test_redact_secret_text_keeps_generic_long_token_redaction_outside_urls() ->
     assert result.redaction_count == 1
 
 
+def test_redact_secret_text_preserves_obsidian_full_path_wikilink() -> None:
+    content = (
+        "routes_to -> "
+        "[[Prompts/System/Scheduler/Execution/Crypto/Bitcoin Morning Read v3|"
+        "Bitcoin Morning Read v3]]"
+    )
+
+    result = redact_secret_text(content)
+
+    assert result.redacted_content == content
+    assert result.redaction_count == 0
+    assert result.warnings == ()
+
+
+def test_redact_secret_text_redacts_long_token_inside_wikilink_path_segment() -> None:
+    token = "a" * 64
+    content = f"[[Contexts/Projects/{token}/Note|label]]"
+
+    result = redact_secret_text(content)
+
+    assert result.redacted_content == (
+        "[[Contexts/Projects/<REDACTED_LONG_VALUE>/Note|label]]"
+    )
+    assert result.redaction_count == 1
+    assert result.warnings == ("potential secret-like content was redacted",)
+
+
 def test_redact_secret_text_redacts_authorization_and_bearer_tokens() -> None:
     result = redact_secret_text(
         "Authorization: Bearer short-but-sensitive-token\n"

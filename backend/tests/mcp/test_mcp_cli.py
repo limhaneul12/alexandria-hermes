@@ -9,9 +9,9 @@ from enum import StrEnum
 
 from app import cli
 from app.cli import (
-    librarian_gateway as cli_librarian_gateway,
-    librarian_readiness_commands as cli_librarian_readiness,
+    maintenance_gateway as cli_maintenance_gateway,
     mcp_server_commands as cli_mcp,
+    memory_steward_commands as cli_memory_steward,
 )
 from app.cli.type_validate.command_options import RequiredMcpTool
 from app.cli.type_validate.mcp_protocol_payload_contracts import (
@@ -34,11 +34,11 @@ class FakeMcpServer:
         self.runs.append((transport, mount_path))
 
 
-def test_cli_librarian_gateway_defers_backend_tool_gateway_import() -> None:
+def test_cli_maintenance_gateway_defers_backend_tool_gateway_import() -> None:
     """CLI import should not load the broad backend gateway just to render help."""
     sys.modules.pop("app.mcp_server.backend_tool_gateway", None)
 
-    importlib.reload(cli_librarian_gateway)
+    importlib.reload(cli_maintenance_gateway)
 
     assert "app.mcp_server.backend_tool_gateway" not in sys.modules
 
@@ -53,11 +53,11 @@ def test_cli_type_contracts_use_str_enums() -> None:
         "streamable-http",
     ]
     assert [tool.value for tool in RequiredMcpTool] == [
-        "alexandria_librarian_readiness",
-        "alexandria_librarian_refresh_current_compact",
-        "alexandria_librarian_review_queue",
-        "alexandria_librarian_review_move_plan",
-        "alexandria_librarian_review_apply_moves",
+        "alexandria_memory_steward_readiness",
+        "alexandria_memory_steward_refresh_current_compact",
+        "alexandria_vault_review_queue",
+        "alexandria_vault_review_move_plan",
+        "alexandria_vault_review_apply_moves",
     ]
 
 
@@ -112,11 +112,11 @@ def test_cli_mcp_smoke_tools_returns_zero_when_required_tools_exist(
         (
             None,
             (
-                "alexandria_librarian_readiness",
-                "alexandria_librarian_refresh_current_compact",
-                "alexandria_librarian_review_queue",
-                "alexandria_librarian_review_move_plan",
-                "alexandria_librarian_review_apply_moves",
+                "alexandria_memory_steward_readiness",
+                "alexandria_memory_steward_refresh_current_compact",
+                "alexandria_vault_review_queue",
+                "alexandria_vault_review_move_plan",
+                "alexandria_vault_review_apply_moves",
             ),
         )
     ]
@@ -138,7 +138,7 @@ def test_cli_mcp_smoke_tools_returns_attention_exit_when_tools_are_missing(
         received.append((mcp_url, tuple(required_tools)))
         return {
             "ok": False,
-            "missing_tools": ["alexandria_librarian_readiness"],
+            "missing_tools": ["alexandria_memory_steward_readiness"],
             "tool_count": 1,
         }
 
@@ -151,17 +151,17 @@ def test_cli_mcp_smoke_tools_returns_attention_exit_when_tools_are_missing(
             "--mcp-url",
             "http://backend:8000/mcp/",
             "--required-tool",
-            "alexandria_librarian_readiness",
+            "alexandria_memory_steward_readiness",
         ]
     )
 
     assert exit_code == 2
     assert received == [
-        ("http://backend:8000/mcp/", ("alexandria_librarian_readiness",))
+        ("http://backend:8000/mcp/", ("alexandria_memory_steward_readiness",))
     ]
     assert loads_json(capsys.readouterr().out) == {
         "ok": False,
-        "missing_tools": ["alexandria_librarian_readiness"],
+        "missing_tools": ["alexandria_memory_steward_readiness"],
         "tool_count": 1,
     }
 
@@ -170,22 +170,22 @@ def test_cli_mcp_tools_response_parser_accepts_json_and_sse_payloads() -> None:
     """MCP smoke parser should handle JSON and SSE tools/list responses."""
     json_payload = (
         '{"jsonrpc":"2.0","id":2,"result":{"tools":'
-        '[{"name":"alexandria_librarian_readiness"}]}}'
+        '[{"name":"alexandria_memory_steward_readiness"}]}}'
     )
     sse_payload = (
         "event: message\n"
         'data: {"jsonrpc":"2.0","id":2,"result":{"tools":'
-        '[{"name":"alexandria_librarian_refresh_current_compact"}]}}\n\n'
+        '[{"name":"alexandria_memory_steward_refresh_current_compact"}]}}\n\n'
     )
 
     json_tools = mcp_tool_names(decode_mcp_json_response(json_payload))
     sse_tools = mcp_tool_names(decode_mcp_json_response(sse_payload))
 
-    assert json_tools == {"alexandria_librarian_readiness"}
-    assert sse_tools == {"alexandria_librarian_refresh_current_compact"}
+    assert json_tools == {"alexandria_memory_steward_readiness"}
+    assert sse_tools == {"alexandria_memory_steward_refresh_current_compact"}
 
 
-def test_cli_librarian_readiness_prints_gateway_payload(monkeypatch, capsys) -> None:
+def test_cli_memory_steward_prints_gateway_payload(monkeypatch, capsys) -> None:
     """Librarian readiness CLI should expose the MCP readiness workflow locally."""
     received: list[tuple[str | None, int]] = []
 
@@ -198,14 +198,14 @@ def test_cli_librarian_readiness_prints_gateway_payload(monkeypatch, capsys) -> 
         return {"ready": True, "warnings": []}
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_readiness",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_readiness",
         fake_readiness,
     )
 
     exit_code = cli.main(
         [
-            "librarian",
+            "memory-steward",
             "readiness",
             "--project",
             "alexandria-hermes",
@@ -219,7 +219,7 @@ def test_cli_librarian_readiness_prints_gateway_payload(monkeypatch, capsys) -> 
     assert loads_json(capsys.readouterr().out) == {"ready": True, "warnings": []}
 
 
-def test_cli_librarian_review_queue_summary_maps_scope_options(
+def test_cli_vault_review_queue_summary_maps_scope_options(
     monkeypatch,
     capsys,
 ) -> None:
@@ -260,14 +260,14 @@ def test_cli_librarian_review_queue_summary_maps_scope_options(
         }
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_review_queue",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_vault_review_queue",
         fake_review_queue,
     )
 
     exit_code = cli.main(
         [
-            "librarian",
+            "vault",
             "review-queue",
             "--project",
             "alexandria-hermes",
@@ -294,7 +294,7 @@ def test_cli_librarian_review_queue_summary_maps_scope_options(
     }
 
 
-def test_cli_librarian_review_move_plan_maps_scope_options(
+def test_cli_vault_review_move_plan_maps_scope_options(
     monkeypatch,
     capsys,
 ) -> None:
@@ -319,14 +319,14 @@ def test_cli_librarian_review_move_plan_maps_scope_options(
         }
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_review_move_plan",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_vault_review_move_plan",
         fake_move_plan,
     )
 
     exit_code = cli.main(
         [
-            "librarian",
+            "vault",
             "review-move-plan",
             "--project",
             "alexandria-hermes",
@@ -350,7 +350,7 @@ def test_cli_librarian_review_move_plan_maps_scope_options(
     }
 
 
-def test_cli_librarian_review_apply_moves_maps_safety_options(
+def test_cli_vault_review_apply_moves_maps_safety_options(
     monkeypatch,
     capsys,
 ) -> None:
@@ -387,14 +387,14 @@ def test_cli_librarian_review_apply_moves_maps_safety_options(
         }
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_review_apply_moves",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_vault_review_apply_moves",
         fake_apply_moves,
     )
 
     exit_code = cli.main(
         [
-            "librarian",
+            "vault",
             "review-apply-moves",
             "--project",
             "alexandria-hermes",
@@ -430,7 +430,7 @@ def test_cli_librarian_review_apply_moves_maps_safety_options(
     }
 
 
-def test_cli_librarian_review_apply_moves_requires_confirm_when_plan_has_moves(
+def test_cli_vault_review_apply_moves_requires_confirm_when_plan_has_moves(
     monkeypatch,
     capsys,
 ) -> None:
@@ -461,12 +461,12 @@ def test_cli_librarian_review_apply_moves_requires_confirm_when_plan_has_moves(
         }
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_review_apply_moves",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_vault_review_apply_moves",
         fake_apply_moves,
     )
 
-    exit_code = cli.main(["librarian", "review-apply-moves"])
+    exit_code = cli.main(["vault", "review-apply-moves"])
 
     assert exit_code == 2
     assert loads_json(capsys.readouterr().out) == {
@@ -491,7 +491,7 @@ def test_cli_librarian_review_apply_moves_requires_confirm_when_plan_has_moves(
     }
 
 
-def test_cli_librarian_review_apply_moves_skips_apply_when_plan_is_empty(
+def test_cli_vault_review_apply_moves_skips_apply_when_plan_is_empty(
     monkeypatch,
     capsys,
 ) -> None:
@@ -518,12 +518,12 @@ def test_cli_librarian_review_apply_moves_skips_apply_when_plan_is_empty(
         }
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_review_apply_moves",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_vault_review_apply_moves",
         fake_apply_moves,
     )
 
-    exit_code = cli.main(["librarian", "review-apply-moves"])
+    exit_code = cli.main(["vault", "review-apply-moves"])
 
     assert exit_code == 0
     assert gateway_called is True
@@ -544,7 +544,7 @@ def test_cli_librarian_review_apply_moves_skips_apply_when_plan_is_empty(
     }
 
 
-def test_cli_librarian_refresh_current_compact_maps_apply_options(
+def test_cli_memory_steward_refresh_current_compact_maps_apply_options(
     monkeypatch,
     capsys,
 ) -> None:
@@ -563,14 +563,14 @@ def test_cli_librarian_refresh_current_compact_maps_apply_options(
         return {"status": "refreshed", "created": {"id": "compact-new"}}
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
     exit_code = cli.main(
         [
-            "librarian",
+            "memory-steward",
             "refresh-current-compact",
             "--project",
             "alexandria-hermes",
@@ -591,7 +591,9 @@ def test_cli_librarian_refresh_current_compact_maps_apply_options(
     }
 
 
-def test_cli_librarian_preflight_returns_zero_when_ready(monkeypatch, capsys) -> None:
+def test_cli_memory_steward_preflight_returns_zero_when_ready(
+    monkeypatch, capsys
+) -> None:
     """Preflight should succeed when post-refresh readiness is ready."""
     received: list[tuple[str | None, int, bool, bool, str | None]] = []
 
@@ -610,14 +612,14 @@ def test_cli_librarian_preflight_returns_zero_when_ready(monkeypatch, capsys) ->
         }
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
     exit_code = cli.main(
         [
-            "librarian",
+            "memory-steward",
             "preflight",
             "--project",
             "alexandria-hermes",
@@ -631,7 +633,7 @@ def test_cli_librarian_preflight_returns_zero_when_ready(monkeypatch, capsys) ->
     assert loads_json(capsys.readouterr().out)["status"] == "up_to_date"
 
 
-def test_cli_librarian_preflight_returns_attention_exit_when_not_ready(
+def test_cli_memory_steward_preflight_returns_attention_exit_when_not_ready(
     monkeypatch,
     capsys,
 ) -> None:
@@ -654,12 +656,14 @@ def test_cli_librarian_preflight_returns_attention_exit_when_not_ready(
         }
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
-    exit_code = cli.main(["librarian", "preflight", "--project", "alexandria-hermes"])
+    exit_code = cli.main(
+        ["memory-steward", "preflight", "--project", "alexandria-hermes"]
+    )
 
     assert exit_code == 2
     payload = loads_json(capsys.readouterr().out)
@@ -668,7 +672,7 @@ def test_cli_librarian_preflight_returns_attention_exit_when_not_ready(
     ]
 
 
-def test_cli_librarian_preflight_can_apply_compact_refresh(
+def test_cli_memory_steward_preflight_can_apply_compact_refresh(
     monkeypatch,
     capsys,
 ) -> None:
@@ -690,14 +694,14 @@ def test_cli_librarian_preflight_can_apply_compact_refresh(
         }
 
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
     exit_code = cli.main(
         [
-            "librarian",
+            "memory-steward",
             "preflight",
             "--project",
             "alexandria-hermes",
@@ -713,11 +717,11 @@ def test_cli_librarian_preflight_can_apply_compact_refresh(
     assert loads_json(capsys.readouterr().out)["status"] == "refreshed"
 
 
-def test_cli_librarian_check_combines_mcp_smoke_and_preflight(
+def test_cli_memory_steward_check_combines_mcp_smoke_and_preflight(
     monkeypatch,
     capsys,
 ) -> None:
-    """Librarian check should return one JSON result for startup automation."""
+    """Memory Steward check should return one JSON result for startup automation."""
     smoke_calls: list[tuple[str | None, tuple[str, ...]]] = []
     preflight_calls: list[tuple[str | None, int, bool, bool, str | None]] = []
 
@@ -741,16 +745,16 @@ def test_cli_librarian_check_combines_mcp_smoke_and_preflight(
             "post_refresh_readiness": {"ready": True, "warnings": []},
         }
 
-    monkeypatch.setattr(cli_librarian_readiness, "_mcp_smoke_tools", fake_smoke)
+    monkeypatch.setattr(cli_memory_steward, "_mcp_smoke_tools", fake_smoke)
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
     exit_code = cli.main(
         [
-            "librarian",
+            "memory-steward",
             "check",
             "--project",
             "alexandria-hermes",
@@ -767,11 +771,11 @@ def test_cli_librarian_check_combines_mcp_smoke_and_preflight(
         (
             None,
             (
-                "alexandria_librarian_readiness",
-                "alexandria_librarian_refresh_current_compact",
-                "alexandria_librarian_review_queue",
-                "alexandria_librarian_review_move_plan",
-                "alexandria_librarian_review_apply_moves",
+                "alexandria_memory_steward_readiness",
+                "alexandria_memory_steward_refresh_current_compact",
+                "alexandria_vault_review_queue",
+                "alexandria_vault_review_move_plan",
+                "alexandria_vault_review_apply_moves",
             ),
         )
     ]
@@ -788,14 +792,14 @@ def test_cli_librarian_check_combines_mcp_smoke_and_preflight(
     }
 
 
-def test_cli_librarian_check_fails_when_mcp_smoke_is_missing_tools(
+def test_cli_memory_steward_check_fails_when_mcp_smoke_is_missing_tools(
     monkeypatch,
     capsys,
 ) -> None:
-    """Librarian check should fail when MCP does not expose required tools."""
+    """Memory Steward check should fail when MCP does not expose required tools."""
 
     async def fake_smoke(*, settings, mcp_url, required_tools: Sequence[str]):
-        return {"ok": False, "missing_tools": ["alexandria_librarian_readiness"]}
+        return {"ok": False, "missing_tools": ["alexandria_memory_steward_readiness"]}
 
     async def fake_refresh(
         client,
@@ -810,37 +814,39 @@ def test_cli_librarian_check_fails_when_mcp_smoke_is_missing_tools(
             "post_refresh_readiness": {"ready": True, "warnings": []},
         }
 
-    monkeypatch.setattr(cli_librarian_readiness, "_mcp_smoke_tools", fake_smoke)
+    monkeypatch.setattr(cli_memory_steward, "_mcp_smoke_tools", fake_smoke)
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
-    exit_code = cli.main(["librarian", "check", "--project", "alexandria-hermes"])
+    exit_code = cli.main(["memory-steward", "check", "--project", "alexandria-hermes"])
 
     assert exit_code == 2
     payload = loads_json(capsys.readouterr().out)
     assert payload["ok"] is False
-    assert payload["mcp_smoke"]["missing_tools"] == ["alexandria_librarian_readiness"]
+    assert payload["mcp_smoke"]["missing_tools"] == [
+        "alexandria_memory_steward_readiness"
+    ]
 
 
-def test_cli_librarian_check_summary_prints_compact_status(
+def test_cli_memory_steward_check_summary_prints_compact_status(
     monkeypatch,
     capsys,
 ) -> None:
-    """Librarian check summary should emit only small status fields."""
+    """Memory Steward check summary should emit only small status fields."""
 
     async def fake_smoke(*, settings, mcp_url, required_tools: Sequence[str]):
         return {
             "ok": True,
             "mcp_url": "http://backend:8000/mcp/",
             "required_tools": [
-                "alexandria_librarian_readiness",
-                "alexandria_librarian_refresh_current_compact",
-                "alexandria_librarian_review_queue",
-                "alexandria_librarian_review_move_plan",
-                "alexandria_librarian_review_apply_moves",
+                "alexandria_memory_steward_readiness",
+                "alexandria_memory_steward_refresh_current_compact",
+                "alexandria_vault_review_queue",
+                "alexandria_vault_review_move_plan",
+                "alexandria_vault_review_apply_moves",
             ],
             "missing_tools": [],
             "tool_count": 39,
@@ -881,14 +887,14 @@ def test_cli_librarian_check_summary_prints_compact_status(
             },
         }
 
-    monkeypatch.setattr(cli_librarian_readiness, "_mcp_smoke_tools", fake_smoke)
+    monkeypatch.setattr(cli_memory_steward, "_mcp_smoke_tools", fake_smoke)
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
-    exit_code = cli.main(["librarian", "check", "--summary"])
+    exit_code = cli.main(["memory-steward", "check", "--summary"])
 
     assert exit_code == 0
     assert loads_json(capsys.readouterr().out) == {
@@ -897,11 +903,11 @@ def test_cli_librarian_check_summary_prints_compact_status(
         "mcp_tool_count": 39,
         "mcp_required_tools_count": 5,
         "mcp_required_tools": [
-            "alexandria_librarian_readiness",
-            "alexandria_librarian_refresh_current_compact",
-            "alexandria_librarian_review_queue",
-            "alexandria_librarian_review_move_plan",
-            "alexandria_librarian_review_apply_moves",
+            "alexandria_memory_steward_readiness",
+            "alexandria_memory_steward_refresh_current_compact",
+            "alexandria_vault_review_queue",
+            "alexandria_vault_review_move_plan",
+            "alexandria_vault_review_apply_moves",
         ],
         "mcp_missing_tools": [],
         "preflight_status": "up_to_date",
@@ -925,7 +931,7 @@ def test_cli_librarian_check_summary_prints_compact_status(
     }
 
 
-def test_cli_librarian_check_summary_fails_with_compact_status_fields(
+def test_cli_memory_steward_check_summary_fails_with_compact_status_fields(
     monkeypatch,
     capsys,
 ) -> None:
@@ -936,13 +942,13 @@ def test_cli_librarian_check_summary_fails_with_compact_status_fields(
             "ok": False,
             "mcp_url": "http://backend:8000/mcp/",
             "required_tools": [
-                "alexandria_librarian_readiness",
-                "alexandria_librarian_refresh_current_compact",
-                "alexandria_librarian_review_queue",
-                "alexandria_librarian_review_move_plan",
-                "alexandria_librarian_review_apply_moves",
+                "alexandria_memory_steward_readiness",
+                "alexandria_memory_steward_refresh_current_compact",
+                "alexandria_vault_review_queue",
+                "alexandria_vault_review_move_plan",
+                "alexandria_vault_review_apply_moves",
             ],
-            "missing_tools": ["alexandria_librarian_refresh_current_compact"],
+            "missing_tools": ["alexandria_memory_steward_refresh_current_compact"],
             "tool_count": 38,
         }
 
@@ -980,7 +986,7 @@ def test_cli_librarian_check_summary_fails_with_compact_status_fields(
                     {
                         "priority": 20,
                         "code": "refresh_current_memory_compact",
-                        "tool": "alexandria_librarian_refresh_current_compact",
+                        "tool": "alexandria_memory_steward_refresh_current_compact",
                         "summary": "Refresh the CURRENT Memory Compact.",
                         "dry_run_first": True,
                     }
@@ -988,14 +994,14 @@ def test_cli_librarian_check_summary_fails_with_compact_status_fields(
             },
         }
 
-    monkeypatch.setattr(cli_librarian_readiness, "_mcp_smoke_tools", fake_smoke)
+    monkeypatch.setattr(cli_memory_steward, "_mcp_smoke_tools", fake_smoke)
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
-    exit_code = cli.main(["librarian", "check", "--summary"])
+    exit_code = cli.main(["memory-steward", "check", "--summary"])
 
     assert exit_code == 2
     assert loads_json(capsys.readouterr().out) == {
@@ -1004,13 +1010,13 @@ def test_cli_librarian_check_summary_fails_with_compact_status_fields(
         "mcp_tool_count": 38,
         "mcp_required_tools_count": 5,
         "mcp_required_tools": [
-            "alexandria_librarian_readiness",
-            "alexandria_librarian_refresh_current_compact",
-            "alexandria_librarian_review_queue",
-            "alexandria_librarian_review_move_plan",
-            "alexandria_librarian_review_apply_moves",
+            "alexandria_memory_steward_readiness",
+            "alexandria_memory_steward_refresh_current_compact",
+            "alexandria_vault_review_queue",
+            "alexandria_vault_review_move_plan",
+            "alexandria_vault_review_apply_moves",
         ],
-        "mcp_missing_tools": ["alexandria_librarian_refresh_current_compact"],
+        "mcp_missing_tools": ["alexandria_memory_steward_refresh_current_compact"],
         "preflight_status": "refresh_required",
         "refresh_required": True,
         "created": False,
@@ -1028,11 +1034,11 @@ def test_cli_librarian_check_summary_fails_with_compact_status_fields(
         "review_manual_required": 1,
         "next_actions_count": 1,
         "next_action": "refresh_current_memory_compact",
-        "next_action_tool": "alexandria_librarian_refresh_current_compact",
+        "next_action_tool": "alexandria_memory_steward_refresh_current_compact",
     }
 
 
-def test_cli_librarian_check_summary_reports_created_compact_without_body(
+def test_cli_memory_steward_check_summary_reports_created_compact_without_body(
     monkeypatch,
     capsys,
 ) -> None:
@@ -1043,11 +1049,11 @@ def test_cli_librarian_check_summary_reports_created_compact_without_body(
             "ok": True,
             "mcp_url": "http://backend:8000/mcp/",
             "required_tools": [
-                "alexandria_librarian_readiness",
-                "alexandria_librarian_refresh_current_compact",
-                "alexandria_librarian_review_queue",
-                "alexandria_librarian_review_move_plan",
-                "alexandria_librarian_review_apply_moves",
+                "alexandria_memory_steward_readiness",
+                "alexandria_memory_steward_refresh_current_compact",
+                "alexandria_vault_review_queue",
+                "alexandria_vault_review_move_plan",
+                "alexandria_vault_review_apply_moves",
             ],
             "missing_tools": [],
             "tool_count": 39,
@@ -1090,14 +1096,14 @@ def test_cli_librarian_check_summary_reports_created_compact_without_body(
             },
         }
 
-    monkeypatch.setattr(cli_librarian_readiness, "_mcp_smoke_tools", fake_smoke)
+    monkeypatch.setattr(cli_memory_steward, "_mcp_smoke_tools", fake_smoke)
     monkeypatch.setattr(
-        cli_librarian_gateway.backend_tool_gateway,
-        "alexandria_librarian_refresh_current_compact",
+        cli_maintenance_gateway.backend_tool_gateway,
+        "alexandria_memory_steward_refresh_current_compact",
         fake_refresh,
     )
 
-    exit_code = cli.main(["librarian", "check", "--summary", "--refresh"])
+    exit_code = cli.main(["memory-steward", "check", "--summary", "--refresh"])
 
     assert exit_code == 0
     output = capsys.readouterr().out
@@ -1109,11 +1115,11 @@ def test_cli_librarian_check_summary_reports_created_compact_without_body(
         "mcp_tool_count": 39,
         "mcp_required_tools_count": 5,
         "mcp_required_tools": [
-            "alexandria_librarian_readiness",
-            "alexandria_librarian_refresh_current_compact",
-            "alexandria_librarian_review_queue",
-            "alexandria_librarian_review_move_plan",
-            "alexandria_librarian_review_apply_moves",
+            "alexandria_memory_steward_readiness",
+            "alexandria_memory_steward_refresh_current_compact",
+            "alexandria_vault_review_queue",
+            "alexandria_vault_review_move_plan",
+            "alexandria_vault_review_apply_moves",
         ],
         "mcp_missing_tools": [],
         "preflight_status": "refreshed",

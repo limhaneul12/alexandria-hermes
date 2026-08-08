@@ -38,17 +38,6 @@ class RecoverySourceSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
-class RecoveryQuarantineArtifactPlan:
-    """Planned quarantine move for one SQLite file."""
-
-    source_path: str
-    quarantine_path: str
-    exists: bool
-    size_bytes: int | None
-    sha256: str | None
-
-
-@dataclass(frozen=True, slots=True)
 class RecoveryPlanStep:
     """One planned recovery step."""
 
@@ -68,14 +57,11 @@ class RecoveryPlan:
     actor: str
     status: OperationalReadinessStatus
     created_at: datetime
-    target_database_path: str | None
     dry_run: bool
-    deletion_performed: bool
     automatic_execution_allowed: bool
     diagnosis: tuple[str, ...]
     blocked_reasons: tuple[str, ...]
     source_snapshot: RecoverySourceSnapshot
-    quarantine_artifacts: tuple[RecoveryQuarantineArtifactPlan, ...]
     steps: tuple[RecoveryPlanStep, ...]
     estimated_reindex_scope: Mapping[str, int | str | None]
     service_impact: tuple[str, ...]
@@ -87,9 +73,6 @@ class RecoveryPlan:
         """Normalize recovery plan collections to immutable values."""
         object.__setattr__(self, "diagnosis", tuple(self.diagnosis))
         object.__setattr__(self, "blocked_reasons", tuple(self.blocked_reasons))
-        object.__setattr__(
-            self, "quarantine_artifacts", tuple(self.quarantine_artifacts)
-        )
         object.__setattr__(self, "steps", tuple(self.steps))
         object.__setattr__(
             self,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -54,6 +55,15 @@ Continue implementing Alexandria context recall.
 """
 
 
+TEST_EMBEDDING_DIMENSIONS = 384
+
+
+def _test_vector(index: int) -> list[float]:
+    vector = [0.0] * TEST_EMBEDDING_DIMENSIONS
+    vector[index] = 1.0
+    return vector
+
+
 class KeywordEmbeddingProvider(EmbeddingProvider):
     """Deterministic provider that maps test keywords to stable vectors."""
 
@@ -67,7 +77,7 @@ class KeywordEmbeddingProvider(EmbeddingProvider):
 
     @property
     def dimensions(self) -> int:
-        return 3
+        return TEST_EMBEDDING_DIMENSIONS
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         return [self._embed(text) for text in texts]
@@ -77,10 +87,10 @@ class KeywordEmbeddingProvider(EmbeddingProvider):
 
     def _embed(self, text: str) -> list[float]:
         if "semantic-target" in text or "query-alias" in text:
-            return [1.0, 0.0, 0.0]
+            return _test_vector(0)
         if "distractor" in text:
-            return [0.0, 1.0, 0.0]
-        return [0.0, 0.0, 1.0]
+            return _test_vector(1)
+        return _test_vector(2)
 
 
 class MeanPoolingUpgradeEmbeddingProvider(EmbeddingProvider):
@@ -96,7 +106,7 @@ class MeanPoolingUpgradeEmbeddingProvider(EmbeddingProvider):
 
     @property
     def dimensions(self) -> int:
-        return 3
+        return TEST_EMBEDDING_DIMENSIONS
 
     @property
     def provider_version(self) -> str:
@@ -107,10 +117,10 @@ class MeanPoolingUpgradeEmbeddingProvider(EmbeddingProvider):
         return "mean-v2"
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        return [[0.0, 1.0, 0.0] for _ in texts]
+        return [_test_vector(1) for _ in texts]
 
     def embed_query(self, text: str) -> list[float]:
-        return [0.0, 1.0, 0.0]
+        return _test_vector(1)
 
 
 class BlockingEmbeddingProvider(EmbeddingProvider):
@@ -134,20 +144,20 @@ class BlockingEmbeddingProvider(EmbeddingProvider):
 
     @property
     def dimensions(self) -> int:
-        return 3
+        return TEST_EMBEDDING_DIMENSIONS
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         self.documents_started.set()
         self.documents_released_by_async_task = self._documents_release.wait(
             timeout=0.2
         )
-        return [[1.0, 0.0, 0.0] for _ in texts]
+        return [_test_vector(0) for _ in texts]
 
     def embed_query(self, text: str) -> list[float]:
         _ = text
         self.query_started.set()
         self.query_released_by_async_task = self._query_release.wait(timeout=0.2)
-        return [1.0, 0.0, 0.0]
+        return _test_vector(0)
 
     def release_documents(self) -> None:
         """Release the blocked document embedding call."""
@@ -160,7 +170,7 @@ class BlockingEmbeddingProvider(EmbeddingProvider):
 
 @asynccontextmanager
 async def _temporary_database(path: Path) -> AsyncIterator[Database]:
-    database = Database(database_url=f"sqlite+aiosqlite:///{path}", create_schema=True)
+    database = Database(database_url=os.environ["DATABASE_URL"], create_schema=True)
     await database.initialize()
     try:
         yield database
@@ -285,7 +295,7 @@ def test_context_rag_defaults_to_fts_only_when_vector_provider_is_degraded(
             await seed_context(
                 session,
                 kind=ContextKind.RESEARCH,
-                title="sqlite vec fallback",
+                title="vector fallback",
                 summary="FTS remains available when vectors degrade.",
                 content="""# Research
 
@@ -293,7 +303,7 @@ def test_context_rag_defaults_to_fts_only_when_vector_provider_is_degraded(
 FTS remains available when vectors degrade.
 
 ## Evidence
-sqlite-vec may not load in CI.
+Vector retrieval may be unavailable while lexical retrieval remains healthy.
 """,
                 tags=["rag"],
             )
@@ -918,7 +928,9 @@ def test_rag_health_degrades_when_embedding_status_probe_hits_storage_error(
                 dimensions: int,
                 fingerprint_key: str,
             ) -> RagHealthState:
-                raise OperationalError("SELECT context_chunks.id", {}, "disk I/O error")
+                raise OperationalError(
+                    "SELECT context_chunks.id", {}, OSError("disk I/O error")
+                )
 
             monkeypatch.setattr(
                 repository,
@@ -974,7 +986,7 @@ semantic-target was embedded before the pooling change.
                 select(ContextChunkORM).where(ContextChunkORM.context_id == saved.id)
             )
             assert before_chunk is not None
-            assert before_chunk.embedding == "[0,0,1]"
+            assert before_chunk.embedding == tuple(_test_vector(2))
 
             upgraded_service = ContextService(
                 repository=repository,
@@ -1010,7 +1022,7 @@ semantic-target was embedded before the pooling change.
             == health.source_statuses[0].total_rows
         )
         assert healthy.source_statuses[0].stale_rows == 0
-        assert before_chunk.embedding == "[0,1,0]"
+        assert before_chunk.embedding == tuple(_test_vector(1))
         assert before_chunk.embedding_pooling_mode == "mean-v2"
         assert before_chunk.embedding_fingerprint_key is not None
         assert before_chunk.embedding_indexed_at is not None
@@ -1030,7 +1042,7 @@ def test_context_soft_rebuild_preserves_sources_and_returns_source_diagnostics(
         int,
         bool,
         int,
-        list[str],
+        tuple[str, ...],
         bool,
         str,
         int,

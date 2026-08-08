@@ -5,12 +5,10 @@ from __future__ import annotations
 from app.librarian.domain.contracts.hermes_collaboration_contracts import (
     HermesLibrarianAskResult,
     LibrarianDelegateResult,
-    LibrarianJobStatusResult,
 )
 from app.librarian.domain.types.hermes_collaboration_payload_types import (
     HermesLibrarianAskPayload,
     LibrarianDelegatePayload,
-    LibrarianJobStatusPayload,
 )
 
 
@@ -62,21 +60,4 @@ def delegate_payload(result: LibrarianDelegateResult) -> LibrarianDelegatePayloa
         delegate_type=result.delegate_type,
         summary=result.summary,
         matched_specialties=list(result.matched_specialties),
-    )
-
-
-def job_status_payload(result: LibrarianJobStatusResult) -> LibrarianJobStatusPayload:
-    """Map one synthetic job status result to its public payload contract.
-
-    Args:
-        result: Domain job status result.
-
-    Returns:
-        Public job status payload.
-    """
-    return LibrarianJobStatusPayload(
-        job_id=result.job_id,
-        status=result.status,
-        result_available=result.result_available,
-        message=result.message,
     )

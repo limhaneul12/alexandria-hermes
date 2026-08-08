@@ -23,5 +23,8 @@ def read_mcp_protected_resource_metadata(request: Request) -> JSONObject:
     Returns:
         OAuth protected-resource metadata payload.
     """
-    config = getattr(request.app.state, "app_config", AppConfig())
+    try:
+        config = request.app.state.app_config
+    except AttributeError:
+        config = AppConfig()
     return protected_resource_metadata(request, config)

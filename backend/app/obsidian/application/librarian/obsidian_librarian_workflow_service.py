@@ -53,7 +53,6 @@ class ObsidianLibrarianWorkflowService:
         *,
         workflow_repository: IObsidianWorkflowRepository,
         obsidian_service: ObsidianService,
-        checkpoint_path: str,
         delegate_service: ObsidianLibrarianDelegateService | None = None,
     ) -> ObsidianLibrarianWorkflowService:
         """Build the service from lower-level application services.
@@ -61,7 +60,6 @@ class ObsidianLibrarianWorkflowService:
         Args:
             workflow_repository: Durable workflow checkpoint repository.
             obsidian_service: Obsidian vault application service.
-            checkpoint_path: SQLite checkpoint path for LangGraph.
             delegate_service: Optional GPT/OAuth-backed delegate service.
 
         Returns:
@@ -71,7 +69,6 @@ class ObsidianLibrarianWorkflowService:
             workflow_repository=workflow_repository,
             graph_executor=ObsidianLibrarianLangGraphExecutor(
                 obsidian_service=obsidian_service,
-                checkpoint_path=checkpoint_path,
                 delegate_service=delegate_service,
             ),
         )
@@ -171,7 +168,6 @@ class ObsidianLibrarianWorkflowService:
             updated_at=datetime.now(UTC),
         )
         await self._workflow_repository.upsert_workflow(updated)
-        await self._graph_executor.delete_thread(thread_id)
         return updated
 
 

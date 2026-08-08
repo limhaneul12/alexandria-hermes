@@ -6,8 +6,17 @@ import pytest
 from app.platform.config.app_config import AppConfig
 
 
-def test_local_oauth_mode_requires_issuer_resource_and_approval_key() -> None:
+def test_local_oauth_mode_requires_issuer_resource_and_approval_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Local token issuance must fail closed when public metadata is incomplete."""
+    for name in (
+        "SERVICE_MCP_OAUTH_ISSUER",
+        "SERVICE_MCP_OAUTH_RESOURCE",
+        "SERVICE_MCP_LOCAL_APPROVAL_KEY",
+        "ALEXANDRIA_OPERATOR_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValueError, match="MCP local OAuth mode requires"):
         AppConfig(_env_file=None, mcp_auth_mode="local_oauth2")
 
@@ -16,6 +25,7 @@ def test_local_oauth_mode_accepts_legacy_operator_key_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Existing local operator configuration should approve browser OAuth flows."""
+    monkeypatch.delenv("SERVICE_MCP_LOCAL_APPROVAL_KEY", raising=False)
     monkeypatch.setenv("ALEXANDRIA_OPERATOR_API_KEY", "o" * 32)
 
     config = AppConfig(

@@ -159,7 +159,7 @@ def start_here_body() -> str:
 This Obsidian vault stores Alexandria-Hermes long-term memory, skills, prompts, Memory Compacts, and librarian transcripts as canonical Markdown.
 
 ## Storage Rule
-Obsidian Markdown is the source of truth. SQLite is a rebuildable search/index cache.
+Obsidian Markdown is the source of truth. PostgreSQL search state is a rebuildable projection.
 
 ## Restore Prompt
 Start with the current Memory Compact, then search Contexts, Skills, and Prompts by task.

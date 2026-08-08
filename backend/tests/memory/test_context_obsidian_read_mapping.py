@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -31,7 +33,7 @@ _OBSIDIAN_MODELS_LOADED = _obsidian_index_models
 
 @asynccontextmanager
 async def _temporary_database(path: Path) -> AsyncIterator[Database]:
-    database = Database(database_url=f"sqlite+aiosqlite:///{path}", create_schema=True)
+    database = Database(database_url=os.environ["DATABASE_URL"], create_schema=True)
     await database.initialize()
     try:
         yield database

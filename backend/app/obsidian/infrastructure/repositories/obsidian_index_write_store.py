@@ -21,10 +21,6 @@ from app.obsidian.infrastructure.models.obsidian_index_models import (
 from app.obsidian.infrastructure.repositories.obsidian_chunk_embeddings import (
     existing_chunk_embeddings,
 )
-from app.obsidian.infrastructure.repositories.obsidian_fts import (
-    OBSIDIAN_CHUNK_FTS_TABLE,
-    delete_obsidian_fts_statement,
-)
 from app.obsidian.infrastructure.repositories.obsidian_index_mapping import (
     note_from_model,
 )
@@ -32,13 +28,10 @@ from app.obsidian.infrastructure.repositories.obsidian_index_row_cleanup import 
     discard_obsidian_note_index,
     get_obsidian_file_by_path,
 )
-from app.obsidian.infrastructure.repositories.obsidian_index_schema import (
-    ensure_obsidian_index_search_tables,
-)
 from app.shared.exceptions.obsidian_exceptions import ObsidianIndexWriteError
 from app.shared.infrastructure.identifiers import new_uuid
 from app.shared.types.types_convert_utils import aware_utc_datetime
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,7 +57,6 @@ class ObsidianIndexWriteStore:
             Persisted note entity.
         """
         try:
-            await ensure_obsidian_index_search_tables(self._session)
             async with self._session.begin_nested():
                 return await self._upsert_note(payload)
         except SQLAlchemyError as exc:
@@ -164,12 +156,7 @@ class ObsidianIndexWriteStore:
         await self._session.execute(
             delete(ObsidianChunkORM).where(ObsidianChunkORM.note_id == payload.note_id)
         )
-        await self._session.execute(
-            delete_obsidian_fts_statement(),
-            {"note_id": payload.note_id},
-        )
         chunk_models: list[ObsidianChunkORM] = []
-        fts_rows: list[dict[str, str]] = []
         for chunk in payload.chunks:
             chunk_id = new_uuid()
             embedding = existing_embeddings.get((chunk.chunk_index, chunk.content_hash))
@@ -211,23 +198,7 @@ class ObsidianIndexWriteStore:
                     created_at=now,
                 )
             )
-            fts_rows.append(
-                {
-                    "chunk_id": chunk_id,
-                    "note_id": payload.note_id,
-                    "title": payload.title,
-                    "body": chunk.text,
-                    "heading_path": chunk.heading_path or "",
-                    "alexandria_type": payload.alexandria_type.value,
-                    "project": payload.project or "",
-                    "status": payload.status,
-                    "tags": " ".join(payload.tags),
-                    "relative_path": payload.relative_path,
-                }
-            )
         self._session.add_all(chunk_models)
-        if fts_rows:
-            await self._session.execute(insert(OBSIDIAN_CHUNK_FTS_TABLE), fts_rows)
 
     async def _replace_edges(
         self,

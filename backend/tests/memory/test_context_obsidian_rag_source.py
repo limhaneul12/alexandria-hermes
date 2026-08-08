@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -69,7 +70,7 @@ class KeywordEmbeddingProvider(EmbeddingProvider):
 
     @property
     def dimensions(self) -> int:
-        return 3
+        return 384
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         return [self._embed(text) for text in texts]
@@ -78,11 +79,14 @@ class KeywordEmbeddingProvider(EmbeddingProvider):
         return self._embed(text)
 
     def _embed(self, text: str) -> list[float]:
+        vector = [0.0] * self.dimensions
         if "semantic-target" in text or "query-alias" in text:
-            return [1.0, 0.0, 0.0]
-        if "distractor" in text:
-            return [0.0, 1.0, 0.0]
-        return [0.0, 0.0, 1.0]
+            vector[0] = 1.0
+        elif "distractor" in text:
+            vector[1] = 1.0
+        else:
+            vector[2] = 1.0
+        return vector
 
 
 class CapturingEmbeddingProvider(KeywordEmbeddingProvider):
@@ -110,7 +114,7 @@ class UpgradedPoolingEmbeddingProvider(KeywordEmbeddingProvider):
 
 @asynccontextmanager
 async def _temporary_database(path: Path) -> AsyncIterator[Database]:
-    database = Database(database_url=f"sqlite+aiosqlite:///{path}", create_schema=True)
+    database = Database(database_url=os.environ["DATABASE_URL"], create_schema=True)
     await database.initialize()
     try:
         yield database
@@ -248,7 +252,7 @@ def test_obsidian_fts_bulk_hydrates_ranked_candidates(tmp_path: Path) -> None:
 
     first_statement_count, repeated_statement_count, match_count = anyio.run(scenario)
 
-    assert first_statement_count == 4
+    assert first_statement_count == 3
     assert repeated_statement_count == 3
     assert match_count == 5
 

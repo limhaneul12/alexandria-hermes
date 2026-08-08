@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from app.operations.application.recovery_run_contracts import (
     ContextRecoveryService,
+    ContextRecoveryServiceFactory,
     ObsidianRecoveryService,
+    ObsidianRecoveryServiceFactory,
+    resolve_recovery_service,
 )
 from app.shared.infrastructure.database import Database
 from app.shared.types.extra_types import JSONObject
@@ -19,6 +22,8 @@ class RecoveryRunMutationOperations:
         database: Database,
         context_service: ContextRecoveryService,
         obsidian_service: ObsidianRecoveryService,
+        context_service_factory: ContextRecoveryServiceFactory | None = None,
+        obsidian_service_factory: ObsidianRecoveryServiceFactory | None = None,
     ) -> None:
         """Initialize recovery mutation dependencies.
 
@@ -28,19 +33,22 @@ class RecoveryRunMutationOperations:
             obsidian_service: Obsidian index recovery boundary.
         """
         self._database = database
-        self._context_service = context_service
-        self._obsidian_service = obsidian_service
-
-    async def dispose_connections(self) -> JSONObject:
-        await self._database.engine.dispose()
-        return {"disposed": True}
-
-    async def rebuild_database(self) -> JSONObject:
-        await self._database.initialize()
-        return {"initialized": True}
+        self._context_service_factory = context_service_factory or (
+            lambda: context_service
+        )
+        self._obsidian_service_factory = obsidian_service_factory or (
+            lambda: obsidian_service
+        )
 
     async def reindex_vault(self) -> JSONObject:
-        result = await self._obsidian_service.reindex()
+        async with self._database.request_session() as session:
+            try:
+                service = await resolve_recovery_service(self._obsidian_service_factory)
+                result = await service.reindex()
+            except Exception:
+                await session.rollback()
+                raise
+            await session.commit()
         return {
             "files_seen": result.files_seen,
             "files_indexed": result.files_indexed,
@@ -50,7 +58,14 @@ class RecoveryRunMutationOperations:
         }
 
     async def reindex_embeddings(self) -> JSONObject:
-        result = await self._context_service.reindex_embeddings(limit=1000, force=True)
+        async with self._database.request_session() as session:
+            try:
+                service = await resolve_recovery_service(self._context_service_factory)
+                result = await service.reindex_embeddings(limit=250, force=False)
+            except Exception:
+                await session.rollback()
+                raise
+            await session.commit()
         return {
             "scanned": result.scanned,
             "updated": result.updated,

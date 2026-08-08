@@ -16,12 +16,14 @@ from app.memory.infrastructure.repositories.contexts.scope_recall_filter import 
     ScopeRecallColumns,
     scope_recall_clause,
 )
-from sqlalchemy import Select, bindparam, false, func, or_, select
+from app.shared.types.embedding_types import EmbeddingVector
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import Float, Select, bindparam, false, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 type ContextVectorRow = tuple[str, str, float]
 type ContextVectorStatement = Select[ContextVectorRow]
-type ContextVectorParameter = str | int
+type ContextVectorParameter = EmbeddingVector | list[float] | str | int
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,22 +43,20 @@ class ContextVectorQuery:
 
 
 def build_context_vector_query(
-    recall: ContextVectorRecall, query_embedding: str
+    recall: ContextVectorRecall,
 ) -> ContextVectorQuery:
-    """Build a safe vector query from precomputed embedding text.
+    """Build a safe PostgreSQL pgvector query.
 
     Args:
         recall: Validated vector query and recall filters.
-        query_embedding: JSON-compatible vector text for sqlite-vec.
-
     Returns:
         ContextVectorQuery: SQL query contract.
     """
+    query_embedding = list(recall.query_embedding)
     distance = cast(
         ColumnElement[float],
-        func.vec_distance_cosine(
-            ContextChunkORM.embedding,
-            bindparam("query_embedding"),
+        ContextChunkORM.embedding.op("<=>", return_type=Float)(
+            bindparam("query_embedding", type_=Vector(recall.dimensions))
         ).label("distance"),
     )
     recall_filter = recall.recall_filter

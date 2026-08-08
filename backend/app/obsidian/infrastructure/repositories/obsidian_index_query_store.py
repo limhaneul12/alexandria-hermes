@@ -28,11 +28,8 @@ from app.obsidian.infrastructure.repositories.obsidian_index_mapping import (
 from app.obsidian.infrastructure.repositories.obsidian_index_row_cleanup import (
     get_obsidian_file_by_path,
 )
-from app.obsidian.infrastructure.repositories.obsidian_index_schema import (
-    ensure_obsidian_index_search_tables,
-)
-from app.shared.infrastructure.sqlite_fts_relevance import (
-    sqlite_fts_rank_to_score,
+from app.shared.infrastructure.postgres_fts_relevance import (
+    postgres_fts_rank_to_score,
 )
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,12 +83,16 @@ class ObsidianIndexQueryStore:
             Existing duplicate Context when found.
         """
         frontmatter = ObsidianFileORM.frontmatter_json
+
+        def extract(field_name: str):  # type: ignore[no-untyped-def]
+            return func.json_extract_path_text(frontmatter, field_name)
+
         statement = select(ObsidianFileORM).where(
             ObsidianFileORM.note_id != query.excluded_note_id,
             ObsidianFileORM.alexandria_type == "context",
             ObsidianFileORM.index_status == ObsidianIndexStatus.INDEXED.value,
-            func.upper(func.json_extract(frontmatter, "$.scope")) == query.scope,
-            func.json_extract(frontmatter, "$.content_hash") == query.content_hash,
+            func.upper(extract("scope")) == query.scope,
+            extract("content_hash") == query.content_hash,
         )
         identity_filters = (
             ("project", query.project),
@@ -101,7 +102,7 @@ class ObsidianIndexQueryStore:
             ("session_id", query.session_id),
         )
         for field_name, field_value in identity_filters:
-            column = func.json_extract(frontmatter, f"$.{field_name}")
+            column = extract(field_name)
             statement = statement.where(
                 column.is_(None) if field_value is None else column == field_value
             )
@@ -117,7 +118,6 @@ class ObsidianIndexQueryStore:
         Returns:
             Ranked search hits.
         """
-        await ensure_obsidian_index_search_tables(self._session)
         fts_query = build_obsidian_fts_query(
             query.query,
             limit=query.limit,
@@ -128,25 +128,79 @@ class ObsidianIndexQueryStore:
         )
         if fts_query is None:
             return await _recent_notes(self._session, query)
-        rows = await self._session.execute(
-            fts_query.statement, dict(fts_query.parameters)
+        candidate_statement = fts_query.statement.limit(None).subquery()
+        best_chunk_per_note = (
+            select(
+                candidate_statement.c.id,
+                candidate_statement.c.note_id,
+                candidate_statement.c.rank,
+            )
+            .distinct(candidate_statement.c.note_id)
+            .order_by(candidate_statement.c.note_id, candidate_statement.c.rank.desc())
+            .subquery()
         )
+        statement = (
+            select(
+                best_chunk_per_note.c.id,
+                best_chunk_per_note.c.note_id,
+                best_chunk_per_note.c.rank,
+            )
+            .order_by(best_chunk_per_note.c.rank.desc())
+            .limit(query.limit)
+        )
+        rows = await self._session.execute(
+            statement,
+            {
+                key: value
+                for key, value in fts_query.parameters.items()
+                if key != "limit"
+            },
+        )
+        ranked_rows = [
+            (str(chunk_id), str(note_id), float(rank))
+            for chunk_id, note_id, rank in rows.all()
+        ]
+        if not ranked_rows:
+            return []
+        note_ids = {note_id for _, note_id, _ in ranked_rows}
+        chunk_ids = {chunk_id for chunk_id, _, _ in ranked_rows}
+        note_models = (
+            await self._session.scalars(
+                select(ObsidianFileORM).where(ObsidianFileORM.note_id.in_(note_ids))
+            )
+        ).all()
+        notes = {model.note_id: note_from_model(model) for model in note_models}
+        chunk_rows = (
+            await self._session.execute(
+                select(
+                    ObsidianChunkORM.id,
+                    ObsidianChunkORM.text,
+                    ObsidianChunkORM.heading_path,
+                ).where(ObsidianChunkORM.id.in_(chunk_ids))
+            )
+        ).all()
+        chunks = {
+            str(chunk_id): (str(text), heading_path)
+            for chunk_id, text, heading_path in chunk_rows
+        }
         hits: list[ObsidianSearchHit] = []
-        for chunk_id, note_id, rank in rows.all():
-            note = await self.get_by_id(str(note_id))
+        for chunk_id, note_id, rank in ranked_rows:
+            note = notes.get(note_id)
             if note is None:
                 continue
             if note.index_status != ObsidianIndexStatus.INDEXED:
                 continue
-            chunk = await self._session.get(ObsidianChunkORM, str(chunk_id))
-            excerpt = obsidian_excerpt(chunk.text if chunk is not None else note.body)
+            chunk = chunks.get(chunk_id)
+            chunk_text = note.body if chunk is None else str(chunk[0])
+            heading_path = None if chunk is None else chunk[1]
+            excerpt = obsidian_excerpt(chunk_text)
             hits.append(
                 ObsidianSearchHit(
                     note=note,
                     excerpt=excerpt,
-                    score=sqlite_fts_rank_to_score(float(rank)),
-                    chunk_id=str(chunk_id),
-                    heading_path=None if chunk is None else chunk.heading_path,
+                    score=postgres_fts_rank_to_score(rank),
+                    chunk_id=chunk_id,
+                    heading_path=heading_path,
                 )
             )
         return hits

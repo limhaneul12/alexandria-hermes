@@ -7,7 +7,6 @@ from app.memory.domain.contracts.context_recall_contracts import (
 )
 from app.memory.domain.event_enum.context_enums import ContextScope
 from app.obsidian.application.notes.obsidian_context_frontmatter_boundary import (
-    ContextProvenanceBoundary,
     validate_context_frontmatter,
 )
 from app.obsidian.application.notes.obsidian_context_frontmatter_values import (
@@ -75,38 +74,37 @@ def context_identity_from_frontmatter(
         provenance=ObsidianContextProvenance(
             source_actor_id=_provenance_value(
                 boundary.source_actor_id,
-                nested_provenance,
-                "source_actor_id",
+                None
+                if nested_provenance is None
+                else nested_provenance.source_actor_id,
             ),
             source_actor_type=_provenance_value(
                 boundary.source_actor_type,
-                nested_provenance,
-                "source_actor_type",
+                None
+                if nested_provenance is None
+                else nested_provenance.source_actor_type,
             ),
             source_run_id=_provenance_value(
                 boundary.source_run_id,
-                nested_provenance,
-                "source_run_id",
+                None if nested_provenance is None else nested_provenance.source_run_id,
             ),
             external_run_id=_provenance_value(
                 boundary.external_run_id,
-                nested_provenance,
-                "external_run_id",
+                None
+                if nested_provenance is None
+                else nested_provenance.external_run_id,
             ),
             artifact_refs=_provenance_value(
                 boundary.artifact_refs,
-                nested_provenance,
-                "artifact_refs",
+                None if nested_provenance is None else nested_provenance.artifact_refs,
             ),
             evidence_refs=_provenance_value(
                 boundary.evidence_refs,
-                nested_provenance,
-                "evidence_refs",
+                None if nested_provenance is None else nested_provenance.evidence_refs,
             ),
             confidence=_provenance_value(
                 boundary.confidence,
-                nested_provenance,
-                "confidence",
+                None if nested_provenance is None else nested_provenance.confidence,
             ),
         ),
         content_hash=boundary.content_hash or generated_content_hash,
@@ -224,9 +222,8 @@ def validate_scope_identity(identity: ObsidianContextIdentity) -> None:
 
 def _provenance_value[Value](
     flat_value: Value,
-    nested: ContextProvenanceBoundary | None,
-    field_name: str,
+    nested_value: Value | None,
 ) -> Value:
-    if flat_value not in (None, ()) or nested is None:
+    if flat_value not in (None, ()) or nested_value is None:
         return flat_value
-    return getattr(nested, field_name)
+    return nested_value

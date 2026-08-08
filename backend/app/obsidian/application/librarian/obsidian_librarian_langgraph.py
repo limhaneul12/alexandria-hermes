@@ -1,8 +1,7 @@
-"""LangGraph executor for resumable Obsidian librarian workflows."""
+"""Stateless LangGraph executor for durable Obsidian librarian workflows."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, cast
 
 from app.obsidian.application.librarian.obsidian_librarian_action_executor import (
@@ -26,125 +25,122 @@ from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
     ObsidianLibrarianWorkflowResume,
 )
-from app.obsidian.domain.entities.obsidian_note import (
-    ObsidianLibrarianWorkflow,
-)
-from app.shared.types.extra_types import JSONObject
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from app.obsidian.domain.entities.obsidian_note import ObsidianLibrarianWorkflow
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import Command
 
 
 class ObsidianLibrarianLangGraphExecutor:
-    """Execute Obsidian librarian workflows through real LangGraph nodes."""
+    """Execute two stateless graph phases around a PostgreSQL approval row.
+
+    The workflow repository is the only durable checkpoint. The planning phase ends
+    before any side effect and stores its complete JSON state. The execution phase
+    reconstructs that state after approval and runs approved actions to completion.
+    """
 
     def __init__(
         self,
         *,
         obsidian_service: ObsidianService,
-        checkpoint_path: str,
         delegate_service: ObsidianLibrarianDelegateService | None = None,
     ) -> None:
-        """Initialize the graph executor.
+        """Initialize and compile the two graph phases once.
 
         Args:
             obsidian_service: Local Obsidian-aware librarian service.
-            checkpoint_path: SQLite file path for LangGraph checkpoints.
             delegate_service: Optional GPT/OAuth-backed librarian delegate.
         """
-        self._obsidian_service = obsidian_service
-        self._checkpoint_path = str(Path(checkpoint_path).expanduser())
-        self._action_executor = ObsidianLibrarianActionExecutor(
+        action_executor = ObsidianLibrarianActionExecutor(
             obsidian_service=obsidian_service,
             delegate_service=delegate_service,
         )
         self._nodes = ObsidianLibrarianGraphNodes(
             obsidian_service=obsidian_service,
-            action_executor=self._action_executor,
+            action_executor=action_executor,
         )
+        self._planning_graph = self._build_planning_graph().compile()
+        self._execution_graph = self._build_execution_graph().compile()
 
     async def start(self, ask: ObsidianLibrarianAsk) -> ObsidianLibrarianGraphResult:
-        """Run the graph until the approval interrupt.
+        """Run context collection and action planning to a durable approval state.
 
         Args:
             ask: Initial librarian ask command.
 
         Returns:
-            Graph state and workflow status.
+            Complete JSON state ready to persist as waiting for approval.
         """
-        thread_id = conversation_id()
         initial_state = initial_graph_state(
-            thread_id=thread_id,
+            thread_id=conversation_id(),
             ask=ask,
-            checkpoint_path=self._checkpoint_path,
         )
-        result = await self._invoke(initial_state, thread_id=thread_id)
-        return result_from_graph_output(result)
+        result = await self._planning_graph.ainvoke(initial_state)
+        state = cast(ObsidianLibrarianGraphState, result)
+        state["workflow_status"] = "waiting_for_approval"
+        return result_from_graph_output(state)
 
     async def resume(
         self,
         workflow: ObsidianLibrarianWorkflow,
         command: ObsidianLibrarianWorkflowResume,
     ) -> ObsidianLibrarianGraphResult:
-        """Resume a paused graph with approved action ids.
+        """Execute approved actions from the repository-persisted graph state.
 
         Args:
-            workflow: Persisted workflow checkpoint from the repository.
+            workflow: Persisted workflow checkpoint from PostgreSQL.
             command: Resume command with approved action ids.
 
         Returns:
-            Graph state and workflow status.
+            Completed graph state and status.
         """
-        resume_value: JSONObject = {"approved_actions": list(command.approved_actions)}
-        result = await self._invoke(
-            Command(resume=resume_value),
-            thread_id=workflow.thread_id,
-        )
-        return result_from_graph_output(result)
+        result = await self._execution_graph.ainvoke(_resume_state(workflow, command))
+        return result_from_graph_output(cast(ObsidianLibrarianGraphState, result))
 
-    async def delete_thread(self, thread_id: str) -> None:
-        """Delete persisted LangGraph checkpoints for one workflow thread.
-
-        Args:
-            thread_id: LangGraph thread id to remove.
-        """
-        checkpoint = Path(self._checkpoint_path)
-        if not checkpoint.exists():
-            return
-        async with AsyncSqliteSaver.from_conn_string(str(checkpoint)) as saver:
-            await saver.adelete_thread(thread_id)
-
-    async def _invoke(
-        self,
-        graph_input: ObsidianLibrarianGraphState | Command,
-        *,
-        thread_id: str,
-    ) -> ObsidianLibrarianGraphState:
-        checkpoint = Path(self._checkpoint_path)
-        checkpoint.parent.mkdir(parents=True, exist_ok=True)
-        async with AsyncSqliteSaver.from_conn_string(str(checkpoint)) as saver:
-            graph = self._build_graph().compile(checkpointer=saver)
-            result = await graph.ainvoke(
-                graph_input,
-                {"configurable": {"thread_id": thread_id}},
-            )
-        return cast(ObsidianLibrarianGraphState, result)
-
-    def _build_graph(self) -> StateGraph:
-        # Any justified: isolated to this third-party constructor boundary. LangGraph
-        # accepts TypedDict state classes at runtime, but its public typing does
-        # not expose the internal StateLike alias required by Pyrefly.
+    def _build_planning_graph(self) -> StateGraph:
+        # Any justified: LangGraph accepts TypedDict state schemas at runtime,
+        # but its constructor stub does not model this supported boundary.
         state_schema = cast(Any, ObsidianLibrarianGraphState)
         graph = StateGraph(state_schema)
         graph.add_node("collect_context", self._nodes.collect_context)
         graph.add_node("plan_actions", self._nodes.plan_actions)
-        graph.add_node("approval_gate", self._nodes.approval_gate)
-        graph.add_node("execute_approved_actions", self._nodes.execute_approved_actions)
-        graph.add_node("finalize", self._nodes.finalize)
         graph.add_edge(START, "collect_context")
         graph.add_edge("collect_context", "plan_actions")
-        graph.add_edge("plan_actions", "approval_gate")
-        graph.add_edge("approval_gate", "execute_approved_actions")
+        graph.add_edge("plan_actions", END)
+        return graph
+
+    def _build_execution_graph(self) -> StateGraph:
+        # Any justified: LangGraph accepts TypedDict state schemas at runtime,
+        # but its constructor stub does not model this supported boundary.
+        state_schema = cast(Any, ObsidianLibrarianGraphState)
+        graph = StateGraph(state_schema)
+        graph.add_node("execute_approved_actions", self._nodes.execute_approved_actions)
+        graph.add_node("finalize", self._nodes.finalize)
+        graph.add_edge(START, "execute_approved_actions")
         graph.add_edge("execute_approved_actions", "finalize")
         graph.add_edge("finalize", END)
         return graph
+
+
+def _resume_state(
+    workflow: ObsidianLibrarianWorkflow,
+    command: ObsidianLibrarianWorkflowResume,
+) -> ObsidianLibrarianGraphState:
+    """Reconstruct one internal graph state from the durable workflow row.
+
+    Args:
+        workflow: Persisted workflow entity.
+        command: Validated approved action identifiers.
+
+    Returns:
+        Graph state for the post-approval execution phase.
+    """
+    state = cast(ObsidianLibrarianGraphState, dict(workflow.state))
+    state["thread_id"] = workflow.thread_id
+    state["query"] = workflow.query
+    state["active_note_path"] = workflow.active_note_path
+    state["project"] = workflow.project
+    state["provider_id"] = workflow.provider_id
+    state["profile_id"] = workflow.profile_id
+    state["delegate_requested"] = workflow.delegate_requested
+    state["approved_actions"] = list(command.approved_actions)
+    state["workflow_status"] = "approval_resumed"
+    return state

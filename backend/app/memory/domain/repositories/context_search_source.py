@@ -25,7 +25,7 @@ class IContextSearchSource(ABC):
 
     @abstractmethod
     async def search_fts(self, recall: ContextFtsRecall) -> list[ContextSearchMatch]:
-        """Search source chunks with SQLite FTS5.
+        """Search source chunks with the active lexical-search backend.
 
         Args:
             recall: Validated FTS query and recall filters.

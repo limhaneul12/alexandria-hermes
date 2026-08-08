@@ -6,10 +6,7 @@ from collections.abc import Sequence
 from itertools import batched
 from typing import cast
 
-from app.memory.application.retrieval.vector_serialization import (
-    cosine_distance_to_score,
-    vector_to_sqlite_json,
-)
+from app.memory.application.retrieval.vector_scoring import cosine_distance_to_score
 from app.memory.domain.contracts.context_recall_contracts import (
     ContextFtsRecall,
     ContextVectorRecall,
@@ -32,9 +29,6 @@ from app.memory.infrastructure.repositories.contexts.obsidian_recall_policy impo
     _obsidian_scope_recall_clause,
     _recall_visibility_conditions,
 )
-from app.memory.infrastructure.repositories.contexts.sqlite_vec_connection import (
-    load_sqlite_vec_for_session,
-)
 from app.obsidian.domain.event_enum.obsidian_enums import (
     AlexandriaNoteType,
 )
@@ -43,14 +37,13 @@ from app.obsidian.infrastructure.models.obsidian_index_models import (
     ObsidianFileORM,
 )
 from app.obsidian.infrastructure.repositories.obsidian_fts import (
-    OBSIDIAN_FILES_TABLE,
     build_obsidian_fts_query,
-    ensure_obsidian_chunk_fts_table,
 )
-from app.shared.infrastructure.sqlite_fts_relevance import (
-    sqlite_fts_rank_to_score,
+from app.shared.infrastructure.postgres_fts_relevance import (
+    postgres_fts_rank_to_score,
 )
-from sqlalchemy import bindparam, func, select
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import Float, bindparam, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 from sqlalchemy.sql.elements import ColumnElement
@@ -69,10 +62,9 @@ class ObsidianContextQueryStore:
             session: Active async database session.
         """
         self._session = session
-        self._fts_initialized = False
 
     async def search_fts(self, recall: ContextFtsRecall) -> list[ContextSearchMatch]:
-        """Search indexed Obsidian note chunks through SQLite FTS5.
+        """Search indexed Obsidian note chunks through PostgreSQL FTS.
 
         Args:
             recall: Validated FTS query and recall filters.
@@ -82,9 +74,6 @@ class ObsidianContextQueryStore:
         """
         recall_filter = recall.recall_filter
         scope_filter = recall_filter.scope_identity
-        if not self._fts_initialized:
-            await ensure_obsidian_chunk_fts_table(session=self._session)
-            self._fts_initialized = True
         fts_query = build_obsidian_fts_query(
             recall.query,
             limit=_candidate_limit(recall_filter.limit),
@@ -101,10 +90,11 @@ class ObsidianContextQueryStore:
             return []
         statement = fts_query.statement
         parameters = dict(fts_query.parameters)
+        obsidian_table = ObsidianFileORM.__table__
         statement = statement.where(
             _obsidian_scope_recall_clause(
-                OBSIDIAN_FILES_TABLE.c.frontmatter_json,
-                OBSIDIAN_FILES_TABLE.c.project,
+                obsidian_table.c.frontmatter_json,
+                obsidian_table.c.project,
                 scope_filter,
             )
         )
@@ -131,7 +121,7 @@ class ObsidianContextQueryStore:
                     include_lifecycle_statuses=recall_filter.lifecycle_statuses,
                 ):
                     continue
-                fts_score = sqlite_fts_rank_to_score(rank)
+                fts_score = postgres_fts_rank_to_score(rank)
                 matches.append(
                     match_from_obsidian_rows(
                         note=note,
@@ -141,7 +131,7 @@ class ObsidianContextQueryStore:
                         fts_score=fts_score,
                         vector_score=None,
                         why_retrieved=(
-                            "Matched Obsidian vault note chunk with SQLite FTS5."
+                            "Matched Obsidian vault note chunk with PostgreSQL full-text search."
                         ),
                     )
                 )
@@ -152,7 +142,7 @@ class ObsidianContextQueryStore:
     async def search_vector(
         self, recall: ContextVectorRecall
     ) -> list[ContextSearchMatch]:
-        """Search indexed Obsidian note chunks through sqlite-vec.
+        """Search indexed Obsidian note chunks through pgvector.
 
         Args:
             recall: Validated vector query and recall filters.
@@ -162,12 +152,11 @@ class ObsidianContextQueryStore:
         """
         recall_filter = recall.recall_filter
         scope_filter = recall_filter.scope_identity
-        await load_sqlite_vec_for_session(self._session)
+        query_embedding = list(recall.query_embedding)
         distance = cast(
             ColumnElement[float],
-            func.vec_distance_cosine(
-                ObsidianChunkORM.embedding,
-                bindparam("query_embedding"),
+            ObsidianChunkORM.embedding.op("<=>", return_type=Float)(
+                bindparam("query_embedding", type_=Vector(recall.dimensions))
             ).label("distance"),
         )
         statement = (
@@ -188,8 +177,8 @@ class ObsidianContextQueryStore:
             .order_by(distance.asc())
             .limit(bindparam("limit"))
         )
-        parameters: dict[str, str | int] = {
-            "query_embedding": vector_to_sqlite_json(recall.query_embedding),
+        parameters: dict[str, list[float] | str | int] = {
+            "query_embedding": query_embedding,
             "model_name": recall.model_name,
             "dimensions": recall.dimensions,
             "fingerprint_key": recall.fingerprint_key,
@@ -236,8 +225,7 @@ class ObsidianContextQueryStore:
                         fts_score=None,
                         vector_score=vector_score,
                         why_retrieved=(
-                            "Matched Obsidian vault note chunk with sqlite-vec "
-                            "semantic embedding distance."
+                            "Matched Obsidian vault note chunk with pgvector semantic embedding distance."
                         ),
                     )
                 )

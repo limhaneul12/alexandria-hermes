@@ -7,20 +7,19 @@ from app.memory.application.context_service import ContextService
 from app.memory.interface.schemas.context.context_mapping import (
     health_payload,
     pack_payload,
-    reindex_payload,
     soft_rebuild_payload,
 )
 from app.memory.interface.schemas.context.context_schema import (
     ContextPackResponse,
-    ContextReindexResponse,
     ContextSearchRequest,
     ContextSoftRebuildResponse,
     RagStatusResponse,
 )
+from app.platform.config.app_config import AppConfig
 from app.shared.exceptions.exception_decorators import router_exception_status
 from app.shared.exceptions.route_exceptions import CONTEXT_ROUTE_EXCEPTION_MAPPING
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 router = APIRouter(prefix="/memory/contexts", tags=["library-contexts"])
 
@@ -95,33 +94,42 @@ async def rag_status(
 
 @router.post(
     "/retrieval/reindex",
-    response_model=ContextReindexResponse,
-    status_code=status.HTTP_200_OK,
-    description="Backfill embeddings for existing Context Vault chunks.",
-    summary="Reindex context embeddings",
+    status_code=status.HTTP_409_CONFLICT,
+    description=(
+        "Reject direct CPU-heavy embedding reindex execution. Submit the "
+        "operation through the bounded Redis Streams maintenance queue instead."
+    ),
+    summary="Reject direct embedding reindex execution",
 )
-@router_exception_status(CONTEXT_ROUTE_EXCEPTION_MAPPING)
 @inject
 async def reindex_context_embeddings(
     limit: int = Query(default=100, ge=1, le=1000),
     force: bool = Query(default=False),
-    service: ContextService = Depends(
-        Provide[ApplicationContainer.memory.context_service]
-    ),
-) -> ContextReindexResponse:
-    """Backfill embeddings for stored contexts.
+    app_config: AppConfig = Depends(Provide[ApplicationContainer.app_config]),
+) -> None:
+    """Reject direct embedding execution so the API cannot bypass the queue.
 
     Args:
         limit: Maximum chunks to reindex in this batch.
         force: Whether to rebuild existing embeddings even if model metadata matches.
-        service: Context application service.
+        app_config: Common service settings used for the diagnostic response header.
 
-    Returns:
-        Reindex result response.
+    Raises:
+        HTTPException: Always, with the queue submission endpoint.
     """
-    result = await service.reindex_embeddings(limit=limit, force=force)
-    response = ContextReindexResponse.model_validate(reindex_payload(result))
-    return response
+    del limit, force
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error_code": "EMBEDDING_REINDEX_REQUIRES_QUEUE",
+            "message": (
+                "Embedding reindex must be submitted to the bounded Redis "
+                "Streams maintenance queue."
+            ),
+            "submission_endpoint": "/operations/maintenance/embedding-reindex/jobs",
+        },
+        headers={"X-Alexandria-Service": app_config.app_name},
+    )
 
 
 @router.post(

@@ -170,6 +170,5 @@ class ObsidianContainer(containers.DeclarativeContainer):
         ObsidianLibrarianWorkflowService.from_services,
         workflow_repository=workflow_repo,
         obsidian_service=obsidian_service,
-        checkpoint_path=app_config.provided.obsidian_librarian_langgraph_checkpoint_path,
         delegate_service=librarian_delegate_service,
     )

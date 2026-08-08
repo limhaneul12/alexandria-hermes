@@ -11,9 +11,10 @@ from app.memory.application.retrieval.embedding_document import (
 from app.memory.application.retrieval.embedding_fingerprint import (
     EmbeddingFingerprint,
 )
+from app.shared.types.embedding_types import EMBEDDING_VECTOR_DIMENSIONS
 
 DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
-DEFAULT_EMBEDDING_DIMENSIONS = 384
+DEFAULT_EMBEDDING_DIMENSIONS = EMBEDDING_VECTOR_DIMENSIONS
 DEFAULT_EMBEDDING_THREADS = 4
 
 

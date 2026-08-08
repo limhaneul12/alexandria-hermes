@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -173,7 +175,7 @@ async def _repository(
     name: str,
 ) -> AsyncIterator[SqlAlchemyMemoryReconciliationRepository]:
     database = Database(
-        database_url=f"sqlite+aiosqlite:///{tmp_path / name}",
+        database_url=os.environ["DATABASE_URL"],
         create_schema=True,
     )
     await database.initialize()

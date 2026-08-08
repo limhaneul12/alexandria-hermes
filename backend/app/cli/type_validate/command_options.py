@@ -12,13 +12,15 @@ from app.mcp_server.type_validate.transport_contracts import McpTransport
 
 
 class RequiredMcpTool(StrEnum):
-    """MCP tools required for librarian readiness automation."""
+    """MCP tools required for Memory Steward and Vault maintenance checks."""
 
-    LIBRARIAN_READINESS = "alexandria_librarian_readiness"
-    LIBRARIAN_REFRESH_CURRENT_COMPACT = "alexandria_librarian_refresh_current_compact"
-    LIBRARIAN_REVIEW_QUEUE = "alexandria_librarian_review_queue"
-    LIBRARIAN_REVIEW_MOVE_PLAN = "alexandria_librarian_review_move_plan"
-    LIBRARIAN_REVIEW_APPLY_MOVES = "alexandria_librarian_review_apply_moves"
+    MEMORY_STEWARD_READINESS = "alexandria_memory_steward_readiness"
+    MEMORY_STEWARD_REFRESH_CURRENT_COMPACT = (
+        "alexandria_memory_steward_refresh_current_compact"
+    )
+    VAULT_REVIEW_QUEUE = "alexandria_vault_review_queue"
+    VAULT_REVIEW_MOVE_PLAN = "alexandria_vault_review_move_plan"
+    VAULT_REVIEW_APPLY_MOVES = "alexandria_vault_review_apply_moves"
 
 
 DEFAULT_REQUIRED_MCP_TOOLS = tuple(tool.value for tool in RequiredMcpTool)
@@ -42,7 +44,7 @@ RequiredToolOption = Annotated[
     list[str] | None,
     typer.Option(
         "--required-tool",
-        help="Required tool name. Defaults to librarian readiness/curation tools.",
+        help="Required tool name. Defaults to Memory Steward/Vault maintenance tools.",
     ),
 ]
 ProjectOption = Annotated[
@@ -125,8 +127,8 @@ VerificationQueryOption = Annotated[
 
 
 @dataclass(frozen=True, slots=True)
-class LibrarianReadinessOptions:
-    """Options shared by librarian readiness and compact freshness checks.
+class MemoryStewardReadinessOptions:
+    """Options shared by Memory Steward readiness and compact freshness checks.
 
     Args:
         project: Optional project filter.
@@ -138,8 +140,8 @@ class LibrarianReadinessOptions:
 
 
 @dataclass(frozen=True, slots=True)
-class LibrarianReviewOptions:
-    """Options shared by librarian review queue and move planning commands.
+class VaultReviewOptions:
+    """Options shared by vault review queue and move planning commands.
 
     Args:
         project: Optional project filter.
@@ -153,7 +155,7 @@ class LibrarianReviewOptions:
 
 
 @dataclass(frozen=True, slots=True)
-class CompactRefreshOptions:
+class MemoryCompactRefreshOptions:
     """Options for commands that plan or apply CURRENT compact refreshes.
 
     Args:
@@ -172,8 +174,8 @@ class CompactRefreshOptions:
 
 
 @dataclass(frozen=True, slots=True)
-class ReviewApplyOptions:
-    """Options for confirmation-gated librarian move application.
+class VaultReviewApplyOptions:
+    """Options for confirmation-gated vault move application.
 
     Args:
         review: Shared review queue scope and limit options.
@@ -183,7 +185,7 @@ class ReviewApplyOptions:
         confirm_apply: Explicit confirmation required for non-empty plans.
     """
 
-    review: LibrarianReviewOptions
+    review: VaultReviewOptions
     report_path: str | None
     reindex: bool
     verification_query: str | None

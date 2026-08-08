@@ -7,7 +7,6 @@ from app.memory.application.retrieval.embedding_contract import (
     DEFAULT_EMBEDDING_MODEL,
     EmbeddingProvider,
 )
-from app.memory.application.retrieval.sqlite_vec import probe_sqlite_vec
 from app.memory.domain.entities.context_read_models import RagDependencyHealth
 from app.memory.domain.event_enum.context_enums import RagHealthState, RagStrategy
 
@@ -21,28 +20,25 @@ def build_rag_dependency_health(
     Args:
         embedding_provider: Optional local embedding provider.
         vector_retrieval_enabled: Whether vector indexing/query paths are wired.
-
     Returns:
         Health state for FTS, vector, and embedding dependencies.
     """
-    sqlite_vec = probe_sqlite_vec()
     embedding_state = (
         RagHealthState.HEALTHY
         if embedding_provider is not None
         else RagHealthState.DEGRADED
     )
-    vector_state = (
-        sqlite_vec.state if vector_retrieval_enabled else RagHealthState.DISABLED
-    )
+    if not vector_retrieval_enabled:
+        vector_state = RagHealthState.DISABLED
+    else:
+        vector_state = RagHealthState.HEALTHY
     default_strategy = (
         RagStrategy.HYBRID
         if vector_state is RagHealthState.HEALTHY
         and embedding_state is RagHealthState.HEALTHY
         else RagStrategy.FTS_ONLY
     )
-    warnings = (
-        [] if sqlite_vec.state is RagHealthState.HEALTHY else [sqlite_vec.message]
-    )
+    warnings = []
     if not vector_retrieval_enabled:
         warnings.append("Vector retrieval is disabled by configuration.")
     if embedding_provider is None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import anyio
@@ -23,7 +25,8 @@ _ROUTER_PACKAGES = [
 
 
 def _database_url(path: Path) -> str:
-    return f"sqlite+aiosqlite:///{path}"
+    del path
+    return os.environ["DATABASE_URL"]
 
 
 def test_disabled_projection_rebuild_and_status_api_do_not_create_neo4j_driver_or_vault(
@@ -57,9 +60,6 @@ def test_disabled_projection_rebuild_and_status_api_do_not_create_neo4j_driver_o
             graph_read_model="disabled",
             obsidian_vault_path=str(vault_path),
             obsidian_vault_config_path=str(tmp_path / "vault-config.json"),
-            obsidian_librarian_langgraph_checkpoint_path=str(
-                tmp_path / "librarian.sqlite"
-            ),
             operational_backup_root=str(tmp_path / "backups"),
         )
     )

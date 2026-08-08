@@ -191,7 +191,7 @@ class ObsidianGraphBuildStatusResponse(BaseModel):
         return cls(
             projection=ObsidianGraphProjectionStatusResponse.from_entity(report),
             detail=(
-                "Per-note rebuild reparses one canonical note into SQLite, replaces "
+                "Per-note rebuild reparses one canonical note into PostgreSQL, replaces "
                 "its outgoing edges, then activates a full snapshot projection."
             ),
         )
@@ -321,7 +321,7 @@ class ObsidianGraphNoteLinkValidationResponse(BaseModel):
 
 
 class ObsidianGraphNoteRebuildResponse(BaseModel):
-    """Response for focused SQLite edge refresh plus projection activation."""
+    """Response for focused indexed-edge refresh plus projection activation."""
 
     replace_existing_edges: bool
     validation: ObsidianGraphNoteLinkValidationResponse

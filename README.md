@@ -17,11 +17,12 @@
 
 Alexandria-Hermes is a FastAPI + MCP backend for agent long-term memory, memory compaction, Obsidian Markdown storage, and librarian collaboration.
 
-The previous Next.js frontend, standalone product CLI, and SQLite-backed skill/prompt/harness CRUD surfaces have been removed. Obsidian Markdown is the human-facing source of truth; SQLite is a rebuildable search/index/cache layer plus operational state.
+The previous Next.js frontend, standalone product CLI, and SQLite-backed skill/prompt/harness CRUD surfaces have been removed. Obsidian Markdown is the human-facing source of truth; PostgreSQL is the operational, lexical-search, and pgvector retrieval store.
 
 ```text
 Obsidian Markdown = canonical notes people can read and edit
-SQLite = local index/cache/search and backend operational state
+PostgreSQL = operational state + rebuildable lexical/vector search indexes
+Neo4j = rebuildable graph projection
 Alexandria-Hermes = FastAPI backend + MCP endpoint
 Librarian = optional Obsidian-aware collaborator/chat pane
 ```
@@ -34,7 +35,7 @@ Alexandria-Hermes now focuses on a narrow MCP-first recall surface:
 - Streamable HTTP MCP endpoint at `POST /mcp/`
 - Minimal package CLI for launching MCP and checking librarian readiness
 - MCP tools for Context Vault recall, RAG Context Packs, Memory Compact lookup, librarian collaboration, Obsidian note search/read/save, and skill-acquisition jobs
-- SQLite-backed operational storage for provider profiles, OAuth state, librarian jobs, workflow checkpoints, and rebuildable Obsidian/Context search indexes
+- PostgreSQL-backed operational storage for provider profiles, OAuth state, librarian jobs, workflow checkpoints, and rebuildable Obsidian/Context lexical and pgvector indexes
 - Obsidian-backed Markdown notes under `SERVICE_OBSIDIAN_VAULT_PATH`
 - Optional local Obsidian plugin at `integrations/obsidian/alexandria-librarian/`
 
@@ -49,11 +50,52 @@ Removed legacy surfaces stay removed by contract tests:
 
 ## Quick start
 
+Store the Compose database settings in the gitignored project `.env`. Compose
+does not contain database passwords or construct `DATABASE_URL` from tracked
+defaults:
+
+```dotenv
+ALEXANDRIA_POSTGRES_DB=alexandria
+ALEXANDRIA_POSTGRES_USER=postgres
+ALEXANDRIA_POSTGRES_PASSWORD=replace-with-a-private-local-password
+DATABASE_URL=postgresql+asyncpg://alexandria:replace-with-a-private-local-password@alexandria-postgres:5432/alexandria
+```
+
+Compose maps the private `ALEXANDRIA_POSTGRES_*` values into the official
+PostgreSQL container's `POSTGRES_*` variables. The backend reads `DATABASE_URL`
+directly and normalizes generic `postgresql://` or `postgres://` schemes to the
+installed asyncpg SQLAlchemy driver. Keep the URL database, user, password, and
+the Compose network host `postgres` consistent with those values.
+
 Run the backend with Docker Compose:
 
 ```bash
 docker compose up --build
 ```
+
+### PostgreSQL backup and restore drill
+
+PostgreSQL backup remains process-external by design. The FastAPI backup route
+continues to serve only the legacy local-SQLite mode; the PostgreSQL runtime
+uses `pg_dump`, encrypted manifests, and an isolated temporary restore database
+without granting Docker or restore privileges to the API process.
+
+Set a private passphrase in the local shell, create an encrypted backup, and
+then verify it with a non-destructive restore drill:
+
+```bash
+export ALEXANDRIA_POSTGRES_BACKUP_PASSPHRASE='replace-with-a-private-passphrase'
+./scripts/postgres-backup.sh
+./scripts/postgres-restore-drill.sh <backup-id-or-backup-directory>
+unset ALEXANDRIA_POSTGRES_BACKUP_PASSPHRASE
+```
+
+The version-2 backup manifest records the Alembic revision, public-table count,
+pgvector presence, and plaintext/encrypted hashes. The restore drill requires
+those invariants to match and confirms that its temporary database was removed
+before publishing a `VERIFIED` report. This archive covers PostgreSQL only;
+back up the canonical Obsidian Vault and `backend/data/.alexandria-recovery`
+with the host filesystem policy as separate durable assets.
 
 Neo4j graph read-model support is optional and disabled by the default Compose
 profile. To start the backend plus local-only Neo4j for graph projection work,
@@ -73,17 +115,41 @@ docker compose --profile graph down
 ```
 
 Neo4j is a rebuildable graph projection target, not canonical storage. Obsidian
-Markdown remains the human-editable source of truth, and SQLite remains the
-local search/index/cache plus operational state layer. SQLite `obsidian_edges`
-rows are only a source cache for explicit Neo4j projection rebuilds; graph
-evidence, lineage, traversal, and impact reads are Neo4j-only.
+Markdown remains the human-editable source of truth, while PostgreSQL stores
+operational state and the rebuildable note, edge, lexical, and pgvector indexes.
+PostgreSQL `obsidian_edges` rows are only a source cache for explicit Neo4j
+projection rebuilds; graph evidence, lineage, traversal, and impact reads are
+Neo4j-only.
+
+### Redis operational acceleration
+
+Redis is an internal acceleration and delivery layer, not canonical storage and
+not the cross-process lock authority. PostgreSQL advisory locks remain the final
+maintenance exclusion boundary. The local Compose Redis instance uses AOF
+`everysec`, a removable named volume, a 256 MiB cap, and `noeviction` so pending
+Streams jobs are never silently discarded under memory pressure.
+
+The first queued workload is embedding reindex: the API submits a deduplicated
+Redis Streams job, one separate worker consumes at concurrency `1`, each job is
+bounded to `250` chunks by default, and failures are retried up to `3` attempts
+before a dead-letter entry is recorded. Queue submission is limited to `6` new
+jobs per caller per `60` seconds, while identical manual/scheduler submissions
+reuse the existing job for a `60` second cooldown.
+
+Disposable status caches use the following TTLs: operational readiness `5`
+seconds, graph projection status `5` seconds, and embedding health `10` seconds.
+Direct outbound OpenAI calls consume a Redis fixed-window permit before network
+activity; the default budget is `60` calls per provider-call scope per `60`
+seconds. Redis failure disables queued maintenance and, by default, fails closed
+for outbound provider calls, while canonical Markdown and PostgreSQL-backed core
+memory remain independent.
 
 The backend config selector `SERVICE_GRAPH_READ_MODEL` defaults to `disabled`
 and also accepts `neo4j`. Disabled mode does not create a driver, verify
 connectivity, open a session, or add graph-lane warnings to Context search
-responses. SQLite search and RAG remain available in disabled mode, but contain
+responses. PostgreSQL search and RAG remain available in disabled mode, but contain
 no graph evidence, and related-note reads return service unavailable rather
-than falling back to SQLite or reporting a misleading empty graph. To opt into
+than falling back to PostgreSQL or reporting a misleading empty graph. To opt into
 the rebuildable projection adapter, store
 the connection values it consumes in the gitignored project `.env`:
 
@@ -102,8 +168,8 @@ application lifetime and creates a short-lived session for each explicit graph
 operation. It does not run connectivity checks during default startup or
 readiness, and no existing RAG path depends on it.
 
-After enabling the graph profile, make sure the SQLite schema is current, then
-rebuild the canonical Obsidian/SQLite index before rebuilding the optional Neo4j
+After enabling the graph profile, make sure the PostgreSQL schema is current, then
+rebuild the canonical Obsidian/PostgreSQL index before rebuilding the optional Neo4j
 projection:
 
 ```bash
@@ -114,7 +180,7 @@ curl -X POST http://127.0.0.1:8000/obsidian/graph/projection/rebuild
 curl http://127.0.0.1:8000/obsidian/graph/projection/status
 ```
 
-The Neo4j projection reads from the SQLite note/edge cache produced by Obsidian
+The Neo4j projection reads from the PostgreSQL note/edge cache produced by Obsidian
 reindexing. Running graph rebuild against a stale index can produce a technically
 `ready` projection from stale source rows, so keep the `reindex -> graph rebuild
 -> status` sequence together in local operations.
@@ -140,7 +206,7 @@ If you later change `ALEXANDRIA_NEO4J_PASSWORD` in `.env`, the container may fai
 authentication against the existing volume. Either restore the previous local
 password, or intentionally reset only the rebuildable Neo4j projection volume and
 then run the reindex/rebuild sequence again. Do not delete the Obsidian vault or
-backend SQLite data when resetting the optional graph projection.
+PostgreSQL operational volume when resetting the optional graph projection.
 
 Or run it locally from `backend/`:
 
@@ -171,14 +237,14 @@ export SERVICE_MEMORY_COMPACT_NOTE_DIR="Memory Compacts"
 
 Use `SERVICE_ALEXANDRIA_OBSIDIAN_ROOT="."` when the vault itself is the Alexandria workspace. This avoids a nested `Alexandria/Alexandria` layout.
 
-After the backend is running, verify the second-brain/librarian bridge with the
+After the backend is running, verify the Memory Steward/Vault maintenance bridge with the
 package CLI, not Makefile operational wrappers. Install/sync once, then use
 `--no-sync` for parseable JSON stdout:
 
 ```bash
 cd backend
 make install-local
-uv run --no-sync --no-editable alexandria-hermes librarian check \
+uv run --no-sync --no-editable alexandria-hermes memory-steward check \
   --project alexandria-hermes \
   --refresh-compact \
   --summary
@@ -189,7 +255,7 @@ Memory Compacts. A healthy local bridge returns `ok: true`, empty `warnings`,
 healthy RAG fields, `review_queue_total: 0`, and a current compact id/age.
 When attention is needed, the summary includes `next_actions_count`,
 `next_action`, `next_action_tool`, `review_auto_move_candidates`, and
-`review_manual_required` so an agent can choose the next safe librarian
+`review_manual_required` so an agent can choose the next safe maintenance
 operation without reading a long diagnostic body.
 
 ## MCP endpoint
@@ -251,7 +317,7 @@ and configure `SERVICE_MCP_OAUTH_ISSUER`, `SERVICE_MCP_OAUTH_AUDIENCE`, and
 `SERVICE_MCP_OAUTH_JWKS_URL`.
 
 After changing or reinstalling the backend, an MCP `tools/list` smoke check should
-include the librarian readiness and curation tools:
+include the Memory Steward and Vault maintenance tools:
 
 ```bash
 cd backend
@@ -259,30 +325,40 @@ uv run --no-sync --no-editable alexandria-hermes mcp smoke-tools
 ```
 
 ```text
-alexandria_librarian_readiness
-alexandria_librarian_refresh_current_compact
-alexandria_librarian_review_queue
-alexandria_librarian_review_move_plan
-alexandria_librarian_review_apply_moves
+alexandria_memory_steward_readiness
+alexandria_memory_steward_refresh_current_compact
+alexandria_vault_review_queue
+alexandria_vault_review_move_plan
+alexandria_vault_review_apply_moves
 ```
 
-To check both MCP tool exposure and librarian readiness in one script-friendly
+The Librarian agent-facing surface is intentionally smaller and capability-focused:
+
+```text
+alexandria_search_skills
+alexandria_start_skill_acquisition
+alexandria_skill_acquisition_job_status
+```
+
+Provider/profile selection, OAuth lifecycle, generic delegation, and manual skill completion are internal implementation details rather than requesting-agent MCP controls.
+
+To check both MCP tool exposure and Memory Steward readiness in one script-friendly
 JSON result, run:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian check \
+uv run --no-sync --no-editable alexandria-hermes memory-steward check \
   --project alexandria-hermes
 ```
 
 For a status-only JSON result, including MCP endpoint/tool count, tool exposure,
-required MCP librarian tool names, RAG health, review queue total,
+required Memory Steward/Vault MCP tool names, RAG health, review queue total,
 automatic/manual curation counts, the current compact id/age, and the first
-recommended librarian action, add `--summary`:
+recommended maintenance action, add `--summary`:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian check \
+uv run --no-sync --no-editable alexandria-hermes memory-steward check \
   --project alexandria-hermes \
   --summary
 ```
@@ -292,7 +368,7 @@ add `--refresh-compact`:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian check \
+uv run --no-sync --no-editable alexandria-hermes memory-steward check \
   --project alexandria-hermes \
   --refresh-compact \
   --summary
@@ -316,26 +392,26 @@ curl -sS http://127.0.0.1:8000/mcp/ \
   }'
 ```
 
-## Librarian readiness CLI
+## Memory Steward and Vault CLI
 
 The package CLI is a Typer command package under `backend/app/cli/`. It includes
-only operational commands that support the MCP-first librarian workflow; it does
+only operational commands that support the MCP-first maintenance workflow; it does
 not restore the removed product CRUD CLI.
 
 Run a one-shot readiness check against the local backend:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian readiness \
+uv run --no-sync --no-editable alexandria-hermes memory-steward readiness \
   --project alexandria-hermes
 ```
 
 The response combines RAG health, CURRENT Memory Compact freshness, and the
-librarian review queue. A healthy second-brain bridge should return
+vault review queue. A healthy second-brain bridge should return
 `"status": "ready"`, an empty `warnings` list, and an empty `next_actions`
 list. If attention is needed, `next_actions` gives deterministic priorities for
 repairing retrieval, refreshing the CURRENT compact, planning safe vault moves
-for automatic candidates, or inspecting notes that still require human/librarian
+for automatic candidates, or inspecting notes that still require human
 judgment. The embedded `review_queue` also separates automatic move candidates
 from manual-review notes before applying changes.
 
@@ -343,7 +419,7 @@ Inspect the curation queue directly without changing the vault:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian review-queue \
+uv run --no-sync --no-editable alexandria-hermes vault review-queue \
   --project alexandria-hermes \
   --summary
 ```
@@ -352,7 +428,7 @@ Build the non-mutating safe move plan for automatic candidates:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian review-move-plan \
+uv run --no-sync --no-editable alexandria-hermes vault review-move-plan \
   --project alexandria-hermes
 ```
 
@@ -363,7 +439,7 @@ move candidates. The MCP apply tool follows the same default: it returns
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian review-apply-moves \
+uv run --no-sync --no-editable alexandria-hermes vault review-apply-moves \
   --project alexandria-hermes \
   --confirm-apply
 ```
@@ -373,11 +449,11 @@ apply command also accepts optional `--report-path` and `--verification-query`.
 
 Use preflight in scripts or agent startup checks. It prints the same JSON-shaped
 readiness evidence, returns exit code `0` when ready, and returns exit code `2`
-when the librarian still needs attention:
+when Memory Steward still needs attention:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian preflight \
+uv run --no-sync --no-editable alexandria-hermes memory-steward preflight \
   --project alexandria-hermes
 ```
 
@@ -385,7 +461,7 @@ Plan a CURRENT Memory Compact refresh without mutating the vault:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian refresh-current-compact \
+uv run --no-sync --no-editable alexandria-hermes memory-steward refresh-current-compact \
   --project alexandria-hermes
 ```
 
@@ -394,7 +470,7 @@ operator intentionally passes `--force`:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian refresh-current-compact \
+uv run --no-sync --no-editable alexandria-hermes memory-steward refresh-current-compact \
   --project alexandria-hermes \
   --apply
 ```
@@ -403,7 +479,7 @@ For a startup check that may repair only stale or missing CURRENT compacts, use:
 
 ```bash
 cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian preflight \
+uv run --no-sync --no-editable alexandria-hermes memory-steward preflight \
   --project alexandria-hermes \
   --refresh-compact
 ```
@@ -427,7 +503,7 @@ The pane defaults to **Whole vault** scope so the librarian searches indexed mem
 
 ## Canonical memory, skills, and prompts
 
-Reusable artifacts live as Obsidian notes, not SQLite library rows. The backend may keep operational job metadata, but the human-editable source of truth is Markdown in the vault.
+Reusable artifacts live as Obsidian notes, not database library rows. PostgreSQL keeps operational job and retrieval metadata, while the human-editable source of truth remains Markdown in the vault.
 
 Memory Compact lifecycle APIs write Markdown under `SERVICE_MEMORY_COMPACT_NOTE_DIR`. Rebuild the Obsidian index with:
 
@@ -435,11 +511,11 @@ Memory Compact lifecycle APIs write Markdown under `SERVICE_MEMORY_COMPACT_NOTE_
 curl -sS -X POST http://127.0.0.1:8000/obsidian/index/rebuild
 ```
 
-If SQLite is deleted, Markdown can rebuild indexes/caches. Provider profiles, OAuth state, and job/workflow operational state should be backed up separately when needed.
+If PostgreSQL retrieval indexes are rebuilt, Markdown can repopulate note, chunk, edge, lexical, and vector projections. Provider profiles, OAuth state, and job/workflow operational state are not derived from Markdown and require normal PostgreSQL backups.
 
 ## Graph edges, related notes, and workflows
 
-Reindex rebuilds an `obsidian_edges` source cache from relation frontmatter and body wikilinks. Obsidian Markdown remains canonical; deleting SQLite and running reindex rebuilds the cache. This table does not serve graph traversal. Related-note traversal and graph evidence/lineage/impact reads use only the active Neo4j projection produced by the explicit graph rebuild endpoint. With `SERVICE_GRAPH_READ_MODEL=disabled`, SQLite search/RAG still works without graph evidence and related-note endpoints return `503 Service Unavailable`.
+Reindex rebuilds a PostgreSQL `obsidian_edges` source cache from relation frontmatter and body wikilinks. Obsidian Markdown remains canonical, and a full reindex can reconstruct the derived cache. This table does not serve graph traversal. Related-note traversal and graph evidence/lineage/impact reads use only the active Neo4j projection produced by the explicit graph rebuild endpoint. With `SERVICE_GRAPH_READ_MODEL=disabled`, PostgreSQL lexical/vector search and RAG still work without graph evidence and related-note endpoints return `503 Service Unavailable`.
 
 HTTP/MCP additions include related-note retrieval and resumable LangGraph librarian workflows:
 
@@ -452,7 +528,11 @@ POST /obsidian/librarian/workflows/{thread_id}/resume
 POST /obsidian/librarian/workflows/{thread_id}/cancel
 ```
 
-The workflow runtime uses `langgraph` with `StateGraph`, `interrupt(...)`, `Command(resume=...)`, and a SQLite LangGraph checkpoint file. Default checkpoint path: `SERVICE_OBSIDIAN_LIBRARIAN_LANGGRAPH_CHECKPOINT_PATH=./data/obsidian_librarian_langgraph.sqlite`.
+The workflow runtime uses stateless `langgraph` `StateGraph` phases around a
+durable `obsidian_librarian_workflows` PostgreSQL row. Planning persists the
+complete approval state before side effects; resume reconstructs the graph
+state from that row and executes only approved actions. No separate LangGraph
+SQLite checkpoint database is used.
 
 ## Local development
 

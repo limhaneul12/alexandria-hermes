@@ -41,7 +41,10 @@ def upgrade() -> None:
         """
     )
     op.execute("DELETE FROM library_items WHERE item_type = 'WORKFLOW'")
-    with op.batch_alter_table("library_items", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "library_items",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_library_items_type", type_="check")
         batch_op.create_check_constraint(
             "ck_library_items_type",
@@ -51,7 +54,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Restore the pre-removal item_type constraint without recreating rows."""
-    with op.batch_alter_table("library_items", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "library_items",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_library_items_type", type_="check")
         batch_op.create_check_constraint(
             "ck_library_items_type",

@@ -103,7 +103,7 @@ class ObsidianService:
         """Initialize service dependencies.
 
         Args:
-            repository: Rebuildable SQLite index repository.
+            repository: Rebuildable PostgreSQL index repository.
             vault_path: Obsidian vault root.
             alexandria_root: Managed folder inside the vault.
             vault_config_store: Optional runtime vault override store.
@@ -184,7 +184,7 @@ class ObsidianService:
         return self._vault_config_store.current().alexandria_root
 
     def vault_location(self) -> ObsidianVaultLocation:
-        """Return the canonical Vault path without reading the SQLite index.
+        """Return the canonical Vault path without reading the PostgreSQL index.
 
         Returns:
             Vault and managed-root location used by source-preserving backups.
@@ -403,7 +403,7 @@ class ObsidianService:
         *,
         refresh: bool = False,
     ) -> list[ObsidianSearchHit]:
-        """Search Obsidian notes through the SQLite index.
+        """Search Obsidian notes through the PostgreSQL index.
 
         Args:
             query: Search filters and query text.

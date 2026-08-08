@@ -10,8 +10,8 @@ from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
 )
-from app.shared.infrastructure.sqlite_fts_relevance import (
-    sqlite_fts_rank_to_score,
+from app.shared.infrastructure.postgres_fts_relevance import (
+    postgres_fts_rank_to_score,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def search_context_fts(
     session: AsyncSession, recall: ContextFtsRecall
 ) -> list[ContextSearchMatch]:
-    """Search context chunks with SQLite FTS5.
+    """Search context chunks with the active lexical-search backend.
 
     Args:
         session: Active async database session.
@@ -54,7 +54,7 @@ async def search_context_fts(
         context_row = contexts_by_id.get(context_id)
         if chunk_row is None or context_row is None:
             continue
-        fts_score = sqlite_fts_rank_to_score(rank)
+        fts_score = postgres_fts_rank_to_score(rank)
         matches.append(
             ContextSearchMatch(
                 context=map_context_row(context_row),
@@ -62,7 +62,7 @@ async def search_context_fts(
                 score=fts_score,
                 fts_score=fts_score,
                 vector_score=None,
-                why_retrieved="Matched context chunk text with SQLite FTS5.",
+                why_retrieved="Matched context chunk text with PostgreSQL full-text search.",
             )
         )
     return matches

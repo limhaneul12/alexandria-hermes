@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 
 from app.operations.application.recovery_plan_contracts import RecoveryPlanRequest
 from app.operations.application.recovery_plan_service import RecoveryPlanService
 from app.operations.application.recovery_run_contracts import (
     ContextRecoveryService,
+    ContextRecoveryServiceFactory,
     ObsidianRecoveryService,
+    ObsidianRecoveryServiceFactory,
 )
 from app.operations.application.recovery_run_errors import (
     RecoveryInProgressError,
@@ -22,7 +23,6 @@ from app.operations.application.recovery_run_manifest import (
     _manifest_path,
     _manifest_path_by_id,
     _read_active_lock,
-    _recovery_dir,
     _run_from_manifest,
     _write_active_lock,
     _write_manifest,
@@ -38,7 +38,6 @@ from app.operations.application.recovery_run_retry_policy import (
     _successful_parent_steps,
 )
 from app.operations.application.recovery_run_source_preservation import (
-    _quarantine_files,
     _snapshot_sources,
     _source_snapshot_from_vault,
 )
@@ -51,7 +50,6 @@ from app.operations.application.recovery_run_verification_service import (
     RecoveryRunVerificationService,
 )
 from app.operations.domain.entities.recovery_run import (
-    RecoveryQuarantineInventoryItem,
     RecoveryRun,
     RecoveryRunStepResult,
 )
@@ -84,6 +82,8 @@ class RecoveryRunService:
         database: Database,
         context_service: ContextRecoveryService,
         obsidian_service: ObsidianRecoveryService,
+        context_service_factory: ContextRecoveryServiceFactory | None = None,
+        obsidian_service_factory: ObsidianRecoveryServiceFactory | None = None,
     ) -> None:
         """Create service.
 
@@ -99,11 +99,15 @@ class RecoveryRunService:
             database=database,
             context_service=context_service,
             obsidian_service=obsidian_service,
+            context_service_factory=context_service_factory,
+            obsidian_service_factory=obsidian_service_factory,
         )
         self._verification = RecoveryRunVerificationService(
             database=database,
             context_service=context_service,
             obsidian_service=obsidian_service,
+            context_service_factory=context_service_factory,
+            obsidian_service_factory=obsidian_service_factory,
         )
 
     async def start(self, request: RecoveryPlanRequest) -> RecoveryRun:
@@ -123,7 +127,7 @@ class RecoveryRunService:
         manifest_path = _manifest_path(plan)
         if manifest_path.exists():
             return _run_from_manifest(manifest_path)
-        active_lock = _read_active_lock(self._database.sqlite_path)
+        active_lock = _read_active_lock()
         if active_lock is not None:
             raise RecoveryInProgressError(
                 run_id=active_lock.run_id,
@@ -134,10 +138,7 @@ class RecoveryRunService:
             _write_manifest(run)
             return run
 
-        parent_run = _parent_run_for_retry(
-            database_path=self._database.sqlite_path,
-            parent_run_id=request.parent_run_id,
-        )
+        parent_run = _parent_run_for_retry(parent_run_id=request.parent_run_id)
         parent_success_steps = _successful_parent_steps(parent_run)
 
         _write_active_lock(plan)
@@ -150,92 +151,66 @@ class RecoveryRunService:
         status = RecoveryRunStatus.RUNNING
         current_step: str | None = None
         try:
-            current_step = _checkpoint_active_step(plan, "snapshot_sources")
-            step_results.append(
-                await _execute_or_skip_step(
-                    current_step,
-                    lambda: _snapshot_sources(plan),
-                    parent_run=parent_run,
-                    parent_success_steps=parent_success_steps,
-                )
-            )
-            current_step = _checkpoint_active_step(plan, "dispose_connections")
-            step_results.append(
-                await _execute_or_skip_step(
-                    current_step,
-                    self._mutations.dispose_connections,
-                    parent_run=parent_run,
-                    parent_success_steps=parent_success_steps,
-                )
-            )
-            current_step = _checkpoint_active_step(plan, "quarantine_sqlite_files")
-            step_results.append(
-                await _execute_or_skip_step(
-                    current_step,
-                    lambda: _quarantine_files(list(plan.quarantine_artifacts)),
-                    parent_run=parent_run,
-                    parent_success_steps=parent_success_steps,
-                )
-            )
-            current_step = _checkpoint_active_step(plan, "rebuild_database_schema")
-            schema_result = await _execute_or_skip_step(
-                current_step,
-                self._mutations.rebuild_database,
-                parent_run=parent_run,
-                parent_success_steps=parent_success_steps,
-            )
-            step_results.append(schema_result)
-            rebuild_results["schema"] = schema_result.result
-            current_step = _checkpoint_active_step(plan, "reindex_vault")
-            vault_result = await _execute_or_skip_step(
-                current_step,
-                self._mutations.reindex_vault,
-                parent_run=parent_run,
-                parent_success_steps=parent_success_steps,
-            )
-            step_results.append(vault_result)
-            rebuild_results["vault"] = vault_result.result
-            _require_step_success(vault_result, error_code="VAULT_REINDEX_FAILED")
-            _require_empty_result_list(
-                vault_result,
-                key="errors",
-                error_code="VAULT_REINDEX_FAILED",
-            )
-            current_step = _checkpoint_active_step(plan, "reindex_embeddings")
-            embedding_result = await _execute_or_skip_step(
-                current_step,
-                self._mutations.reindex_embeddings,
-                parent_run=parent_run,
-                parent_success_steps=parent_success_steps,
-            )
-            step_results.append(embedding_result)
-            rebuild_results["embeddings"] = embedding_result.result
-            _require_step_success(
-                embedding_result,
-                error_code="EMBEDDING_REINDEX_FAILED",
-            )
-            _require_empty_result_list(
-                embedding_result,
-                key="warnings",
-                error_code="EMBEDDING_REINDEX_REQUIRED",
-            )
-            current_step = _checkpoint_active_step(plan, "verify_readiness")
-            verification_result = await _execute_or_skip_step(
-                current_step,
-                lambda: self._verification.verify_readiness(plan),
-                parent_run=parent_run,
-                parent_success_steps=parent_success_steps,
-            )
-            step_results.append(verification_result)
-            verification_results = verification_result.result
-            status = (
-                RecoveryRunStatus.COMPLETED
-                if verification_results.get("ready") is True
-                else RecoveryRunStatus.FAILED
-            )
-            if status is RecoveryRunStatus.FAILED:
-                error_code = "READINESS_VERIFICATION_FAILED"
-                error_summary = "Operational readiness did not become READY."
+            for planned_step in plan.steps:
+                current_step = _checkpoint_active_step(plan, planned_step.code)
+                if current_step == "snapshot_sources":
+                    result = await _execute_or_skip_step(
+                        current_step,
+                        lambda: _snapshot_sources(plan),
+                        parent_run=parent_run,
+                        parent_success_steps=parent_success_steps,
+                    )
+                elif current_step == "reindex_vault":
+                    result = await _execute_or_skip_step(
+                        current_step,
+                        self._mutations.reindex_vault,
+                        parent_run=parent_run,
+                        parent_success_steps=parent_success_steps,
+                    )
+                    rebuild_results["vault"] = result.result
+                    _require_step_success(result, error_code="VAULT_REINDEX_FAILED")
+                    _require_empty_result_list(
+                        result,
+                        key="errors",
+                        error_code="VAULT_REINDEX_FAILED",
+                    )
+                elif current_step == "reindex_embeddings":
+                    result = await _execute_or_skip_step(
+                        current_step,
+                        self._mutations.reindex_embeddings,
+                        parent_run=parent_run,
+                        parent_success_steps=parent_success_steps,
+                    )
+                    rebuild_results["embeddings"] = result.result
+                    _require_step_success(
+                        result,
+                        error_code="EMBEDDING_REINDEX_FAILED",
+                    )
+                    _require_empty_result_list(
+                        result,
+                        key="warnings",
+                        error_code="EMBEDDING_REINDEX_REQUIRED",
+                    )
+                elif current_step == "verify_readiness":
+                    result = await _execute_or_skip_step(
+                        current_step,
+                        lambda: self._verification.verify_readiness(plan),
+                        parent_run=parent_run,
+                        parent_success_steps=parent_success_steps,
+                    )
+                    verification_results = result.result
+                    if verification_results.get("ready") is not True:
+                        raise RecoveryStepFailedError(
+                            error_code="READINESS_VERIFICATION_FAILED",
+                            error_summary="Operational readiness did not become READY.",
+                        )
+                else:
+                    raise RecoveryStepFailedError(
+                        error_code="UNSUPPORTED_RECOVERY_STEP",
+                        error_summary=f"Unsupported recovery step: {current_step}",
+                    )
+                step_results.append(result)
+            status = RecoveryRunStatus.COMPLETED
         except RecoveryStepFailedError as exc:
             status = RecoveryRunStatus.FAILED
             error_code = exc.error_code
@@ -258,7 +233,6 @@ class RecoveryRunService:
             finished_at=finished_at,
             source_snapshot=plan.source_snapshot,
             diagnosis=plan.diagnosis,
-            quarantine_artifacts=plan.quarantine_artifacts,
             planned_steps=plan.steps,
             step_results=tuple(step_results),
             rebuild_results=rebuild_results,
@@ -283,16 +257,12 @@ class RecoveryRunService:
         Returns:
             Recovery run from manifest, or None when it is unknown.
         """
-        manifest_path = _manifest_path_by_id(
-            database_path=self._database.sqlite_path,
-            run_id=run_id,
-        )
+        manifest_path = _manifest_path_by_id(run_id=run_id)
         if not manifest_path.exists():
-            active_lock = _read_active_lock(self._database.sqlite_path)
+            active_lock = _read_active_lock()
             if active_lock is not None and active_lock.run_id == run_id:
                 vault_status = await self._obsidian_service.status()
                 run = _interrupted_active_run(
-                    database_path=self._database.sqlite_path,
                     active_lock=active_lock,
                     source_snapshot=_source_snapshot_from_vault(
                         vault_path=vault_status.vault_path,
@@ -301,10 +271,7 @@ class RecoveryRunService:
                     manifest_path=manifest_path,
                 )
                 _write_manifest(run)
-                _clear_active_lock_for_run_id(
-                    database_path=self._database.sqlite_path,
-                    run_id=run_id,
-                )
+                _clear_active_lock_for_run_id(run_id=run_id)
                 return run
             return None
         return _run_from_manifest(manifest_path)
@@ -334,34 +301,3 @@ class RecoveryRunService:
             parent_run_id=parent_run_id,
         )
         return await self.start(retry_request)
-
-    async def quarantine_inventory(self) -> list[RecoveryQuarantineInventoryItem]:
-        """Return quarantined artifact inventory for this database.
-
-        Returns:
-            Quarantine items recorded in persisted recovery run manifests.
-        """
-        recovery_dir = _recovery_dir(self._database.sqlite_path)
-        if not recovery_dir.exists():
-            return []
-        items: list[RecoveryQuarantineInventoryItem] = []
-        for manifest_path in sorted(recovery_dir.glob("*/recovery-run.json")):
-            run = _run_from_manifest(manifest_path)
-            for artifact in run.quarantine_artifacts:
-                quarantine_path = Path(artifact.quarantine_path)
-                items.append(
-                    RecoveryQuarantineInventoryItem(
-                        run_id=run.id,
-                        run_status=run.status,
-                        source_path=artifact.source_path,
-                        quarantine_path=artifact.quarantine_path,
-                        exists=quarantine_path.exists(),
-                        size_bytes=(
-                            quarantine_path.stat().st_size
-                            if quarantine_path.exists()
-                            else None
-                        ),
-                        sha256=artifact.sha256,
-                    )
-                )
-        return items

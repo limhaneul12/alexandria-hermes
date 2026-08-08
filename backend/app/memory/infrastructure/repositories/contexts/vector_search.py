@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from app.memory.application.retrieval.vector_serialization import (
+from app.memory.application.retrieval.vector_scoring import (
     cosine_distance_to_score,
-    vector_to_sqlite_json,
 )
 from app.memory.domain.contracts.context_recall_contracts import ContextVectorRecall
 from app.memory.domain.entities.context_read_models import ContextSearchMatch
@@ -12,9 +11,6 @@ from app.memory.infrastructure.models.context_models import ContextChunkORM, Con
 from app.memory.infrastructure.repositories.contexts.mapping import (
     map_chunk_row,
     map_context_row,
-)
-from app.memory.infrastructure.repositories.contexts.sqlite_vec_connection import (
-    load_sqlite_vec_for_session,
 )
 from app.memory.infrastructure.repositories.contexts.vector_query import (
     build_context_vector_query,
@@ -26,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def search_context_vectors(
     session: AsyncSession, recall: ContextVectorRecall
 ) -> list[ContextSearchMatch]:
-    """Search context chunks by sqlite-vec cosine distance.
+    """Search context chunks by the active vector backend's cosine distance.
 
     Args:
         session: Active async database session.
@@ -35,11 +31,7 @@ async def search_context_vectors(
     Returns:
         Ranked vector matches.
     """
-    await load_sqlite_vec_for_session(session)
-    vector_query = build_context_vector_query(
-        recall,
-        vector_to_sqlite_json(recall.query_embedding),
-    )
+    vector_query = build_context_vector_query(recall)
     rows = await session.execute(vector_query.statement, dict(vector_query.parameters))
     ranked = [(str(row[0]), str(row[1]), float(row[2])) for row in rows.all()]
     if not ranked:
@@ -70,7 +62,7 @@ async def search_context_vectors(
                 score=vector_score,
                 fts_score=None,
                 vector_score=vector_score,
-                why_retrieved="Matched semantic embedding distance with sqlite-vec.",
+                why_retrieved="Matched semantic embedding distance with pgvector.",
             )
         )
     return matches

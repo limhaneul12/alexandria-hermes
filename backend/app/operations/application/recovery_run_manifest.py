@@ -7,10 +7,12 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.operations.application.operational_recovery_paths import (
+    recovery_directory as _recovery_dir,
+)
 from app.operations.domain.entities.recovery_plan import (
     RecoveryPlan,
     RecoveryPlanStep,
-    RecoveryQuarantineArtifactPlan,
     RecoverySourceSnapshot,
 )
 from app.operations.domain.entities.recovery_run import (
@@ -36,7 +38,7 @@ class RecoveryPersistencePayload(BaseModel):
 
 
 class RecoveryActiveLockPayload(RecoveryPersistencePayload):
-    """Validated active recovery lock persisted beside the SQLite database."""
+    """Validated active recovery lock persisted in application recovery state."""
 
     run_id: str
     idempotency_key: str | None = None
@@ -59,16 +61,6 @@ class RecoverySourceSnapshotPayload(RecoveryPersistencePayload):
     disk_free_bytes: int | None = None
     access_error: str | None = None
     markdown_manifest: dict[str, str] = Field(default_factory=dict)
-
-
-class RecoveryArtifactPayload(RecoveryPersistencePayload):
-    """Persisted quarantine artifact plan."""
-
-    source_path: str
-    quarantine_path: str
-    exists: bool
-    size_bytes: int | None = None
-    sha256: str | None = None
 
 
 class RecoveryPlanStepPayload(RecoveryPersistencePayload):
@@ -106,9 +98,6 @@ class RecoveryRunManifestPayload(RecoveryPersistencePayload):
     finished_at: datetime | None = None
     source_snapshot: RecoverySourceSnapshotPayload
     diagnosis: tuple[str, ...] = Field(default_factory=tuple)
-    quarantine_artifacts: tuple[RecoveryArtifactPayload, ...] = Field(
-        default_factory=tuple
-    )
     planned_steps: tuple[RecoveryPlanStepPayload, ...] = Field(default_factory=tuple)
     step_results: tuple[RecoveryStepResultPayload, ...] = Field(default_factory=tuple)
     rebuild_results: JSONObject = Field(default_factory=dict)
@@ -119,28 +108,19 @@ class RecoveryRunManifestPayload(RecoveryPersistencePayload):
 
 
 def _manifest_path(plan: RecoveryPlan) -> Path:
-    return _manifest_path_by_id(
-        database_path=plan.target_database_path,
-        run_id=plan.id,
-    )
+    return _manifest_path_by_id(run_id=plan.id)
 
 
-def _manifest_path_by_id(*, database_path: str | None, run_id: str) -> Path:
-    return _recovery_dir(database_path) / run_id / "recovery-run.json"
+def _manifest_path_by_id(*, run_id: str) -> Path:
+    return _recovery_dir() / run_id / "recovery-run.json"
 
 
-def _recovery_dir(database_path: str | None) -> Path:
-    if database_path is None:
-        return Path.cwd() / ".alexandria-recovery"
-    return Path(database_path).parent / ".alexandria-recovery"
+def _active_lock_path() -> Path:
+    return _recovery_dir() / "active-run.json"
 
 
-def _active_lock_path(database_path: str | None) -> Path:
-    return _recovery_dir(database_path) / "active-run.json"
-
-
-def _read_active_lock(database_path: str | None) -> RecoveryActiveLockPayload | None:
-    path = _active_lock_path(database_path)
+def _read_active_lock() -> RecoveryActiveLockPayload | None:
+    path = _active_lock_path()
     if not path.exists():
         return None
     try:
@@ -158,7 +138,7 @@ def _unreadable_active_lock() -> RecoveryActiveLockPayload:
 
 
 def _write_active_lock(plan: RecoveryPlan) -> None:
-    path = _active_lock_path(plan.target_database_path)
+    path = _active_lock_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = RecoveryActiveLockPayload(
         run_id=plan.id,
@@ -171,8 +151,8 @@ def _write_active_lock(plan: RecoveryPlan) -> None:
 
 
 def _checkpoint_active_step(plan: RecoveryPlan, current_step: str) -> str:
-    path = _active_lock_path(plan.target_database_path)
-    payload = _read_active_lock(plan.target_database_path)
+    path = _active_lock_path()
+    payload = _read_active_lock()
     if payload is None or payload.run_id != plan.id:
         payload = RecoveryActiveLockPayload(
             run_id=plan.id,
@@ -190,20 +170,20 @@ def _checkpoint_active_step(plan: RecoveryPlan, current_step: str) -> str:
 
 
 def _clear_active_lock(plan: RecoveryPlan) -> None:
-    path = _active_lock_path(plan.target_database_path)
+    path = _active_lock_path()
     if not path.exists():
         return
-    payload = _read_active_lock(plan.target_database_path)
+    payload = _read_active_lock()
     if payload is not None and payload.run_id != plan.id:
         return
     path.unlink()
 
 
-def _clear_active_lock_for_run_id(*, database_path: str | None, run_id: str) -> None:
-    path = _active_lock_path(database_path)
+def _clear_active_lock_for_run_id(*, run_id: str) -> None:
+    path = _active_lock_path()
     if not path.exists():
         return
-    payload = _read_active_lock(database_path)
+    payload = _read_active_lock()
     if payload is None or payload.run_id != run_id:
         return
     path.unlink()
@@ -234,9 +214,6 @@ def _run_payload(run: RecoveryRun) -> RecoveryRunManifestPayload:
         finished_at=run.finished_at,
         source_snapshot=_source_snapshot_payload(run.source_snapshot),
         diagnosis=tuple(run.diagnosis),
-        quarantine_artifacts=tuple(
-            _artifact_payload(artifact) for artifact in run.quarantine_artifacts
-        ),
         planned_steps=tuple(_planned_step_payload(step) for step in run.planned_steps),
         step_results=tuple(_step_result_payload(step) for step in run.step_results),
         rebuild_results=run.rebuild_results,
@@ -259,18 +236,6 @@ def _source_snapshot_payload(
         disk_free_bytes=snapshot.disk_free_bytes,
         access_error=snapshot.access_error,
         markdown_manifest=dict(snapshot.markdown_manifest),
-    )
-
-
-def _artifact_payload(
-    artifact: RecoveryQuarantineArtifactPlan,
-) -> RecoveryArtifactPayload:
-    return RecoveryArtifactPayload(
-        source_path=artifact.source_path,
-        quarantine_path=artifact.quarantine_path,
-        exists=artifact.exists,
-        size_bytes=artifact.size_bytes,
-        sha256=artifact.sha256,
     )
 
 
@@ -311,9 +276,6 @@ def _run_from_payload(
         finished_at=payload.finished_at,
         source_snapshot=_source_snapshot_from_payload(payload.source_snapshot),
         diagnosis=tuple(payload.diagnosis),
-        quarantine_artifacts=tuple(
-            _artifact_from_payload(item) for item in payload.quarantine_artifacts
-        ),
         planned_steps=tuple(
             _planned_step_from_payload(item) for item in payload.planned_steps
         ),
@@ -341,18 +303,6 @@ def _source_snapshot_from_payload(
         disk_free_bytes=payload.disk_free_bytes,
         access_error=payload.access_error,
         markdown_manifest=dict(payload.markdown_manifest),
-    )
-
-
-def _artifact_from_payload(
-    payload: RecoveryArtifactPayload,
-) -> RecoveryQuarantineArtifactPlan:
-    return RecoveryQuarantineArtifactPlan(
-        source_path=payload.source_path,
-        quarantine_path=payload.quarantine_path,
-        exists=payload.exists,
-        size_bytes=payload.size_bytes,
-        sha256=payload.sha256,
     )
 
 

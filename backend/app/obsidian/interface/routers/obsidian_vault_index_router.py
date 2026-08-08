@@ -90,7 +90,7 @@ async def initialize_obsidian_vault(
     status_code=status.HTTP_200_OK,
     summary="Reindex Obsidian vault",
     description=(
-        "Scan Alexandria Markdown notes, rebuild the SQLite search cache, "
+        "Scan Alexandria Markdown notes, rebuild the relational search cache, "
         "then refresh the optional graph projection."
     ),
 )

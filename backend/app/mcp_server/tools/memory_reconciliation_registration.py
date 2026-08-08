@@ -10,10 +10,8 @@ from app.mcp_server.tools.memory_reconciliation_tools import (
     alexandria_apply_memory_reconciliation,
     alexandria_get_memory_conflict,
     alexandria_get_memory_reconciliation_plan,
-    alexandria_get_memory_reconciliation_result,
     alexandria_list_memory_conflicts,
     alexandria_list_memory_reconciliation_review_queue,
-    alexandria_mark_memory_conflict_reviewing,
     alexandria_preview_existing_memory_reconciliation,
     alexandria_preview_memory_reconciliation,
     alexandria_preview_reconciliation_memory_compact,
@@ -128,16 +126,6 @@ def register_memory_reconciliation_tools(
             retry_failed=retry_failed,
         )
 
-    @server.tool(name="alexandria_get_memory_reconciliation_result")
-    async def _get_memory_reconciliation_result(
-        reconciliation_id: str,
-    ) -> JSONValue:
-        """Read one reconciliation execution result."""
-        return await alexandria_get_memory_reconciliation_result(
-            api_client,
-            reconciliation_id,
-        )
-
     @server.tool(name="alexandria_list_memory_conflicts")
     async def _list_memory_conflicts(
         status: MemoryConflictStatus | None = None,
@@ -154,16 +142,6 @@ def register_memory_reconciliation_tools(
     async def _get_memory_conflict(conflict_set_id: str) -> JSONValue:
         """Read one memory conflict set."""
         return await alexandria_get_memory_conflict(
-            api_client,
-            conflict_set_id,
-        )
-
-    @server.tool(name="alexandria_mark_memory_conflict_reviewing")
-    async def _mark_memory_conflict_reviewing(
-        conflict_set_id: str,
-    ) -> JSONValue:
-        """Mark one open memory conflict as under review."""
-        return await alexandria_mark_memory_conflict_reviewing(
             api_client,
             conflict_set_id,
         )

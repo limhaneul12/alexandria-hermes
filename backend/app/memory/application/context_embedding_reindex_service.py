@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Protocol
+
 from app.memory.application.context_embedding_health_service import (
     ContextEmbeddingHealthService,
 )
@@ -9,7 +12,6 @@ from app.memory.application.retrieval.embedding_contract import EmbeddingProvide
 from app.memory.application.retrieval.embedding_document import (
     build_embedding_document_text,
 )
-from app.memory.application.retrieval.vector_serialization import vector_to_sqlite_json
 from app.memory.domain.contracts.context_contracts import (
     ContextChunkEmbeddingUpdate,
 )
@@ -20,8 +22,27 @@ from app.memory.domain.entities.context_read_models import (
 from app.memory.domain.event_enum.context_enums import RagHealthState
 from app.memory.domain.repositories.context_search_source import IContextSearchSource
 from app.shared.exceptions.memory_context_exceptions import MemoryContextValidationError
+from app.shared.types.embedding_types import normalize_embedding_vector
 from app.shared.types.types_convert_utils import now_utc
 from asyncer import asyncify
+
+
+class ContextEmbeddingBatchTransaction(Protocol):
+    """Transaction boundary owned by one resumable embedding batch."""
+
+    async def release_read_transaction(self) -> None:
+        """End the read transaction before CPU-intensive embedding inference."""
+
+    async def commit_embedding_updates(self) -> None:
+        """Commit the current batch so later batches cannot roll it back."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _EmbeddingSourceBatch:
+    """Selected source chunks detached from their read transaction."""
+
+    source: IContextSearchSource
+    chunks: tuple[ContextChunkRecord, ...]
 
 
 class ContextEmbeddingReindexService:
@@ -33,6 +54,7 @@ class ContextEmbeddingReindexService:
         provider: EmbeddingProvider | None,
         search_sources: list[IContextSearchSource],
         health_service: ContextEmbeddingHealthService,
+        batch_transaction: ContextEmbeddingBatchTransaction | None = None,
     ) -> None:
         """Initialize reindex dependencies.
 
@@ -40,10 +62,12 @@ class ContextEmbeddingReindexService:
             provider: Optional embedding provider.
             search_sources: Configured retrieval and index sources.
             health_service: Embedding dependency health boundary.
+            batch_transaction: Optional production transaction boundary per batch.
         """
         self._provider = provider
         self._search_sources = search_sources
         self._health_service = health_service
+        self._batch_transaction = batch_transaction
 
     async def reindex(
         self,
@@ -81,7 +105,7 @@ class ContextEmbeddingReindexService:
             )
         processed_by_source: dict[int, set[str]] = {}
         fingerprint_key = fingerprint.key()
-        scanned, updated = await _reindex_embedding_sources(
+        source_batches, scanned = await _select_embedding_source_batches(
             sources=self._search_sources,
             provider=provider,
             fingerprint_key=fingerprint_key,
@@ -90,7 +114,7 @@ class ContextEmbeddingReindexService:
             processed_by_source=processed_by_source,
         )
         if force and scanned < limit:
-            forced_scanned, forced_updated = await _reindex_embedding_sources(
+            forced_batches, forced_scanned = await _select_embedding_source_batches(
                 sources=self._search_sources,
                 provider=provider,
                 fingerprint_key=fingerprint_key,
@@ -98,8 +122,16 @@ class ContextEmbeddingReindexService:
                 force=True,
                 processed_by_source=processed_by_source,
             )
+            source_batches.extend(forced_batches)
             scanned += forced_scanned
-            updated += forced_updated
+        if self._batch_transaction is not None:
+            await self._batch_transaction.release_read_transaction()
+        updated = await _apply_embedding_source_batches(
+            provider=provider,
+            source_batches=source_batches,
+        )
+        if self._batch_transaction is not None and source_batches:
+            await self._batch_transaction.commit_embedding_updates()
         return ContextReindexResult(
             scanned=scanned,
             updated=updated,
@@ -108,7 +140,7 @@ class ContextEmbeddingReindexService:
         )
 
 
-async def _reindex_embedding_sources(
+async def _select_embedding_source_batches(
     *,
     sources: list[IContextSearchSource],
     provider: EmbeddingProvider,
@@ -116,9 +148,9 @@ async def _reindex_embedding_sources(
     limit: int,
     force: bool,
     processed_by_source: dict[int, set[str]],
-) -> tuple[int, int]:
+) -> tuple[list[_EmbeddingSourceBatch], int]:
+    source_batches: list[_EmbeddingSourceBatch] = []
     scanned = 0
-    updated = 0
     for source_index, source in enumerate(sources):
         remaining = limit - scanned
         if remaining < 1:
@@ -131,16 +163,35 @@ async def _reindex_embedding_sources(
             limit=remaining + len(processed_ids),
             force=force,
         )
-        selected = [chunk for chunk in chunks if chunk.id not in processed_ids][
+        selected = tuple(chunk for chunk in chunks if chunk.id not in processed_ids)[
             :remaining
         ]
         if not selected:
             continue
         processed_ids.update(chunk.id for chunk in selected)
         scanned += len(selected)
-        updates = await _embedding_updates(provider=provider, chunks=selected)
-        updated += await source.update_chunk_embeddings(updates)
-    return scanned, updated
+        source_batches.append(
+            _EmbeddingSourceBatch(
+                source=source,
+                chunks=selected,
+            )
+        )
+    return source_batches, scanned
+
+
+async def _apply_embedding_source_batches(
+    *,
+    provider: EmbeddingProvider,
+    source_batches: list[_EmbeddingSourceBatch],
+) -> int:
+    updated = 0
+    for source_batch in source_batches:
+        updates = await _embedding_updates(
+            provider=provider,
+            chunks=list(source_batch.chunks),
+        )
+        updated += await source_batch.source.update_chunk_embeddings(updates)
+    return updated
 
 
 async def _embed_documents(
@@ -182,13 +233,16 @@ async def _embedding_updates(
                 "Embedding provider returned an unexpected dimension"
             )
         try:
-            serialized = vector_to_sqlite_json(embedding)
+            normalized = normalize_embedding_vector(
+                embedding,
+                expected_dimensions=provider.dimensions,
+            )
         except ValueError as exc:
             raise MemoryContextValidationError(str(exc)) from exc
         updates.append(
             ContextChunkEmbeddingUpdate(
                 chunk_id=chunk.id,
-                embedding=serialized,
+                embedding=normalized,
                 embedding_model=provider.model_name,
                 embedding_dimensions=provider.dimensions,
                 embedding_provider=fingerprint.provider,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -168,7 +170,7 @@ def test_integrity_warnings_do_not_change_operational_ready(
 
     async def scenario() -> dict[str, object]:
         database = Database(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'integrity.db'}",
+            database_url=os.environ["DATABASE_URL"],
             create_schema=True,
         )
         await database.initialize()

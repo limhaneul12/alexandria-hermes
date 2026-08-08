@@ -44,12 +44,3 @@ class HermesLibrarianAskPayload(TypedDict, closed=True):
     quality_review_added: bool
     routing_reason: str
     delegates: list[LibrarianDelegatePayload]
-
-
-class LibrarianJobStatusPayload(TypedDict, closed=True):
-    """Public librarian job status payload."""
-
-    job_id: str
-    status: LibrarianDelegationStatus
-    result_available: bool
-    message: str

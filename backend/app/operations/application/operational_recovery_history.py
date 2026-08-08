@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.operations.application.operational_recovery_paths import (
+    recovery_directory as _recovery_dir,
+)
 from app.operations.domain.recovery_state_constants import (
     UNREADABLE_ACTIVE_RECOVERY_RUN_ID,
 )
@@ -11,8 +14,8 @@ from app.shared.serialization.orjson_codec import loads_json
 from app.shared.types.extra_types import JSONObject
 
 
-def _active_recovery_run_id(database_path: str | None) -> str | None:
-    path = _recovery_dir(database_path) / "active-run.json"
+def _active_recovery_run_id() -> str | None:
+    path = _recovery_dir() / "active-run.json"
     if not path.exists():
         return None
     payload = _load_recovery_json(path)
@@ -22,8 +25,8 @@ def _active_recovery_run_id(database_path: str | None) -> str | None:
     return UNREADABLE_ACTIVE_RECOVERY_RUN_ID if run_id is None else str(run_id)
 
 
-def _last_successful_recovery_run_id(database_path: str | None) -> str | None:
-    recovery_dir = _recovery_dir(database_path)
+def _last_successful_recovery_run_id() -> str | None:
+    recovery_dir = _recovery_dir()
     if not recovery_dir.exists():
         return None
     completed: list[tuple[str, str]] = []
@@ -44,12 +47,6 @@ def _last_successful_recovery_run_id(database_path: str | None) -> str | None:
     if not completed:
         return None
     return max(completed)[1]
-
-
-def _recovery_dir(database_path: str | None) -> Path:
-    if database_path is None:
-        return Path.cwd() / ".alexandria-recovery"
-    return Path(database_path).parent / ".alexandria-recovery"
 
 
 def _load_recovery_json(path: Path) -> JSONObject | None:

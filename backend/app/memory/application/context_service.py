@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 
+from app.memory.application.context_embedding_reindex_service import (
+    ContextEmbeddingBatchTransaction,
+)
 from app.memory.application.context_embedding_service import (
     ContextEmbeddingService,
 )
@@ -70,6 +73,7 @@ class ContextService:
         canonical_context_repository: ICanonicalContextRepository | None = None,
         graph_signal_provider: IContextGraphSignalProvider | None = None,
         index_maintenance_coordinator: IndexMaintenanceCoordinator | None = None,
+        embedding_batch_transaction: ContextEmbeddingBatchTransaction | None = None,
     ) -> None:
         """Initialize service dependencies.
 
@@ -80,6 +84,7 @@ class ContextService:
             extra_search_sources: Optional additional Context RAG sources.
             canonical_context_repository: Optional canonical Markdown context adapter.
             graph_signal_provider: Optional score-preserving graph evidence provider.
+            embedding_batch_transaction: Optional transaction boundary per reindex batch.
         """
         search_sources = [repository, *(extra_search_sources or ())]
         self._index_maintenance_coordinator = (
@@ -90,6 +95,7 @@ class ContextService:
             provider=embedding_provider,
             vector_retrieval_enabled=vector_retrieval_enabled,
             search_sources=search_sources,
+            batch_transaction=embedding_batch_transaction,
         )
         self._search_service = ContextSearchService(
             search_sources=search_sources,

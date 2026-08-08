@@ -1,671 +1,111 @@
-"""Alembic migration contract tests."""
+"""PostgreSQL Alembic head and schema contracts."""
 
 from __future__ import annotations
 
-import base64
 import os
-import sqlite3
-import subprocess
-from pathlib import Path
+
+import anyio
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from app.shared.infrastructure.database import Database
+from sqlalchemy import text
 
 
-def _run_alembic(
-    database_path: Path, revision: str
-) -> subprocess.CompletedProcess[str]:
-    env = os.environ | {"DATABASE_URL": f"sqlite+aiosqlite:///{database_path}"}
-    return subprocess.run(
-        ["uv", "run", "alembic", "upgrade", revision],
-        cwd=Path(__file__).resolve().parents[2],
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+def _expected_head() -> str:
+    config = Config("alembic.ini")
+    config.set_main_option("script_location", "migrations")
+    head = ScriptDirectory.from_config(config).get_current_head()
+    assert head is not None
+    return head
 
 
-def test_alembic_upgrade_creates_uuid_backed_archive_schema(tmp_path: Path) -> None:
-    """Alembic should be able to build the backend-owned SQLite schema from scratch."""
+def test_alembic_database_is_at_single_postgresql_head() -> None:
+    """The migrated test database should match the repository's single Alembic head."""
 
-    database_path = tmp_path / "alembic.db"
-    result = _run_alembic(database_path, "head")
-
-    assert result.returncode == 0, result.stderr
-    with sqlite3.connect(database_path) as connection:
-        context_columns = {
-            row[1]: row[2]
-            for row in connection.execute("PRAGMA table_info(contexts)").fetchall()
-        }
-        chunk_columns = {
-            row[1]: row[2]
-            for row in connection.execute(
-                "PRAGMA table_info(context_chunks)"
-            ).fetchall()
-        }
-        skill_acquisition_job_columns = {
-            row[1]: row[2]
-            for row in connection.execute(
-                "PRAGMA table_info(skill_acquisition_jobs)"
-            ).fetchall()
-        }
-        context_fts_definition = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE name = 'context_chunk_fts'"
-        ).fetchone()[0]
-        obsidian_columns = {
-            row[1]: row[2]
-            for row in connection.execute(
-                "PRAGMA table_info(obsidian_files)"
-            ).fetchall()
-        }
-        obsidian_chunk_columns = {
-            row[1]: row[2]
-            for row in connection.execute(
-                "PRAGMA table_info(obsidian_chunks)"
-            ).fetchall()
-        }
-        obsidian_fts_definition = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE name = 'obsidian_chunk_fts'"
-        ).fetchone()[0]
-        speculative_tables = {
-            row[0]
-            for row in connection.execute(
-                """
-                SELECT name FROM sqlite_master
-                WHERE name IN (
-                    'context_links',
-                    'context_embeddings',
-                    'context_chunk_vec'
+    async def scenario() -> str | None:
+        database = Database(database_url=os.environ["DATABASE_URL"])
+        try:
+            async with database.session_factory()() as session:
+                return await session.scalar(
+                    text("SELECT version_num FROM alembic_version")
                 )
-                """
-            ).fetchall()
-        }
-        table_names = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
-            ).fetchall()
-        }
-        contexts_definition = connection.execute(
-            "SELECT sql FROM sqlite_master WHERE name = 'contexts'"
-        ).fetchone()[0]
+        finally:
+            await database.shutdown()
 
-    assert context_columns["id"] == "VARCHAR(36)"
-    assert context_columns["kind"] == "VARCHAR(32)"
-    assert chunk_columns["context_id"] == "VARCHAR(36)"
-    assert skill_acquisition_job_columns["id"] == "VARCHAR(36)"
-    assert skill_acquisition_job_columns["status"] == "VARCHAR(32)"
-    assert skill_acquisition_job_columns["evidence_urls"] == "JSON"
-    assert skill_acquisition_job_columns["stage"] == "VARCHAR(64)"
-    assert skill_acquisition_job_columns["skill_note_path"] == "VARCHAR(1024)"
-    assert skill_acquisition_job_columns["handoff"] == "JSON"
-    assert skill_acquisition_job_columns["search_snapshot"] == "JSON"
-    assert skill_acquisition_job_columns["acquisition_override_reason"] == "TEXT"
-    assert skill_acquisition_job_columns["prompt_reference"] == "VARCHAR(255)"
-    assert skill_acquisition_job_columns["prompt_reference_hash"] == "VARCHAR(64)"
-    assert "chunk_id UNINDEXED" in context_fts_definition
-    assert obsidian_columns["note_id"] == "VARCHAR(255)"
-    assert obsidian_columns["relative_path"] == "VARCHAR(1024)"
-    assert obsidian_chunk_columns["embedding"] == "TEXT"
-    assert obsidian_chunk_columns["embedding_model"] == "VARCHAR(255)"
-    assert obsidian_chunk_columns["embedding_dimensions"] == "INTEGER"
-    assert "note_id UNINDEXED" in obsidian_fts_definition
-    assert {
-        "categories",
-        "library_items",
-        "usage_histories",
-        "item_search_fts",
-        "memory_compacts",
-        "memory_compact_source_refs",
-    }.isdisjoint(table_names)
-    assert "'HARNESS'" not in contexts_definition
-    assert speculative_tables == set()
+    assert anyio.run(scenario) == _expected_head()
 
 
-def test_alembic_upgrade_drops_legacy_library_crud_tables(
-    tmp_path: Path,
-) -> None:
-    """Head schema should not keep SQLite CRUD tables for library assets."""
+def test_alembic_head_has_postgresql_search_storage() -> None:
+    """PostgreSQL head should include pgvector and canonical search tables."""
 
-    database_path = tmp_path / "removed-library-crud.db"
-    result = _run_alembic(database_path, "head")
-    assert result.returncode == 0, result.stderr
+    async def scenario() -> tuple[bool, tuple[str, ...]]:
+        database = Database(database_url=os.environ["DATABASE_URL"])
+        try:
+            async with database.session_factory()() as session:
+                vector_present = bool(
+                    await session.scalar(
+                        text(
+                            "SELECT EXISTS (SELECT 1 FROM pg_extension "
+                            "WHERE extname = 'vector')"
+                        )
+                    )
+                )
+                rows = await session.execute(
+                    text(
+                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                        "AND tablename IN ('contexts', 'context_chunks', "
+                        "'obsidian_files', 'obsidian_chunks')"
+                    )
+                )
+                return vector_present, tuple(sorted(str(row[0]) for row in rows))
+        finally:
+            await database.shutdown()
 
-    with sqlite3.connect(database_path) as connection:
-        table_names = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
-            ).fetchall()
-        }
-
-    assert {
-        "categories",
-        "library_items",
-        "usage_histories",
-        "item_search_fts",
-        "memory_compacts",
-        "memory_compact_source_refs",
-    }.isdisjoint(table_names)
-
-
-def test_alembic_upgrade_hard_deletes_disconnected_mcp_oauth_clients(
-    tmp_path: Path,
-) -> None:
-    """Head migration should remove legacy client rows left by soft disconnect."""
-
-    database_path = tmp_path / "legacy-disconnected-oauth.db"
-    result = _run_alembic(database_path, "9e4d7b6c2a10")
-    assert result.returncode == 0, result.stderr
-
-    with sqlite3.connect(database_path) as connection:
-        connection.executescript(
-            """
-            INSERT INTO mcp_oauth_clients (
-                client_id,
-                client_secret_ciphertext,
-                client_metadata,
-                issued_at,
-                secret_expires_at
-            )
-            VALUES
-                ('disconnected-client', NULL, '{}', 1, NULL),
-                ('connected-client', NULL, '{}', 1, NULL);
-
-            INSERT INTO mcp_oauth_authorization_requests (
-                request_id,
-                client_id,
-                client_name,
-                state,
-                scopes,
-                code_challenge,
-                redirect_uri,
-                redirect_uri_provided_explicitly,
-                resource,
-                expires_at,
-                approval_attempts,
-                consumed_at
-            )
-            VALUES (
-                'disconnected-request',
-                'disconnected-client',
-                'Disconnected',
-                NULL,
-                '[]',
-                'challenge',
-                'https://example.com/callback',
-                1,
-                'http://localhost/mcp',
-                100,
-                0,
-                50
-            );
-
-            INSERT INTO mcp_oauth_authorization_requests (
-                request_id,
-                client_id,
-                client_name,
-                state,
-                scopes,
-                code_challenge,
-                redirect_uri,
-                redirect_uri_provided_explicitly,
-                resource,
-                expires_at,
-                approval_attempts,
-                consumed_at
-            )
-            VALUES (
-                'orphan-request',
-                'missing-client',
-                'Orphan',
-                NULL,
-                '[]',
-                'challenge',
-                'https://example.com/callback',
-                1,
-                'http://localhost/mcp',
-                100,
-                0,
-                50
-            );
-
-            INSERT INTO mcp_oauth_authorization_codes (
-                code_hash,
-                client_id,
-                scopes,
-                code_challenge,
-                redirect_uri,
-                redirect_uri_provided_explicitly,
-                resource,
-                expires_at,
-                consumed_at
-            )
-            VALUES (
-                'orphan-code',
-                'missing-client',
-                '[]',
-                'challenge',
-                'https://example.com/callback',
-                1,
-                'http://localhost/mcp',
-                100,
-                50
-            );
-
-            INSERT INTO mcp_oauth_tokens (
-                token_hash,
-                token_kind,
-                family_id,
-                client_id,
-                scopes,
-                resource,
-                expires_at,
-                revoked_at,
-                created_at
-            )
-            VALUES
-                (
-                    'disconnected-refresh',
-                    'refresh',
-                    'disconnected-family',
-                    'disconnected-client',
-                    '[]',
-                    'http://localhost/mcp',
-                    100,
-                    50,
-                    1
-                ),
-                (
-                    'connected-refresh',
-                    'refresh',
-                    'connected-family',
-                    'connected-client',
-                    '[]',
-                    'http://localhost/mcp',
-                    100,
-                    NULL,
-                    1
-                ),
-                (
-                    'orphan-refresh',
-                    'refresh',
-                    'orphan-family',
-                    'missing-client',
-                    '[]',
-                    'http://localhost/mcp',
-                    100,
-                    50,
-                    1
-                );
-            """
-        )
-
-    result = _run_alembic(database_path, "head")
-    assert result.returncode == 0, result.stderr
-
-    with sqlite3.connect(database_path) as connection:
-        client_ids = {
-            row[0]
-            for row in connection.execute(
-                "SELECT client_id FROM mcp_oauth_clients"
-            ).fetchall()
-        }
-        request_ids = {
-            row[0]
-            for row in connection.execute(
-                "SELECT request_id FROM mcp_oauth_authorization_requests"
-            ).fetchall()
-        }
-        code_hashes = {
-            row[0]
-            for row in connection.execute(
-                "SELECT code_hash FROM mcp_oauth_authorization_codes"
-            ).fetchall()
-        }
-        token_hashes = {
-            row[0]
-            for row in connection.execute(
-                "SELECT token_hash FROM mcp_oauth_tokens"
-            ).fetchall()
-        }
-
-    assert client_ids == {"connected-client"}
-    assert request_ids == set()
-    assert code_hashes == set()
-    assert token_hashes == {"connected-refresh"}
-
-
-def test_alembic_upgrade_marks_legacy_sqlite_datetimes_as_utc(
-    tmp_path: Path,
-) -> None:
-    """Alembic should mark existing naive SQLite timestamp rows as UTC."""
-
-    database_path = tmp_path / "legacy-naive-datetimes.db"
-    previous_revision = "202605192115_remove_knowledge_library_item_type"
-    result = _run_alembic(database_path, previous_revision)
-    assert result.returncode == 0, result.stderr
-
-    with sqlite3.connect(database_path) as connection:
-        connection.executescript(
-            """
-            INSERT INTO agent_profiles (
-                id,
-                name,
-                provider,
-                capabilities,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'agent-with-naive-datetime',
-                'Agent With Naive Datetime',
-                'OPENAI',
-                '[]',
-                '2026-05-16 04:32:36.331519',
-                '2026-05-16 04:32:52+09:00'
-            );
-            INSERT INTO skill_acquisition_jobs (
-                id,
-                prompt,
-                agent_name,
-                status,
-                evidence_urls,
-                created_at,
-                updated_at,
-                completed_at
-            )
-            VALUES (
-                'job-with-naive-datetime',
-                'Acquire skill',
-                'Hermes',
-                'COMPLETED',
-                '[]',
-                '2026-05-18 17:20:00',
-                '2026-05-18 17:20:01Z',
-                '2026-05-18 17:21:00'
-            );
-            """
-        )
-
-    result = _run_alembic(database_path, "head")
-    assert result.returncode == 0, result.stderr
-
-    with sqlite3.connect(database_path) as connection:
-        agent_created_at, agent_updated_at = connection.execute(
-            """
-            SELECT created_at, updated_at
-            FROM agent_profiles
-            WHERE id = 'agent-with-naive-datetime'
-            """
-        ).fetchone()
-        job_created_at, job_updated_at, job_completed_at = connection.execute(
-            """
-            SELECT created_at, updated_at, completed_at
-            FROM skill_acquisition_jobs
-            WHERE id = 'job-with-naive-datetime'
-            """
-        ).fetchone()
-
-    assert {
-        "agent_created_at": agent_created_at,
-        "agent_updated_at": agent_updated_at,
-        "job_created_at": job_created_at,
-        "job_updated_at": job_updated_at,
-        "job_completed_at": job_completed_at,
-    } == {
-        "agent_created_at": "2026-05-16 04:32:36.331519+00:00",
-        "agent_updated_at": "2026-05-16 04:32:52+09:00",
-        "job_created_at": "2026-05-18 17:20:00+00:00",
-        "job_updated_at": "2026-05-18 17:20:01Z",
-        "job_completed_at": "2026-05-18 17:21:00+00:00",
-    }
-
-
-def test_alembic_upgrade_rejects_legacy_plaintext_provider_secrets(
-    tmp_path: Path,
-) -> None:
-    """Alembic should fail closed when old plaintext provider secrets remain."""
-
-    database_path = tmp_path / "legacy-provider-secret.db"
-    previous_revision = "202605201020_normalize_legacy_sqlite_datetimes"
-    result = _run_alembic(database_path, previous_revision)
-    assert result.returncode == 0, result.stderr
-
-    with sqlite3.connect(database_path) as connection:
-        connection.executescript(
-            """
-            INSERT INTO librarian_providers (
-                id,
-                name,
-                provider_type,
-                auth_type,
-                enabled,
-                config,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'provider-with-legacy-secret',
-                'Legacy secret provider',
-                'OPENAI',
-                'API_KEY',
-                1,
-                '{}',
-                '2026-05-20 00:00:00+00:00',
-                '2026-05-20 00:00:00+00:00'
-            );
-            INSERT INTO librarian_provider_secrets (
-                id,
-                provider_id,
-                key_name,
-                value
-            )
-            VALUES (
-                'legacy-secret-row',
-                'provider-with-legacy-secret',
-                'api_key',
-                'plain-secret'
-            );
-            """
-        )
-
-    result = _run_alembic(database_path, "head")
-
-    assert result.returncode != 0
-    assert "Legacy plaintext or old-version provider secrets" in result.stderr
-
-
-def test_alembic_upgrade_rejects_old_version_opaque_provider_secrets(
-    tmp_path: Path,
-) -> None:
-    """Alembic should fail closed when opaque provider secrets use an old version."""
-
-    database_path = tmp_path / "old-version-provider-secret.db"
-    previous_revision = "202605201020_normalize_legacy_sqlite_datetimes"
-    result = _run_alembic(database_path, previous_revision)
-    assert result.returncode == 0, result.stderr
-    old_version_payload = base64.urlsafe_b64encode(bytes([2]) + b"x" * 28).decode(
-        "ascii"
+    assert anyio.run(scenario) == (
+        True,
+        ("context_chunks", "contexts", "obsidian_chunks", "obsidian_files"),
     )
 
-    with sqlite3.connect(database_path) as connection:
-        connection.executescript(
-            f"""
-            INSERT INTO librarian_providers (
-                id,
-                name,
-                provider_type,
-                auth_type,
-                enabled,
-                config,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'provider-with-old-secret',
-                'Old secret provider',
-                'OPENAI',
-                'API_KEY',
-                1,
-                '{{}}',
-                '2026-05-20 00:00:00+00:00',
-                '2026-05-20 00:00:00+00:00'
-            );
-            INSERT INTO librarian_provider_secrets (
-                id,
-                provider_id,
-                key_name,
-                value
-            )
-            VALUES (
-                'old-version-secret-row',
-                'provider-with-old-secret',
-                'api_key',
-                '{old_version_payload}'
-            );
-            """
-        )
 
-    result = _run_alembic(database_path, "head")
+def test_alembic_head_keeps_oauth_and_reconciliation_tables() -> None:
+    """Current head should retain durable OAuth and reconciliation state."""
 
-    assert result.returncode != 0
-    assert "Legacy plaintext or old-version provider secrets" in result.stderr
+    async def scenario() -> tuple[str, ...]:
+        database = Database(database_url=os.environ["DATABASE_URL"])
+        try:
+            async with database.session_factory()() as session:
+                rows = await session.execute(
+                    text(
+                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                        "AND (tablename LIKE 'mcp_oauth_%' "
+                        "OR tablename LIKE 'memory_reconciliation_%')"
+                    )
+                )
+                return tuple(sorted(str(row[0]) for row in rows))
+        finally:
+            await database.shutdown()
+
+    tables = anyio.run(scenario)
+    assert any(name.startswith("mcp_oauth_") for name in tables)
+    assert any(name.startswith("memory_reconciliation_") for name in tables)
 
 
-def test_alembic_upgrade_deletes_legacy_plaintext_oauth_provider_secrets(
-    tmp_path: Path,
-) -> None:
-    """Alembic should clear invalid OAuth material instead of blocking upgrade."""
+def test_alembic_head_does_not_restore_retired_library_crud_tables() -> None:
+    """Retired SQLite-era library CRUD tables must remain absent at PostgreSQL head."""
 
-    database_path = tmp_path / "legacy-oauth-secret.db"
-    previous_revision = "202605201020_normalize_legacy_sqlite_datetimes"
-    result = _run_alembic(database_path, previous_revision)
-    assert result.returncode == 0, result.stderr
+    async def scenario() -> tuple[str, ...]:
+        database = Database(database_url=os.environ["DATABASE_URL"])
+        try:
+            async with database.session_factory()() as session:
+                rows = await session.execute(
+                    text(
+                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                        "AND tablename IN ('library_items', 'prompt_library_items', "
+                        "'memory_compact_artifacts')"
+                    )
+                )
+                return tuple(str(row[0]) for row in rows)
+        finally:
+            await database.shutdown()
 
-    with sqlite3.connect(database_path) as connection:
-        connection.executescript(
-            """
-            INSERT INTO librarian_providers (
-                id,
-                name,
-                provider_type,
-                auth_type,
-                enabled,
-                config,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'provider-with-legacy-oauth-secret',
-                'Legacy OAuth provider',
-                'OPENAI_CODEX',
-                'OAUTH',
-                1,
-                '{}',
-                '2026-05-20 00:00:00+00:00',
-                '2026-05-20 00:00:00+00:00'
-            );
-            INSERT INTO librarian_provider_secrets (
-                id,
-                provider_id,
-                key_name,
-                value
-            )
-            VALUES (
-                'legacy-oauth-secret-row',
-                'provider-with-legacy-oauth-secret',
-                'oauth_access_token',
-                'plain-oauth-token'
-            );
-            """
-        )
-
-    result = _run_alembic(database_path, "head")
-
-    assert result.returncode == 0, result.stderr
-    with sqlite3.connect(database_path) as connection:
-        remaining = connection.execute(
-            """
-            SELECT COUNT(*) FROM librarian_provider_secrets
-            WHERE provider_id = 'provider-with-legacy-oauth-secret'
-            """
-        ).fetchone()[0]
-    assert remaining == 0
-
-
-def test_alembic_upgrade_deletes_old_version_oauth_provider_secrets(
-    tmp_path: Path,
-) -> None:
-    """Alembic should clear obsolete opaque OAuth material during upgrade."""
-
-    database_path = tmp_path / "old-version-oauth-secret.db"
-    previous_revision = "202605201020_normalize_legacy_sqlite_datetimes"
-    result = _run_alembic(database_path, previous_revision)
-    assert result.returncode == 0, result.stderr
-    old_version_payload = base64.urlsafe_b64encode(bytes([2]) + b"x" * 28).decode(
-        "ascii"
-    )
-
-    with sqlite3.connect(database_path) as connection:
-        connection.executescript(
-            f"""
-            INSERT INTO librarian_providers (
-                id,
-                name,
-                provider_type,
-                auth_type,
-                enabled,
-                config,
-                created_at,
-                updated_at
-            )
-            VALUES (
-                'provider-with-old-oauth-secret',
-                'Old OAuth provider',
-                'OPENAI_CODEX',
-                'OAUTH',
-                1,
-                '{{}}',
-                '2026-05-20 00:00:00+00:00',
-                '2026-05-20 00:00:00+00:00'
-            );
-            INSERT INTO librarian_provider_secrets (
-                id,
-                provider_id,
-                key_name,
-                value
-            )
-            VALUES (
-                'old-oauth-secret-row',
-                'provider-with-old-oauth-secret',
-                'oauth_refresh_token',
-                '{old_version_payload}'
-            );
-            """
-        )
-
-    result = _run_alembic(database_path, "head")
-
-    assert result.returncode == 0, result.stderr
-    with sqlite3.connect(database_path) as connection:
-        remaining = connection.execute(
-            """
-            SELECT COUNT(*) FROM librarian_provider_secrets
-            WHERE provider_id = 'provider-with-old-oauth-secret'
-            """
-        ).fetchone()[0]
-    assert remaining == 0
-
-
-def test_alembic_upgrade_has_no_prompt_library_item_table(tmp_path: Path) -> None:
-    """Head schema should not expose prompt rows through SQLite library_items."""
-
-    database_path = tmp_path / "prompt-item-type.db"
-    result = _run_alembic(database_path, "head")
-    assert result.returncode == 0, result.stderr
-
-    with sqlite3.connect(database_path) as connection:
-        table_exists = connection.execute(
-            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'library_items'"
-        ).fetchone()[0]
-
-    assert table_exists == 0
+    assert anyio.run(scenario) == ()

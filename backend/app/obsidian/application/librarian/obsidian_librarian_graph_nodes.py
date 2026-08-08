@@ -6,14 +6,12 @@ from app.obsidian.application.librarian.obsidian_librarian_action_executor impor
     ObsidianLibrarianActionExecutor,
 )
 from app.obsidian.application.librarian.obsidian_librarian_approval_policy import (
-    _interrupt_payload as interrupt_payload,
     _pending_actions_from_state as pending_actions_from_state,
 )
 from app.obsidian.application.librarian.obsidian_librarian_graph_contracts import (
     ObsidianLibrarianGraphState,
 )
 from app.obsidian.application.librarian.obsidian_librarian_graph_state_codec import (
-    _approved_actions as approved_actions,
     _ask_from_state as ask_from_state,
 )
 from app.obsidian.application.librarian.obsidian_librarian_state_access import (
@@ -23,7 +21,6 @@ from app.obsidian.application.service.obsidian_service import ObsidianService
 from app.obsidian.domain.contracts.obsidian_contracts import (
     ObsidianLibrarianAsk,
 )
-from langgraph.types import interrupt
 
 
 class ObsidianLibrarianGraphNodes:
@@ -77,17 +74,6 @@ class ObsidianLibrarianGraphNodes:
             "completed_actions": [],
             "transcript_path": None,
             "workflow_status": "approval_required",
-        }
-
-    async def approval_gate(
-        self,
-        state: ObsidianLibrarianGraphState,
-    ) -> ObsidianLibrarianGraphState:
-        approval = interrupt(interrupt_payload(state))
-        approved_action_ids = approved_actions(approval)
-        return {
-            "approved_actions": approved_action_ids,
-            "workflow_status": "approval_resumed",
         }
 
     async def execute_approved_actions(

@@ -251,12 +251,16 @@ class ObsidianContextEmbeddingStore:
         Returns:
             Number of Obsidian chunks updated.
         """
+        if not updates:
+            return 0
+        raw_chunk_ids = [raw_obsidian_chunk_id(update.chunk_id) for update in updates]
+        rows = await self._session.scalars(
+            select(ObsidianChunkORM).where(ObsidianChunkORM.id.in_(raw_chunk_ids))
+        )
+        chunks_by_id = {chunk.id: chunk for chunk in rows.all()}
         updated = 0
         for update in updates:
-            chunk = await self._session.get(
-                ObsidianChunkORM,
-                raw_obsidian_chunk_id(update.chunk_id),
-            )
+            chunk = chunks_by_id.get(raw_obsidian_chunk_id(update.chunk_id))
             if chunk is None:
                 continue
             chunk.embedding = update.embedding

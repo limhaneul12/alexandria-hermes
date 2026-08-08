@@ -1,192 +1,125 @@
 ---
-name: librarian-operator
-description: Use when a task asks what Alexandria Librarian can do, how to use Librarian, or needs Librarian-backed Obsidian vault search, graph-related note discovery, note-aware Q&A, vault curation, Memory Compact readiness, skill acquisition, or optional delegated librarian/provider guidance. Trigger on questions or actions involving Alexandria Librarian capabilities, librarian readiness, review queues, related notes, Obsidian side pane, skill acquisition, or search-first library operations.
+name: librarian-skill-acquisition
+description: Use when an agent needs a reusable capability that is missing from Alexandria. Search existing skills first; if insufficient, start an autonomous Librarian skill-acquisition job that researches authoritative sources, drafts and validates a reusable skill, publishes it to Obsidian, and returns a handoff to the requesting agent.
 ---
 
-# Librarian Operator
+# Librarian Skill Acquisition
 
-Use Alexandria Librarian as an optional Obsidian-aware library operator: search and cite existing knowledge first, then escalate to librarian/provider collaboration only when search is insufficient or the user explicitly asks.
+Alexandria Librarian is a focused **Skill Acquisition Agent**. It is not the general vault operator, memory compactor, OAuth controller, or catch-all research assistant.
 
-## Operating rule
+## Responsibility boundary
 
-Follow this order unless the user explicitly asks for delegation:
-
-1. Use current conversation, local files, loaded skills, and local memory.
-2. Read the current Memory Compact for durable project context.
-3. Search Context Vault/RAG and Obsidian notes.
-4. Search reusable skill/prompt notes when the task is about capability reuse.
-5. Ask the Obsidian-aware Librarian for synthesis over notes.
-6. Delegate to a configured librarian/provider only as fallback or explicit escalation.
-
-Never store secrets, OAuth tokens, pairing codes, or transient logs in notes.
-
-## Capability map
-
-### Search and recall existing library knowledge
-
-Use this for “find prior decisions”, “what did we decide?”, “related notes”, or source-cited answers.
-
-Preferred MCP tools:
-- `alexandria_get_current_memory_compact(project=...)`
-- `alexandria_search(query=..., project=..., include_scopes=...)`
-- `alexandria_recall_context(query=..., project=...)`
-- `alexandria_rag_context(query=..., project=...)`
-- `alexandria_search_vault(query=..., project=..., alexandria_type=...)`
-- `alexandria_read_note(note_id=... | path=...)`
-- `alexandria_get_related_notes(note_id=... | path=...)`
-
-Use project, workspace, agent, or session scope when known. Do not broaden a missing specific identity to global.
-
-### Expand a search result through the graph
-
-Use graph traversal only after search identifies a relevant seed note:
-
-1. Check `GET /obsidian/graph/projection/status` or its MCP equivalent.
-2. Search the scoped library and select a stable note id/path.
-3. Call `alexandria_get_related_notes` for the seed.
-4. Inspect relationship direction/type and any lineage or impact signal.
-5. Read the related notes and cite their Markdown content before answering.
-
-Neo4j is an optional derived read model. It improves discovery but does not
-replace scoped FTS/vector/HYBRID search or Obsidian source citations. When the
-graph is disabled and related-note lookup returns 503, continue without graph
-evidence; never reconstruct the traversal from SQLite `obsidian_edges`.
-Projection status retains `last_run_issue_total` and counted issue codes. Treat
-missing/ambiguous link counts as non-fatal curation work: those targets are
-excluded from traversal until repaired. Request individual issue details only as
-a bounded diagnostic sample.
-
-### Ask the Obsidian-aware Librarian
-
-Use this for note-aware synthesis, active-note help, source-ref answers, extracting skill candidates, or deciding how to use material from the vault.
-
-Tool:
-- `alexandria_ask_obsidian_librarian`
-
-Useful arguments:
-- `query`: user question or requested librarian task.
-- `active_note_path`: vault-relative path for the open note, if known.
-- `selection`: selected Markdown, if supplied.
-- `project`: usually the current repo/project.
-- `preferred_alexandria_types`: e.g. `context`, `skill`, `prompt`, `memory_compact`, `job_plan`.
-- `save_transcript`: false by default; true only when the user wants a durable chat note.
-- `delegate_to_librarian`: false by default; true only for explicit escalation.
-
-Example request shape:
-
-```json
-{
-  "query": "이 노트에서 재사용 가능한 skill 후보를 뽑아줘",
-  "active_note_path": "Contexts/Projects/alexandria-hermes/Some Note.md",
-  "selection": "selected markdown if any",
-  "project": "alexandria-hermes",
-  "preferred_alexandria_types": ["context", "skill", "prompt", "memory_compact"],
-  "save_transcript": false,
-  "delegate_to_librarian": false
-}
+```text
+Requesting Agent
+→ search existing skills
+→ reuse when sufficient
+→ otherwise start acquisition
+→ Librarian researches and drafts
+→ validate evidence and artifact
+→ publish canonical Skill to Obsidian
+→ reindex / verify
+→ return durable handoff
+→ requesting Agent resumes work
 ```
 
-### Curate and reorganize the vault
+Other ownership boundaries:
 
-Use this for “정리 필요한 노트”, “어디로 옮길지 계획”, “review queue”, or librarian curation.
+- Alexandria Core owns vault search, note CRUD, graph, inventory, review, and safe moves.
+- Memory Steward owns reconciliation, conflicts, Memory Compact lifecycle, and periodic compaction.
+- Provider selection, credentials, and OAuth are internal execution details and are not agent-facing MCP controls.
 
-Prefer non-mutating inspection first:
+## Public MCP contract
 
-- `alexandria_librarian_readiness(project=...)`
-- `alexandria_librarian_review_queue(project=..., scope_path=..., limit=...)`
-- `alexandria_librarian_review_move_plan(project=..., scope_path=..., limit=...)`
-- `alexandria_librarian_vault_inventory(project=...)`
-- `alexandria_librarian_vault_path_search(query=...)`
-- `alexandria_librarian_vault_move_plan(...)`
+### 1. Search first
 
-Only apply moves after an explicit plan is available and the user requested mutation:
+Use:
 
-- `alexandria_librarian_review_apply_moves(..., confirm_apply=true)`
-- `alexandria_librarian_vault_apply_moves(..., confirm_apply=true)`
-
-When using CLI directly, require `--confirm-apply` for non-empty move plans.
-
-### Maintain Memory Compact and readiness
-
-Use this for startup checks, “current memory stale?”, RAG/library health, or librarian readiness.
-
-Tools/commands:
-
-```bash
-cd backend
-uv run --no-sync --no-editable alexandria-hermes librarian check \
-  --project alexandria-hermes \
-  --refresh-compact \
-  --summary
-```
-
-MCP equivalents:
-- `alexandria_librarian_readiness(project=...)`
-- `alexandria_librarian_refresh_current_compact(project=..., apply=...)`
-- `alexandria_get_current_memory_compact(project=...)`
-- `alexandria_review_memory_compact(compact_id=...)`
-
-Treat `refresh-current-compact` as a planned mutation: inspect the plan first, apply only when refresh is required or explicitly forced.
-
-### Skill acquisition and reusable capability capture
-
-Use this when existing skills are missing or insufficient.
-
-Search first:
 - `alexandria_search_skills(capability=..., task_goal=..., project=...)`
 
-Then, only if needed:
-- `alexandria_librarian_brief_preview(prompt=..., project=...)`
+Pass the concrete missing capability, current task goal, environment, required tools, constraints, risk tolerance, and success criteria when known.
+
+If an existing skill is sufficient, reuse it. Do not create a duplicate acquisition job.
+
+### 2. Start autonomous acquisition
+
+Only when search is insufficient:
+
 - `alexandria_start_skill_acquisition(prompt=..., project=..., search_snapshot=...)`
+
+The requesting agent does **not** select a provider, profile, OAuth token, model, or completion route. Alexandria selects an executable provider internally and runs the acquisition job in the background.
+
+The acquisition job should:
+
+1. research the missing capability;
+2. prefer official documentation, primary repositories, standards, and first-party examples;
+3. distinguish verified behavior from inference;
+4. produce claim-linked evidence;
+5. draft a reusable skill with environment/tool constraints and safety notes;
+6. publish the skill to canonical Obsidian storage;
+7. reindex and verify the saved artifact;
+8. persist a resume handoff for the requesting agent.
+
+If evidence is insufficient, the job must become review/failed state rather than invent sources or silently activate an unverified skill.
+
+### 3. Poll the durable job
+
+Use:
+
 - `alexandria_skill_acquisition_job_status(job_id=...)`
-- `alexandria_complete_skill_acquisition(job_id=..., title=..., purpose=..., content=...)`
 
-For guidance-only delegation:
-- `alexandria_librarian_route_preview(prompt=..., project=...)`
-- `alexandria_ask_librarian(prompt=..., delegate_to_librarian=false|true, project=...)`
-- `alexandria_librarian_job_status(job_id=...)`
+A successful terminal result should provide the durable skill handle/path, verification state, evidence references, and a concise handoff explaining how the requesting agent should resume its blocked task.
 
-## Saving notes safely
+There is no public manual-completion tool. Publication and completion belong to the acquisition runner.
 
-Use `alexandria_save_note` for durable notes only when the output should become library knowledge.
+## Evidence and activation rule
 
-Allowed note types commonly used:
-- `context`
-- `memory_compact`
-- `skill`
-- `prompt`
-- `librarian_brief`
-- `librarian_chat`
-- `job_plan`
-- `implementation_history`
+A reusable skill should not become trusted merely because a model produced text. Require, where applicable:
 
-For updates to existing notes, prefer read-modify-write with content-hash conflict protection when the API exposes `expected_content_hash`. If a write conflict occurs, re-read, merge, and retry; do not blindly overwrite.
+- authoritative evidence references;
+- current environment/version assumptions;
+- required tool names;
+- reproducible usage steps or examples;
+- safety/risk constraints;
+- duplicate search before publication;
+- successful canonical save and read-back;
+- index/search verification after publication.
 
-After saves or vault moves, run or request reindex:
+## Alexandria Core operations
 
-- `alexandria_reindex_vault`
-- Run embedding soft rebuild when RAG reports stale or missing rows.
-- Rebuild `/obsidian/graph/projection/rebuild` when graph projection is enabled and note links or graph metadata changed.
-- Then verify search/readback and one related-note lookup for a known seed.
+For ordinary library work, use Core tools instead of Librarian delegation:
 
-Normal note search does not reindex the entire vault. Do not set `refresh=true`
-unless an explicit diagnostic refresh is needed. Run vault, embedding, and graph
-maintenance sequentially; an HTTP `409` means another maintenance operation is
-active, not that search should fall back to stale or alternate storage.
+- `alexandria_search_vault`
+- `alexandria_read_note`
+- `alexandria_get_related_notes`
+- `alexandria_create_note`
+- `alexandria_update_note`
+- `alexandria_upsert_note`
+- `alexandria_vault_review_queue`
+- `alexandria_vault_review_move_plan`
+- `alexandria_vault_review_apply_moves`
+- `alexandria_vault_inventory`
+- `alexandria_vault_path_search`
+- `alexandria_vault_move_plan`
+- `alexandria_vault_apply_moves`
 
-## Response pattern
+Vault maintenance is not Librarian skill acquisition.
 
-When explaining Librarian to a user, describe it as:
+## Memory Steward boundary
 
-> Obsidian 기반 장기기억 도서관의 검색자, 정리자, 요약자, 스킬 후보 큐레이터, 그리고 필요 시 외부/전문 librarian provider로 escalation하는 운영 레이어.
+Memory lifecycle is separate from the Librarian:
 
-Keep answers concrete:
-- name the capability being used;
-- list the MCP tool or CLI command;
-- say whether the step is read-only or mutating;
-- verify with readback, readiness, or search evidence before claiming completion.
+- temporal reconciliation and conflict handling;
+- Memory Compact review/promotion/archive;
+- periodic compaction;
+- memory readiness and lifecycle maintenance.
+
+A Librarian-created skill may emit durable Context/evidence that Memory Steward later compacts, but the Librarian does not own the compaction lifecycle.
+
+## Safety
+
+Never persist secrets, OAuth tokens, device codes, raw credentials, or transient provider logs in Skill notes or handoffs. Provider/OAuth setup belongs to the connection-management boundary, not the requesting agent.
 
 ## Related Alexandria skills
 
-- [[Skills/Active/Alexandria Library]] — safe scoped recall and canonical write rules.
-- [[Skills/Active/Alexandria Operational Sync]] — reindex, embedding, and graph projection recovery.
+- [[Skills/Active/Alexandria Library]] — canonical search/read/write rules.
+- [[Skills/Active/Alexandria Operational Sync]] — index, embedding, graph, and recovery operations.

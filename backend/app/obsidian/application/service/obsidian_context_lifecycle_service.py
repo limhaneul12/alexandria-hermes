@@ -43,7 +43,7 @@ class ObsidianContextLifecycleService:
         """Create the Context lifecycle service.
 
         Args:
-            repository: Rebuildable SQLite index repository.
+            repository: Rebuildable PostgreSQL index repository.
             vault_config_store: Runtime vault location provider.
             read_note: Canonical note read callback.
         """

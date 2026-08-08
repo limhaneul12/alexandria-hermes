@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import anyio
@@ -20,12 +21,12 @@ class _FakeContextService:
         return RagDependencyHealth(
             fts=RagHealthState.HEALTHY,
             vector=RagHealthState.HEALTHY,
-            embedding=RagHealthState.HEALTHY,
-            default_strategy=RagStrategy.HYBRID,
+            embedding=RagHealthState.REINDEX_REQUIRED,
+            default_strategy=RagStrategy.FTS_ONLY,
             model_name="test-model",
             dimensions=3,
             fingerprint={"provider": "test"},
-            warnings=[],
+            warnings=("embedding fingerprint mismatch",),
         )
 
 
@@ -49,12 +50,10 @@ def test_recovery_plan_route_returns_read_only_plan_payload(tmp_path: Path) -> N
     """POST handler should expose recovery dry-run plan contract."""
 
     async def scenario() -> dict[str, object]:
-        database_path = tmp_path / "corrupt.db"
-        database_path.write_bytes(b"not a sqlite database")
         note = tmp_path / "vault" / "Alexandria" / "note.md"
         note.parent.mkdir(parents=True)
         note.write_text("# Note\n", encoding="utf-8")
-        database = Database(database_url=f"sqlite+aiosqlite:///{database_path}")
+        database = Database(database_url=os.environ["DATABASE_URL"])
         response = await recovery_plan(
             request=RecoveryPlanRequestSchema(idempotency_key="route-key"),
             database=database,
@@ -68,11 +67,7 @@ def test_recovery_plan_route_returns_read_only_plan_payload(tmp_path: Path) -> N
 
     assert payload["status"] == "RECOVERY_REQUIRED"
     assert payload["dry_run"] is True
-    assert payload["deletion_performed"] is False
     assert payload["automatic_execution_allowed"] is True
     assert payload["idempotency_key"] == "route-key"
-    assert payload["diagnosis"] == ["SQLITE_CORRUPTION_DETECTED"]
-    assert payload["quarantine_artifacts"][0]["source_path"] == str(
-        tmp_path / "corrupt.db"
-    )
+    assert "rag_embedding_reindex_required" in payload["diagnosis"]
     assert payload["steps"][0]["code"] == "snapshot_sources"

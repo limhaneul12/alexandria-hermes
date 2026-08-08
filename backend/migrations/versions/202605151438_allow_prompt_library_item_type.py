@@ -32,7 +32,10 @@ def _item_type_constraint(values: tuple[str, ...]) -> str:
 
 def upgrade() -> None:
     """Expand library_items.item_type so prompt records can be inserted."""
-    with op.batch_alter_table("library_items", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "library_items",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_library_items_type", type_="check")
         batch_op.create_check_constraint(
             "ck_library_items_type",
@@ -51,7 +54,10 @@ def downgrade() -> None:
         """
     )
     op.execute("DELETE FROM library_items WHERE item_type = 'PROMPT'")
-    with op.batch_alter_table("library_items", recreate="always") as batch_op:
+    with op.batch_alter_table(
+        "library_items",
+        recreate="always" if op.get_bind().dialect.name == "sqlite" else "auto",
+    ) as batch_op:
         batch_op.drop_constraint("ck_library_items_type", type_="check")
         batch_op.create_check_constraint(
             "ck_library_items_type",

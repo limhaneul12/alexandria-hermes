@@ -11,9 +11,7 @@ from app.mcp_server.tools.memory_reconciliation_tools import (
     alexandria_apply_memory_reconciliation,
     alexandria_get_memory_conflict,
     alexandria_get_memory_reconciliation_plan,
-    alexandria_get_memory_reconciliation_result,
     alexandria_list_memory_conflicts,
-    alexandria_mark_memory_conflict_reviewing,
     alexandria_preview_existing_memory_reconciliation,
     alexandria_preview_memory_reconciliation,
     alexandria_preview_reconciliation_memory_compact,
@@ -119,14 +117,12 @@ def test_memory_reconciliation_gateway_maps_to_backend_contracts() -> None:
                 "plan/1",
                 retry_failed=True,
             ),
-            await alexandria_get_memory_reconciliation_result(client, "result/1"),
             await alexandria_list_memory_conflicts(
                 client,
                 status=MemoryConflictStatus.OPEN,
                 limit=5000,
             ),
             await alexandria_get_memory_conflict(client, "conflict/1"),
-            await alexandria_mark_memory_conflict_reviewing(client, "conflict/1"),
             await alexandria_resolve_memory_conflict(
                 client,
                 "conflict/1",
@@ -137,7 +133,7 @@ def test_memory_reconciliation_gateway_maps_to_backend_contracts() -> None:
 
     results = anyio.run(exercise)
 
-    assert results == [{"ok": True}] * 12
+    assert results == [{"ok": True}] * 10
     assert [call.method for call in calls] == [
         "POST",
         "POST",
@@ -148,8 +144,6 @@ def test_memory_reconciliation_gateway_maps_to_backend_contracts() -> None:
         "POST",
         "GET",
         "GET",
-        "GET",
-        "POST",
         "POST",
     ]
     paths = [str(call.url).removeprefix("http://backend:8000") for call in calls]
@@ -161,10 +155,8 @@ def test_memory_reconciliation_gateway_maps_to_backend_contracts() -> None:
         "/memory/reconciliation/existing/apply",
         "/memory/reconciliation/plans/plan%2F1",
         "/memory/reconciliation/plans/plan%2F1/apply",
-        "/memory/reconciliation/results/result%2F1",
         "/memory/reconciliation/conflicts?limit=1000&status=OPEN",
         "/memory/reconciliation/conflicts/conflict%2F1",
-        "/memory/reconciliation/conflicts/conflict%2F1/reviewing",
         "/memory/reconciliation/conflicts/conflict%2F1/resolve",
     ]
     preview_payload = loads_json(calls[0].content)
@@ -178,9 +170,9 @@ def test_memory_reconciliation_gateway_maps_to_backend_contracts() -> None:
     assert existing_payload["recall_limit"] == 10
     assert existing_payload["include_archived"] is True
     assert loads_json(calls[6].content) == {"retry_failed": True}
-    assert calls[8].url.params["status"] == "OPEN"
-    assert calls[8].url.params["limit"] == "1000"
-    assert loads_json(calls[11].content) == {
+    assert calls[7].url.params["status"] == "OPEN"
+    assert calls[7].url.params["limit"] == "1000"
+    assert loads_json(calls[9].content) == {
         "status": "RESOLVED_KEEP_BOTH",
         "resolution": "Both claims are valid in different temporal scopes.",
     }
@@ -202,9 +194,11 @@ def test_fastmcp_registers_memory_reconciliation_tools() -> None:
         "alexandria_apply_existing_memory_reconciliation",
         "alexandria_get_memory_reconciliation_plan",
         "alexandria_apply_memory_reconciliation",
-        "alexandria_get_memory_reconciliation_result",
         "alexandria_list_memory_conflicts",
         "alexandria_get_memory_conflict",
-        "alexandria_mark_memory_conflict_reviewing",
         "alexandria_resolve_memory_conflict",
     } <= names
+    assert {
+        "alexandria_get_memory_reconciliation_result",
+        "alexandria_mark_memory_conflict_reviewing",
+    }.isdisjoint(names)
